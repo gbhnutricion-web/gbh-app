@@ -62,7 +62,7 @@ const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
 // ─── Mascot avatar with expression overlays ───────────────────────────────────
 // expr: idle | happy | excited | celebrating | sad | sleeping | legend
 function Mascot({expr="idle",size=200}){
-  const [imgOk,setImgOk]=useState(true);
+  const [imgOk,setImgOk]=useState(false);
   // Expression overlay emojis / effects
   const overlays={
     idle:       null,
@@ -316,6 +316,34 @@ const CTip=({active,payload})=>{
   return(<div style={{background:T.bgWood,border:`1px solid ${T.bA}`,borderRadius:12,padding:"8px 14px"}}><div style={{color:T.t2,fontSize:11}}>{d?.date}</div>{d?.weight&&<div style={{color:T.au1,fontWeight:800,fontSize:15}}>{d.weight} kg</div>}{d?.ma&&<div style={{color:T.xp,fontSize:12,marginTop:2}}>Tendencia: {d.ma.toFixed(1)} kg</div>}</div>);
 };
 
+// ─── Streak overlay (Duolingo-style, negro) ───────────────────────────────────
+function StreakOverlay({active,streak}){
+  if(!active)return null;
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:10000,background:"#000",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",animation:"fadeInOut 2.6s ease forwards",pointerEvents:"none"}}>
+      <div style={{fontSize:90,animation:"scaleIn 0.5s cubic-bezier(0.34,1.56,0.64,1)"}}>🔥</div>
+      <div style={{fontSize:62,fontWeight:900,color:"#FF8040",fontFamily:"'Nunito',sans-serif",lineHeight:1,animation:"scaleIn 0.5s 0.15s cubic-bezier(0.34,1.56,0.64,1) both"}}>{streak}</div>
+      <div style={{fontSize:22,fontWeight:900,color:"#FFF",fontFamily:"'Nunito',sans-serif",marginTop:10,animation:"scaleIn 0.5s 0.3s cubic-bezier(0.34,1.56,0.64,1) both",textAlign:"center",letterSpacing:"0.04em"}}>día{streak!==1?"s":""} de racha</div>
+      <div style={{marginTop:24,fontSize:15,color:"rgba(255,255,255,0.5)",fontFamily:"'DM Sans',sans-serif",animation:"scaleIn 0.5s 0.5s ease both"}}>¡Sigue así! 💪</div>
+    </div>
+  );
+}
+
+// ─── All-missions overlay ─────────────────────────────────────────────────────
+function MissionsOverlay({active}){
+  if(!active)return null;
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:10000,background:"#000",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",animation:"fadeInOut 2.8s ease forwards",pointerEvents:"none"}}>
+      <div style={{fontSize:88,animation:"scaleIn 0.5s cubic-bezier(0.34,1.56,0.64,1)"}}>⭐</div>
+      <div style={{fontSize:32,fontWeight:900,color:"#FFC800",fontFamily:"'Nunito',sans-serif",marginTop:14,animation:"scaleIn 0.5s 0.15s cubic-bezier(0.34,1.56,0.64,1) both",textAlign:"center"}}>¡Día Perfecto!</div>
+      <div style={{fontSize:42,fontWeight:900,color:"#FFD700",fontFamily:"'Nunito',sans-serif",marginTop:8,animation:"scaleIn 0.6s 0.35s cubic-bezier(0.34,1.56,0.64,1) both",display:"flex",alignItems:"center",gap:10}}>
+        <span>+10 💎</span>
+      </div>
+      <div style={{marginTop:16,fontSize:15,color:"rgba(255,255,255,0.55)",fontFamily:"'DM Sans',sans-serif",animation:"scaleIn 0.5s 0.55s ease both"}}>Todas las misiones completadas</div>
+    </div>
+  );
+}
+
 // ─── Confetti ─────────────────────────────────────────────────────────────────
 function Confetti({active}){
   if(!active)return null;
@@ -348,7 +376,20 @@ export default function GBHApp(){
   const [taps,    setTaps]    = useState(0);
   const [aName,   setAName]   = useState("");
   const [aEmail,  setAEmail]  = useState("");
+  const [streakAnim,  setStreakAnim]   = useState(false);
+  const [missionsAnim,setMissionsAnim] = useState(false);
   const tapRef=useRef(null);
+
+  // Auto-login: si ya existe sesión guardada, cargar directamente
+  useEffect(()=>{
+    const lastEmail=lsGet("gbh:lastEmail",null);
+    if(!lastEmail)return;
+    const lid=lsGet(`gbh:em:${lastEmail}`,null);
+    if(!lid)return;
+    const lp=lsGet(`gbh:p:${lid}`,null);
+    if(lp?.id)loadP(lp);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
 
   const streak=useMemo(()=>{let s=0;const d=new Date();while(true){if(logs.find(l=>l.date===toKey(d)&&l.diet)){s++;d.setDate(d.getDate()-1);}else break;}return s;},[logs,tLog]);
   const xp=profile?.xp??0,gems=profile?.gems??0;
@@ -377,12 +418,12 @@ export default function GBHApp(){
     if(!aName.trim()||!aEmail.trim())return;setLoading(true);
     const email=aEmail.trim().toLowerCase(),name=aName.trim();
     let r=await sbReq("GET",`profiles?email=eq.${email}&select=*`);
-    if(r?.length){lsSet(`gbh:p:${r[0].id}`,r[0]);await loadP(r[0]);setLoading(false);return;}
+    if(r?.length){lsSet(`gbh:p:${r[0].id}`,r[0]);lsSet("gbh:lastEmail",email);await loadP(r[0]);setLoading(false);return;}
     const lid=lsGet(`gbh:em:${email}`,null);
-    if(lid){const lp=lsGet(`gbh:p:${lid}`,null);if(lp){await loadP(lp);setLoading(false);return;}}
+    if(lid){const lp=lsGet(`gbh:p:${lid}`,null);if(lp){lsSet("gbh:lastEmail",email);await loadP(lp);setLoading(false);return;}}
     const np={id:crypto.randomUUID(),name,email,xp:0,gems:0,shields:0};
     const cr=await sbReq("POST","profiles",np);const fp=cr?.[0]||np;
-    lsSet(`gbh:p:${fp.id}`,fp);lsSet(`gbh:em:${email}`,fp.id);
+    lsSet(`gbh:p:${fp.id}`,fp);lsSet(`gbh:em:${email}`,fp.id);lsSet("gbh:lastEmail",email);
     await loadP(fp);setLoading(false);
   };
 
@@ -420,9 +461,16 @@ export default function GBHApp(){
   },[profile,logs,addXG]);
 
   const toggleM=useCallback(async(key)=>{
-    const was=tLog[key],nl={...tLog,[key]:!was};setTLog(nl);await saveLog(nl,steps);
-    if(!was)await addXG(key==="diet"?15:5,key==="diet"?5:2);
-    if(nl.diet&&nl.steps&&nl.hydration&&nl.sleep&&!(tLog.diet&&tLog.steps&&tLog.hydration&&tLog.sleep)){await addXG(20,10);showT({icon:"⭐",title:"¡Día Perfecto!",sub:"Todas las misiones completadas",reward:"+20 XP +10 💎"});}
+    const was=tLog[key];
+    if(was) return; // Misiones solo se pueden marcar, nunca desmarcar
+    const nl={...tLog,[key]:true};setTLog(nl);await saveLog(nl,steps);
+    await addXG(key==="diet"?15:5,key==="diet"?5:2);
+    if(key==="diet"){setStreakAnim(true);setTimeout(()=>setStreakAnim(false),2600);}
+    const wasAllDone=tLog.diet&&tLog.steps&&tLog.hydration&&tLog.sleep;
+    if(nl.diet&&nl.steps&&nl.hydration&&nl.sleep&&!wasAllDone){
+      await addXG(20,10);
+      setTimeout(()=>{setMissionsAnim(true);setTimeout(()=>setMissionsAnim(false),2800);},key==="diet"?2700:0);
+    }
     await chkBadges(streak,weights,badges);
   },[tLog,steps,streak,weights,badges,saveLog,addXG,chkBadges]);
 
@@ -460,6 +508,8 @@ export default function GBHApp(){
     @keyframes confettiFall{to{transform:translateY(110vh) rotate(800deg);opacity:0}}
     @keyframes glow{0%,100%{box-shadow:0 6px 0 ${T.g3},0 0 18px rgba(88,204,2,0.35)}50%{box-shadow:0 6px 0 ${T.g3},0 0 38px rgba(88,204,2,0.8)}}
     @keyframes wobble{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(8deg)}}
+    @keyframes fadeInOut{0%{opacity:0}10%{opacity:1}75%{opacity:1}100%{opacity:0}}
+    @keyframes scaleIn{0%{transform:scale(0.5);opacity:0}100%{transform:scale(1);opacity:1}}
     @keyframes zFloat{0%{transform:translateY(0);opacity:1}100%{transform:translateY(-24px);opacity:0}}
     @keyframes sparkle0{0%,100%{opacity:1;transform:scale(1) rotate(0deg)}50%{opacity:0.5;transform:scale(1.3) rotate(20deg)}}
     @keyframes sparkle1{0%,100%{opacity:0.7;transform:scale(0.9)}50%{opacity:1;transform:scale(1.2)}}
@@ -482,14 +532,13 @@ export default function GBHApp(){
       <p style={{fontSize:14,color:T.t2,marginBottom:32,textAlign:"center",fontFamily:"'DM Sans',sans-serif"}}>Tu compañero de hábitos saludables 🌱</p>
       <Card style={{width:"100%",maxWidth:360,marginBottom:0}}>
         <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>Nombre completo</div>
-        <input type="text" value={aName} onChange={e=>setAName(e.target.value)} placeholder="Alex Serrano" style={{...inp,marginBottom:16}}/>
+        <input type="text" value={aName} onChange={e=>setAName(e.target.value)} placeholder="Nombre Apellido" style={{...inp,marginBottom:16}}/>
         <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>Email</div>
-        <input type="email" value={aEmail} onChange={e=>setAEmail(e.target.value)} placeholder="alex@email.com" onKeyDown={e=>e.key==="Enter"&&doAuth()} style={{...inp,marginBottom:22}}/>
+        <input type="email" value={aEmail} onChange={e=>setAEmail(e.target.value)} placeholder="nombre@ejemplo.com" onKeyDown={e=>e.key==="Enter"&&doAuth()} style={{...inp,marginBottom:22}}/>
         <button onClick={doAuth} disabled={loading||!aName.trim()||!aEmail.trim()} style={{width:"100%",padding:"17px 20px",borderRadius:18,border:`3px solid ${T.g3}`,cursor:"pointer",fontSize:17,fontWeight:900,background:loading||!aName.trim()||!aEmail.trim()?"rgba(255,255,255,0.12)":`linear-gradient(135deg,${T.g1},${T.g2})`,color:loading||!aName.trim()||!aEmail.trim()?T.t2:"white",boxShadow:loading||!aName.trim()||!aEmail.trim()?"none":`0 6px 0 ${T.g3}`,transition:"all 0.15s",fontFamily:"'Nunito',sans-serif"}}>
           {loading?"Cargando...":"¡Empezar mi aventura! 🚀"}
         </button>
       </Card>
-      {taps>0&&taps<5&&<div style={{fontSize:10,color:T.t2,marginTop:14}}>{5-taps} toques para acceso admin</div>}
     </div>
   );
 
@@ -538,6 +587,8 @@ export default function GBHApp(){
     <div style={{fontFamily:"'Nunito',sans-serif",background:`radial-gradient(ellipse at top,#1A3A10,${T.bg})`,minHeight:"100vh",maxWidth:420,margin:"0 auto",color:T.t1,paddingBottom:90}}>
       <style>{CSS}</style>
       <Confetti active={confetti}/>
+      <StreakOverlay active={streakAnim} streak={streak+1}/>
+      <MissionsOverlay active={missionsAnim}/>
 
       {/* Toast */}
       {toast&&(
@@ -573,7 +624,6 @@ export default function GBHApp(){
             <StreakBadge value={gems} label="gemas" icon="💎" color={T.au1} bg="rgba(255,200,0,0.1)"/>
           </div>
         </div>
-        {taps>0&&taps<5&&<div style={{fontSize:9,color:T.t2,textAlign:"right",marginTop:4}}>{5-taps} toques para admin</div>}
       </div>
 
       <div style={{padding:"4px 18px 0"}}>
