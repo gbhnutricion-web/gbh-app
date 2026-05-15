@@ -1,0 +1,22 @@
+{
+  "name": "GBH Nutrición",
+  "short_name": "GBH",
+  "description": "Tu plataforma de seguimiento nutricional",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0A1410",
+  "theme_color": "#0A1410",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://via.placeholder.com/192x192/0A1410/3B7D3B?text=GBH",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://via.placeholder.com/512x512/0A1410/3B7D3B?text=GBH",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
