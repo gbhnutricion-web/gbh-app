@@ -307,7 +307,7 @@ export default function GBHApp(){
   const card=(x={})=>({background:C.card,borderRadius:20,padding:20,border:`1px solid ${C.border}`,boxShadow:"0 4px 24px rgba(0,0,0,0.3)",marginBottom:14,...x});
   const btn=(primary=true,sm=false)=>({padding:sm?"10px 18px":"16px",borderRadius:14,border:"none",cursor:"pointer",fontSize:sm?13:15,fontWeight:700,transition:"all 0.18s",width:sm?"auto":"100%",background:primary?`linear-gradient(135deg,${C.green},${C.greenL})`:"rgba(255,255,255,0.07)",color:primary?"white":C.sub,boxShadow:primary?`0 4px 16px rgba(59,125,59,0.35)`:"none"});
   const lbl={fontSize:11,color:C.sub,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600,marginBottom:8};
-  const tab=(a)=>({flex:1,padding:"8px 0",background:"none",border:"none",color:a?C.gold:C.sub,fontSize:9,fontWeight:a?700:500,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,textTransform:"uppercase",letterSpacing:"0.05em",transition:"all 0.18s"});
+  const tabS=(a)=>({flex:1,padding:"8px 0",background:"none",border:"none",color:a?C.gold:C.sub,fontSize:9,fontWeight:a?700:500,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,textTransform:"uppercase",letterSpacing:"0.05em",transition:"all 0.18s"});
 
   if(screen==="auth")return(
     <div style={{fontFamily:"'DM Sans',sans-serif",background:C.bg,minHeight:"100vh",maxWidth:420,margin:"0 auto",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,color:C.text}}>
@@ -574,7 +574,7 @@ export default function GBHApp(){
       {/* Bottom nav */}
       <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:420,background:"rgba(6,14,9,0.97)",backdropFilter:"blur(24px)",borderTop:`1px solid ${C.border}`,display:"flex",padding:"8px 0 8px",zIndex:100}}>
         {[{id:"home",icon:"🏠",l:"Inicio"},{id:"weight",icon:"⚖️",l:"Peso"},{id:"achievements",icon:"🏅",l:"Logros"}].map(({id,icon,l})=>(
-          <button key={id} onClick={()=>setTab(id)} style={tab(tab===id)}>
+          <button key={id} onClick={()=>setTab(id)} style={tabS(tab===id)}>
             <span style={{fontSize:22,filter:tab===id?"none":"grayscale(0.4)"}}>{icon}</span>
             {l}
           </button>
