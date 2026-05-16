@@ -833,7 +833,7 @@ function RuletaModal({onClose, onCollect}){
     // El marcador está arriba (270°). El segmento idx empieza en idx*SEG.
     // Necesitamos que el centro del segmento quede en 270°.
     const segCenter = idx * SEG + SEG/2;
-    const target    = 270 - segCenter;
+    const target    = (360 - segCenter % 360 + 360) % 360; // Marcador en 0° (arriba)
     // Sumar vueltas para que gire al menos 5 veces
     const fullSpins = (5 + Math.floor(Math.random()*3)) * 360;
     const finalAngle = angle + fullSpins + ((target - angle % 360) + 360) % 360;
@@ -2039,62 +2039,17 @@ export default function GBHApp(){
           <MRow num="2" icon="🌙" label="Dormir al menos 7 horas" done={tLog.sleep} onToggle={()=>toggleM("sleep")} xpR={5}/>
           <StepsWidget done={tLog.steps} stepCount={steps} onToggle={()=>toggleM("steps")} onUpdateSteps={updSteps}/>
           <HydrationWidget done={tLog.hydration} onToggle={()=>toggleM("hydration")}/>
-
-          {/* ── Quiz diario ────────────────────────────────────────────────── */}
-          <div style={{marginBottom:10}}>
-            <div onClick={quizDone?undefined:()=>setShowQuiz(true)} style={{
-              background:quizDone?"rgba(88,204,2,0.12)":T.bgWood,
-              border:`2px solid ${quizDone?T.g1:T.bW}`,
-              borderRadius:20,padding:"14px 18px",
-              display:"flex",alignItems:"center",gap:14,
-              cursor:quizDone?"default":"pointer",
-              boxShadow:quizDone?`0 4px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)",
-              transition:"all 0.2s",
-            }}>
-              <div style={{width:44,height:44,borderRadius:14,background:quizDone?T.g1:"linear-gradient(135deg,#7B2FBE,#4A0E8F)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0,boxShadow:quizDone?`0 3px 0 ${T.g3}`:"0 3px 0 rgba(0,0,0,0.5)"}}>
-                {quizDone?"✓":"🧠"}
-              </div>
-              <div style={{flex:1}}>
-                <div style={{fontSize:14,fontWeight:900,color:quizDone?T.t1:"rgba(255,255,255,0.55)"}}>
-                  {quizDone?"¡Quiz completado hoy!":"Quiz de Nutrición del día"}
-                </div>
-                <div style={{fontSize:11,color:T.au1,fontWeight:700,marginTop:2}}>
-                  {quizDone?"+20 XP y +8 💎 conseguidos":"Responde bien → +20 XP +8 💎"}
-                </div>
-              </div>
-              {!quizDone&&<div style={{fontSize:20,color:T.t2}}>›</div>}
+          {/* ── Quiz + Ruleta ── media tarjeta cada una ── */}
+          <div style={{display:"flex",gap:8,marginBottom:10}}>
+            <div onClick={quizDone?undefined:()=>setShowQuiz(true)} style={{flex:1,background:quizDone?"rgba(88,204,2,0.14)":T.bgWood,border:`2px solid ${quizDone?T.g1:T.bW}`,borderRadius:18,padding:"12px 10px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:5,cursor:quizDone?"default":"pointer",boxShadow:quizDone?`0 4px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)",minHeight:76,textAlign:"center"}}>
+              <div style={{fontSize:26,lineHeight:1}}>{quizDone?"✅":"❓"}</div>
+              <div style={{fontSize:13,fontWeight:900,color:quizDone?T.g2:T.t1}}>{quizDone?"Quiz ✓":"Quiz"}</div>
+              <div style={{fontSize:10,color:T.au1,fontWeight:700}}>{quizDone?"+20 XP +8 💎":"Gana XP y 💎"}</div>
             </div>
-          </div>
-
-          {/* ── Ruleta diaria ──────────────────────────────────────────────────── */}
-          <div style={{marginBottom:10}}>
-            <div onClick={ruletaDone?undefined:()=>setShowRuleta(true)} style={{
-              background:ruletaDone?"rgba(88,204,2,0.12)":T.bgWood,
-              border:`2px solid ${ruletaDone?T.g1:T.bW}`,
-              borderRadius:20,padding:"14px 18px",
-              display:"flex",alignItems:"center",gap:14,
-              cursor:ruletaDone?"default":"pointer",
-              boxShadow:ruletaDone?`0 4px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)",
-              transition:"all 0.2s",
-            }}>
-              <div style={{
-                width:44,height:44,borderRadius:14,flexShrink:0,fontSize:22,
-                display:"flex",alignItems:"center",justifyContent:"center",
-                background:ruletaDone?T.g1:"linear-gradient(135deg,#B8000A,#6A0005)",
-                boxShadow:ruletaDone?`0 3px 0 ${T.g3}`:"0 3px 0 rgba(0,0,0,0.5)",
-                animation:ruletaDone?"none":"pulse 2s ease-in-out infinite",
-              }}>
-                {ruletaDone?"✓":"🎰"}
-              </div>
-              <div style={{flex:1}}>
-                <div style={{fontSize:14,fontWeight:900,color:ruletaDone?T.t1:"rgba(255,255,255,0.55)"}}>
-                  {ruletaDone?"¡Ruleta girada hoy!":"Ruleta diaria"}
-                </div>
-                <div style={{fontSize:11,color:T.au1,fontWeight:700,marginTop:2}}>
-                  {ruletaDone?"Vuelve mañana para girar de nuevo":"Gira y consigue XP y 💎 gratis"}
-                </div>
-              </div>
-              {!ruletaDone&&<div style={{fontSize:20,color:T.t2}}>›</div>}
+            <div onClick={ruletaDone?undefined:()=>setShowRuleta(true)} style={{flex:1,background:ruletaDone?"rgba(88,204,2,0.14)":T.bgWood,border:`2px solid ${ruletaDone?T.g1:T.bW}`,borderRadius:18,padding:"12px 10px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:5,cursor:ruletaDone?"default":"pointer",boxShadow:ruletaDone?`0 4px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)",minHeight:76,textAlign:"center"}}>
+              <div style={{fontSize:26,lineHeight:1,animation:ruletaDone?"none":"pulse 2s ease-in-out infinite"}}>{ruletaDone?"✅":"🎰"}</div>
+              <div style={{fontSize:13,fontWeight:900,color:ruletaDone?T.g2:T.t1}}>{ruletaDone?"Ruleta ✓":"Ruleta"}</div>
+              <div style={{fontSize:10,color:T.au1,fontWeight:700}}>{ruletaDone?"Hasta mañana":"Gira gratis"}</div>
             </div>
           </div>
 
