@@ -343,7 +343,15 @@ function StreakBadge({value,label,icon,color,bg}){
 }
 
 // ─── Weekly path (Duolingo-style nodes) ──────────────────────────────────────
-function WeekPath({logs}){
+// helper: número de semana ISO del año
+function getISOWeek(d=new Date()){
+  const tmp=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
+  tmp.setUTCDate(tmp.getUTCDate()+4-(tmp.getUTCDay()||7));
+  const yearStart=new Date(Date.UTC(tmp.getUTCFullYear(),0,1));
+  return{w:Math.ceil((((tmp-yearStart)/86400000)+1)/7),y:tmp.getUTCFullYear()};
+}
+
+function WeekPath({logs,onOpenChest}){
   const today=new Date(),dow=today.getDay();
   const days=Array.from({length:7},(_,i)=>{
     const d=new Date();d.setDate(today.getDate()-(dow===0?6:dow-1)+i);
@@ -351,36 +359,71 @@ function WeekPath({logs}){
     return{label:WLABELS[i],key,isToday,done,isPast:d<today&&!isToday};
   });
   const completedCount=days.filter(d=>d.done).length;
+  const weekUnlocked=completedCount===7;
+  // Clave del cofre: año+semana → se resetea cada lunes
+  const {w,y}=getISOWeek();
+  const chestKey=`gbh:weekChest:${y}:${w}`;
+  const chestOpened=lsGet(chestKey,false);
+  const chestReady=weekUnlocked&&!chestOpened;
 
   return(
-    <div style={{background:T.bgWood,borderRadius:24,padding:"16px 18px",border:`2px solid ${T.bW}`,boxShadow:"0 6px 0 rgba(0,0,0,0.4)",marginBottom:14}}>
+    <div style={{background:T.bgWood,borderRadius:24,padding:"16px 18px",border:`2px solid ${chestReady?T.au1:T.bW}`,boxShadow:chestReady?`0 6px 0 ${T.au3},0 0 20px ${T.au1}40`:"0 6px 0 rgba(0,0,0,0.4)",marginBottom:14,transition:"all 0.4s"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <div style={{fontSize:11,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900}}>📅 Progreso semanal</div>
         <div style={{fontSize:12,fontWeight:800,color:T.t2}}>{completedCount}/7 días</div>
       </div>
-      <div style={{display:"flex",alignItems:"center"}}>
-        {days.map((day,i)=>(
-          <div key={day.key} style={{display:"flex",alignItems:"center",flex:1}}>
-            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,flex:"0 0 auto",zIndex:2}}>
-              <div style={{
-                width:day.isToday?44:38,height:day.isToday?44:38,borderRadius:"50%",
-                background:day.done?`linear-gradient(135deg,${T.g1},${T.g2})`:day.isToday?`linear-gradient(135deg,${T.au1},${T.au2})`:"rgba(255,255,255,0.07)",
-                border:`3px solid ${day.done?T.g3:day.isToday?T.au3:"rgba(255,255,255,0.12)"}`,
-                display:"flex",alignItems:"center",justifyContent:"center",
-                boxShadow:day.done?`0 4px 0 ${T.g3}`:day.isToday?`0 4px 0 ${T.au3}`:"0 3px 0 rgba(0,0,0,0.4)",
-                animation:day.isToday&&!day.done?"pulse 2s ease-in-out infinite":"none",
-                transition:"all 0.3s",
-              }}>
-                {day.done?<span style={{fontSize:18,color:"white",fontWeight:900}}>✓</span>
-                :<span style={{fontSize:11,fontWeight:900,color:day.isToday?"#1A1000":T.t3}}>{day.label}</span>}
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        {/* Burbujas de días */}
+        <div style={{display:"flex",alignItems:"center",flex:1}}>
+          {days.map((day,i)=>(
+            <div key={day.key} style={{display:"flex",alignItems:"center",flex:1}}>
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,flex:"0 0 auto",zIndex:2}}>
+                <div style={{
+                  width:day.isToday?40:34,height:day.isToday?40:34,borderRadius:"50%",
+                  background:day.done?`linear-gradient(135deg,${T.g1},${T.g2})`:day.isToday?`linear-gradient(135deg,${T.au1},${T.au2})`:"rgba(255,255,255,0.07)",
+                  border:`3px solid ${day.done?T.g3:day.isToday?T.au3:"rgba(255,255,255,0.12)"}`,
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  boxShadow:day.done?`0 4px 0 ${T.g3}`:day.isToday?`0 4px 0 ${T.au3}`:"0 3px 0 rgba(0,0,0,0.4)",
+                  animation:day.isToday&&!day.done?"pulse 2s ease-in-out infinite":"none",
+                  transition:"all 0.3s",
+                }}>
+                  {day.done?<span style={{fontSize:16,color:"white",fontWeight:900}}>✓</span>
+                  :<span style={{fontSize:10,fontWeight:900,color:day.isToday?"#1A1000":T.t3}}>{day.label}</span>}
+                </div>
+                {day.isToday&&<div style={{width:5,height:5,borderRadius:"50%",background:T.au1,boxShadow:`0 0 8px ${T.au1}`}}/>}
               </div>
-              {day.isToday&&<div style={{width:6,height:6,borderRadius:"50%",background:T.au1,boxShadow:`0 0 8px ${T.au1}`}}/>}
+              {i<days.length-1&&(
+                <div style={{flex:1,height:5,margin:"0 2px",marginBottom:day.isToday?12:5,background:day.done&&days[i+1]?.done?`linear-gradient(90deg,${T.g1},${T.g2})`:"rgba(255,255,255,0.08)",borderRadius:4}}/>
+              )}
             </div>
-            {i<days.length-1&&(
-              <div style={{flex:1,height:6,margin:"0 3px",marginBottom:day.isToday?14:6,background:day.done&&days[i+1]?.done?`linear-gradient(90deg,${T.g1},${T.g2})`:"rgba(255,255,255,0.08)",borderRadius:4,boxShadow:day.done&&days[i+1]?.done?`0 2px 0 ${T.g3}`:"none"}}/>
-            )}
-          </div>
-        ))}
+          ))}
+        </div>
+
+        {/* Cofre semanal a la derecha */}
+        <div
+          onClick={chestReady?onOpenChest:undefined}
+          title={chestReady?"¡Cofre semanal listo! Ábrelo":weekUnlocked&&chestOpened?"Ya abriste el cofre esta semana":`Completa los 7 días para desbloquear`}
+          style={{
+            width:52,height:52,borderRadius:16,flexShrink:0,
+            background:chestReady?`linear-gradient(135deg,${T.au1},${T.au2})`
+              :weekUnlocked&&chestOpened?`linear-gradient(135deg,rgba(88,204,2,0.3),rgba(43,122,0,0.2))`
+              :"rgba(255,255,255,0.06)",
+            border:`3px solid ${chestReady?T.au1:weekUnlocked&&chestOpened?T.g1:"rgba(255,255,255,0.1)"}`,
+            display:"flex",alignItems:"center",justifyContent:"center",
+            fontSize:26,cursor:chestReady?"pointer":"default",
+            boxShadow:chestReady?`0 5px 0 ${T.au3},0 0 16px ${T.au1}60`:"0 3px 0 rgba(0,0,0,0.4)",
+            animation:chestReady?"pulse 1.5s ease-in-out infinite":"none",
+            transition:"all 0.4s",
+            filter:chestReady?"none":"grayscale(0.7) brightness(0.6)",
+          }}>
+          {chestOpened&&weekUnlocked?"✅":chestReady?"🎁":"🎁"}
+        </div>
+      </div>
+      {/* Texto de progreso hacia el cofre */}
+      <div style={{fontSize:10,color:chestReady?T.au1:T.t2,marginTop:10,fontFamily:"'DM Sans',sans-serif",textAlign:"right",fontWeight:chestReady?900:400}}>
+        {chestReady?"¡Cofre desbloqueado! Toca para abrirlo 🎉"
+          :chestOpened&&weekUnlocked?"Cofre abierto esta semana ✅"
+          :`${7-completedCount} día${7-completedCount!==1?"s":""} más para el cofre semanal`}
       </div>
     </div>
   );
@@ -641,6 +684,475 @@ function WeeklyXPGoal({logs,xp}){
 
 
 
+
+// ─── Banco de preguntas de nutrición (30 preguntas) ──────────────────────────
+const QUIZ_BANK = [
+  {q:"¿Cuántas calorías tiene aproximadamente 100g de pechuga de pollo a la plancha?",opts:["85 kcal","165 kcal","240 kcal","310 kcal"],ans:1},
+  {q:"¿Qué macronutriente proporciona más energía por gramo?",opts:["Proteína (4 kcal/g)","Hidratos (4 kcal/g)","Grasa (9 kcal/g)","Fibra (2 kcal/g)"],ans:2},
+  {q:"¿Cuál de estos alimentos tiene más proteína por 100g?",opts:["Huevo entero","Atún en lata","Leche entera","Yogur natural"],ans:1},
+  {q:"¿Qué vitamina produce el cuerpo con la exposición al sol?",opts:["Vitamina A","Vitamina B12","Vitamina C","Vitamina D"],ans:3},
+  {q:"¿Cuántos vasos de agua equivalen aproximadamente a 2 litros?",opts:["4 vasos","6 vasos","8 vasos","10 vasos"],ans:2},
+  {q:"¿Cuál de estos alimentos tiene el índice glucémico más bajo?",opts:["Pan blanco","Arroz blanco","Legumbres","Sandía"],ans:2},
+  {q:"¿Qué porcentaje del cuerpo humano es agua aproximadamente?",opts:["40%","55-60%","75-80%","90%"],ans:1},
+  {q:"¿Cuántas kcal tiene 1 gramo de alcohol?",opts:["4 kcal","5 kcal","7 kcal","9 kcal"],ans:2},
+  {q:"¿Cuál es la principal función de los hidratos de carbono?",opts:["Construir músculo","Proporcionar energía rápida","Regular el sistema inmune","Transportar vitaminas"],ans:1},
+  {q:"¿Qué alimento es rico en omega-3?",opts:["Aceite de girasol","Salmón","Carne de cerdo","Queso curado"],ans:1},
+  {q:"¿Cuántas calorías tiene aproximadamente 1 cucharada de aceite de oliva?",opts:["50 kcal","90 kcal","120 kcal","150 kcal"],ans:1},
+  {q:"¿Cuál de estos es un ejemplo de proteína completa?",opts:["Arroz","Lentejas","Huevo","Pan"],ans:2},
+  {q:"¿Qué mineral es esencial para la salud ósea?",opts:["Hierro","Zinc","Calcio","Magnesio"],ans:2},
+  {q:"¿Cuántas calorías tiene 100g de aguacate?",opts:["80 kcal","160 kcal","250 kcal","320 kcal"],ans:1},
+  {q:"¿Qué es el metabolismo basal?",opts:["Calorías quemadas haciendo ejercicio","Calorías mínimas para funciones vitales en reposo","Velocidad de digestión","Absorción de nutrientes"],ans:1},
+  {q:"¿Cuál de estos cereales tiene más fibra?",opts:["Arroz blanco","Maíz","Avena","Trigo refinado"],ans:2},
+  {q:"¿En qué alimento hay más hierro por 100g?",opts:["Lentejas","Espinacas","Hígado de ternera","Almejas"],ans:3},
+  {q:"¿Cuántas calorías tiene 100g de plátano?",opts:["55 kcal","89 kcal","120 kcal","145 kcal"],ans:1},
+  {q:"¿Qué vitamina es fundamental para la absorción del hierro?",opts:["Vitamina A","Vitamina B6","Vitamina C","Vitamina K"],ans:2},
+  {q:"¿Cuántas horas sin comer se considera ayuno intermitente básico?",opts:["8 horas","12 horas","16 horas","24 horas"],ans:2},
+  {q:"¿Cuál de estos NO es un aminoácido esencial?",opts:["Leucina","Valina","Alanina","Lisina"],ans:2},
+  {q:"¿Cuántas calorías tiene 100g de almendras?",opts:["350 kcal","460 kcal","580 kcal","700 kcal"],ans:2},
+  {q:"¿Qué hormona regula el azúcar en sangre?",opts:["Cortisol","Insulina","Adrenalina","Melatonina"],ans:1},
+  {q:"¿Cuál es la temperatura interna segura para cocinar pollo?",opts:["60°C","70°C","74°C","85°C"],ans:2},
+  {q:"¿Cuántos gramos de proteína necesita aproximadamente una persona activa por kg de peso?",opts:["0.4-0.6g","0.8-1.2g","1.6-2.2g","3-4g"],ans:2},
+  {q:"¿Cuál de estos alimentos tiene más potasio?",opts:["Plátano","Naranja","Espinacas","Patata cocida"],ans:3},
+  {q:"¿Qué proceso ocurre durante el sueño en relación a los músculos?",opts:["Se pierden","Se sintetiza proteína muscular","Se quema grasa muscular","No pasa nada"],ans:1},
+  {q:"¿Cuántas calorías tiene 100g de pasta cocida?",opts:["80 kcal","131 kcal","200 kcal","260 kcal"],ans:1},
+  {q:"¿Cuál de estos tiene menos azúcar?",opts:["Zumo de naranja natural","Naranja entera","Refresco light","Yogur con frutas"],ans:1},
+  {q:"¿Qué significa IMC?",opts:["Índice de Masa Corporal","Ingesta Máxima Calórica","Índice Metabólico Corporal","Ingesta Mínima de Carbohidratos"],ans:0},
+];
+
+const QUIZ_RECETARIO = [
+  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Pastel de pescado','Ensalada de patata','Bircher Muesli','Guiso de alubias con hongos'],ans:2,fact:'Bircher Muesli · 60g grasa'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Arroz asiático con huevo','Gnocchi con mozzarella y pollo','Calabacines rellenos de gambas y rape','Guiso de verduras'],ans:3,fact:'Guiso de verduras · 35g HC'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Sopa crema de patatas y cebollas','Avena al horno con manzana pera y nueces','Ensalada de escarola con tomate granada y naranja','Ensalada de berenjena y queso'],ans:3,fact:'Ensalada de berenjena y queso · 510kcal'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Bizcocho keto de limón','Estofado de habichuelas','Guiso de merluza y gambas','Huevos revueltos con espárragos'],ans:2,fact:'Guiso de merluza y gambas · 40g prot'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Hamburguesa de berenjenas','Pizzeta de calabaza','Ensalada de espinacas','Guiso de garbanzos y calamares'],ans:1,fact:'Pizzeta de calabaza · 20g grasa'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Ensalada de lentejas y aguacate','Batido de plátano y avena','Lentejas con verduras','Ensalada de brócoli y manzana'],ans:2,fact:'Lentejas con verduras · 22g prot'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Tosta de atún con gambas y tomate','Macedonia de sandia y melon','Guiso de alubias blancas y verduras','Ensalada mixta'],ans:0,fact:'Tosta de atún con gambas y tomate · 20g prot'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Ensalada de col y manzana','Berenjenas asadas con cuscús de garbanzos','Tarta de dulce de leche','Guiso de alubias con hongos'],ans:1,fact:'Berenjenas asadas con cuscús de garbanzos · 50g HC'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Sopa postre de avellanas y chocolate blanco','Tortilla de champiñón','Alubias con pulpo','Brazo de tiramisú'],ans:3,fact:'Brazo de tiramisú · 21g grasa'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Flan de avena','Tortitas de plátano y avena','Ensalada de naranjas','Sorbete de café'],ans:0,fact:'Flan de avena · 430kcal'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Pisto de verduras con carne','Hamburguesa de garbanzo y curry','Pizza de yuca','Ensalada de gourmet'],ans:0,fact:'Pisto de verduras con carne · 27g prot'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Pollo con salsa de frutos rojos y yuca','Lasaña de calabacín','Pasta con brócoli y queso','Albóndigas de pollo con arroz al curry'],ans:3,fact:'Albóndigas de pollo con arroz al curry · 550kcal'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Guiso de pavo','Boloñesa de lentejas','Rape con verduras','Arroz con leche al chocolate'],ans:3,fact:'Arroz con leche al chocolate · 36g grasa'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Lentejas sin sofrito','Crema con rape y gambas','Tosta de atún con gambas y tomate','Rollitos de salmón ahumado'],ans:3,fact:'Rollitos de salmón ahumado · 41g prot'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Triángulos de maíz con carne','Pastelitos de patata y brócoli','Estofado de cordero','Sándwich de salmón, queso y aguacate'],ans:2,fact:'Estofado de cordero · 500kcal'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Pastel de champiñones y soya','Huevos revueltos con jamón','Guiso marinero','Guiso pavo con verduras'],ans:1,fact:'Huevos revueltos con jamón · 35g prot'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Ensalada california','Salmón con salsa de yogur','Berenjenas a la parmesana','Guiso de patatas con champiñones'],ans:0,fact:'Ensalada california · 15g grasa'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Coulant de pistacho','Quesadillas','Parrillada de verduras','Ensalada de pollo y aguacate'],ans:1,fact:'Quesadillas · 32g grasa'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Mousse de melón con frutos rojos','Ensalada de naranjas','Lubina al microondas con calabacín','Crema cuajada de leche y queso'],ans:2,fact:'Lubina al microondas con calabacín · 28g prot'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Gachas de avena remojadas con cacahuetes y chocolate','Pollo con pesto rosso de tomates secos','Sopa postre de chocolate y almendras','Trufas de palomitas'],ans:2,fact:'Sopa postre de chocolate y almendras · 521kcal'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Guiso de garbanzos y calamares','Salmón con arroz y gambas','Berenjenas rellenas de verduras','Ensalada california'],ans:1,fact:'Salmón con arroz y gambas · 31g prot'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Lentejas estofadas','Alcachofas con jamón y huevo','Hummus','Focaccia de pesto burata y mortadela'],ans:3,fact:'Focaccia de pesto burata y mortadela · 700kcal'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Merluza con cebolla al microondas','Tortitas de plátano y avena','Sorbete de café','Ensalada de naranjas'],ans:0,fact:'Merluza con cebolla al microondas · 24g prot'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Tortilla de zanahorias','Batido de mango y proteína','Huevos revueltos con champiñones','Sorbete de frutas'],ans:3,fact:'Sorbete de frutas · 40g grasa'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Ensalada de alcachofas y atún','Pastel de patata con marisco','Hamburguesa de pollo y espinaca al plato','Ensalada waldorf'],ans:1,fact:'Pastel de patata con marisco · 42g grasa'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Mero con fideos','Bizcocho keto de limón','Ensalada de coliflor','Ensalada de pollo con mango y aguacate'],ans:0,fact:'Mero con fideos · 25g HC'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Espaguetis boloñesa','Ensalada de champiñones','Mousse de pera y kiwi','Sopa crema de patatas y cebollas'],ans:0,fact:'Espaguetis boloñesa · 50g prot'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Sándwich de bacalao ahumado y aguacate','Tostadas Hawai','Hamburguesas de arroz con queso','Salmón al horno con brócoli y patatas'],ans:3,fact:'Salmón al horno con brócoli y patatas · 50g prot'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Focaccia de pesto burata y mortadela','Tortilla de patata asada baja en grasas','Bombones saludables de avena','Fideos con costillas'],ans:0,fact:'Focaccia de pesto burata y mortadela · 40g HC'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Pudin de ajetes y bacon','Alfajor de platano y creme de avellanas','Guiso de garbanzos y albaricoques','Ajoblanco con sardina ahumada'],ans:3,fact:'Ajoblanco con sardina ahumada · 970kcal'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Tortilla de coliflor','Corona de pistacho y almendra','Ensalada tibia de vegetales asados','Brazo de tiramisú'],ans:1,fact:'Corona de pistacho y almendra · 57g HC'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Pisto de bacalao y calabacín','Pan vegano de plátano avena y nueces','Alitas de pollo con sticks de calabacín','Ensalada de manzana y fresas con pipas'],ans:0,fact:'Pisto de bacalao y calabacín · 47g prot'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Berenjenas con soja y miel','Guiso de merluza y gambas','Ensaladilla de pollo y aguacate','Estofado de habichuelas'],ans:2,fact:'Ensaladilla de pollo y aguacate · 21g grasa'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Berenjenas empanadas','Pasta a la puttanesca','Sopa crema de patatas y cebollas','Ensalada de lentejas camote crujiente y pimentón'],ans:1,fact:'Pasta a la puttanesca · 700kcal'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Lentejas asadas y berenjenas','Hamburguesa completa','Guiso de acelgas','Salteado de tofu brócoli y zanahoria'],ans:1,fact:'Hamburguesa completa · 800kcal'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Guiso marinero','Pastelitos de pasta filo y pasas','Ensalada de garbanzos','Judías verdes con huevo'],ans:1,fact:'Pastelitos de pasta filo y pasas · 38g HC'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Sopa de lentejas y boniato','Tiramisú de pistacho','Pimientos rellenos de bacalao con sticks de zanahoria','Sopa crema de calabaza'],ans:2,fact:'Pimientos rellenos de bacalao con sticks de zanahoria · 30g prot'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Pastelitos de patata y brócoli','Cuajada con galletas de sésamo','Ensalada de mango y arroz','Empanadillas orientales'],ans:3,fact:'Empanadillas orientales · 73g grasa'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Ensalada de arroz chino','Pollo con salsa de frutos rojos y yuca','Helado de mango','Panache de verduras'],ans:1,fact:'Pollo con salsa de frutos rojos y yuca · 55g prot'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Tortilla de espinacas y queso','Crema de patatas y apio','Ensalada de aguacate y quinoa','Pastel de pescado'],ans:2,fact:'Ensalada de aguacate y quinoa · 23g grasa'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Minestrone','Hojaldre con natillas','Arroz con leche al chocolate','Pinchos de pimiento bacon y queso'],ans:3,fact:'Pinchos de pimiento bacon y queso · 630kcal'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Pastel de champiñones y soya','Sorbete de café','Tortilla de zanahorias','Panache de verduras'],ans:0,fact:'Pastel de champiñones y soya · 16g prot'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Guisado de carne o pescado','Ensalada de naranjas','Crepes de harina integral veganas','Hojaldre con natillas'],ans:3,fact:'Hojaldre con natillas · 19g grasa'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Salmón con verduras al microondas','Pastelitos de manzana','Barritas de avena y almendras','Pinchos de pimiento bacon y queso'],ans:0,fact:'Salmón con verduras al microondas · 29g prot'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Fresas con nata','Ensalada mixta','Triángulos de maíz con carne','Milhojas de nata'],ans:2,fact:'Triángulos de maíz con carne · 35g prot'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Ensalada de langostinos rúcula y papaya','Guiso de patatas con champiñones','Ternera con pimientos de piquillo','Tartar de atún'],ans:1,fact:'Guiso de patatas con champiñones · 30g HC'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Mejillones al vapor','Arroz de alubias y pimientos','Ensalada de judías verdes con jamón','Ensalada de col y manzana'],ans:1,fact:'Arroz de alubias y pimientos · 367kcal'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Ensalada de pollo con mango y aguacate','Muffin de chocolate','Curry de tofu y vegetales','Tartar de atún'],ans:2,fact:'Curry de tofu y vegetales · 37g grasa'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Pasta con setas','Pan de manzana','Salteado de tofu brócoli y zanahoria','Hojaldre de manzana y crema'],ans:0,fact:'Pasta con setas · 750kcal'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Calamares guisados','Salmón al horno','Pudin de ajetes y bacon','Brownie en microondas'],ans:2,fact:'Pudin de ajetes y bacon · 730kcal'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Tarta de queso al microondas','Guiso de cacahuetes y boniato','Tortitas saladas de puerro y calabacín','Pimientos rellenos al horno'],ans:3,fact:'Pimientos rellenos al horno · 24g prot'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Hojaldre de manzana y crema','Rape con verduras','Albóndigas de pavo','Hamburguesas de arroz con queso'],ans:2,fact:'Albóndigas de pavo · 36g prot'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Ensalada de patata','Hamburguesas de arroz con queso','Tartaleta de arroz y pollo','Potaje de vigilia'],ans:2,fact:'Tartaleta de arroz y pollo · 580kcal'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Pollo teriyaki con calabacín / versión ligera','Ensalada de quinoa y atún','Tartaleta de arroz y pollo','Bol de plátano y mango'],ans:0,fact:'Pollo teriyaki con calabacín / versión ligera · 55g prot'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Pastel de berenjenas y calabacines','Huevos revueltos con espárragos','Pasta carbonara con salsa de pistacho','Sopa de tofu'],ans:2,fact:'Pasta carbonara con salsa de pistacho · 40g HC'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Ensalada de arroz chino','Brochetas de rape con tomate y pimiento','Pastelitos de patata y brócoli','Ensalada california'],ans:2,fact:'Pastelitos de patata y brócoli · 16g grasa'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Samosas de morcilla y manzana','Platano banado en choco','Crema cuajada de leche y queso','Rape con verduras'],ans:2,fact:'Crema cuajada de leche y queso · 627kcal'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Chocolatinas de frutos secos','Arroz de coliflor con curry','Batido de mango y proteína','Hojaldre con natillas'],ans:3,fact:'Hojaldre con natillas · 42g HC'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Calamares guisados','Rape con verduras','Hamburguesa de pollo y espinaca al plato','Natillas'],ans:2,fact:'Hamburguesa de pollo y espinaca al plato · 430kcal'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Brochetas de tomate, queso y anchoas','Tortitas proteicas de avena','Huevos revueltos con jamón','Ensalada caprese'],ans:3,fact:'Ensalada caprese · 40g HC'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Datiles banados en chocolate y nuez','Olla gitana','Guiso de pollo con alcachofas','Sopa de verduras con quinoa'],ans:1,fact:'Olla gitana · 363kcal'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Atún a la sevillana al microondas','Hamburguesa de pimiento y soya','Fideos con costillas','Tostas de tomate, queso y mortadela'],ans:2,fact:'Fideos con costillas · 750kcal'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Guiso de acelgas','Pollo al horno con verduras','Ternera a la jardinera','Ensalada de espárragos blancos y salmón ahumado'],ans:2,fact:'Ternera a la jardinera · 22g grasa'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Bacalao con salsa de pimiento y tomate','Alubias con pulpo','Ensaladilla de pollo y aguacate','Brownie en microondas'],ans:3,fact:'Brownie en microondas · 555kcal'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Ensalada de espárragos blancos y salmón ahumado','Tostadas Hawai','Rollos fritos','Ensalada de judías verdes con jamón'],ans:2,fact:'Rollos fritos · 731kcal'}
+];
+
+// Banco combinado: preguntas generales + recetario
+const QUIZ_ALL = [...QUIZ_BANK, ...QUIZ_RECETARIO];
+
+
+// ─── Ruleta diaria ────────────────────────────────────────────────────────────
+const RULETA_PREMIOS = [
+  {icon:"🍏", label:"+10 XP",       xp:10,  gems:0,  color:"#C8FF40", weight:30},
+  {icon:"🥗", label:"+3 💎",        xp:0,   gems:3,  color:"#FFD700", weight:25},
+  {icon:"🍌", label:"+25 XP",       xp:25,  gems:0,  color:"#C8FF40", weight:18},
+  {icon:"🍝", label:"+8 💎",        xp:0,   gems:8,  color:"#FFD700", weight:12},
+  {icon:"🌮", label:"+15 XP +5💎",  xp:15,  gems:5,  color:"#FF8040", weight:8},
+  {icon:"🍕", label:"+50 XP",       xp:50,  gems:0,  color:"#C8FF40", weight:5},
+  {icon:"🍔", label:"+30 XP +15💎", xp:30,  gems:15, color:"#FF40FF", weight:2},
+];
+
+// Función para seleccionar premio con pesos
+function pickPrize(seed){
+  const total=RULETA_PREMIOS.reduce((s,p)=>s+p.weight,0);
+  let r=(seed%1000)/1000*total;
+  for(let i=0;i<RULETA_PREMIOS.length;i++){r-=RULETA_PREMIOS[i].weight;if(r<=0)return i;}
+  return 0;
+}
+
+function RuletaModal({onClose, onCollect}){
+  const [phase, setPhase]   = useState("ready"); // ready | spinning | result
+  const [angle, setAngle]   = useState(0);
+  const [prizeIdx, setPrizeIdx] = useState(null);
+  const [btnPressed, setBtnPressed] = useState(false);
+
+  // Cada segmento ocupa 360/7 grados
+  const SEG = 360 / RULETA_PREMIOS.length;
+
+  const spin = () => {
+    if(phase!=="ready") return;
+    setBtnPressed(true);
+    setPhase("spinning");
+
+    // Elegir premio determinista basado en hora actual (ms)
+    const seed = Date.now();
+    const idx  = pickPrize(seed);
+    setPrizeIdx(idx);
+
+    // Girar hasta que el segmento idx quede arriba (apuntando al marcador)
+    // El marcador está arriba (270°). El segmento idx empieza en idx*SEG.
+    // Necesitamos que el centro del segmento quede en 270°.
+    const segCenter = idx * SEG + SEG/2;
+    const target    = 270 - segCenter;
+    // Sumar vueltas para que gire al menos 5 veces
+    const fullSpins = (5 + Math.floor(Math.random()*3)) * 360;
+    const finalAngle = angle + fullSpins + ((target - angle % 360) + 360) % 360;
+
+    setAngle(finalAngle);
+    setTimeout(() => setPhase("result"), 4200);
+  };
+
+  const prize = prizeIdx!==null ? RULETA_PREMIOS[prizeIdx] : null;
+
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:11000,background:"rgba(0,0,0,0.95)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:20}}>
+
+      {phase!=="result"&&(
+        <>
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.18em",fontFamily:"'DM Sans',sans-serif",marginBottom:28}}>Ruleta diaria</div>
+
+          {/* Marcador (triángulo apuntando hacia abajo, en la parte superior) */}
+          <div style={{width:0,height:0,borderLeft:"14px solid transparent",borderRight:"14px solid transparent",borderTop:"22px solid #FFD700",filter:"drop-shadow(0 0 8px #FFD700)",marginBottom:-12,zIndex:10,position:"relative"}}/>
+
+          {/* Rueda */}
+          <div style={{
+            width:280,height:280,borderRadius:"50%",
+            border:"6px solid rgba(255,255,255,0.15)",
+            boxShadow:"0 0 40px rgba(255,200,0,0.3),inset 0 0 30px rgba(0,0,0,0.5)",
+            overflow:"hidden",position:"relative",flexShrink:0,
+            transform:`rotate(${angle}deg)`,
+            transition:phase==="spinning"?"transform 4s cubic-bezier(0.17,0.67,0.12,1)":"none",
+          }}>
+            {RULETA_PREMIOS.map((p,i)=>{
+              const startAngle = i*SEG;
+              const mid = startAngle + SEG/2;
+              const r  = 140; // radio px
+              const tx = r + (r*0.62)*Math.sin((mid*Math.PI)/180);
+              const ty = r - (r*0.62)*Math.cos((mid*Math.PI)/180);
+              return(
+                <div key={i} style={{position:"absolute",inset:0,overflow:"hidden"}}>
+                  {/* Segmento SVG */}
+                  <svg viewBox="0 0 280 280" style={{position:"absolute",inset:0,width:"100%",height:"100%"}}>
+                    <path
+                      d={`M140,140 L${140+r*Math.sin(startAngle*Math.PI/180)},${140-r*Math.cos(startAngle*Math.PI/180)} A${r},${r} 0 0,1 ${140+r*Math.sin((startAngle+SEG)*Math.PI/180)},${140-r*Math.cos((startAngle+SEG)*Math.PI/180)} Z`}
+                      fill={i%2===0?"rgba(255,255,255,0.07)":"rgba(255,255,255,0.03)"}
+                      stroke="rgba(255,255,255,0.08)" strokeWidth="1"
+                    />
+                  </svg>
+                  {/* Icono y label */}
+                  <div style={{position:"absolute",left:tx-30,top:ty-20,width:60,textAlign:"center",transform:`rotate(${mid}deg)`}}>
+                    <div style={{fontSize:18}}>{p.icon}</div>
+                    <div style={{fontSize:9,fontWeight:900,color:p.color,fontFamily:"'Nunito',sans-serif",whiteSpace:"nowrap",textShadow:"0 1px 3px rgba(0,0,0,0.8)"}}>{p.label}</div>
+                  </div>
+                </div>
+              );
+            })}
+            {/* Centro */}
+            <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:40,height:40,borderRadius:"50%",background:"linear-gradient(135deg,#1A3A10,#0A1A08)",border:"4px solid rgba(255,255,255,0.2)",boxShadow:"0 0 20px rgba(0,0,0,0.8)",zIndex:5}}/>
+          </div>
+
+          {/* Botón girar */}
+          <button
+            onClick={spin}
+            disabled={phase!=="ready"}
+            style={{
+              marginTop:36,padding:"18px 56px",borderRadius:22,
+              border:`3px solid ${T.g3}`,cursor:phase==="ready"?"pointer":"default",
+              fontSize:20,fontWeight:900,
+              background:phase==="ready"?`linear-gradient(135deg,${T.g1},${T.g2})`:"rgba(255,255,255,0.1)",
+              color:phase==="ready"?"white":"rgba(255,255,255,0.3)",
+              boxShadow:phase==="ready"?`0 7px 0 ${T.g3}`:"none",
+              fontFamily:"'Nunito',sans-serif",
+              animation:phase==="ready"?"pulse 1.5s ease-in-out infinite":"none",
+              transition:"all 0.3s",
+            }}>
+            {phase==="ready"?"🎰 ¡Girar!":phase==="spinning"?"Girando…":""}
+          </button>
+
+          <button onClick={onClose} style={{marginTop:16,background:"none",border:"none",color:"rgba(255,255,255,0.3)",fontSize:13,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Cerrar</button>
+        </>
+      )}
+
+      {phase==="result"&&prize&&(
+        <div style={{textAlign:"center",animation:"scaleIn 0.6s cubic-bezier(0.34,1.56,0.64,1)"}}>
+          <div style={{fontSize:80,marginBottom:8,animation:"bounce 0.7s ease-in-out 2"}}>{prize.icon}</div>
+          <div style={{fontSize:14,color:"rgba(255,255,255,0.5)",textTransform:"uppercase",letterSpacing:"0.15em",fontFamily:"'DM Sans',sans-serif",marginBottom:10}}>¡Has ganado!</div>
+          <div style={{fontSize:44,fontWeight:900,color:prize.color,fontFamily:"'Nunito',sans-serif",lineHeight:1,marginBottom:6,textShadow:`0 0 30px ${prize.color}80`}}>
+            {prize.label}
+          </div>
+          {prize.xp>0&&prize.gems>0&&(
+            <div style={{display:"flex",justifyContent:"center",gap:18,marginTop:18,marginBottom:4}}>
+              <div style={{textAlign:"center"}}>
+                <div style={{fontSize:36,fontWeight:900,color:T.xp}}>+{prize.xp}</div>
+                <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",fontFamily:"'DM Sans',sans-serif"}}>XP ⚡</div>
+              </div>
+              <div style={{width:2,background:"rgba(255,255,255,0.1)",borderRadius:2}}/>
+              <div style={{textAlign:"center"}}>
+                <div style={{fontSize:36,fontWeight:900,color:T.au1}}>+{prize.gems}</div>
+                <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",fontFamily:"'DM Sans',sans-serif"}}>💎</div>
+              </div>
+            </div>
+          )}
+          <button
+            onClick={()=>{ onCollect(prize.xp,prize.gems); onClose(); }}
+            style={{marginTop:28,padding:"18px 56px",borderRadius:22,border:`3px solid ${T.g3}`,cursor:"pointer",fontSize:18,fontWeight:900,background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"white",boxShadow:`0 7px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif"}}>
+            ¡Recoger!
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── QuizModal ────────────────────────────────────────────────────────────────
+function QuizModal({onClose, onComplete, todayKey}){
+  const dayIdx = (()=>{const d=new Date();return(d.getFullYear()*366+Math.floor((d-new Date(d.getFullYear(),0,0))/(1000*60*60*24)))%QUIZ_ALL.length;})();
+  const q = QUIZ_ALL[dayIdx];
+  const [selected, setSelected] = useState(null);
+  const [revealed, setRevealed] = useState(false);
+  const [phase,    setPhase]    = useState("question"); // question | result
+
+  const choose = (i) => {
+    if(revealed) return;
+    setSelected(i);
+    setRevealed(true);
+    setTimeout(()=>setPhase("result"), 900);
+  };
+
+  const correct = selected===q.ans;
+  const xpGain  = correct ? 20 : 5;
+  const gemGain = correct ? 8  : 1;
+
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:11000,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(8px)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={phase==="result"?onClose:undefined}>
+      <div style={{background:`linear-gradient(180deg,#1A3A10,${T.bgWood})`,borderRadius:28,width:"100%",maxWidth:360,border:`2px solid ${T.bW}`,boxShadow:"0 24px 60px rgba(0,0,0,0.8)",animation:"popIn 0.35s cubic-bezier(0.34,1.56,0.64,1)",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
+
+        {phase==="question"&&(
+          <>
+            {/* Header */}
+            <div style={{background:`linear-gradient(135deg,${T.g1},${T.g2})`,padding:"16px 20px",display:"flex",alignItems:"center",gap:12}}>
+              <div style={{fontSize:28}}>🧠</div>
+              <div>
+                <div style={{fontSize:11,fontWeight:900,color:"rgba(255,255,255,0.7)",textTransform:"uppercase",letterSpacing:"0.1em"}}>Quiz del día</div>
+                <div style={{fontSize:14,fontWeight:900,color:"white"}}>Nutrición · {correct?"":"Gana hasta"} +20 XP +8 💎</div>
+              </div>
+            </div>
+            {/* Pregunta */}
+            <div style={{padding:"22px 20px 16px"}}>
+              <div style={{fontSize:16,fontWeight:800,color:T.wh,lineHeight:1.5,marginBottom:20,fontFamily:"'DM Sans',sans-serif"}}>
+                {q.q}
+              </div>
+              {/* Opciones */}
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                {q.opts.map((opt,i)=>{
+                  let bg="rgba(255,255,255,0.07)";
+                  let border=T.bW;
+                  let col=T.t1;
+                  if(revealed){
+                    if(i===q.ans){bg="rgba(88,204,2,0.25)";border=T.g1;col=T.g2;}
+                    else if(i===selected&&selected!==q.ans){bg="rgba(255,80,80,0.2)";border="rgba(255,80,80,0.6)";col="#FF8080";}
+                  } else if(selected===i){
+                    bg="rgba(255,200,0,0.15)";border=T.au1;col=T.au1;
+                  }
+                  return(
+                    <button key={i} onClick={()=>choose(i)} style={{
+                      background:bg,border:`2px solid ${border}`,borderRadius:16,
+                      padding:"14px 18px",color:col,fontWeight:800,fontSize:14,
+                      cursor:revealed?"default":"pointer",textAlign:"left",
+                      fontFamily:"'DM Sans',sans-serif",lineHeight:1.3,
+                      transition:"all 0.3s",boxShadow:"0 3px 0 rgba(0,0,0,0.4)",
+                    }}>
+                      <span style={{marginRight:10,opacity:0.5}}>{"ABCD"[i]}.</span>{opt}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
+
+        {phase==="result"&&(
+          <div style={{padding:"32px 24px",textAlign:"center"}} onClick={()=>{onComplete(xpGain,gemGain);onClose();}}>
+            <div style={{fontSize:64,marginBottom:12,animation:"scaleIn 0.5s cubic-bezier(0.34,1.56,0.64,1)"}}>{correct?"🎉":"💡"}</div>
+            <div style={{fontSize:22,fontWeight:900,color:correct?T.g1:"#FF8080",marginBottom:8}}>
+              {correct?"¡Correcto!":"Casi..."}
+            </div>
+            <div style={{fontSize:14,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:20,lineHeight:1.5}}>
+              {correct
+                ? "¡Sabías la respuesta! Tu nutricionista estaría orgulloso 🐑"
+                : `La respuesta correcta era: "${q.opts[q.ans]}"${q.fact?" · "+q.fact:""}`}
+            </div>
+            {/* Recompensa */}
+            <div style={{display:"flex",justifyContent:"center",gap:16,marginBottom:24}}>
+              {[{icon:"⚡",val:`+${xpGain} XP`,col:T.xp},{icon:"💎",val:`+${gemGain}`,col:T.au1}].map(({icon,val,col})=>(
+                <div key={val} style={{background:"rgba(255,255,255,0.08)",borderRadius:18,padding:"12px 20px",border:`2px solid rgba(255,255,255,0.12)`}}>
+                  <div style={{fontSize:22}}>{icon}</div>
+                  <div style={{fontSize:16,fontWeight:900,color:col}}>{val}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>Toca en cualquier lugar para continuar</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── StreakChest — cofre de racha ─────────────────────────────────────────────
+function StreakChest({streak, onOpen, alreadyOpened}){
+  const daysToNext = 7 - (streak % 7);
+  const isReady    = streak > 0 && streak % 7 === 0 && !alreadyOpened;
+  const progress   = streak % 7;
+  const pct        = isReady ? 100 : (progress/7)*100;
+
+  const chestType = streak >= 30 ? "gold" : streak >= 14 ? "silver" : "bronze";
+  const chestEmoji = {gold:"🏆",silver:"🥈",bronze:"🪙"}[chestType];
+  const chestLabel = {gold:"Cofre de Oro",silver:"Cofre de Plata",bronze:"Cofre de Bronce"}[chestType];
+  const chestColor = {gold:T.au1, silver:"#C0C0C0", bronze:"#CD7F32"}[chestType];
+
+  return(
+    <div style={{background:T.bgWood,borderRadius:22,padding:"14px 18px",border:`2px solid ${isReady?chestColor:T.bW}`,boxShadow:isReady?`0 6px 0 ${T.au3},0 0 20px ${chestColor}50`:"0 4px 0 rgba(0,0,0,0.4)",marginBottom:14,transition:"all 0.3s"}}>
+      <div style={{display:"flex",alignItems:"center",gap:14}}>
+        {/* Cofre animado */}
+        <div
+          onClick={isReady?onOpen:undefined}
+          style={{
+            width:58,height:58,borderRadius:18,
+            background:isReady?`linear-gradient(135deg,${chestColor},${T.au2})`:"rgba(255,255,255,0.08)",
+            border:`3px solid ${isReady?chestColor:T.bW}`,
+            display:"flex",alignItems:"center",justifyContent:"center",
+            fontSize:28,cursor:isReady?"pointer":"default",flexShrink:0,
+            animation:isReady?"pulse 1.5s ease-in-out infinite":"none",
+            boxShadow:isReady?`0 4px 0 ${T.au3}`:"0 3px 0 rgba(0,0,0,0.5)",
+          }}>
+          {isReady?"🎁":chestEmoji}
+        </div>
+        <div style={{flex:1}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+            <div style={{fontSize:13,fontWeight:900,color:isReady?chestColor:T.t1}}>
+              {isReady?`¡${chestLabel} listo!`:chestLabel}
+            </div>
+            <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>
+              {isReady?"¡Ábrelo! 🎉":`${daysToNext} día${daysToNext!==1?"s":""} para abrirlo`}
+            </div>
+          </div>
+          {/* Barra progreso */}
+          <div style={{background:"rgba(255,255,255,0.08)",borderRadius:10,height:10,overflow:"hidden",boxShadow:"inset 0 2px 4px rgba(0,0,0,0.3)"}}>
+            <div style={{height:"100%",width:`${pct}%`,background:isReady?`linear-gradient(90deg,${chestColor},${T.au1})`:`linear-gradient(90deg,${T.g1},${T.g2})`,borderRadius:10,transition:"width 0.8s ease",boxShadow:isReady?`0 0 10px ${chestColor}80`:`0 0 6px ${T.g1}60`}}/>
+          </div>
+          <div style={{fontSize:10,color:T.t2,marginTop:5,fontFamily:"'DM Sans',sans-serif"}}>
+            Racha {isReady?streak:progress}/{isReady?streak:streak - progress + 7} días
+          </div>
+        </div>
+      </div>
+      {isReady&&(
+        <button onClick={onOpen} style={{marginTop:12,width:"100%",padding:"13px",borderRadius:16,border:`2px solid ${chestColor}`,cursor:"pointer",fontSize:15,fontWeight:900,background:`linear-gradient(135deg,${chestColor},${T.au2})`,color:"#1A1000",boxShadow:`0 5px 0 ${T.au3}`,fontFamily:"'Nunito',sans-serif",animation:"pulse 1.5s ease-in-out infinite"}}>
+          🎁 ¡Abrir {chestLabel}!
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─── ChestOpenModal — animación de apertura del cofre ────────────────────────
+function ChestOpenModal({streak, onClose, onCollect}){
+  const [phase, setPhase] = useState("shake"); // shake | open | reward
+  // Recompensa aleatoria basada en racha
+  const rewards = (()=>{
+    const base = streak>=30?{xp:60,gems:25}:streak>=14?{xp:40,gems:15}:{xp:25,gems:10};
+    const bonus = Math.random();
+    if(bonus>0.85) return {...base,xp:base.xp*2,special:"⚡ ¡Doble XP!",gems:base.gems+5};
+    if(bonus>0.7)  return {...base,gems:base.gems*2,special:"💎 ¡Doble gemas!"};
+    return base;
+  })();
+
+  useEffect(()=>{
+    const t1=setTimeout(()=>setPhase("open"),1000);
+    const t2=setTimeout(()=>setPhase("reward"),2000);
+    return()=>{clearTimeout(t1);clearTimeout(t2);};
+  },[]);
+
+  const chestColor = streak>=30?T.au1:streak>=14?"#C0C0C0":"#CD7F32";
+
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:11000,background:"#000",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
+      {phase==="shake"&&(
+        <>
+          <div style={{fontSize:13,color:"rgba(255,255,255,0.5)",textTransform:"uppercase",letterSpacing:"0.15em",marginBottom:24,fontFamily:"'DM Sans',sans-serif"}}>Cofre de {streak>=30?"Oro":streak>=14?"Plata":"Bronce"}</div>
+          <div style={{fontSize:100,animation:"chestShake 0.4s ease-in-out infinite"}}>📦</div>
+          <div style={{fontSize:14,color:"rgba(255,255,255,0.4)",marginTop:24,fontFamily:"'DM Sans',sans-serif"}}>Abriendo...</div>
+        </>
+      )}
+      {phase==="open"&&(
+        <div style={{fontSize:120,animation:"scaleIn 0.5s cubic-bezier(0.34,1.56,0.64,1)"}}>🎁</div>
+      )}
+      {phase==="reward"&&(
+        <div style={{textAlign:"center",animation:"scaleIn 0.6s cubic-bezier(0.34,1.56,0.64,1)"}}>
+          <div style={{fontSize:22,fontWeight:900,color:"rgba(255,255,255,0.5)",textTransform:"uppercase",letterSpacing:"0.12em",marginBottom:16,fontFamily:"'DM Sans',sans-serif"}}>Recompensa de racha</div>
+          {rewards.special&&(
+            <div style={{fontSize:18,fontWeight:900,color:T.au1,marginBottom:16,animation:"pulse 1s ease-in-out infinite"}}>{rewards.special}</div>
+          )}
+          <div style={{display:"flex",justifyContent:"center",gap:20,marginBottom:32}}>
+            <div style={{textAlign:"center"}}>
+              <div style={{fontSize:56,fontWeight:900,color:T.xp,lineHeight:1}}>+{rewards.xp}</div>
+              <div style={{fontSize:14,color:"rgba(255,255,255,0.5)",fontFamily:"'DM Sans',sans-serif"}}>XP ⚡</div>
+            </div>
+            <div style={{width:2,background:"rgba(255,255,255,0.1)",borderRadius:2}}/>
+            <div style={{textAlign:"center"}}>
+              <div style={{fontSize:56,fontWeight:900,color:T.au1,lineHeight:1}}>+{rewards.gems}</div>
+              <div style={{fontSize:14,color:"rgba(255,255,255,0.5)",fontFamily:"'DM Sans',sans-serif"}}>Gemas 💎</div>
+            </div>
+          </div>
+          <button onClick={()=>{onCollect(rewards.xp,rewards.gems);onClose();}} style={{background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:`3px solid ${T.g3}`,borderRadius:20,padding:"18px 48px",color:"white",fontWeight:900,fontSize:18,cursor:"pointer",boxShadow:`0 6px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif"}}>
+            ¡Recoger!
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Weight chart component ───────────────────────────────────────────────────
 function WeightChart({chartData,setWeightMode}){
   if(!chartData.length)return null;
@@ -886,6 +1398,19 @@ export default function GBHApp(){
   const [showPhotoPicker,  setShowPhotoPicker]  = useState(false);
   const [ranking, setRanking] = useState([]);
   const [rankLoading, setRankLoading] = useState(false);
+  const [rankTab,      setRankTab]      = useState(0);
+  const [showQuiz,     setShowQuiz]     = useState(false);
+  const [quizDone,     setQuizDone]     = useState(()=>lsGet("gbh:quiz:"+new Date().toISOString().slice(0,10),false));
+  const [quizBannerDismissed, setQuizBannerDismissed] = useState(()=>lsGet("gbh:quizBanner:"+new Date().toISOString().slice(0,10),false));
+  const [showChest,    setShowChest]    = useState(false);
+  const [showWeekChest, setShowWeekChest] = useState(false);
+  const [showRuleta,    setShowRuleta]    = useState(false);
+  const [ruletaDone,    setRuletaDone]    = useState(()=>lsGet("gbh:ruleta:"+new Date().toISOString().slice(0,10),false));
+  const [ruletaAutoShown,setRuletaAutoShown]=useState(()=>lsGet("gbh:ruletaSeen:"+new Date().toISOString().slice(0,10),false));
+  const [chestOpened,  setChestOpened]  = useState(()=>{
+    // El cofre se abre una vez por cada múltiplo de 7 — guardamos el último streak abierto
+    return lsGet("gbh:chestLastOpened",0);
+  }); // 0=racha 1=xp 2=peso
   const [weightBannerDismissed, setWeightBannerDismissed] = useState(false);
   const [pwaPrompt,    setPwaPrompt]    = useState(null);
   const [pwaDismissed, setPwaDismissed] = useState(()=>lsGet("gbh:pwaDismissed",false));
@@ -983,6 +1508,14 @@ export default function GBHApp(){
     setBadges(lsGet(`gbh:badges:${p.id}`,[]) );
     setWeightBannerDismissed(false);
     setScreen("main");
+    // Auto-popup ruleta: mostrar si no se ha visto hoy
+    const todayKey = new Date().toISOString().slice(0,10);
+    const alreadySeen  = lsGet("gbh:ruletaSeen:"+todayKey, false);
+    const alreadyDone  = lsGet("gbh:ruleta:"+todayKey, false);
+    if(!alreadySeen && !alreadyDone){
+      // Pequeño delay para que la app cargue visualmente primero
+      setTimeout(()=>setShowRuleta(true), 600);
+    }
     // Vaciar cola pendiente al cargar el perfil
     if(navigator.onLine) flushQueue().then(()=>setPendingSync(lsGet(QUEUE_KEY,[]).length));
   },[]);
@@ -1168,6 +1701,32 @@ export default function GBHApp(){
     setRankLoading(false);
   };
 
+  const onQuizComplete = async (xpG, gemG) => {
+    const today = new Date().toISOString().slice(0,10);
+    lsSet("gbh:quiz:"+today, true);
+    setQuizDone(true);
+    await addXG(xpG, gemG);
+  };
+
+  const onChestCollect = async (xpG, gemG) => {
+    lsSet("gbh:chestLastOpened", streak);
+    setChestOpened(streak);
+    await addXG(xpG, gemG);
+  };
+
+  const onRuletaCollect = async (xpG, gemG) => {
+    const today = new Date().toISOString().slice(0,10);
+    lsSet("gbh:ruleta:"+today, true);
+    setRuletaDone(true);
+    await addXG(xpG, gemG);
+  };
+
+  const onWeekChestCollect = async (xpG, gemG) => {
+    const {w,y} = getISOWeek();
+    lsSet(`gbh:weekChest:${y}:${w}`, true);
+    await addXG(xpG, gemG);
+  };
+
   const tapSheep=()=>{const n=taps+1;setTaps(n);if(tapRef.current)clearTimeout(tapRef.current);tapRef.current=setTimeout(()=>setTaps(0),2500);if(n>=5){setScreen("admin");loadAdmin();setTaps(0);}};
   const loadAdmin=async()=>{const d=await sbReq("GET","admin_overview?select=*")||[];if(d.length){setAllP(d);return;}setAllP(Object.keys(localStorage).filter(k=>k.startsWith("gbh:p:")).map(k=>lsGet(k,{})).filter(p=>p.id));};
   const buyShield=async()=>{if(gems<200){showT({icon:"💎",title:"Gemas insuficientes",sub:"Necesitas 200 💎 para un Escudo"});return;}const u={...profile,gems:gems-200,shields:(profile.shields||0)+1};setProfile(u);lsSet(`gbh:p:${u.id}`,u);await sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:u.gems,shields:u.shields});showT({icon:"🛡️",title:"¡Escudo activado!",sub:"Tu racha está protegida por 1 día"});};
@@ -1189,6 +1748,8 @@ export default function GBHApp(){
     @keyframes zFloat{0%{transform:translateY(0);opacity:1}100%{transform:translateY(-24px);opacity:0}}
     @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
     @keyframes slideDown{from{transform:translateY(-100%);opacity:0}to{transform:translateY(0);opacity:1}} @keyframes slideUp{from{transform:translateY(0);opacity:1}to{transform:translateY(-100%);opacity:0}}
+    @keyframes rouletteSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+    @keyframes chestShake{0%,100%{transform:rotate(-8deg) scale(1.05)}50%{transform:rotate(8deg) scale(1.1)}}
     @keyframes floatUp{0%{transform:translateY(0);opacity:1}80%{opacity:1}100%{transform:translateY(-90px);opacity:0}}
     @keyframes sparkle0{0%,100%{opacity:1;transform:scale(1) rotate(0deg)}50%{opacity:0.5;transform:scale(1.3) rotate(20deg)}}
     @keyframes sparkle1{0%,100%{opacity:0.7;transform:scale(0.9)}50%{opacity:1;transform:scale(1.2)}}
@@ -1284,6 +1845,18 @@ export default function GBHApp(){
       <MissionsOverlay active={missionsAnim}/>
       {floatItems.length>0&&<FloatReward items={floatItems}/>}
       <LevelUpOverlay active={levelUpAnim} level={levelUpNum}/>
+      {showQuiz&&<QuizModal onClose={()=>setShowQuiz(false)} onComplete={onQuizComplete} todayKey={new Date().toISOString().slice(0,10)}/>}
+      {showChest&&<ChestOpenModal streak={streak} onClose={()=>setShowChest(false)} onCollect={onChestCollect}/>}
+      {showWeekChest&&<ChestOpenModal streak={7} onClose={()=>setShowWeekChest(false)} onCollect={onWeekChestCollect}/>}
+      {showRuleta&&<RuletaModal
+        onClose={()=>{
+          const todayKey=new Date().toISOString().slice(0,10);
+          lsSet("gbh:ruletaSeen:"+todayKey,true);
+          setRuletaAutoShown(true);
+          setShowRuleta(false);
+        }}
+        onCollect={onRuletaCollect}
+      />}
       {showPhotoPicker&&(
         <ProfileCardModal
           onClose={()=>setShowPhotoPicker(false)}
@@ -1312,6 +1885,19 @@ export default function GBHApp(){
       )}
 
       {/* ── HEADER ─────────────────────────────────────────────────────────── */}
+      {/* Banner quiz diario — si no se ha hecho hoy */}
+      {!quizDone&&!quizBannerDismissed&&(
+        <div style={{background:"linear-gradient(135deg,rgba(123,47,190,0.97),rgba(74,14,143,0.97))",padding:"10px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,animation:"slideDown 0.35s ease"}}>
+          <div onClick={()=>{setShowQuiz(true);setQuizBannerDismissed(true);}} style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}}>
+            <div style={{width:38,height:38,borderRadius:11,background:"rgba(255,255,255,0.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:20}}>🧠</div>
+            <div>
+              <div style={{fontSize:12,fontWeight:900,color:"white",fontFamily:"'Nunito',sans-serif",lineHeight:1.2}}>¡Quiz de nutrición disponible!</div>
+              <div style={{fontSize:10,color:"rgba(255,255,255,0.75)",fontFamily:"'DM Sans',sans-serif",marginTop:1}}>Responde y gana hasta +20 XP +8 💎 →</div>
+            </div>
+          </div>
+          <button onClick={()=>setQuizBannerDismissed(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:"50%",width:28,height:28,color:"rgba(255,255,255,0.6)",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
+        </div>
+      )}
       {/* Banner offline — slideDown/slideUp automático, sin interacción */}
       {showOfflineBanner&&(
         <div style={{background:"rgba(200,45,45,0.92)",padding:"6px 18px",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontSize:12,fontWeight:800,color:"white",fontFamily:"'Nunito',sans-serif",animation:"slideDown 0.4s ease"}}>
@@ -1324,35 +1910,46 @@ export default function GBHApp(){
           <span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>🔄</span> Sincronizando {pendingSync} acción{pendingSync>1?"es":""}…
         </div>
       )}
-      {/* Banner instalación PWA */}
-      {!pwaInstalled&&!pwaDismissed&&(pwaPrompt||/iphone|ipad|ipod/i.test(navigator.userAgent))&&(
-        <div style={{background:"linear-gradient(135deg,rgba(26,58,16,0.98),rgba(43,100,25,0.98))",padding:"10px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,borderBottom:`1px solid ${T.g3}`,animation:"slideDown 0.35s ease"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,flex:1}}>
-            <div style={{width:36,height:36,borderRadius:10,background:T.g1,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:20}}>🐑</div>
-            <div>
-              <div style={{fontSize:12,fontWeight:900,color:T.wh,fontFamily:"'Nunito',sans-serif",lineHeight:1.2}}>
-                {pwaPrompt?"Instalar GBH en tu móvil":"Añade GBH a tu pantalla"}
-              </div>
-              <div style={{fontSize:10,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:1}}>
-                {pwaPrompt?"Sin navegador · Funciona offline":"Safari → Compartir → Añadir a inicio"}
+      {/* Banner instalación PWA — siempre visible hasta instalar o descartar */}
+      {!pwaInstalled&&!pwaDismissed&&(()=>{
+        const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+        const isAndroid = /android/i.test(navigator.userAgent);
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        // En iOS solo funciona desde Safari
+        if(isIOS&&!isSafari) return null;
+        return(
+          <div style={{background:"linear-gradient(135deg,#0D2E0D,#1A4A1A)",padding:"10px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,borderBottom:`2px solid ${T.g3}`,animation:"slideDown 0.35s ease"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,flex:1}}>
+              <div style={{width:38,height:38,borderRadius:11,background:`linear-gradient(135deg,${T.g1},${T.g2})`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:20,boxShadow:`0 3px 0 ${T.g3}`}}>🐑</div>
+              <div>
+                <div style={{fontSize:12,fontWeight:900,color:T.wh,fontFamily:"'Nunito',sans-serif",lineHeight:1.3}}>
+                  Instalar GBH en tu móvil
+                </div>
+                <div style={{fontSize:10,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:1,lineHeight:1.4}}>
+                  {isIOS
+                    ? "Toca 𝗦𝗵𝗮𝗿𝗲 □↑ → "Añadir a inicio""
+                    : pwaPrompt
+                      ? "Pulsa Instalar para añadirlo sin navegador"
+                      : "Menú ⋮ → "Añadir a pantalla de inicio""}
+                </div>
               </div>
             </div>
+            <div style={{display:"flex",gap:8,flexShrink:0,alignItems:"center"}}>
+              {pwaPrompt&&(
+                <button onClick={async()=>{
+                  pwaPrompt.prompt();
+                  const {outcome}=await pwaPrompt.userChoice;
+                  if(outcome==="accepted")setPwaInstalled(true);
+                  setPwaPrompt(null);
+                }} style={{background:T.g1,border:`2px solid ${T.g3}`,borderRadius:12,padding:"7px 14px",color:"white",fontWeight:900,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif",boxShadow:`0 3px 0 ${T.g3}`,whiteSpace:"nowrap"}}>
+                  Instalar
+                </button>
+              )}
+              <button onClick={()=>{setPwaDismissed(true);lsSet("gbh:pwaDismissed",true);}} style={{background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:"50%",width:28,height:28,color:"rgba(255,255,255,0.5)",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
+            </div>
           </div>
-          <div style={{display:"flex",gap:8,flexShrink:0,alignItems:"center"}}>
-            {pwaPrompt&&(
-              <button onClick={async()=>{
-                pwaPrompt.prompt();
-                const {outcome}=await pwaPrompt.userChoice;
-                if(outcome==="accepted")setPwaInstalled(true);
-                setPwaPrompt(null);
-              }} style={{background:T.g1,border:`2px solid ${T.g3}`,borderRadius:12,padding:"7px 14px",color:"white",fontWeight:900,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif",boxShadow:`0 3px 0 ${T.g3}`}}>
-                Instalar
-              </button>
-            )}
-            <button onClick={()=>{setPwaDismissed(true);lsSet("gbh:pwaDismissed",true);}} style={{background:"none",border:"none",color:"rgba(255,255,255,0.45)",fontSize:18,cursor:"pointer",padding:"4px 6px",lineHeight:1}}>✕</button>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Banner peso fin de semana — con X para cerrar */}
       {isWeekend()&&!weights.find(w=>w.date===toKey())&&!weightBannerDismissed&&(
@@ -1429,7 +2026,7 @@ export default function GBHApp(){
           </div>
 
           <WeeklyXPGoal logs={logs} xp={xp}/>
-          <WeekPath logs={logs}/>
+          <WeekPath logs={logs} onOpenChest={()=>setShowWeekChest(true)}/>
           {allDone&&<TomorrowCard name={profile?.name||""} streak={streak}/>}
 
           {/* Section label */}
@@ -1442,6 +2039,64 @@ export default function GBHApp(){
           <MRow num="2" icon="🌙" label="Dormir al menos 7 horas" done={tLog.sleep} onToggle={()=>toggleM("sleep")} xpR={5}/>
           <StepsWidget done={tLog.steps} stepCount={steps} onToggle={()=>toggleM("steps")} onUpdateSteps={updSteps}/>
           <HydrationWidget done={tLog.hydration} onToggle={()=>toggleM("hydration")}/>
+
+          {/* ── Quiz diario ────────────────────────────────────────────────── */}
+          <div style={{marginBottom:10}}>
+            <div onClick={quizDone?undefined:()=>setShowQuiz(true)} style={{
+              background:quizDone?"rgba(88,204,2,0.12)":T.bgWood,
+              border:`2px solid ${quizDone?T.g1:T.bW}`,
+              borderRadius:20,padding:"14px 18px",
+              display:"flex",alignItems:"center",gap:14,
+              cursor:quizDone?"default":"pointer",
+              boxShadow:quizDone?`0 4px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)",
+              transition:"all 0.2s",
+            }}>
+              <div style={{width:44,height:44,borderRadius:14,background:quizDone?T.g1:"linear-gradient(135deg,#7B2FBE,#4A0E8F)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0,boxShadow:quizDone?`0 3px 0 ${T.g3}`:"0 3px 0 rgba(0,0,0,0.5)"}}>
+                {quizDone?"✓":"🧠"}
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:14,fontWeight:900,color:quizDone?T.t1:"rgba(255,255,255,0.55)"}}>
+                  {quizDone?"¡Quiz completado hoy!":"Quiz de Nutrición del día"}
+                </div>
+                <div style={{fontSize:11,color:T.au1,fontWeight:700,marginTop:2}}>
+                  {quizDone?"+20 XP y +8 💎 conseguidos":"Responde bien → +20 XP +8 💎"}
+                </div>
+              </div>
+              {!quizDone&&<div style={{fontSize:20,color:T.t2}}>›</div>}
+            </div>
+          </div>
+
+          {/* ── Ruleta diaria ──────────────────────────────────────────────────── */}
+          <div style={{marginBottom:10}}>
+            <div onClick={ruletaDone?undefined:()=>setShowRuleta(true)} style={{
+              background:ruletaDone?"rgba(88,204,2,0.12)":T.bgWood,
+              border:`2px solid ${ruletaDone?T.g1:T.bW}`,
+              borderRadius:20,padding:"14px 18px",
+              display:"flex",alignItems:"center",gap:14,
+              cursor:ruletaDone?"default":"pointer",
+              boxShadow:ruletaDone?`0 4px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)",
+              transition:"all 0.2s",
+            }}>
+              <div style={{
+                width:44,height:44,borderRadius:14,flexShrink:0,fontSize:22,
+                display:"flex",alignItems:"center",justifyContent:"center",
+                background:ruletaDone?T.g1:"linear-gradient(135deg,#B8000A,#6A0005)",
+                boxShadow:ruletaDone?`0 3px 0 ${T.g3}`:"0 3px 0 rgba(0,0,0,0.5)",
+                animation:ruletaDone?"none":"pulse 2s ease-in-out infinite",
+              }}>
+                {ruletaDone?"✓":"🎰"}
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:14,fontWeight:900,color:ruletaDone?T.t1:"rgba(255,255,255,0.55)"}}>
+                  {ruletaDone?"¡Ruleta girada hoy!":"Ruleta diaria"}
+                </div>
+                <div style={{fontSize:11,color:T.au1,fontWeight:700,marginTop:2}}>
+                  {ruletaDone?"Vuelve mañana para girar de nuevo":"Gira y consigue XP y 💎 gratis"}
+                </div>
+              </div>
+              {!ruletaDone&&<div style={{fontSize:20,color:T.t2}}>›</div>}
+            </div>
+          </div>
 
           {/* Shield shop */}
           <Card style={{marginTop:4}}>
@@ -1570,131 +2225,153 @@ export default function GBHApp(){
         {/* ── RANKING ──────────────────────────────────────────────────────── */}
         {tab==="ranking"&&(()=>{
           const medal=["👑","🥈","🥉"];
-          const myPos=ranking.findIndex(p=>p.id===profile?.id);
+          const medalColor=["#FFD700","#C0C0C0","#CD7F32"];
 
-          return(<>
-            {/* Cabecera */}
-            <div style={{textAlign:"center",paddingTop:6,paddingBottom:18}}>
-              <div style={{fontSize:32,marginBottom:4}}>👑</div>
-              <div style={{fontSize:22,fontWeight:900,color:T.wh}}>Ranking</div>
-              <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:4}}>
-                Compara tu progreso con el resto
+          // ── Construir los 3 rankings ordenados ───────────────────────────
+          const byStreak = [...ranking].sort((a,b)=>(b.streak||0)-(a.streak||0));
+          const byXP     = [...ranking].sort((a,b)=>(b.xp||0)-(a.xp||0));
+          const byWeight = [...ranking].sort((a,b)=>(b.weightAbs||0)-(a.weightAbs||0));
+
+          const tables=[
+            {key:"streak", icon:"🔥", title:"Racha", subtitle:"Días consecutivos",  list:byStreak,  statFn:p=>`${p.streak||0}🔥`,  statLabel:"días"},
+            {key:"xp",     icon:"⚡", title:"XP",    subtitle:"Experiencia total",   list:byXP,      statFn:p=>`${p.xp||0} XP`,     statLabel:"XP"},
+            {key:"weight", icon:"⚖️", title:"Peso",  subtitle:"Progreso desde inicio",list:byWeight, statFn:p=>p.weightDiff!==null?`${p.weightDiff>=0?"+":""}${p.weightDiff}kg`:"—", statLabel:"kg"},
+          ];
+
+          const curTable = tables[rankTab];
+          const list10   = curTable.list.slice(0,10);
+          const myGlobalPos = curTable.list.findIndex(p=>p.id===profile?.id);
+          const myInTop10   = myGlobalPos>=0 && myGlobalPos<10;
+          const myEntry     = curTable.list[myGlobalPos];
+
+          return(
+            <div>
+              {/* ── Cabecera ── */}
+              <div style={{textAlign:"center",paddingTop:4,paddingBottom:14}}>
+                <div style={{fontSize:28,marginBottom:2}}>👑</div>
+                <div style={{fontSize:20,fontWeight:900,color:T.wh}}>Ranking</div>
               </div>
-            </div>
 
-            {/* Tu posición — card destacada */}
-            {myPos>=0&&(
-              <div style={{background:`linear-gradient(135deg,rgba(255,200,0,0.18),rgba(88,204,2,0.12))`,border:`2px solid ${T.au1}`,borderRadius:22,padding:"14px 18px",marginBottom:16,boxShadow:`0 5px 0 ${T.au3}`,display:"flex",alignItems:"center",gap:14}}>
-                <div style={{fontSize:28,fontWeight:900,color:T.au1,width:36,textAlign:"center",flexShrink:0}}>
-                  {myPos<3?medal[myPos]:`#${myPos+1}`}
-                </div>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:2}}>Tu posición</div>
-                  <div style={{fontSize:16,fontWeight:900,color:T.wh}}>{profile?.name?.split(" ")[0]}</div>
-                </div>
-                <div style={{display:"flex",gap:12,textAlign:"center"}}>
-                  <div>
-                    <div style={{fontSize:16,fontWeight:900,color:"#FF8040"}}>{streak}🔥</div>
-                    <div style={{fontSize:9,color:T.t2,textTransform:"uppercase"}}>Racha</div>
-                  </div>
-                  <div>
-                    <div style={{fontSize:16,fontWeight:900,color:T.xp}}>{xp}⚡</div>
-                    <div style={{fontSize:9,color:T.t2,textTransform:"uppercase"}}>XP</div>
-                  </div>
-                  <div>
-                    {(()=>{const me=ranking.find(p=>p.id===profile?.id);const wd=me?.weightDiff??null;return(
-                      <div>
-                        <div style={{fontSize:14,fontWeight:900,color:T.t1}}>{wd!==null?`${wd>=0?"+":""}${wd} kg`:"—"}⚖️</div>
-                        <div style={{fontSize:9,color:T.t2,textTransform:"uppercase"}}>Peso</div>
-                      </div>
-                    );})()}
-                  </div>
-                </div>
+              {/* ── Selector de tabla (3 tabs deslizables) ── */}
+              <div style={{display:"flex",gap:0,marginBottom:16,background:"rgba(255,255,255,0.06)",borderRadius:18,padding:4,border:`1.5px solid ${T.bW}`}}>
+                {tables.map((t,i)=>(
+                  <button key={t.key} onClick={()=>setRankTab(i)} style={{
+                    flex:1,padding:"10px 6px",borderRadius:14,border:"none",cursor:"pointer",
+                    background:rankTab===i?`linear-gradient(135deg,${T.g1},${T.g2})`:"transparent",
+                    color:rankTab===i?"white":T.t2,
+                    fontWeight:rankTab===i?900:700,
+                    fontSize:13,fontFamily:"'Nunito',sans-serif",
+                    boxShadow:rankTab===i?`0 3px 0 ${T.g3}`:"none",
+                    transition:"all 0.2s",
+                  }}>
+                    {t.icon} {t.title}
+                  </button>
+                ))}
               </div>
-            )}
 
-            {/* Lista */}
-            {rankLoading?(
-              <div style={{textAlign:"center",padding:"40px 0",color:T.t2,fontSize:14,fontFamily:"'DM Sans',sans-serif"}}>
-                <div style={{fontSize:32,marginBottom:12,animation:"spin 1s linear infinite",display:"inline-block"}}>🔄</div>
-                <div>Cargando ranking…</div>
+              {/* ── Subtítulo ── */}
+              <div style={{fontSize:11,color:T.t2,textAlign:"center",fontFamily:"'DM Sans',sans-serif",marginBottom:14,letterSpacing:"0.05em",textTransform:"uppercase"}}>
+                {curTable.subtitle}
               </div>
-            ):ranking.length===0?(
-              <Card style={{textAlign:"center",padding:"32px"}}>
-                <div style={{display:"flex",justifyContent:"center",marginBottom:12}}><Mascot expr="idle" size={100}/></div>
-                <div style={{fontSize:15,fontWeight:900,color:T.t1,marginBottom:6}}>Sin datos aún</div>
-                <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>El ranking se llenará cuando más pacientes usen la app</div>
-              </Card>
-            ):(
-              <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {ranking.map((p,i)=>{
-                  const isMe = p.id===profile?.id;
-                  const lv2  = getLevel(p.xp||0);
-                  return(
-                    <div key={p.id} style={{
-                      background: isMe
-                        ? `linear-gradient(135deg,rgba(255,200,0,0.2),rgba(88,204,2,0.12))`
-                        : i===0 ? `linear-gradient(135deg,rgba(255,200,0,0.1),rgba(255,160,0,0.06))`
-                        : T.bgWood,
-                      border:`2px solid ${isMe?T.au1:i===0?"rgba(255,200,0,0.4)":T.bW}`,
-                      borderRadius:18,
-                      padding:"12px 16px",
-                      display:"flex",alignItems:"center",gap:12,
-                      boxShadow: isMe?`0 4px 0 ${T.au3}`:i===0?`0 4px 0 rgba(180,130,0,0.4)`:"0 4px 0 rgba(0,0,0,0.35)",
-                      transition:"all 0.2s",
-                    }}>
-                      {/* Posición */}
-                      <div style={{fontSize:i<3?24:16,fontWeight:900,color:i===0?T.au1:i===1?"#C0C0C0":i===2?"#CD7F32":T.t2,width:32,textAlign:"center",flexShrink:0}}>
-                        {i<3?medal[i]:`${i+1}`}
-                      </div>
 
-                      {/* Avatar inicial */}
-                      <div style={{width:40,height:40,borderRadius:13,background:isMe?`linear-gradient(135deg,${T.au1},${T.au2})`:`linear-gradient(135deg,#2A5A2A,#1A3A10)`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:`2px solid ${isMe?T.au3:T.bW}`,boxShadow:`0 3px 0 rgba(0,0,0,0.4)`}}>
-                        <span style={{fontSize:18,fontWeight:900,color:isMe?"#1A1000":"rgba(255,255,255,0.85)",fontFamily:"'Nunito',sans-serif"}}>
-                          {(p.name||"?")[0].toUpperCase()}
-                        </span>
-                      </div>
-
-                      {/* Nombre + nivel */}
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:14,fontWeight:900,color:isMe?T.au1:T.wh,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                          {p.name?.split(" ")[0]||"—"}{isMe&&" (tú)"}
+              {/* ── Lista ── */}
+              {rankLoading?(
+                <div style={{textAlign:"center",padding:"40px 0",color:T.t2,fontSize:14}}>
+                  <div style={{fontSize:32,marginBottom:12,animation:"spin 1s linear infinite",display:"inline-block"}}>🔄</div>
+                  <div style={{fontFamily:"'DM Sans',sans-serif"}}>Cargando…</div>
+                </div>
+              ):ranking.length===0?(
+                <div style={{textAlign:"center",padding:"32px 24px",background:T.bgWood,borderRadius:22,border:`2px solid ${T.bW}`}}>
+                  <div style={{display:"flex",justifyContent:"center",marginBottom:12}}><Mascot expr="idle" size={90}/></div>
+                  <div style={{fontSize:15,fontWeight:900,color:T.t1,marginBottom:6}}>Sin datos aún</div>
+                  <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>El ranking se llenará cuando más pacientes usen la app</div>
+                </div>
+              ):(
+                <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                  {list10.map((p,i)=>{
+                    const isMe = p.id===profile?.id;
+                    const lv2  = getLevel(p.xp||0);
+                    return(
+                      <div key={p.id} style={{
+                        background: isMe
+                          ? "linear-gradient(135deg,rgba(255,200,0,0.22),rgba(88,204,2,0.1))"
+                          : i===0 ? "linear-gradient(135deg,rgba(255,200,0,0.1),rgba(255,160,0,0.05))"
+                          : T.bgWood,
+                        border:`2px solid ${isMe?T.au1:i===0?"rgba(255,200,0,0.35)":T.bW}`,
+                        borderRadius:18,padding:"11px 14px",
+                        display:"flex",alignItems:"center",gap:10,
+                        boxShadow:isMe?`0 4px 0 ${T.au3}`:i===0?"0 4px 0 rgba(180,130,0,0.4)":"0 3px 0 rgba(0,0,0,0.35)",
+                      }}>
+                        {/* Posición / medalla */}
+                        <div style={{width:34,textAlign:"center",flexShrink:0}}>
+                          {i<3?(
+                            <span style={{fontSize:24}}>{medal[i]}</span>
+                          ):(
+                            <span style={{fontSize:15,fontWeight:900,color:T.t2}}>{i+1}</span>
+                          )}
                         </div>
-                        <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:1}}>
-                          {lv2.n} · Lv {lv2.l}
+                        {/* Avatar */}
+                        <div style={{width:38,height:38,borderRadius:12,background:isMe?`linear-gradient(135deg,${T.au1},${T.au2})`:"linear-gradient(135deg,#2A5A2A,#1A3A10)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:`2px solid ${isMe?T.au3:T.bW}`,boxShadow:"0 3px 0 rgba(0,0,0,0.4)"}}>
+                          <span style={{fontSize:17,fontWeight:900,color:isMe?"#1A1000":"rgba(255,255,255,0.85)",fontFamily:"'Nunito',sans-serif"}}>{(p.name||"?")[0].toUpperCase()}</span>
                         </div>
-                      </div>
-
-                      {/* Stats */}
-                      <div style={{display:"flex",gap:10,textAlign:"right",flexShrink:0}}>
-                        <div>
-                          <div style={{fontSize:14,fontWeight:900,color:"#FF8040"}}>{p.streak||0}🔥</div>
-                          <div style={{fontSize:8,color:T.t2,textTransform:"uppercase",letterSpacing:"0.06em"}}>Racha</div>
-                        </div>
-                        <div>
-                          <div style={{fontSize:14,fontWeight:900,color:T.xp}}>{p.xp||0}⚡</div>
-                          <div style={{fontSize:8,color:T.t2,textTransform:"uppercase",letterSpacing:"0.06em"}}>XP</div>
-                        </div>
-                        <div>
-                          <div style={{fontSize:13,fontWeight:900,color:T.t1}}>
-                            {p.weightDiff!==null?`${p.weightDiff>=0?"+":""}${p.weightDiff} kg`:"—"}⚖️
+                        {/* Nombre */}
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:14,fontWeight:900,color:isMe?T.au1:T.wh,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                            {p.name?.split(" ")[0]||"—"}{isMe?" 👈":""}
                           </div>
-                          <div style={{fontSize:8,color:T.t2,textTransform:"uppercase",letterSpacing:"0.06em"}}>Peso</div>
+                          <div style={{fontSize:10,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>{lv2.n} · Lv {lv2.l}</div>
+                        </div>
+                        {/* Stat principal */}
+                        <div style={{textAlign:"right",flexShrink:0}}>
+                          <div style={{fontSize:16,fontWeight:900,color:rankTab===0?"#FF8040":rankTab===1?T.xp:T.t1}}>{curTable.statFn(p)}</div>
+                          <div style={{fontSize:9,color:T.t2,textTransform:"uppercase",letterSpacing:"0.06em"}}>{curTable.statLabel}</div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
 
-            {/* Refresh */}
-            <div style={{textAlign:"center",marginTop:16,marginBottom:4}}>
-              <button onClick={loadRanking} style={{background:"rgba(255,255,255,0.07)",border:`1.5px solid ${T.bW}`,borderRadius:14,padding:"10px 24px",color:T.t2,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
-                🔄 Actualizar ranking
-              </button>
+                  {/* ── Posición del usuario si está fuera del top 10 ── */}
+                  {!myInTop10&&myGlobalPos>=0&&myEntry&&(
+                    <>
+                      {/* Separador con puntos */}
+                      <div style={{textAlign:"center",padding:"6px 0",color:T.t2,fontSize:18,letterSpacing:6}}>···</div>
+                      {/* Fila del usuario */}
+                      <div style={{
+                        background:"linear-gradient(135deg,rgba(255,200,0,0.22),rgba(88,204,2,0.1))",
+                        border:`2px solid ${T.au1}`,borderRadius:18,padding:"11px 14px",
+                        display:"flex",alignItems:"center",gap:10,
+                        boxShadow:`0 4px 0 ${T.au3}`,
+                      }}>
+                        <div style={{width:34,textAlign:"center",flexShrink:0}}>
+                          <span style={{fontSize:15,fontWeight:900,color:T.au1}}>#{myGlobalPos+1}</span>
+                        </div>
+                        <div style={{width:38,height:38,borderRadius:12,background:`linear-gradient(135deg,${T.au1},${T.au2})`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:`2px solid ${T.au3}`,boxShadow:"0 3px 0 rgba(0,0,0,0.4)"}}>
+                          <span style={{fontSize:17,fontWeight:900,color:"#1A1000",fontFamily:"'Nunito',sans-serif"}}>{(myEntry.name||"?")[0].toUpperCase()}</span>
+                        </div>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:14,fontWeight:900,color:T.au1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                            {myEntry.name?.split(" ")[0]||"—"} 👈
+                          </div>
+                          <div style={{fontSize:10,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>{getLevel(myEntry.xp||0).n} · Lv {getLevel(myEntry.xp||0).l}</div>
+                        </div>
+                        <div style={{textAlign:"right",flexShrink:0}}>
+                          <div style={{fontSize:16,fontWeight:900,color:rankTab===0?"#FF8040":rankTab===1?T.xp:T.t1}}>{curTable.statFn(myEntry)}</div>
+                          <div style={{fontSize:9,color:T.t2,textTransform:"uppercase",letterSpacing:"0.06em"}}>{curTable.statLabel}</div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Refresh */}
+              <div style={{textAlign:"center",marginTop:16,marginBottom:4}}>
+                <button onClick={loadRanking} style={{background:"rgba(255,255,255,0.07)",border:`1.5px solid ${T.bW}`,borderRadius:14,padding:"10px 24px",color:T.t2,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
+                  🔄 Actualizar
+                </button>
+              </div>
             </div>
-          </>);
+          );
         })()}
 
         {tab==="achievements"&&<>
