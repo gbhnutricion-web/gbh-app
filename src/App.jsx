@@ -50,144 +50,235 @@ const toKey=(d=new Date())=>d.toISOString().slice(0,10);
 const isWeekend=()=>{const d=new Date().getDay();return d===0||d===6;};
 const WLABELS=["L","M","X","J","V","S","D"];
 
-const sbReq=async(method,path,body=null)=>{
-  try{
-    const r=await fetch(`${SB}/rest/v1/${path}`,{method,headers:{"apikey":KEY,"Authorization":`Bearer ${KEY}`,"Content-Type":"application/json","Prefer":method==="POST"?"return=representation, resolution=merge-duplicates":""},body:body?JSON.stringify(body):null});
-    if(!r.ok)return null;return method==="DELETE"?true:r.json();
-  }catch{return null;}
-};
+
+// ─── localStorage helpers ────────────────────────────────────────────────────
 const lsGet=(k,f)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):f;}catch{return f;}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
 
-// ─── Pixel-art tamagotchi sheep ─────────────────────────────────────────────
+// ─── Cola de sincronización offline ──────────────────────────────────────────
+// Cada operación que no llega a Supabase se encola en localStorage.
+// Cuando vuelve la conexión, se vacía automáticamente.
+const QUEUE_KEY = "gbh:sync_queue";
+
+function enqueue(op){
+  // op = { id, method, path, body, ts }
+  const q = lsGet(QUEUE_KEY, []);
+  // Si ya existe la misma path+method, reemplazar (evita duplicados de PATCH)
+  const idx = q.findIndex(x => x.path === op.path && x.method === op.method);
+  if(idx >= 0) q[idx] = op; else q.push(op);
+  lsSet(QUEUE_KEY, q);
+}
+
+async function flushQueue(){
+  const q = lsGet(QUEUE_KEY, []);
+  if(!q.length) return;
+  const failed = [];
+  for(const op of q){
+    try{
+      const r = await fetch(`${SB}/rest/v1/${op.path}`, {
+        method: op.method,
+        headers: {
+          "apikey": KEY,
+          "Authorization": `Bearer ${KEY}`,
+          "Content-Type": "application/json",
+          "Prefer": op.method==="POST" ? "return=representation, resolution=merge-duplicates" : "",
+        },
+        body: op.body ? JSON.stringify(op.body) : null,
+      });
+      if(!r.ok) failed.push(op);
+    } catch {
+      failed.push(op); // sin red, volver a encolar
+    }
+  }
+  lsSet(QUEUE_KEY, failed); // sólo quedan los que fallaron
+  return failed.length === 0;
+}
+
+// ─── sbReq: offline-first ────────────────────────────────────────────────────
+// GET → siempre intenta red, sin encolar si falla
+// POST/PATCH → intenta red; si falla, encola para después
+const sbReq = async(method, path, body=null) => {
+  const headers = {
+    "apikey": KEY,
+    "Authorization": `Bearer ${KEY}`,
+    "Content-Type": "application/json",
+    "Prefer": method==="POST" ? "return=representation, resolution=merge-duplicates" : "",
+  };
+  try {
+    const r = await fetch(`${SB}/rest/v1/${path}`, {
+      method, headers, body: body ? JSON.stringify(body) : null,
+    });
+    if(!r.ok) throw new Error("not ok");
+    return method==="DELETE" ? true : r.json();
+  } catch {
+    // Sin red o error — encolar si es escritura
+    if(method !== "GET" && body){
+      enqueue({ id: crypto.randomUUID(), method, path, body, ts: Date.now() });
+    }
+    return null;
+  }
+};
+
+
+// ─── Pixel-art mascota GBH — cuernos curvados, lana rizada, 7 expresiones ────
 function Mascot({expr="idle",size=200}){
   const aura={idle:false,happy:false,excited:true,celebrating:true,sad:false,sleeping:false,legend:true};
   const glow=aura[expr];
-  const w1="#4CAF50",w2="#66BB6A",w3="#2E7D32";
-  const h1="#8D6E63",h2="#5D4037";
-  const f1="#76C47E";
-  const ey="#1A1A2E",sh="#FFFFFF";
-  const mo="#3E2723";
-  const bl="#FF8A80",te="#64B5F6",gd="#FFD700";
-  const ht="#78909C",h2t="#546E7A";
+  const W1="#3A8A40",W2="#4CAF50",W3="#6BBF6E",W4="#2A6B30";
+  const H1="#8B6040",H2="#A07848",H3="#5A3020";
+  const F1="#6DBF72",F2="#88CC8A";
+  const EY="#1A1414",SH="#FFFFFF";
+  const BL="#FF9999",TE="#64B5F6",MO="#4A2A18";
+  const GD="#FFD700",GD2="#FFA000";
+  const HT="#8090A0";
 
   const Body=()=>(
     <g>
-      <rect x="10" y="1"  width="5"  height="10" rx="2.5" fill={h1}/>
-      <rect x="25" y="1"  width="5"  height="10" rx="2.5" fill={h1}/>
-      <rect x="11" y="2"  width="2"  height="7"  rx="1"   fill={h2} opacity="0.4"/>
-      <rect x="26" y="2"  width="2"  height="7"  rx="1"   fill={h2} opacity="0.4"/>
-      <rect x="1"  y="14" width="7"  height="11" rx="3.5" fill={w1}/>
-      <rect x="32" y="14" width="7"  height="11" rx="3.5" fill={w1}/>
-      <rect x="2"  y="15" width="5"  height="9"  rx="2.5" fill={bl} opacity="0.5"/>
-      <rect x="33" y="15" width="5"  height="9"  rx="2.5" fill={bl} opacity="0.5"/>
-      <rect x="4"  y="8"  width="32" height="27" rx="14"  fill={w1}/>
-      <rect x="5"  y="6"  width="12" height="10" rx="6"   fill={w2}/>
-      <rect x="23" y="6"  width="12" height="10" rx="6"   fill={w2}/>
-      <rect x="1"  y="15" width="10" height="14" rx="5"   fill={w2}/>
-      <rect x="29" y="15" width="10" height="14" rx="5"   fill={w2}/>
-      <rect x="7"  y="30" width="26" height="9"  rx="5"   fill={w2}/>
-      <rect x="14" y="4"  width="12" height="9"  rx="5"   fill={w2}/>
-      <rect x="5"  y="8"  width="30" height="26" rx="13"  fill={w3} opacity="0.15"/>
-      <rect x="10" y="16" width="20" height="20" rx="9"   fill={f1}/>
-      <rect x="17" y="29" width="6"  height="3"  rx="1.5" fill={h2}/>
-      <circle cx="19" cy="30" r="1" fill="#3E2723" opacity="0.5"/>
-      <circle cx="21" cy="30" r="1" fill="#3E2723" opacity="0.5"/>
+      {/* ── HORNS (curvados, estilo carnero) ── */}
+      <path d="M10 27 C3 23 1 12 5 7 C9 2 18 4 19 11 C20 18 15 24 11 27Z" fill={H1}/>
+      <path d="M10 27 C4 23 3 14 7 9 C10 4 17 6 17 11 C12 11 8 15 9 21Z" fill={H2} opacity="0.55"/>
+      <path d="M7 9 C10 4 17 6 18 11" stroke={H3} strokeWidth="1.2" fill="none" strokeLinecap="round"/>
+      <path d="M38 27 C45 23 47 12 43 7 C39 2 30 4 29 11 C28 18 33 24 37 27Z" fill={H1}/>
+      <path d="M38 27 C44 23 45 14 41 9 C38 4 31 6 31 11 C36 11 40 15 39 21Z" fill={H2} opacity="0.55"/>
+      <path d="M41 9 C38 4 31 6 30 11" stroke={H3} strokeWidth="1.2" fill="none" strokeLinecap="round"/>
+      {/* ── OREJAS ── */}
+      <ellipse cx="7"  cy="31" rx="5" ry="8" fill={W1} transform="rotate(-12 7 31)"/>
+      <ellipse cx="41" cy="31" rx="5" ry="8" fill={W1} transform="rotate(12 41 31)"/>
+      <ellipse cx="7"  cy="31" rx="3" ry="5" fill={BL} opacity="0.5" transform="rotate(-12 7 31)"/>
+      <ellipse cx="41" cy="31" rx="3" ry="5" fill={BL} opacity="0.5" transform="rotate(12 41 31)"/>
+      {/* ── CUERPO LANA ── */}
+      <circle cx="24" cy="32" r="20" fill={W1}/>
+      {/* Bultos rizados */}
+      <circle cx="12" cy="19" r="9"  fill={W3}/>
+      <circle cx="24" cy="15" r="10" fill={W3}/>
+      <circle cx="36" cy="19" r="9"  fill={W3}/>
+      <circle cx="7"  cy="31" r="7"  fill={W2}/>
+      <circle cx="41" cy="31" r="7"  fill={W2}/>
+      <circle cx="14" cy="43" r="7"  fill={W2}/>
+      <circle cx="24" cy="46" r="8"  fill={W2}/>
+      <circle cx="34" cy="43" r="7"  fill={W2}/>
+      {/* Espirales de lana */}
+      <path d="M12 17 C12 13 17 11 19 14" stroke={W4} strokeWidth="2"   fill="none" strokeLinecap="round"/>
+      <path d="M24 13 C24 9 29 7 31 10"  stroke={W4} strokeWidth="2"   fill="none" strokeLinecap="round"/>
+      <path d="M36 17 C36 13 41 12 39 15" stroke={W4} strokeWidth="2"  fill="none" strokeLinecap="round"/>
+      <path d="M9  31 C7  27 10 23 13 24" stroke={W4} strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+      <path d="M39 31 C41 27 38 23 35 24" stroke={W4} strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+      {/* ── CARA ── */}
+      <ellipse cx="24" cy="32" rx="14" ry="14" fill={F1}/>
+      <ellipse cx="21" cy="28" rx="8"  ry="6"  fill={F2} opacity="0.3"/>
+      {/* ── NARIZ ── */}
+      <rect x="19" y="36" width="10" height="5" rx="2.5" fill={H1}/>
+      <circle cx="21.5" cy="38" r="1.5" fill={H3} opacity="0.6"/>
+      <circle cx="26.5" cy="38" r="1.5" fill={H3} opacity="0.6"/>
     </g>
   );
 
   const Expr={
     idle:(
       <g>
-        <rect x="13" y="21" width="5" height="5" rx="1.5" fill={ey}/>
-        <rect x="22" y="21" width="5" height="5" rx="1.5" fill={ey}/>
-        <rect x="14" y="22" width="2" height="2" fill={sh}/>
-        <rect x="23" y="22" width="2" height="2" fill={sh}/>
-        <path d="M15 33 Q20 36 25 33" stroke={mo} strokeWidth="1.8" fill="none" strokeLinecap="round"/>
+        <circle cx="19" cy="28" r="4" fill={EY}/>
+        <circle cx="29" cy="28" r="4" fill={EY}/>
+        <circle cx="18" cy="27" r="1.8" fill={SH}/>
+        <circle cx="28" cy="27" r="1.8" fill={SH}/>
+        <path d="M18 35 Q24 38 30 35" stroke={MO} strokeWidth="2" fill="none" strokeLinecap="round"/>
       </g>
     ),
     happy:(
       <g>
-        <rect x="12" y="22" width="7" height="4" rx="2" fill={ey}/>
-        <rect x="21" y="22" width="7" height="4" rx="2" fill={ey}/>
-        <rect x="13" y="22.5" width="2.5" height="2" fill={sh}/>
-        <rect x="22" y="22.5" width="2.5" height="2" fill={sh}/>
-        <path d="M13 32 Q20 38 27 32" stroke={mo} strokeWidth="2" fill="none" strokeLinecap="round"/>
-        <rect x="9"  y="27" width="6" height="4" rx="2" fill={bl} opacity="0.65"/>
-        <rect x="25" y="27" width="6" height="4" rx="2" fill={bl} opacity="0.65"/>
+        <path d="M14 29 Q19 24 24 29" stroke={EY} strokeWidth="3.5" fill="none" strokeLinecap="round"/>
+        <path d="M24 29 Q29 24 34 29" stroke={EY} strokeWidth="3.5" fill="none" strokeLinecap="round"/>
+        <path d="M15 34 Q24 42 33 34" stroke={MO} strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+        <ellipse cx="13" cy="32" rx="5" ry="3.5" fill={BL} opacity="0.65"/>
+        <ellipse cx="35" cy="32" rx="5" ry="3.5" fill={BL} opacity="0.65"/>
       </g>
     ),
     excited:(
       <g>
-        <rect x="11" y="19" width="7" height="7" rx="2" fill={ey}/>
-        <rect x="22" y="19" width="7" height="7" rx="2" fill={ey}/>
-        <rect x="12" y="20" width="3" height="3" fill={sh}/>
-        <rect x="23" y="20" width="3" height="3" fill={sh}/>
-        <rect x="11" y="16" width="7" height="2" rx="1" fill={ey}/>
-        <rect x="22" y="16" width="7" height="2" rx="1" fill={ey}/>
-        <rect x="16" y="31" width="8" height="5" rx="2.5" fill={ey}/>
-        <rect x="17" y="32" width="6" height="3" rx="2"   fill="#EF5350"/>
+        <circle cx="19" cy="27" r="5.5" fill={EY}/>
+        <circle cx="29" cy="27" r="5.5" fill={EY}/>
+        <circle cx="17" cy="25" r="2.5" fill={SH}/>
+        <circle cx="27" cy="25" r="2.5" fill={SH}/>
+        <path d="M13 20 Q19 16 25 20" stroke={EY} strokeWidth="2.2" fill="none" strokeLinecap="round"/>
+        <path d="M23 20 Q29 16 35 20" stroke={EY} strokeWidth="2.2" fill="none" strokeLinecap="round"/>
+        <ellipse cx="24" cy="37" rx="5.5" ry="4.5" fill={EY}/>
+        <ellipse cx="24" cy="37" rx="4"   ry="3"   fill="#EF5350"/>
       </g>
     ),
     celebrating:(
       <g>
-        <path d="M12 23 Q15.5 19 19 23" stroke={ey} strokeWidth="2.5" fill="none" strokeLinecap="round"/>
-        <path d="M21 23 Q24.5 19 28 23" stroke={ey} strokeWidth="2.5" fill="none" strokeLinecap="round"/>
-        <path d="M13 31 Q20 38 27 31" stroke={mo} strokeWidth="2" fill="none" strokeLinecap="round"/>
-        <text x="4"  y="13" fontSize="7" fill={gd}>★</text>
-        <text x="30" y="13" fontSize="7" fill={gd}>★</text>
-        <text x="2"  y="26" fontSize="5" fill={gd}>✦</text>
-        <text x="35" y="26" fontSize="5" fill={gd}>✦</text>
-        <rect x="9"  y="27" width="6" height="4" rx="2" fill={bl} opacity="0.7"/>
-        <rect x="25" y="27" width="6" height="4" rx="2" fill={bl} opacity="0.7"/>
+        <path d="M14 28 Q19 23 24 28" stroke={EY} strokeWidth="3.5" fill="none" strokeLinecap="round"/>
+        <path d="M24 28 Q29 23 34 28" stroke={EY} strokeWidth="3.5" fill="none" strokeLinecap="round"/>
+        <path d="M14 34 Q24 43 34 34" stroke={MO} strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+        <text x="1"  y="18" fontSize="10" fill={GD}>★</text>
+        <text x="39" y="18" fontSize="10" fill={GD}>★</text>
+        <text x="-1" y="32" fontSize="8"  fill={GD}>✦</text>
+        <text x="42" y="32" fontSize="8"  fill={GD}>✦</text>
+        <ellipse cx="13" cy="32" rx="5" ry="3.5" fill={BL} opacity="0.7"/>
+        <ellipse cx="35" cy="32" rx="5" ry="3.5" fill={BL} opacity="0.7"/>
       </g>
     ),
     sad:(
       <g>
-        <rect x="13" y="22" width="5" height="4" rx="1.5" fill={ey}/>
-        <rect x="22" y="22" width="5" height="4" rx="1.5" fill={ey}/>
-        <rect x="14" y="23" width="2" height="2" fill={sh}/>
-        <rect x="23" y="23" width="2" height="2" fill={sh}/>
-        <rect x="13" y="19" width="5" height="2" rx="1" fill={ey} transform="rotate(15 15 20)"/>
-        <rect x="22" y="19" width="5" height="2" rx="1" fill={ey} transform="rotate(-15 25 20)"/>
-        <path d="M15 35 Q20 31.5 25 35" stroke={mo} strokeWidth="1.8" fill="none" strokeLinecap="round"/>
-        <rect x="13.5" y="27" width="2.5" height="6" rx="1.5" fill={te} opacity="0.85"/>
-        <rect x="24"   y="27" width="2.5" height="6" rx="1.5" fill={te} opacity="0.85"/>
-        <circle cx="14.5" cy="33.5" r="2" fill={te} opacity="0.75"/>
-        <circle cx="25"   cy="33.5" r="2" fill={te} opacity="0.75"/>
+        <circle cx="19" cy="29" r="4" fill={EY}/>
+        <circle cx="29" cy="29" r="4" fill={EY}/>
+        <circle cx="18" cy="28" r="1.8" fill={SH}/>
+        <circle cx="28" cy="28" r="1.8" fill={SH}/>
+        <path d="M14 22 Q19 26 24 22" stroke={EY} strokeWidth="2.2" fill="none" strokeLinecap="round"/>
+        <path d="M24 22 Q29 26 34 22" stroke={EY} strokeWidth="2.2" fill="none" strokeLinecap="round"/>
+        <path d="M18 37 Q24 33 30 37" stroke={MO} strokeWidth="2" fill="none" strokeLinecap="round"/>
+        <path d="M17 32 Q15 38 16 42" stroke={TE} strokeWidth="3" fill="none" strokeLinecap="round"/>
+        <path d="M31 32 Q33 38 32 42" stroke={TE} strokeWidth="3" fill="none" strokeLinecap="round"/>
+        <circle cx="15.5" cy="43" r="3" fill={TE} opacity="0.8"/>
+        <circle cx="32.5" cy="43" r="3" fill={TE} opacity="0.8"/>
       </g>
     ),
     sleeping:(
       <g>
-        <rect x="9"  y="2"  width="22" height="11" rx="4" fill={ht}/>
-        <rect x="7"  y="11" width="26" height="4"  rx="2" fill={h2t}/>
-        <circle cx="30" cy="4" r="3.5" fill={sh}/>
-        <rect x="12" y="23" width="7" height="2.5" rx="1.5" fill={ey}/>
-        <rect x="21" y="23" width="7" height="2.5" rx="1.5" fill={ey}/>
-        <line x1="13" y1="23" x2="12" y2="21" stroke={ey} strokeWidth="1.2" strokeLinecap="round"/>
-        <line x1="16" y1="23" x2="16" y2="21" stroke={ey} strokeWidth="1.2" strokeLinecap="round"/>
-        <line x1="19" y1="23" x2="20" y2="21" stroke={ey} strokeWidth="1.2" strokeLinecap="round"/>
-        <line x1="22" y1="23" x2="21" y2="21" stroke={ey} strokeWidth="1.2" strokeLinecap="round"/>
-        <line x1="25" y1="23" x2="25" y2="21" stroke={ey} strokeWidth="1.2" strokeLinecap="round"/>
-        <line x1="28" y1="23" x2="29" y2="21" stroke={ey} strokeWidth="1.2" strokeLinecap="round"/>
-        <path d="M16 33 Q20 35.5 24 33" stroke={mo} strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+        {/* Gorro */}
+        <path d="M14 22 Q24 11 34 22 L31 15 Q24 5 17 15Z" fill={HT}/>
+        <rect x="12" y="21" width="24" height="5" rx="2.5" fill="#607080"/>
+        <circle cx="34" cy="12" r="4" fill={SH}/>
+        {/* Ojos cerrados */}
+        <path d="M13 28 Q19 24 25 28" stroke={EY} strokeWidth="3" fill="none" strokeLinecap="round"/>
+        <path d="M23 28 Q29 24 35 28" stroke={EY} strokeWidth="3" fill="none" strokeLinecap="round"/>
+        <line x1="14" y1="28" x2="12" y2="25" stroke={EY} strokeWidth="1.8" strokeLinecap="round"/>
+        <line x1="19" y1="27" x2="19" y2="24" stroke={EY} strokeWidth="1.8" strokeLinecap="round"/>
+        <line x1="24" y1="28" x2="25" y2="25" stroke={EY} strokeWidth="1.8" strokeLinecap="round"/>
+        <line x1="24" y1="28" x2="23" y2="25" stroke={EY} strokeWidth="1.8" strokeLinecap="round"/>
+        <line x1="29" y1="27" x2="29" y2="24" stroke={EY} strokeWidth="1.8" strokeLinecap="round"/>
+        <line x1="34" y1="28" x2="36" y2="25" stroke={EY} strokeWidth="1.8" strokeLinecap="round"/>
+        <path d="M20 35 Q24 38 28 35" stroke={MO} strokeWidth="2" fill="none" strokeLinecap="round"/>
+        {/* ZZZ */}
+        <text x="38" y="24" fontSize="7"  fill="#607080" fontWeight="bold" fontFamily="monospace">z</text>
+        <text x="40" y="17" fontSize="8"  fill="#607080" fontWeight="bold" fontFamily="monospace">Z</text>
+        <text x="42" y="10" fontSize="9"  fill="#607080" fontWeight="bold" fontFamily="monospace">Z</text>
       </g>
     ),
     legend:(
       <g>
-        <rect x="10" y="10" width="20" height="5" rx="1.5" fill={gd}/>
-        <rect x="10" y="6"  width="4"  height="6" rx="1"   fill={gd}/>
-        <rect x="18" y="4"  width="4"  height="8" rx="1"   fill={gd}/>
-        <rect x="26" y="6"  width="4"  height="6" rx="1"   fill={gd}/>
-        <rect x="13" y="7"  width="2"  height="2" rx="1"   fill="#E91E63"/>
-        <rect x="19" y="5"  width="2"  height="2" rx="1"   fill="#4CAF50"/>
-        <rect x="25" y="7"  width="2"  height="2" rx="1"   fill="#2196F3"/>
-        <rect x="12" y="23" width="7" height="2.5" rx="1.5" fill={ey}/>
-        <rect x="22" y="20" width="6" height="6" rx="2" fill={ey}/>
-        <rect x="23" y="21" width="2.5" height="2.5" fill={sh}/>
-        <path d="M16 33 Q23 38 27 33" stroke={mo} strokeWidth="2" fill="none" strokeLinecap="round"/>
-        <text x="2"  y="21" fontSize="7" fill={gd}>✦</text>
-        <text x="32" y="18" fontSize="6" fill={gd}>★</text>
+        {/* Corona detallada con joyas */}
+        <rect x="14" y="12" width="20" height="7" rx="2" fill={GD}/>
+        <polygon points="14,13 17,4 20,13" fill={GD}/>
+        <polygon points="21,13 24,2 27,13" fill={GD}/>
+        <polygon points="28,13 31,4 34,13" fill={GD}/>
+        <rect x="14" y="16" width="20" height="3" rx="1" fill={GD2}/>
+        {/* Joyas */}
+        <circle cx="17.5" cy="6"    r="2.2" fill="#1A1A1A"/>
+        <circle cx="24"   cy="4.5"  r="2.5" fill="#4CAF50"/>
+        <circle cx="30.5" cy="6"    r="2.2" fill="#E91E63"/>
+        <circle cx="17"   cy="14"   r="1.8" fill="#2196F3"/>
+        <circle cx="24"   cy="13.5" r="1.8" fill="#FF5722"/>
+        <circle cx="31"   cy="14"   r="1.8" fill="#9C27B0"/>
+        {/* Guiño izquierdo */}
+        <path d="M13 28 Q19 24 25 28" stroke={EY} strokeWidth="3" fill="none" strokeLinecap="round"/>
+        {/* Ojo derecho abierto */}
+        <circle cx="30" cy="27" r="4.5" fill={EY}/>
+        <circle cx="28.5" cy="25.5" r="2" fill={SH}/>
+        {/* Smirk */}
+        <path d="M17 35 Q26 41 33 35" stroke={MO} strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+        {/* Destellos */}
+        <text x="1"  y="27" fontSize="10" fill={GD}>✦</text>
+        <text x="39" y="24" fontSize="9"  fill={GD}>★</text>
       </g>
     ),
   };
@@ -195,7 +286,7 @@ function Mascot({expr="idle",size=200}){
   return(
     <div style={{position:"relative",width:size,height:size,flexShrink:0}}>
       {glow&&<div style={{position:"absolute",inset:-Math.round(size*0.12),borderRadius:"50%",background:`radial-gradient(circle,${expr==="legend"?"rgba(255,200,0,0.45)":"rgba(88,204,2,0.35)"} 0%,transparent 65%)`,animation:"aura 2.5s ease-in-out infinite",pointerEvents:"none"}}/>}
-      <svg viewBox="0 0 40 40" width={size} height={size} style={{display:"block",overflow:"visible"}}>
+      <svg viewBox="0 0 48 48" width={size} height={size} style={{display:"block",overflow:"visible"}}>
         <Body/>
         {Expr[expr]||Expr.idle}
       </svg>
@@ -210,6 +301,8 @@ function getExpr(streak,dietDone,allDone,sleepDone){
   if(dietDone)return"happy";
   if(sleepDone&&!dietDone)return"sleeping";
   if(streak===0)return"sad";
+  // Si son las 20h+ y no ha registrado la dieta → preocupado
+  if(!dietDone&&new Date().getHours()>=20)return"sad";
   return"idle";
 }
 
@@ -231,6 +324,7 @@ function getBubbleMsg(name,streak,expr){
   if(expr==="excited")     return`🔥 ¡${streak} días seguidos! ¡Imparable, ${n}!`;
   if(expr==="happy")       return`✅ ¡Dieta registrada! Sigue así, ${n}`;
   if(expr==="sleeping")    return`😴 Buen descanso, ${n}. ¡Mañana a tope!`;
+  if(!dietDone&&new Date().getHours()>=20) return`⚠️ ${n}, ¡aún puedes registrar la dieta! No pierdas la racha 🔥`;
   if(expr==="sad")         return`💚 Hola ${n}! Hoy es el día para empezar`;
   return`¡Hola ${n}! ¿Listo para marcar el día? 🌱`;
 }
@@ -357,10 +451,10 @@ function StepsWidget({done,stepCount,onToggle,onUpdateSteps}){
       </div>
       {/* Add buttons */}
       <div style={{display:"flex",gap:8}}>
-        {[1000,2500,5000,10000].map(v=>(
-          <button key={v} onClick={()=>onUpdateSteps(stepCount+v)} style={{flex:1,background:"rgba(255,255,255,0.08)",border:`1.5px solid rgba(255,255,255,0.12)`,borderRadius:12,padding:"10px 0",color:T.t1,fontWeight:800,fontSize:11,cursor:"pointer",boxShadow:"0 3px 0 rgba(0,0,0,0.4)",fontFamily:"'Nunito',sans-serif"}}>+{v>=1000?v/1000+"k":v}</button>
+        {!done&&[1000,2500,5000,10000].map(v=>(
+          <button key={v} onClick={()=>onUpdateSteps(Math.min(stepCount+v,99999))} style={{flex:1,background:"rgba(255,255,255,0.08)",border:`1.5px solid rgba(255,255,255,0.12)`,borderRadius:12,padding:"10px 0",color:T.t1,fontWeight:800,fontSize:11,cursor:"pointer",boxShadow:"0 3px 0 rgba(0,0,0,0.4)",fontFamily:"'Nunito',sans-serif"}}>+{v>=1000?v/1000+"k":v}</button>
         ))}
-        <button onClick={()=>onUpdateSteps(0)} style={{background:"rgba(255,75,75,0.1)",border:`1.5px solid rgba(255,75,75,0.25)`,borderRadius:12,padding:"10px 12px",color:T.red,fontWeight:800,fontSize:13,cursor:"pointer"}}>↺</button>
+        
       </div>
     </div>
   );
@@ -413,6 +507,366 @@ const Card=({children,style={}})=>(
   <div style={{background:T.bgWood,borderRadius:22,padding:"16px 18px",border:`2px solid ${T.bW}`,boxShadow:"0 6px 0 rgba(0,0,0,0.4)",marginBottom:14,...style}}>{children}</div>
 );
 
+
+// ─── Floating reward chip (+XP / +💎) ────────────────────────────────────────
+function FloatReward({items}){
+  // items: [{id, label, color}]
+  return(
+    <div style={{position:"fixed",top:"38%",left:"50%",transform:"translateX(-50%)",zIndex:9997,display:"flex",flexDirection:"column",alignItems:"center",gap:8,pointerEvents:"none"}}>
+      {items.map((it,i)=>(
+        <div key={it.id} style={{
+          background:"rgba(0,0,0,0.82)",
+          border:`2px solid ${it.color}`,
+          borderRadius:30,padding:"8px 22px",
+          fontSize:20,fontWeight:900,color:it.color,
+          fontFamily:"'Nunito',sans-serif",
+          animation:`floatUp 1.4s ${i*0.18}s ease forwards`,
+          whiteSpace:"nowrap",
+          boxShadow:`0 4px 20px ${it.color}60`,
+        }}>{it.label}</div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Level-up overlay ─────────────────────────────────────────────────────────
+function LevelUpOverlay({active,level}){
+  if(!active)return null;
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:10001,background:"#000",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",animation:"fadeInOut 3s ease forwards",pointerEvents:"none"}}>
+      <div style={{fontSize:70,animation:"scaleIn 0.6s cubic-bezier(0.34,1.56,0.64,1)"}}>⭐</div>
+      <div style={{fontSize:15,fontWeight:900,color:"rgba(255,255,255,0.6)",fontFamily:"'DM Sans',sans-serif",textTransform:"uppercase",letterSpacing:"0.15em",marginTop:14,animation:"scaleIn 0.5s 0.2s both"}}>NIVEL ALCANZADO</div>
+      <div style={{fontSize:72,fontWeight:900,color:"#FFD700",fontFamily:"'Nunito',sans-serif",lineHeight:1,animation:"scaleIn 0.6s 0.35s cubic-bezier(0.34,1.56,0.64,1) both"}}>{level}</div>
+      <div style={{fontSize:18,fontWeight:800,color:"#FFF",fontFamily:"'Nunito',sans-serif",marginTop:10,animation:"scaleIn 0.5s 0.55s both"}}>¡Sigue imparable! 💪</div>
+    </div>
+  );
+}
+
+// ─── "Vuelve mañana" card ─────────────────────────────────────────────────────
+function TomorrowCard({name,streak}){
+  const n=name.split(" ")[0];
+  return(
+    <div style={{background:"linear-gradient(135deg,rgba(43,122,0,0.35),rgba(88,204,2,0.15))",border:`2px solid ${T.g1}`,borderRadius:24,padding:"22px 20px",textAlign:"center",marginBottom:14,boxShadow:`0 6px 0 ${T.g3}`}}>
+      <div style={{fontSize:40,marginBottom:8}}>🌙</div>
+      <div style={{fontSize:20,fontWeight:900,color:T.g2,marginBottom:6}}>¡Día completado, {n}!</div>
+      <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6,marginBottom:14}}>
+        Has completado todas las misiones.<br/>Tu racha es de <span style={{color:"#FF8040",fontWeight:900}}>{streak} 🔥</span> días.
+      </div>
+      <div style={{display:"flex",justifyContent:"center",gap:10}}>
+        <div style={{background:"rgba(255,255,255,0.07)",borderRadius:16,padding:"10px 20px",fontSize:13,fontWeight:800,color:T.au1}}>🕐 Vuelve mañana</div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Hydration tracker (vasos de agua) ───────────────────────────────────────
+function HydrationWidget({done,onToggle}){
+  const [glasses,setGlasses]=useState(()=>{
+    try{return parseInt(localStorage.getItem("gbh:glasses:"+new Date().toISOString().slice(0,10))||"0");}catch{return 0;}
+  });
+  const target=8; // 8 vasos ≈ 2L
+  const addGlass=()=>{
+    if(done)return;
+    const ng=Math.min(glasses+1,target);
+    setGlasses(ng);
+    try{localStorage.setItem("gbh:glasses:"+new Date().toISOString().slice(0,10),ng);}catch{}
+    if(ng>=target&&!done)onToggle();
+  };
+  const pct=Math.min((glasses/target)*100,100);
+  return(
+    <div style={{background:done?`linear-gradient(135deg,rgba(43,122,0,0.45),rgba(88,204,2,0.2))`:T.bgCard,border:`2px solid ${done?T.g1:T.bW}`,borderRadius:20,padding:"14px 16px",marginBottom:10,boxShadow:done?`0 5px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)"}}>
+      <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:10}}>
+        <div style={{width:38,height:38,borderRadius:14,background:done?T.g1:T.bW,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontWeight:900,fontSize:16,color:"white",boxShadow:done?`0 3px 0 ${T.g3}`:"0 3px 0 rgba(0,0,0,0.5)",border:`2px solid ${done?T.g3:"rgba(255,255,255,0.1)"}`}}>
+          {done?"✓":"4"}
+        </div>
+        <div style={{flex:1}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:22}}>💧</span>
+            <div>
+              <div style={{fontSize:14,fontWeight:800,color:done?T.t1:"rgba(255,255,255,0.55)"}}>Beber 1.5 - 2 L de agua</div>
+              <div style={{fontSize:11,color:T.au1,fontWeight:700}}>+5 XP · {glasses}/{target} vasos{done?" · ¡Completado!":""}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {/* Barra de progreso */}
+      <div style={{background:"rgba(255,255,255,0.08)",borderRadius:10,height:10,overflow:"hidden",marginBottom:10,boxShadow:"inset 0 2px 4px rgba(0,0,0,0.3)"}}>
+        <div style={{height:"100%",width:`${pct}%`,background:`linear-gradient(90deg,#29B6F6,#0288D1)`,borderRadius:10,transition:"width 0.4s ease",boxShadow:"0 0 8px #29B6F660"}}/>
+      </div>
+      {/* Vasos */}
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {Array.from({length:target},(_,i)=>(
+          <button key={i} onClick={addGlass} disabled={done||i<glasses} style={{
+            width:34,height:38,borderRadius:10,border:`2px solid ${i<glasses?"#0288D1":"rgba(255,255,255,0.12)"}`,
+            background:i<glasses?"rgba(41,182,246,0.25)":"rgba(255,255,255,0.06)",
+            cursor:done||i<glasses?"default":"pointer",
+            fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",
+            transition:"all 0.2s",
+            boxShadow:i<glasses?"0 2px 0 #0277BD":"0 2px 0 rgba(0,0,0,0.4)",
+          }}>
+            {i<glasses?"🥤":"🫙"}
+          </button>
+        ))}
+      </div>
+      {!done&&glasses<target&&<div style={{fontSize:10,color:T.t2,marginTop:8,fontFamily:"'DM Sans',sans-serif"}}>Pulsa cada vaso al beberlo — meta: {target} vasos (≈ 2L)</div>}
+    </div>
+  );
+}
+
+// ─── Weekly XP goal ───────────────────────────────────────────────────────────
+function WeeklyXPGoal({logs,xp}){
+  const GOAL=100;
+  const monday=(()=>{const d=new Date();const day=d.getDay()||7;d.setDate(d.getDate()-day+1);d.setHours(0,0,0,0);return d;})();
+  // Approximate weekly XP from logs this week (15 per diet + 5 per other done)
+  const weekXP=logs.filter(l=>new Date(l.date)>=monday).reduce((acc,l)=>{
+    return acc+(l.diet?15:0)+(l.steps?5:0)+(l.hydration?5:0)+(l.sleep?5:0);
+  },0);
+  const pct=Math.min((weekXP/GOAL)*100,100);
+  const done=weekXP>=GOAL;
+  return(
+    <div style={{background:T.bgWood,borderRadius:20,padding:"12px 16px",border:`2px solid ${done?T.g1:T.bW}`,boxShadow:"0 4px 0 rgba(0,0,0,0.4)",marginBottom:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+        <div style={{fontSize:11,fontWeight:900,color:done?T.g2:T.au1,textTransform:"uppercase",letterSpacing:"0.08em"}}>⚡ Meta semanal de XP</div>
+        <div style={{fontSize:13,fontWeight:900,color:done?T.g1:T.t1}}>{weekXP}<span style={{color:T.t2,fontWeight:700}}>/{GOAL} XP</span></div>
+      </div>
+      <div style={{background:"rgba(255,255,255,0.08)",borderRadius:10,height:14,overflow:"hidden",boxShadow:"inset 0 2px 4px rgba(0,0,0,0.3)"}}>
+        <div style={{height:"100%",width:`${pct}%`,background:done?`linear-gradient(90deg,${T.g1},${T.g2})`:`linear-gradient(90deg,${T.xp},${T.g1})`,borderRadius:10,transition:"width 0.7s ease",boxShadow:done?`0 0 12px ${T.g1}80`:`0 0 8px ${T.xp}60`,position:"relative"}}>
+          {pct>15&&<div style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",fontSize:9,fontWeight:900,color:"white"}}>{Math.round(pct)}%</div>}
+        </div>
+      </div>
+      {done&&<div style={{fontSize:11,color:T.g2,marginTop:6,fontWeight:800,textAlign:"center"}}>🎉 ¡Meta semanal completada! Bonus: +20 XP</div>}
+    </div>
+  );
+}
+
+
+
+// ─── Weight chart component ───────────────────────────────────────────────────
+function WeightChart({chartData,setWeightMode}){
+  if(!chartData.length)return null;
+  const f=chartData[0].weight,l=chartData[chartData.length-1].weight,diff=l-f,down=diff<0;
+  return(
+    <Card>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+        <div style={{fontSize:11,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900}}>📈 Evolución de peso</div>
+        <div style={{display:"flex",gap:12}}>
+          <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",display:"flex",alignItems:"center",gap:5}}><div style={{width:12,height:3,background:T.au1,borderRadius:2}}/> Real</div>
+          <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",display:"flex",alignItems:"center",gap:5}}><div style={{width:12,height:2,background:T.xp,borderRadius:2,borderTop:"2px dashed"}}/> Tendencia</div>
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height={200}>
+        <ComposedChart data={chartData} margin={{top:5,right:5,left:-22,bottom:0}}>
+          <XAxis dataKey="date" tickFormatter={d=>d.slice(5)} tick={{fontSize:9,fill:T.t2}} tickLine={false} axisLine={false}/>
+          <YAxis domain={["auto","auto"]} tick={{fontSize:9,fill:T.t2}} tickLine={false} axisLine={false}/>
+          <Tooltip content={<CTip/>}/>
+          <Line type="monotone" dataKey="weight" stroke={T.au1} strokeWidth={2.5} dot={{r:4.5,fill:T.au1,strokeWidth:0}} activeDot={{r:7,fill:T.au2}}/>
+          <Line type="monotone" dataKey="ma" stroke={T.xp} strokeWidth={2} strokeDasharray="5 3" dot={false}/>
+        </ComposedChart>
+      </ResponsiveContainer>
+      {chartData.length>=2&&(()=>{
+        // Buscar peso inicial (isInitial) o primer punto
+        const initialEntry = chartData.find(d=>d.isInitial) || chartData[0];
+        const lastEntry    = chartData[chartData.length-1];
+        const totalDiff    = lastEntry.weight - initialEntry.weight;
+        const lost         = totalDiff < 0;
+        const gained       = totalDiff > 0;
+        return(
+          <>
+            {/* Barra cambio total */}
+            <div style={{marginTop:12,padding:"11px 16px",background:"rgba(255,255,255,0.05)",borderRadius:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>Cambio total · {chartData.length} pesajes</span>
+              <span style={{fontWeight:900,fontSize:18,color:down?T.g1:T.red}}>{down?"↓":"↑"} {Math.abs(diff).toFixed(1)} kg</span>
+            </div>
+            {/* Comparativa inicial vs último — texto grande */}
+            <div style={{marginTop:14,padding:"20px 18px",background:"rgba(255,255,255,0.05)",borderRadius:18,border:`2px solid rgba(255,255,255,0.1)`,textAlign:"center"}}>
+              <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8}}>
+                Peso inicial ({initialEntry.isInitial?"al empezar":initialEntry.date.slice(5)}) → Hoy
+              </div>
+              <div style={{fontSize:42,fontWeight:900,lineHeight:1,color:T.t1}}>
+                {lost?"🪶":"💪🏼"}
+              </div>
+              <div style={{fontSize:36,fontWeight:900,color:T.wh,marginTop:6,fontFamily:"'Nunito',sans-serif",lineHeight:1}}>
+                {Math.abs(totalDiff).toFixed(1)} kg
+              </div>
+              <div style={{fontSize:16,fontWeight:800,color:T.t2,marginTop:6,fontFamily:"'DM Sans',sans-serif"}}>
+                {lost?"perdidos":gained?"ganados":totalDiff===0?"sin cambios ⚖️":""}
+              </div>
+              <div style={{fontSize:11,color:T.t2,marginTop:10,fontFamily:"'DM Sans',sans-serif"}}>
+                {initialEntry.weight} kg → {lastEntry.weight} kg
+              </div>
+            </div>
+          </>
+        );
+      })()}
+    </Card>
+  );
+}
+
+
+// ─── UserAvatar — icono genérico o foto personalizada ────────────────────────
+function UserAvatar({size=52, photoB64, initials, borderColor, onClick}){
+  const r = size * 0.22;
+
+  if(photoB64) return(
+    <div onClick={onClick} style={{
+      width:size, height:size, borderRadius:size*0.33,
+      border:`2.5px solid ${borderColor||T.au1}`,
+      boxShadow:`0 4px 0 ${T.au3}`,
+      overflow:"hidden", cursor:"pointer", flexShrink:0,
+    }}>
+      <img src={photoB64} alt="avatar"
+        style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top"}}/>
+    </div>
+  );
+
+  // Icono genérico SVG con iniciales
+  const letter = (initials||"?")[0].toUpperCase();
+  return(
+    <div onClick={onClick} style={{
+      width:size, height:size, borderRadius:size*0.33,
+      border:`2.5px solid ${borderColor||T.au1}`,
+      boxShadow:`0 4px 0 ${T.au3}`,
+      background:`linear-gradient(135deg,#2A5A2A,#1A3A10)`,
+      cursor:"pointer", flexShrink:0, position:"relative", overflow:"hidden",
+    }}>
+      <svg viewBox="0 0 52 52" width={size} height={size} style={{display:"block"}}>
+        {/* Silueta cuerpo */}
+        <circle cx="26" cy="20" r="10" fill="rgba(255,255,255,0.18)"/>
+        <ellipse cx="26" cy="44" rx="16" ry="12" fill="rgba(255,255,255,0.12)"/>
+        {/* Inicial */}
+        <text x="26" y="25" textAnchor="middle" dominantBaseline="middle"
+          fontSize={size*0.38} fontWeight="900" fill="rgba(255,255,255,0.9)"
+          fontFamily="'Nunito',sans-serif">{letter}</text>
+      </svg>
+      {/* Cámara hint — pequeño icono en esquina */}
+      <div style={{
+        position:"absolute", bottom:2, right:2,
+        width:size*0.3, height:size*0.3,
+        borderRadius:"50%",
+        background:"rgba(88,204,2,0.9)",
+        display:"flex", alignItems:"center", justifyContent:"center",
+        fontSize:size*0.15,
+      }}>📷</div>
+    </div>
+  );
+}
+
+// ─── ProfileCardModal — tarjeta de perfil del paciente ──────────────────────
+function ProfileCardModal({onClose, profile, userPhoto, onSavePhoto, onSaveProfile, weights, lv, xp, streak, badges}){
+  const [photo,     setPhoto]    = useState(userPhoto||null);
+  const [editField, setEditField]= useState(null);
+  const [editVal,   setEditVal]  = useState("");
+  const fileRef = useRef(null);
+
+  const onFile = (e) => {
+    const file = e.target.files?.[0];
+    if(!file) return;
+    if(file.size > 5*1024*1024){ alert("Máximo 5MB"); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => { setPhoto(ev.target.result); onSavePhoto(ev.target.result); };
+    reader.readAsDataURL(file);
+  };
+
+  const startEdit = (field, current) => { setEditField(field); setEditVal(String(current||"")); };
+  const saveEdit  = () => { if(editField) onSaveProfile(editField, editVal); setEditField(null); };
+
+  const initW = weights.find(w=>w.isInitial)?.weight ?? profile?.initial_weight ?? "—";
+  const lastW = weights.filter(w=>!w.isInitial).slice(-1)[0]?.weight ?? "—";
+
+  const DataRow = ({label, value, field}) => (
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 0",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:10,color:T.t2,textTransform:"uppercase",letterSpacing:"0.08em",fontFamily:"'DM Sans',sans-serif",marginBottom:3}}>{label}</div>
+        {editField===field?(
+          <input autoFocus value={editVal} onChange={e=>setEditVal(e.target.value)}
+            onKeyDown={e=>{if(e.key==="Enter")saveEdit();if(e.key==="Escape")setEditField(null);}}
+            type={field==="weight"?"number":"text"} step={field==="weight"?"0.1":undefined}
+            style={{background:"rgba(255,255,255,0.1)",border:`1.5px solid ${T.g1}`,borderRadius:10,padding:"6px 10px",color:T.wh,fontSize:15,fontWeight:700,fontFamily:"'DM Sans',sans-serif",width:"90%",outline:"none"}}
+          />
+        ):(
+          <div style={{fontSize:16,fontWeight:800,color:T.wh,fontFamily:"'DM Sans',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+            {value}{field==="weight"&&value!=="—"?" kg":""}
+          </div>
+        )}
+      </div>
+      <div style={{marginLeft:12,flexShrink:0}}>
+        {editField===field?(
+          <button onClick={saveEdit} style={{background:T.g1,border:"none",borderRadius:10,padding:"7px 14px",color:"white",fontWeight:900,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>✓</button>
+        ):(
+          <button onClick={()=>startEdit(field, value)} style={{background:"rgba(255,255,255,0.08)",border:"1.5px solid rgba(255,255,255,0.14)",borderRadius:10,padding:"7px 10px",color:T.t2,fontSize:16,cursor:"pointer",lineHeight:1}}>✏️</button>
+        )}
+      </div>
+    </div>
+  );
+
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:11000,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(8px)",display:"flex",alignItems:"center",justifyContent:"center",padding:20,overflowY:"auto"}} onClick={onClose}>
+      <div style={{background:`linear-gradient(180deg,#1E4A20,${T.bgWood} 55%)`,borderRadius:32,width:"100%",maxWidth:340,border:`2px solid ${T.bW}`,boxShadow:"0 24px 70px rgba(0,0,0,0.85)",animation:"popIn 0.35s cubic-bezier(0.34,1.56,0.64,1)",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
+
+        {/* ── Cabecera ── */}
+        <div style={{padding:"28px 24px 18px",textAlign:"center",position:"relative"}}>
+          <button onClick={onClose} style={{position:"absolute",top:14,right:14,width:32,height:32,borderRadius:"50%",background:"rgba(0,0,0,0.3)",border:"none",color:"rgba(255,255,255,0.6)",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+
+          {/* Foto + botón 📷 */}
+          <div style={{position:"relative",display:"inline-block",marginBottom:14}}>
+            <div style={{width:100,height:100,borderRadius:28,overflow:"hidden",border:`3px solid ${T.au1}`,boxShadow:`0 6px 0 ${T.au3}`,cursor:"pointer"}} onClick={()=>fileRef.current?.click()}>
+              {photo?(
+                <img src={photo} alt="avatar" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top"}}/>
+              ):(
+                <div style={{width:"100%",height:"100%",background:"linear-gradient(135deg,#2A5A2A,#1A3A10)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <span style={{fontSize:42,fontWeight:900,color:"rgba(255,255,255,0.85)",fontFamily:"'Nunito',sans-serif"}}>{(profile?.name||"?")[0].toUpperCase()}</span>
+                </div>
+              )}
+            </div>
+            <button onClick={()=>fileRef.current?.click()} style={{position:"absolute",bottom:-4,right:-4,width:32,height:32,borderRadius:"50%",background:T.g1,border:`2px solid #081208`,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 3px 0 ${T.g3}`}}>📷</button>
+            <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{display:"none"}} capture="user"/>
+          </div>
+
+          <div style={{fontSize:22,fontWeight:900,color:T.wh,marginBottom:2}}>{profile?.name?.split(" ")[0]||"—"}</div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+            <span style={{fontSize:12,color:T.au1,fontWeight:800}}>{lv.n}</span>
+            <span style={{fontSize:12,color:T.t2}}>·</span>
+            <span style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>Nivel {lv.l}</span>
+          </div>
+        </div>
+
+        {/* ── Stats ── */}
+        {(()=>{
+          const wDiff = initW!=="—" && lastW!=="—" ? (parseFloat(lastW)-parseFloat(initW)) : null;
+          const wLabel = wDiff===null ? "—" : `${wDiff>=0?"+":""}${wDiff.toFixed(1)} kg`;
+          return(
+            <div style={{display:"flex",justifyContent:"space-around",padding:"12px 20px",borderTop:"1px solid rgba(255,255,255,0.08)",borderBottom:"1px solid rgba(255,255,255,0.08)"}}>
+              {[{icon:"🔥",value:streak,label:"Racha"},{icon:"⚡",value:xp,label:"XP"},{icon:"⚖️",value:wLabel,label:"Progreso"}].map(({icon,value,label})=>(
+                <div key={label} style={{textAlign:"center"}}>
+                  <div style={{fontSize:18}}>{icon}</div>
+                  <div style={{fontSize:wLabel.length>4&&label==="Progreso"?14:20,fontWeight:900,color:T.wh,lineHeight:1.1}}>{value}</div>
+                  <div style={{fontSize:9,color:T.t2,textTransform:"uppercase",letterSpacing:"0.07em",fontFamily:"'DM Sans',sans-serif"}}>{label}</div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+
+        {/* ── Datos editables ── */}
+        <div style={{padding:"0 22px 24px"}}>
+          <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,padding:"14px 0 4px"}}>Mis datos</div>
+          <DataRow label="Nombre completo" value={profile?.name||"—"} field="name"/>
+          <DataRow label="Email"           value={profile?.email||"—"} field="email"/>
+          <DataRow label="Peso inicial"    value={initW} field="weight"/>
+          {lastW!=="—"&&String(lastW)!==String(initW)&&(
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0"}}>
+              <div>
+                <div style={{fontSize:10,color:T.t2,textTransform:"uppercase",letterSpacing:"0.08em",fontFamily:"'DM Sans',sans-serif",marginBottom:3}}>Último peso registrado</div>
+                <div style={{fontSize:16,fontWeight:800,color:T.wh,fontFamily:"'DM Sans',sans-serif"}}>{lastW} kg</div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -427,15 +881,63 @@ export default function GBHApp(){
   const [logs,    setLogs]    = useState([]);
   const [allP,    setAllP]    = useState([]);
   const [wInput,  setWInput]  = useState("");
+  const [weightMode, setWeightMode] = useState("default");
+  const [userPhoto,  setUserPhoto]  = useState(()=>lsGet("gbh:userPhoto",null));
+  const [showPhotoPicker,  setShowPhotoPicker]  = useState(false);
+  const [ranking, setRanking] = useState([]);
+  const [rankLoading, setRankLoading] = useState(false);
+  const [weightBannerDismissed, setWeightBannerDismissed] = useState(false);
+  const [showOfflineBanner,  setShowOfflineBanner]  = useState(false);
+  const [showSyncBanner,     setShowSyncBanner]     = useState(false);
+  const offlineTimerRef = useRef(null);
+  const syncTimerRef    = useRef(null); // "default" | "input" | "chart"
   const [toast,   setToast]   = useState(null);
   const [confetti,setConfetti]= useState(false);
   const [loading, setLoading] = useState(false);
   const [taps,    setTaps]    = useState(0);
   const [aName,   setAName]   = useState("");
   const [aEmail,  setAEmail]  = useState("");
+  const [aWeight, setAWeight] = useState("");
   const [streakAnim,  setStreakAnim]   = useState(false);
   const [missionsAnim,setMissionsAnim] = useState(false);
+  const [floatItems,  setFloatItems]   = useState([]);
+  const [levelUpAnim, setLevelUpAnim]  = useState(false);
+  const [levelUpNum,  setLevelUpNum]   = useState(1);
+  const prevLvRef = useRef(null);
   const tapRef=useRef(null);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [pendingSync, setPendingSync] = useState(()=>lsGet(QUEUE_KEY,[]).length);
+
+  // ── Detectar conexión y vaciar cola offline ─────────────────────────────────
+  useEffect(()=>{
+    const onOnline = async () => {
+      setIsOnline(true);
+      // Ocultar banner offline
+      setShowOfflineBanner(false);
+      if(offlineTimerRef.current) clearTimeout(offlineTimerRef.current);
+      const q = lsGet(QUEUE_KEY, []);
+      if(q.length){
+        const ok = await flushQueue();
+        setPendingSync(lsGet(QUEUE_KEY,[]).length);
+        setShowSyncBanner(true);
+        if(syncTimerRef.current) clearTimeout(syncTimerRef.current);
+        syncTimerRef.current = setTimeout(() => setShowSyncBanner(false), 6000);
+        if(ok) showT({icon:"📶",title:"Datos sincronizados",sub:`${q.length} acción${q.length>1?"es":""} enviada${q.length>1?"s":""} a la nube ✅`});
+      }
+    };
+    const onOffline = () => {
+      setIsOnline(false);
+      setShowOfflineBanner(true);
+      if(offlineTimerRef.current) clearTimeout(offlineTimerRef.current);
+      offlineTimerRef.current = setTimeout(() => setShowOfflineBanner(false), 7000);
+    };
+    window.addEventListener("online",  onOnline);
+    window.addEventListener("offline", onOffline);
+    // Flush inmediato al montar si hay cola pendiente
+    if(navigator.onLine) flushQueue().then(()=>setPendingSync(lsGet(QUEUE_KEY,[]).length));
+    return ()=>{ window.removeEventListener("online",onOnline); window.removeEventListener("offline",onOffline); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
 
   // Auto-login: si ya existe sesión guardada, cargar directamente
   useEffect(()=>{
@@ -468,7 +970,10 @@ export default function GBHApp(){
     if(t){setTLog({diet:t.diet,steps:t.steps,hydration:t.hydration,sleep:t.sleep});setSteps(t.sc||0);}
     setWeights(lsGet(`gbh:weights:${p.id}`,[]).sort((a,b)=>a.date>b.date?1:-1));
     setBadges(lsGet(`gbh:badges:${p.id}`,[]) );
+    setWeightBannerDismissed(false);
     setScreen("main");
+    // Vaciar cola pendiente al cargar el perfil
+    if(navigator.onLine) flushQueue().then(()=>setPendingSync(lsGet(QUEUE_KEY,[]).length));
   },[]);
 
   const doAuth=async()=>{
@@ -478,9 +983,17 @@ export default function GBHApp(){
     if(r?.length){lsSet(`gbh:p:${r[0].id}`,r[0]);lsSet("gbh:lastEmail",email);await loadP(r[0]);setLoading(false);return;}
     const lid=lsGet(`gbh:em:${email}`,null);
     if(lid){const lp=lsGet(`gbh:p:${lid}`,null);if(lp){lsSet("gbh:lastEmail",email);await loadP(lp);setLoading(false);return;}}
-    const np={id:crypto.randomUUID(),name,email,xp:0,gems:0,shields:0};
+    const np={id:crypto.randomUUID(),name,email,xp:0,gems:0,shields:0,initial_weight:parseFloat(aWeight)||null};
     const cr=await sbReq("POST","profiles",np);const fp=cr?.[0]||np;
     lsSet(`gbh:p:${fp.id}`,fp);lsSet(`gbh:em:${email}`,fp.id);lsSet("gbh:lastEmail",email);
+    // Guardar peso inicial como primer punto de la gráfica
+    const initW=parseFloat(aWeight);
+    if(!isNaN(initW)&&initW>20&&initW<300){
+      const initDate="2000-01-01"; // fecha ficticia antigua para que quede como "origen"
+      const initEntry={date:initDate,weight:initW,isInitial:true};
+      lsSet(`gbh:weights:${fp.id}`,[initEntry]);
+      await sbReq("POST","weight_logs",{profile_id:fp.id,log_date:initDate,weight_kg:initW});
+    }
     await loadP(fp);setLoading(false);
   };
 
@@ -492,13 +1005,24 @@ export default function GBHApp(){
     if(idx>=0)l[idx]=e;else l.push(e);
     setLogs(l);lsSet(`gbh:logs:${profile.id}`,l);
     await sbReq("POST","daily_logs",{...e,log_date:today,diet_followed:nl.diet,steps_done:nl.steps,hydration_done:nl.hydration,sleep_done:nl.sleep});
+    setPendingSync(lsGet(QUEUE_KEY,[]).length);
   },[profile,logs]);
 
   const addXG=useCallback(async(ax,ag)=>{
     if(!profile)return;
-    const u={...profile,xp:(profile.xp||0)+ax,gems:(profile.gems||0)+ag};
+    const prevXP=profile.xp||0;
+    const u={...profile,xp:prevXP+ax,gems:(profile.gems||0)+ag};
     setProfile(u);lsSet(`gbh:p:${u.id}`,u);
     await sbReq("PATCH",`profiles?id=eq.${profile.id}`,{xp:u.xp,gems:u.gems});
+    setPendingSync(lsGet(QUEUE_KEY,[]).length);
+    // Float reward chips
+    const chips=[];
+    if(ax>0)chips.push({id:Date.now()+"xp",label:`+${ax} XP ⚡`,color:"#C8FF40"});
+    if(ag>0)chips.push({id:Date.now()+"g", label:`+${ag} 💎`,color:"#FFD700"});
+    if(chips.length){setFloatItems(chips);setTimeout(()=>setFloatItems([]),1600);}
+    // Level-up check
+    const oldLv=getLevel(prevXP),newLv=getLevel(u.xp);
+    if(newLv.l>oldLv.l){setLevelUpNum(newLv.l);setLevelUpAnim(true);setTimeout(()=>setLevelUpAnim(false),3100);}
   },[profile]);
 
   const showT=(t)=>{setToast(t);setTimeout(()=>setToast(null),4200);};
@@ -538,15 +1062,99 @@ export default function GBHApp(){
     else await saveLog(tLog,sc);
   },[tLog,saveLog,addXG]);
 
-  const saveW=async()=>{
+  const saveW=async(isEdit=false)=>{
     const val=parseFloat(wInput);if(!isWeekend()||isNaN(val)||val<20||val>300)return;
-    const today=toKey(),nw=weights.filter(w=>w.date!==today);
+    const today=toKey();
+    // Detectar si ya existía registro HOY (edición) o es nuevo
+    const alreadyLogged=!!weights.find(w=>w.date===today);
+    const nw=weights.filter(w=>w.date!==today);
     nw.push({date:today,weight:val});nw.sort((a,b)=>a.date>b.date?1:-1);
     setWeights(nw);lsSet(`gbh:weights:${profile.id}`,nw);setWInput("");
     await sbReq("POST","weight_logs",{profile_id:profile.id,log_date:today,weight_kg:val});
-    await addXG(10,5);
-    if(nw.length>=4){const l4=nw.slice(-4).map(w=>w.weight);const ma=l4.reduce((a,b)=>a+b,0)/4;if(val<ma){setConfetti(true);setTimeout(()=>setConfetti(false),2400);showT({icon:"📉",title:"¡Tendencia bajando!",sub:"La línea va en la dirección correcta 💚"});}}
-    await chkBadges(streak,nw,badges);
+    // Solo dar XP/gemas la primera vez, no en ediciones
+    if(!alreadyLogged&&!isEdit){
+      await addXG(10,5);
+      if(nw.length>=4){const l4=nw.slice(-4).map(w=>w.weight);const ma=l4.reduce((a,b)=>a+b,0)/4;if(val<ma){setConfetti(true);setTimeout(()=>setConfetti(false),2400);showT({icon:"📉",title:"¡Tendencia bajando!",sub:"La línea va en la dirección correcta 💚"});}}
+      await chkBadges(streak,nw,badges);
+    }
+    // Tras guardar: ir directamente a la gráfica (modo vista)
+    setWeightMode("chart");
+  };
+
+  const saveUserPhoto = (b64) => {
+    setUserPhoto(b64);
+    lsSet("gbh:userPhoto", b64);
+  };
+
+  const saveProfileField = async (field, val) => {
+    if(!profile) return;
+    let updated = {...profile};
+    if(field==="name")  updated.name  = val.trim();
+    if(field==="email") updated.email = val.trim().toLowerCase();
+    if(field==="weight"){
+      const w = parseFloat(val);
+      if(!isNaN(w)&&w>20&&w<300){
+        updated.initial_weight = w;
+        const nw = weights.filter(x=>!x.isInitial);
+        nw.unshift({date:"2000-01-01",weight:w,isInitial:true});
+        setWeights(nw);
+        lsSet(`gbh:weights:${profile.id}`, nw);
+        await sbReq("POST","weight_logs",{profile_id:profile.id,log_date:"2000-01-01",weight_kg:w});
+      }
+    }
+    setProfile(updated);
+    lsSet(`gbh:p:${updated.id}`, updated);
+    await sbReq("PATCH",`profiles?id=eq.${profile.id}`,{name:updated.name,email:updated.email,initial_weight:updated.initial_weight});
+  };
+
+  const loadRanking = async () => {
+    setRankLoading(true);
+    // Intentar Supabase primero
+    const data = await sbReq("GET","profiles?select=id,name,xp,gems&order=xp.desc&limit=50");
+    if(data?.length){
+      // Calcular racha local de cada perfil (desde localStorage si existe)
+      const enriched = data.map(p=>{
+        const logs = lsGet(`gbh:logs:${p.id}`,[]);
+        let streak = 0;
+        const d = new Date();
+        while(true){
+          if(logs.find(l=>l.date===toKey(d)&&l.diet)){streak++;d.setDate(d.getDate()-1);}
+          else break;
+        }
+        // Peso inicial y último peso registrado
+        const wLogs = lsGet(`gbh:weights:${p.id}`,[]);
+        const initEntry = wLogs.find(w=>w.isInitial);
+        const lastEntry = wLogs.filter(w=>!w.isInitial).slice(-1)[0];
+        const initW2 = initEntry?.weight ?? p.initial_weight ?? null;
+        const lastW2 = lastEntry?.weight ?? null;
+        const weightDiff = (initW2!==null&&lastW2!==null) ? parseFloat((lastW2-initW2).toFixed(1)) : null;
+        const weightAbs  = weightDiff!==null ? Math.abs(weightDiff) : 0; // para ranking
+        return {...p, streak, weightDiff, weightAbs};
+      });
+      enriched.sort((a,b)=>b.weightAbs-a.weightAbs||(b.xp||0)-(a.xp||0));
+      setRanking(enriched);
+    } else {
+      // Fallback: solo perfiles en localStorage
+      const local = Object.keys(localStorage)
+        .filter(k=>k.startsWith("gbh:p:"))
+        .map(k=>lsGet(k,{}))
+        .filter(p=>p.id&&p.name);
+      const enriched = local.map(p=>{
+        const logs = lsGet(`gbh:logs:${p.id}`,[]);
+        let streak=0;const d=new Date();
+        while(true){if(logs.find(l=>l.date===toKey(d)&&l.diet)){streak++;d.setDate(d.getDate()-1);}else break;}
+        const wLogs2 = lsGet(`gbh:weights:${p.id}`,[]);
+        const initE = wLogs2.find(w=>w.isInitial);
+        const lastE = wLogs2.filter(w=>!w.isInitial).slice(-1)[0];
+        const iW = initE?.weight ?? p.initial_weight ?? null;
+        const lW2 = lastE?.weight ?? null;
+        const wDiff2 = (iW!==null&&lW2!==null) ? parseFloat((lW2-iW).toFixed(1)) : null;
+        return {...p, streak, weightDiff:wDiff2, weightAbs:wDiff2!==null?Math.abs(wDiff2):0};
+      }).sort((a,b)=>(b.xp||0)-(a.xp||0));
+      enriched.sort((a,b)=>b.weightAbs-a.weightAbs||(b.xp||0)-(a.xp||0));
+      setRanking(enriched);
+    }
+    setRankLoading(false);
   };
 
   const tapSheep=()=>{const n=taps+1;setTaps(n);if(tapRef.current)clearTimeout(tapRef.current);tapRef.current=setTimeout(()=>setTaps(0),2500);if(n>=5){setScreen("admin");loadAdmin();setTaps(0);}};
@@ -568,12 +1176,18 @@ export default function GBHApp(){
     @keyframes fadeInOut{0%{opacity:0}10%{opacity:1}75%{opacity:1}100%{opacity:0}}
     @keyframes scaleIn{0%{transform:scale(0.5);opacity:0}100%{transform:scale(1);opacity:1}}
     @keyframes zFloat{0%{transform:translateY(0);opacity:1}100%{transform:translateY(-24px);opacity:0}}
+    @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+    @keyframes slideDown{from{transform:translateY(-100%);opacity:0}to{transform:translateY(0);opacity:1}} @keyframes slideUp{from{transform:translateY(0);opacity:1}to{transform:translateY(-100%);opacity:0}}
+    @keyframes floatUp{0%{transform:translateY(0);opacity:1}80%{opacity:1}100%{transform:translateY(-90px);opacity:0}}
     @keyframes sparkle0{0%,100%{opacity:1;transform:scale(1) rotate(0deg)}50%{opacity:0.5;transform:scale(1.3) rotate(20deg)}}
     @keyframes sparkle1{0%,100%{opacity:0.7;transform:scale(0.9)}50%{opacity:1;transform:scale(1.2)}}
     @keyframes sparkle2{0%,100%{opacity:1;transform:scale(1.1) rotate(-15deg)}50%{opacity:0.6;transform:scale(0.8) rotate(15deg)}}
     input::placeholder{color:rgba(255,255,255,0.22)}input:focus{outline:none!important;border-color:rgba(88,204,2,0.75)!important}
     ::-webkit-scrollbar{width:0}button:active{transform:scale(0.94)!important;transition:transform 0.08s!important}
   `;
+
+  // Cargar ranking cuando se activa la pestaña
+  useEffect(()=>{ if(tab==="ranking") loadRanking(); },[tab]);
 
   const tabSt=(a)=>({flex:1,padding:"10px 0 8px",background:"none",border:"none",color:a?T.au1:T.t2,fontSize:9,fontWeight:a?900:700,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,textTransform:"uppercase",letterSpacing:"0.07em",transition:"all 0.18s",fontFamily:"'Nunito',sans-serif"});
   const inp={width:"100%",background:"rgba(255,255,255,0.07)",border:`2px solid ${T.bW}`,borderRadius:16,padding:"15px 18px",color:T.cr,fontSize:16,fontWeight:700,fontFamily:"'DM Sans',sans-serif"};
@@ -591,10 +1205,21 @@ export default function GBHApp(){
         <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>Nombre completo</div>
         <input type="text" value={aName} onChange={e=>setAName(e.target.value)} placeholder="Nombre Apellido" style={{...inp,marginBottom:16}}/>
         <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>Email</div>
-        <input type="email" value={aEmail} onChange={e=>setAEmail(e.target.value)} placeholder="nombre@ejemplo.com" onKeyDown={e=>e.key==="Enter"&&doAuth()} style={{...inp,marginBottom:22}}/>
-        <button onClick={doAuth} disabled={loading||!aName.trim()||!aEmail.trim()} style={{width:"100%",padding:"17px 20px",borderRadius:18,border:`3px solid ${T.g3}`,cursor:"pointer",fontSize:17,fontWeight:900,background:loading||!aName.trim()||!aEmail.trim()?"rgba(255,255,255,0.12)":`linear-gradient(135deg,${T.g1},${T.g2})`,color:loading||!aName.trim()||!aEmail.trim()?T.t2:"white",boxShadow:loading||!aName.trim()||!aEmail.trim()?"none":`0 6px 0 ${T.g3}`,transition:"all 0.15s",fontFamily:"'Nunito',sans-serif"}}>
-          {loading?"Cargando...":"¡Empezar mi aventura! 🚀"}
-        </button>
+        <input type="email" value={aEmail} onChange={e=>setAEmail(e.target.value)} placeholder="nombre@ejemplo.com" style={{...inp,marginBottom:16}}/>
+        <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>Peso actual</div>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
+          <input type="number" value={aWeight} onChange={e=>setAWeight(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doAuth()} placeholder="75.5" step="0.1" min="20" max="300"
+            style={{...inp,flex:1}}/>
+          <span style={{color:T.t2,fontSize:15,fontWeight:700,flexShrink:0}}>kg</span>
+        </div>
+        <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:20}}>
+          💡 Será tu punto de partida en la gráfica de evolución
+        </div>
+        {(()=>{const dis=loading||!aName.trim()||!aEmail.trim()||!aWeight||isNaN(parseFloat(aWeight));return(
+          <button onClick={doAuth} disabled={dis} style={{width:"100%",padding:"17px 20px",borderRadius:18,border:`3px solid ${T.g3}`,cursor:dis?"not-allowed":"pointer",fontSize:17,fontWeight:900,background:dis?"rgba(255,255,255,0.12)":`linear-gradient(135deg,${T.g1},${T.g2})`,color:dis?T.t2:"white",boxShadow:dis?"none":`0 6px 0 ${T.g3}`,transition:"all 0.15s",fontFamily:"'Nunito',sans-serif"}}>
+            {loading?"Cargando...":"¡Empezar mi aventura! 🚀"}
+          </button>
+        );})()}
       </Card>
     </div>
   );
@@ -646,6 +1271,22 @@ export default function GBHApp(){
       <Confetti active={confetti}/>
       <StreakOverlay active={streakAnim} streak={streak+1}/>
       <MissionsOverlay active={missionsAnim}/>
+      {floatItems.length>0&&<FloatReward items={floatItems}/>}
+      <LevelUpOverlay active={levelUpAnim} level={levelUpNum}/>
+      {showPhotoPicker&&(
+        <ProfileCardModal
+          onClose={()=>setShowPhotoPicker(false)}
+          profile={profile}
+          userPhoto={userPhoto}
+          onSavePhoto={saveUserPhoto}
+          onSaveProfile={saveProfileField}
+          weights={weights}
+          lv={lv}
+          xp={xp}
+          streak={streak}
+          badges={badges.length}
+        />
+      )}
 
       {/* Toast */}
       {toast&&(
@@ -660,13 +1301,64 @@ export default function GBHApp(){
       )}
 
       {/* ── HEADER ─────────────────────────────────────────────────────────── */}
+      {/* Banner offline — slideDown/slideUp automático, sin interacción */}
+      {showOfflineBanner&&(
+        <div style={{background:"rgba(200,45,45,0.92)",padding:"6px 18px",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontSize:12,fontWeight:800,color:"white",fontFamily:"'Nunito',sans-serif",animation:"slideDown 0.4s ease"}}>
+          <span>📵</span> Sin conexión — datos guardados localmente
+        </div>
+      )}
+      {/* Banner sincronizando — slideDown/slideUp automático, sin interacción */}
+      {showSyncBanner&&pendingSync>0&&(
+        <div style={{background:"rgba(180,110,0,0.92)",padding:"6px 18px",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontSize:12,fontWeight:800,color:"white",fontFamily:"'Nunito',sans-serif",animation:"slideDown 0.4s ease"}}>
+          <span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>🔄</span> Sincronizando {pendingSync} acción{pendingSync>1?"es":""}…
+        </div>
+      )}
+      {/* Banner peso fin de semana — con X para cerrar */}
+      {isWeekend()&&!weights.find(w=>w.date===toKey())&&!weightBannerDismissed&&(
+        <div style={{
+          background:"linear-gradient(135deg,rgba(255,150,0,0.97),rgba(220,100,0,0.97))",
+          padding:"11px 14px 11px 18px",
+          display:"flex", alignItems:"center", justifyContent:"space-between",
+          animation:"slideDown 0.35s ease",
+          position:"relative",
+        }}>
+          {/* Zona clickable */}
+          <div onClick={()=>{setTab("weight");setWeightMode("input");}}
+            style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}}>
+            <span style={{fontSize:24}}>⚖️</span>
+            <div>
+              <div style={{fontSize:13,fontWeight:900,color:"white",fontFamily:"'Nunito',sans-serif",lineHeight:1.2}}>
+                ¡Registra tu peso esta semana!
+              </div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.82)",fontFamily:"'DM Sans',sans-serif",marginTop:2}}>
+                Pulsa para ir al pesaje →
+              </div>
+            </div>
+          </div>
+          {/* X para cerrar */}
+          <button
+            onClick={e=>{e.stopPropagation();setWeightBannerDismissed(true);}}
+            style={{
+              width:28,height:28,borderRadius:"50%",
+              background:"rgba(0,0,0,0.22)",border:"none",
+              color:"white",fontSize:14,fontWeight:900,
+              cursor:"pointer",display:"flex",alignItems:"center",
+              justifyContent:"center",flexShrink:0,marginLeft:8,
+              lineHeight:1,
+            }}>✕</button>
+        </div>
+      )}
       <div style={{padding:"14px 18px 10px",background:"linear-gradient(180deg,rgba(26,58,16,0.9),transparent)"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
           {/* Avatar + level */}
           <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <div onClick={tapSheep} style={{width:52,height:52,borderRadius:16,cursor:"pointer",flexShrink:0,border:`2.5px solid ${T.au1}`,boxShadow:`0 4px 0 ${T.au3}`,background:"transparent",display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <Mascot expr={expr} size={52} />
-            </div>
+            <UserAvatar
+              size={52}
+              photoB64={userPhoto}
+              initials={profile?.name||"?"}
+              borderColor={allDone?T.g1:T.au1}
+              onClick={()=>setShowPhotoPicker(true)}
+            />
             <div>
               <div style={{fontSize:13,fontWeight:900,color:T.wh,lineHeight:1.1}}>{fn} · {lv.n}</div>
               <div style={{background:"rgba(255,255,255,0.12)",borderRadius:8,height:7,width:94,marginTop:6,overflow:"hidden",boxShadow:"inset 0 2px 4px rgba(0,0,0,0.4)"}}>
@@ -695,7 +1387,9 @@ export default function GBHApp(){
             </div>
           </div>
 
+          <WeeklyXPGoal logs={logs} xp={xp}/>
           <WeekPath logs={logs}/>
+          {allDone&&<TomorrowCard name={profile?.name||""} streak={streak}/>}
 
           {/* Section label */}
           <div style={{textAlign:"center",marginBottom:12}}>
@@ -706,7 +1400,7 @@ export default function GBHApp(){
 
           <MRow num="2" icon="🌙" label="Dormir al menos 7 horas" done={tLog.sleep} onToggle={()=>toggleM("sleep")} xpR={5}/>
           <StepsWidget done={tLog.steps} stepCount={steps} onToggle={()=>toggleM("steps")} onUpdateSteps={updSteps}/>
-          <MRow num="4" icon="💧" label="Hidratación completa" done={tLog.hydration} onToggle={()=>toggleM("hydration")} xpR={5}/>
+          <HydrationWidget done={tLog.hydration} onToggle={()=>toggleM("hydration")}/>
 
           {/* Shield shop */}
           <Card style={{marginTop:4}}>
@@ -723,75 +1417,258 @@ export default function GBHApp(){
         </>}
 
         {/* ── WEIGHT ────────────────────────────────────────────────────────── */}
-        {tab==="weight"&&<>
-          {!isWeekend()?(
-            <Card style={{textAlign:"center",padding:"28px 24px"}}>
-              <div style={{display:"flex",justifyContent:"center",marginBottom:16}}>
-                <Mascot expr="sleeping" size={150}/>
-              </div>
-              <div style={{fontSize:19,fontWeight:900,color:T.au1,marginBottom:10}}>La báscula está descansando</div>
-              <div style={{fontSize:14,color:T.t2,lineHeight:1.75,fontFamily:"'DM Sans',sans-serif"}}>
-                Pesarse cada día genera ansiedad innecesaria.<br/>
-                <span style={{color:T.au1,fontWeight:700}}>Vuelve el fin de semana</span> para ver<br/>tu evolución real sin distorsión diaria.
-              </div>
-              <div style={{display:"flex",justifyContent:"center",gap:8,marginTop:18}}>
-                {WLABELS.map((d,i)=>(
-                  <div key={d} style={{width:34,height:34,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,background:i>=5?`${T.g1}40`:"rgba(255,255,255,0.06)",color:i>=5?T.g2:T.t2,border:i===Math.max(0,new Date().getDay()-1)?`2.5px solid ${T.au1}`:"2px solid transparent",boxShadow:i>=5?`0 3px 0 ${T.g3}`:"none"}}>{d}</div>
-                ))}
-              </div>
-            </Card>
-          ):(
-            <Card>
-              <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:12}}>Registrar peso — ¡Fin de semana! ✅</div>
-              <div style={{display:"flex",gap:10,alignItems:"center"}}>
-                <input type="number" value={wInput} onChange={e=>setWInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveW()} placeholder="75.5" step="0.1"
-                  style={{flex:1,background:"rgba(255,255,255,0.07)",border:`3px solid ${T.g1}`,borderRadius:16,padding:"15px 18px",color:T.cr,fontSize:20,fontWeight:800,fontFamily:"'DM Sans',sans-serif"}}/>
-                <span style={{color:T.t2,fontSize:15,fontWeight:700}}>kg</span>
-                <button onClick={saveW} style={{background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:`3px solid ${T.g3}`,borderRadius:16,padding:"15px 22px",color:"white",fontWeight:900,cursor:"pointer",fontSize:15,boxShadow:`0 5px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif"}}>Guardar</button>
-              </div>
-              <div style={{fontSize:11,color:T.t2,marginTop:10,fontFamily:"'DM Sans',sans-serif"}}>💡 En ayunas, antes de desayunar — mayor precisión</div>
-            </Card>
-          )}
+        {tab==="weight"&&(()=>{
+          const todayW=weights.find(w=>w.date===toKey());
+          const isWE=isWeekend();
 
-          {chartData.length>0&&(
-            <Card>
-              <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:10}}>Evolución de peso</div>
-              <div style={{display:"flex",gap:18,marginBottom:14}}>
-                <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",display:"flex",alignItems:"center",gap:6}}><div style={{width:14,height:3,background:T.au1,borderRadius:3}}/> Peso real</div>
-                <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",display:"flex",alignItems:"center",gap:6}}><div style={{width:14,height:2,background:T.xp,borderRadius:3,borderTop:"2px dashed"}}/> Tendencia 4s</div>
-              </div>
-              <ResponsiveContainer width="100%" height={185}>
-                <ComposedChart data={chartData} margin={{top:5,right:5,left:-22,bottom:0}}>
-                  <XAxis dataKey="date" tickFormatter={d=>d.slice(5)} tick={{fontSize:9,fill:T.t2}} tickLine={false} axisLine={false}/>
-                  <YAxis domain={["auto","auto"]} tick={{fontSize:9,fill:T.t2}} tickLine={false} axisLine={false}/>
-                  <Tooltip content={<CTip/>}/>
-                  <Line type="monotone" dataKey="weight" stroke={T.au1} strokeWidth={2.5} dot={{r:4.5,fill:T.au1,strokeWidth:0}} activeDot={{r:7,fill:T.au2}}/>
-                  <Line type="monotone" dataKey="ma" stroke={T.xp} strokeWidth={2} strokeDasharray="5 3" dot={false}/>
-                </ComposedChart>
-              </ResponsiveContainer>
-              {chartData.length>=2&&(()=>{const f=chartData[0].weight,l=chartData[chartData.length-1].weight,diff=l-f,down=diff<0;return(
-                <div style={{marginTop:12,padding:"11px 16px",background:"rgba(255,255,255,0.05)",borderRadius:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <span style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>Cambio total · {chartData.length} pesajes</span>
-                  <span style={{fontWeight:900,fontSize:18,color:down?T.g1:T.red}}>{down?"↓":"↑"} {Math.abs(diff).toFixed(1)} kg</span>
+          // ── No es fin de semana ──────────────────────────────────────────
+          if(!isWE) return(
+            <>
+              <Card style={{textAlign:"center",padding:"28px 24px"}}>
+                <div style={{display:"flex",justifyContent:"center",marginBottom:16}}>
+                  <Mascot expr="sleeping" size={150}/>
                 </div>
-              );})()}
-            </Card>
-          )}
-          {weights.length===0&&isWeekend()&&(
-            <Card style={{textAlign:"center",padding:"24px"}}>
-              <div style={{display:"flex",justifyContent:"center",marginBottom:10}}><Mascot expr="idle" size={110}/></div>
-              <div style={{color:T.t2,fontSize:13,fontFamily:"'DM Sans',sans-serif"}}>Registra tu primer pesaje para ver la gráfica de evolución</div>
-            </Card>
-          )}
-        </>}
+                <div style={{fontSize:19,fontWeight:900,color:T.au1,marginBottom:10}}>La báscula está descansando</div>
+                <div style={{fontSize:14,color:T.t2,lineHeight:1.75,fontFamily:"'DM Sans',sans-serif"}}>
+                  Pesarse cada día genera ansiedad innecesaria.<br/>
+                  <span style={{color:T.au1,fontWeight:700}}>Vuelve el fin de semana</span> para ver<br/>tu evolución real sin distorsión diaria.
+                </div>
+                <div style={{display:"flex",justifyContent:"center",gap:8,marginTop:18}}>
+                  {WLABELS.map((d,i)=>(
+                    <div key={d} style={{width:34,height:34,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,background:i>=5?`${T.g1}40`:"rgba(255,255,255,0.06)",color:i>=5?T.g2:T.t2,border:i===Math.max(0,new Date().getDay()-1)?`2.5px solid ${T.au1}`:"2px solid transparent",boxShadow:i>=5?`0 3px 0 ${T.g3}`:"none"}}>{d}</div>
+                  ))}
+                </div>
+              </Card>
+              {chartData.length>0&&<WeightChart chartData={chartData} setWeightMode={setWeightMode}/>}
+            </>
+          );
+
+          // ── Modo INPUT (pantalla completa de registro) ───────────────────
+          const showInput = weightMode==="input" || (!todayW && weightMode!=="chart");
+          if(showInput) return(
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"12px 0 24px",minHeight:"60vh",justifyContent:"center"}}>
+              {/* Mascota */}
+              <div style={{marginBottom:16}}>
+                <Mascot expr="happy" size={140}/>
+              </div>
+              {/* Título */}
+              <div style={{fontSize:22,fontWeight:900,color:T.wh,marginBottom:4,textAlign:"center"}}>
+                {todayW?"Editar pesaje de hoy":"¿Cuánto pesas hoy?"}
+              </div>
+              <div style={{fontSize:13,color:T.t2,marginBottom:28,textAlign:"center",fontFamily:"'DM Sans',sans-serif"}}>
+                💡 En ayunas, antes de desayunar
+              </div>
+              {/* Input grande centrado */}
+              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:10,width:"100%",maxWidth:280}}>
+                <input
+                  type="number" value={wInput}
+                  onChange={e=>setWInput(e.target.value)}
+                  onKeyDown={e=>e.key==="Enter"&&saveW(!!todayW)}
+                  placeholder={todayW?String(todayW.weight):"75.5"}
+                  step="0.1" autoFocus
+                  style={{flex:1,background:"rgba(255,255,255,0.09)",border:`3px solid ${T.g1}`,borderRadius:20,padding:"18px 22px",color:T.cr,fontSize:32,fontWeight:900,fontFamily:"'DM Sans',sans-serif",textAlign:"center",boxShadow:`0 0 0 4px ${T.g1}22`}}
+                />
+                <span style={{fontSize:20,fontWeight:800,color:T.t2}}>kg</span>
+              </div>
+              {todayW&&<div style={{fontSize:11,color:T.t2,marginBottom:20,fontFamily:"'DM Sans',sans-serif"}}>✏️ Edición — no suma gemas ni XP</div>}
+              {/* Botón guardar */}
+              <button
+                onClick={()=>saveW(!!todayW)}
+                disabled={!wInput||isNaN(parseFloat(wInput))}
+                style={{width:"100%",maxWidth:280,padding:"18px 0",borderRadius:20,border:`3px solid ${T.g3}`,cursor:"pointer",fontSize:18,fontWeight:900,background:!wInput||isNaN(parseFloat(wInput))?"rgba(255,255,255,0.1)":`linear-gradient(135deg,${T.g1},${T.g2})`,color:!wInput||isNaN(parseFloat(wInput))?T.t2:"white",boxShadow:!wInput||isNaN(parseFloat(wInput))?"none":`0 6px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif",marginBottom:14}}
+              >
+                {todayW?"💾 Guardar cambios":"✅ Guardar peso"}
+              </button>
+              {/* Cancelar si hay datos previos */}
+              {(todayW||chartData.length>0)&&(
+                <button onClick={()=>setWeightMode("chart")} style={{background:"none",border:"none",color:T.t2,fontSize:13,fontWeight:700,cursor:"pointer",padding:"8px 20px",fontFamily:"'Nunito',sans-serif"}}>
+                  ← Ver gráfica
+                </button>
+              )}
+            </div>
+          );
+
+          // ── Modo CHART (vista de gráfica) ────────────────────────────────
+          return(
+            <>
+              {/* Card resumen del pesaje de hoy */}
+              {todayW&&(
+                <div style={{background:`linear-gradient(135deg,rgba(43,122,0,0.4),rgba(88,204,2,0.18))`,border:`2px solid ${T.g1}`,borderRadius:22,padding:"16px 20px",marginBottom:14,boxShadow:`0 6px 0 ${T.g3}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <div>
+                    <div style={{fontSize:11,color:T.g2,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4}}>✅ Pesaje registrado hoy</div>
+                    <div style={{fontSize:38,fontWeight:900,color:T.wh,lineHeight:1}}>{todayW.weight} <span style={{fontSize:18,color:T.t2}}>kg</span></div>
+                    <div style={{fontSize:11,color:T.t2,marginTop:4,fontFamily:"'DM Sans',sans-serif"}}>{todayW.date}</div>
+                  </div>
+                  {/* Botón editar (lápiz) */}
+                  <button onClick={()=>{setWInput(String(todayW.weight));setWeightMode("input");}} style={{width:48,height:48,borderRadius:16,background:"rgba(255,255,255,0.1)",border:`2px solid rgba(255,255,255,0.18)`,cursor:"pointer",fontSize:22,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 3px 0 rgba(0,0,0,0.4)"}}>
+                    ✏️
+                  </button>
+                </div>
+              )}
+              {/* Sin pesaje hoy */}
+              {!todayW&&(
+                <button onClick={()=>{setWInput("");setWeightMode("input");}} style={{width:"100%",padding:"17px 20px",borderRadius:20,border:`3px solid ${T.g3}`,cursor:"pointer",fontSize:17,fontWeight:900,background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"white",boxShadow:`0 6px 0 ${T.g3}`,animation:"glow 2.5s ease-in-out infinite",marginBottom:14,fontFamily:"'Nunito',sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:12}}>
+                  <span style={{fontSize:26}}>⚖️</span> Registrar peso de hoy
+                </button>
+              )}
+              {/* Gráfica */}
+              {chartData.length>0&&<WeightChart chartData={chartData} setWeightMode={setWeightMode}/>}
+              {/* Empty state */}
+              {chartData.length===0&&(
+                <Card style={{textAlign:"center",padding:"28px"}}>
+                  <div style={{display:"flex",justifyContent:"center",marginBottom:12}}><Mascot expr="idle" size={110}/></div>
+                  <div style={{fontSize:16,fontWeight:900,color:T.t1,marginBottom:6}}>Tu gráfica aparecerá aquí</div>
+                  <div style={{color:T.t2,fontSize:13,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6}}>Registra tu primer pesaje<br/>para ver tu evolución</div>
+                </Card>
+              )}
+            </>
+          );
+        })()}
 
         {/* ── ACHIEVEMENTS ──────────────────────────────────────────────────── */}
+        {/* ── RANKING ──────────────────────────────────────────────────────── */}
+        {tab==="ranking"&&(()=>{
+          const medal=["👑","🥈","🥉"];
+          const myPos=ranking.findIndex(p=>p.id===profile?.id);
+
+          return(<>
+            {/* Cabecera */}
+            <div style={{textAlign:"center",paddingTop:6,paddingBottom:18}}>
+              <div style={{fontSize:32,marginBottom:4}}>👑</div>
+              <div style={{fontSize:22,fontWeight:900,color:T.wh}}>Ranking</div>
+              <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:4}}>
+                Compara tu progreso con el resto
+              </div>
+            </div>
+
+            {/* Tu posición — card destacada */}
+            {myPos>=0&&(
+              <div style={{background:`linear-gradient(135deg,rgba(255,200,0,0.18),rgba(88,204,2,0.12))`,border:`2px solid ${T.au1}`,borderRadius:22,padding:"14px 18px",marginBottom:16,boxShadow:`0 5px 0 ${T.au3}`,display:"flex",alignItems:"center",gap:14}}>
+                <div style={{fontSize:28,fontWeight:900,color:T.au1,width:36,textAlign:"center",flexShrink:0}}>
+                  {myPos<3?medal[myPos]:`#${myPos+1}`}
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:2}}>Tu posición</div>
+                  <div style={{fontSize:16,fontWeight:900,color:T.wh}}>{profile?.name?.split(" ")[0]}</div>
+                </div>
+                <div style={{display:"flex",gap:12,textAlign:"center"}}>
+                  <div>
+                    <div style={{fontSize:16,fontWeight:900,color:"#FF8040"}}>{streak}🔥</div>
+                    <div style={{fontSize:9,color:T.t2,textTransform:"uppercase"}}>Racha</div>
+                  </div>
+                  <div>
+                    <div style={{fontSize:16,fontWeight:900,color:T.xp}}>{xp}⚡</div>
+                    <div style={{fontSize:9,color:T.t2,textTransform:"uppercase"}}>XP</div>
+                  </div>
+                  <div>
+                    {(()=>{const me=ranking.find(p=>p.id===profile?.id);const wd=me?.weightDiff??null;return(
+                      <div>
+                        <div style={{fontSize:14,fontWeight:900,color:T.t1}}>{wd!==null?`${wd>=0?"+":""}${wd} kg`:"—"}⚖️</div>
+                        <div style={{fontSize:9,color:T.t2,textTransform:"uppercase"}}>Peso</div>
+                      </div>
+                    );})()}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Lista */}
+            {rankLoading?(
+              <div style={{textAlign:"center",padding:"40px 0",color:T.t2,fontSize:14,fontFamily:"'DM Sans',sans-serif"}}>
+                <div style={{fontSize:32,marginBottom:12,animation:"spin 1s linear infinite",display:"inline-block"}}>🔄</div>
+                <div>Cargando ranking…</div>
+              </div>
+            ):ranking.length===0?(
+              <Card style={{textAlign:"center",padding:"32px"}}>
+                <div style={{display:"flex",justifyContent:"center",marginBottom:12}}><Mascot expr="idle" size={100}/></div>
+                <div style={{fontSize:15,fontWeight:900,color:T.t1,marginBottom:6}}>Sin datos aún</div>
+                <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>El ranking se llenará cuando más pacientes usen la app</div>
+              </Card>
+            ):(
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {ranking.map((p,i)=>{
+                  const isMe = p.id===profile?.id;
+                  const lv2  = getLevel(p.xp||0);
+                  return(
+                    <div key={p.id} style={{
+                      background: isMe
+                        ? `linear-gradient(135deg,rgba(255,200,0,0.2),rgba(88,204,2,0.12))`
+                        : i===0 ? `linear-gradient(135deg,rgba(255,200,0,0.1),rgba(255,160,0,0.06))`
+                        : T.bgWood,
+                      border:`2px solid ${isMe?T.au1:i===0?"rgba(255,200,0,0.4)":T.bW}`,
+                      borderRadius:18,
+                      padding:"12px 16px",
+                      display:"flex",alignItems:"center",gap:12,
+                      boxShadow: isMe?`0 4px 0 ${T.au3}`:i===0?`0 4px 0 rgba(180,130,0,0.4)`:"0 4px 0 rgba(0,0,0,0.35)",
+                      transition:"all 0.2s",
+                    }}>
+                      {/* Posición */}
+                      <div style={{fontSize:i<3?24:16,fontWeight:900,color:i===0?T.au1:i===1?"#C0C0C0":i===2?"#CD7F32":T.t2,width:32,textAlign:"center",flexShrink:0}}>
+                        {i<3?medal[i]:`${i+1}`}
+                      </div>
+
+                      {/* Avatar inicial */}
+                      <div style={{width:40,height:40,borderRadius:13,background:isMe?`linear-gradient(135deg,${T.au1},${T.au2})`:`linear-gradient(135deg,#2A5A2A,#1A3A10)`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:`2px solid ${isMe?T.au3:T.bW}`,boxShadow:`0 3px 0 rgba(0,0,0,0.4)`}}>
+                        <span style={{fontSize:18,fontWeight:900,color:isMe?"#1A1000":"rgba(255,255,255,0.85)",fontFamily:"'Nunito',sans-serif"}}>
+                          {(p.name||"?")[0].toUpperCase()}
+                        </span>
+                      </div>
+
+                      {/* Nombre + nivel */}
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:14,fontWeight:900,color:isMe?T.au1:T.wh,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                          {p.name?.split(" ")[0]||"—"}{isMe&&" (tú)"}
+                        </div>
+                        <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:1}}>
+                          {lv2.n} · Lv {lv2.l}
+                        </div>
+                      </div>
+
+                      {/* Stats */}
+                      <div style={{display:"flex",gap:10,textAlign:"right",flexShrink:0}}>
+                        <div>
+                          <div style={{fontSize:14,fontWeight:900,color:"#FF8040"}}>{p.streak||0}🔥</div>
+                          <div style={{fontSize:8,color:T.t2,textTransform:"uppercase",letterSpacing:"0.06em"}}>Racha</div>
+                        </div>
+                        <div>
+                          <div style={{fontSize:14,fontWeight:900,color:T.xp}}>{p.xp||0}⚡</div>
+                          <div style={{fontSize:8,color:T.t2,textTransform:"uppercase",letterSpacing:"0.06em"}}>XP</div>
+                        </div>
+                        <div>
+                          <div style={{fontSize:13,fontWeight:900,color:T.t1}}>
+                            {p.weightDiff!==null?`${p.weightDiff>=0?"+":""}${p.weightDiff} kg`:"—"}⚖️
+                          </div>
+                          <div style={{fontSize:8,color:T.t2,textTransform:"uppercase",letterSpacing:"0.06em"}}>Peso</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Refresh */}
+            <div style={{textAlign:"center",marginTop:16,marginBottom:4}}>
+              <button onClick={loadRanking} style={{background:"rgba(255,255,255,0.07)",border:`1.5px solid ${T.bW}`,borderRadius:14,padding:"10px 24px",color:T.t2,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
+                🔄 Actualizar ranking
+              </button>
+            </div>
+          </>);
+        })()}
+
         {tab==="achievements"&&<>
           <Card style={{display:"flex",justifyContent:"space-around",alignItems:"center",padding:"16px"}}>
             <div style={{textAlign:"center"}}><div style={{fontSize:26,fontWeight:900,color:T.au1}}>{badges.length}/{BADGES.length}</div><div style={{color:T.t2,fontSize:11,fontFamily:"'DM Sans',sans-serif"}}>logros</div></div>
             <div style={{textAlign:"center"}}><div style={{fontSize:26,fontWeight:900,color:T.xp}}>{xp}</div><div style={{color:T.t2,fontSize:11,fontFamily:"'DM Sans',sans-serif"}}>XP total</div></div>
             <div style={{textAlign:"center"}}><div style={{fontSize:26,fontWeight:900,color:T.au1}}>{gems}</div><div style={{color:T.t2,fontSize:11,fontFamily:"'DM Sans',sans-serif"}}>💎 gemas</div></div>
           </Card>
+          {badges.length===0&&(
+            <div style={{textAlign:"center",padding:"20px 0 10px"}}>
+              <div style={{display:"flex",justifyContent:"center",marginBottom:10}}><Mascot expr="idle" size={110}/></div>
+              <div style={{fontSize:16,fontWeight:900,color:T.t1,marginBottom:6}}>¡Desbloquea tu primer logro!</div>
+              <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6}}>Registra la dieta hoy para<br/>conseguir tu primera medalla 🏅</div>
+            </div>
+          )}
           {badges.length>=3&&(
             <div style={{display:"flex",justifyContent:"center",marginBottom:10}}>
               <Mascot expr={badges.length>=6?"legend":"excited"} size={130}/>
@@ -817,7 +1694,7 @@ export default function GBHApp(){
 
       {/* ── BOTTOM NAV ────────────────────────────────────────────────────── */}
       <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:420,background:"rgba(8,18,8,0.97)",backdropFilter:"blur(30px)",borderTop:`3px solid ${T.bW}`,display:"flex",padding:"10px 0 10px",zIndex:100}}>
-        {[{id:"home",icon:"🏠",l:"Inicio"},{id:"weight",icon:"⚖️",l:"Peso"},{id:"achievements",icon:"🏅",l:"Logros"}].map(({id,icon,l})=>(
+        {[{id:"home",icon:"🏠",l:"Inicio"},{id:"weight",icon:"⚖️",l:"Peso"},{id:"ranking",icon:"👑",l:"Ranking"},{id:"achievements",icon:"🏅",l:"Logros"}].map(({id,icon,l})=>(
           <button key={id} onClick={()=>setTab(id)} style={tabSt(tab===id)}>
             <span style={{fontSize:26,filter:tab===id?"none":"grayscale(0.6)",transition:"all 0.2s"}}>{icon}</span>
             <span>{l}</span>
