@@ -819,7 +819,7 @@ function ProfileCardModal({onClose, profile, userPhoto, onSavePhoto, onSaveProfi
               )}
             </div>
             <button onClick={()=>fileRef.current?.click()} style={{position:"absolute",bottom:-4,right:-4,width:32,height:32,borderRadius:"50%",background:T.g1,border:`2px solid #081208`,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 3px 0 ${T.g3}`}}>📷</button>
-            <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{display:"none"}} capture="user"/>
+            <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{display:"none"}}/>
           </div>
 
           <div style={{fontSize:22,fontWeight:900,color:T.wh,marginBottom:2}}>{profile?.name?.split(" ")[0]||"—"}</div>
@@ -887,6 +887,9 @@ export default function GBHApp(){
   const [ranking, setRanking] = useState([]);
   const [rankLoading, setRankLoading] = useState(false);
   const [weightBannerDismissed, setWeightBannerDismissed] = useState(false);
+  const [pwaPrompt,    setPwaPrompt]    = useState(null);
+  const [pwaDismissed, setPwaDismissed] = useState(()=>lsGet("gbh:pwaDismissed",false));
+  const [pwaInstalled, setPwaInstalled] = useState(()=>window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone===true);
   const [showOfflineBanner,  setShowOfflineBanner]  = useState(false);
   const [showSyncBanner,     setShowSyncBanner]     = useState(false);
   const offlineTimerRef = useRef(null);
@@ -907,6 +910,14 @@ export default function GBHApp(){
   const tapRef=useRef(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [pendingSync, setPendingSync] = useState(()=>lsGet(QUEUE_KEY,[]).length);
+
+  // ── PWA install prompt ──────────────────────────────────────────────────────
+  useEffect(()=>{
+    const handler = (e) => { e.preventDefault(); setPwaPrompt(e); };
+    window.addEventListener("beforeinstallprompt", handler);
+    window.addEventListener("appinstalled", () => { setPwaInstalled(true); setPwaPrompt(null); });
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  },[]);
 
   // ── Detectar conexión y vaciar cola offline ─────────────────────────────────
   useEffect(()=>{
@@ -1313,6 +1324,36 @@ export default function GBHApp(){
           <span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>🔄</span> Sincronizando {pendingSync} acción{pendingSync>1?"es":""}…
         </div>
       )}
+      {/* Banner instalación PWA */}
+      {!pwaInstalled&&!pwaDismissed&&(pwaPrompt||/iphone|ipad|ipod/i.test(navigator.userAgent))&&(
+        <div style={{background:"linear-gradient(135deg,rgba(26,58,16,0.98),rgba(43,100,25,0.98))",padding:"10px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,borderBottom:`1px solid ${T.g3}`,animation:"slideDown 0.35s ease"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,flex:1}}>
+            <div style={{width:36,height:36,borderRadius:10,background:T.g1,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:20}}>🐑</div>
+            <div>
+              <div style={{fontSize:12,fontWeight:900,color:T.wh,fontFamily:"'Nunito',sans-serif",lineHeight:1.2}}>
+                {pwaPrompt?"Instalar GBH en tu móvil":"Añade GBH a tu pantalla"}
+              </div>
+              <div style={{fontSize:10,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:1}}>
+                {pwaPrompt?"Sin navegador · Funciona offline":"Safari → Compartir → Añadir a inicio"}
+              </div>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8,flexShrink:0,alignItems:"center"}}>
+            {pwaPrompt&&(
+              <button onClick={async()=>{
+                pwaPrompt.prompt();
+                const {outcome}=await pwaPrompt.userChoice;
+                if(outcome==="accepted")setPwaInstalled(true);
+                setPwaPrompt(null);
+              }} style={{background:T.g1,border:`2px solid ${T.g3}`,borderRadius:12,padding:"7px 14px",color:"white",fontWeight:900,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif",boxShadow:`0 3px 0 ${T.g3}`}}>
+                Instalar
+              </button>
+            )}
+            <button onClick={()=>{setPwaDismissed(true);lsSet("gbh:pwaDismissed",true);}} style={{background:"none",border:"none",color:"rgba(255,255,255,0.45)",fontSize:18,cursor:"pointer",padding:"4px 6px",lineHeight:1}}>✕</button>
+          </div>
+        </div>
+      )}
+
       {/* Banner peso fin de semana — con X para cerrar */}
       {isWeekend()&&!weights.find(w=>w.date===toKey())&&!weightBannerDismissed&&(
         <div style={{
