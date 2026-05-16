@@ -1927,10 +1927,10 @@ export default function GBHApp(){
                 </div>
                 <div style={{fontSize:10,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:1,lineHeight:1.4}}>
                   {isIOS
-                    ? "Toca 𝗦𝗵𝗮𝗿𝗲 □↑ → "Añadir a inicio""
+                    ? "Toca Share □↑ → 'Añadir a inicio'"
                     : pwaPrompt
                       ? "Pulsa Instalar para añadirlo sin navegador"
-                      : "Menú ⋮ → "Añadir a pantalla de inicio""}
+                      : "Menú ⋮ → 'Añadir a pantalla de inicio'"}
                 </div>
               </div>
             </div>
