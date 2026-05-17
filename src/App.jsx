@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { ComposedChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 // ─── Supabase ────────────────────────────────────────────────────────────────
@@ -1601,7 +1601,36 @@ function ProfileCardModal({onClose, profile, userPhoto, onSavePhoto, onSaveProfi
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════════════════════
-export default function GBHApp(){
+
+// ─── Error Boundary — muestra el error en vez de pantalla en blanco ──────────
+class ErrorBoundary extends React.Component {
+  constructor(props){ super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(e){ return { error: e }; }
+  render(){
+    if(this.state.error){
+      return(
+        <div style={{minHeight:"100vh",background:"#0A1A0F",display:"flex",flexDirection:"column",
+          alignItems:"center",justifyContent:"center",padding:24,color:"white",fontFamily:"monospace"}}>
+          <div style={{fontSize:40,marginBottom:16}}>💥</div>
+          <div style={{fontSize:18,fontWeight:700,marginBottom:12,color:"#FF4B4B"}}>Error de renderizado</div>
+          <div style={{fontSize:12,color:"rgba(255,255,255,0.7)",background:"rgba(255,0,0,0.1)",
+            border:"1px solid rgba(255,0,0,0.3)",borderRadius:8,padding:16,maxWidth:380,
+            wordBreak:"break-all",whiteSpace:"pre-wrap",textAlign:"left"}}>
+            {this.state.error?.message || String(this.state.error)}
+          </div>
+          <button onClick={()=>this.setState({error:null})}
+            style={{marginTop:20,padding:"10px 24px",background:"#58CC02",border:"none",
+              borderRadius:12,color:"white",fontWeight:700,cursor:"pointer",fontSize:14}}>
+            Reintentar
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function GBHApp(){
   const [screen,  setScreen]  = useState("auth");
   const [tab,     setTab]     = useState("home");
   const [profile, setProfile] = useState(null);
@@ -1639,7 +1668,7 @@ export default function GBHApp(){
   const [weightBannerDismissed, setWeightBannerDismissed] = useState(false);
   const [pwaPrompt,    setPwaPrompt]    = useState(null);
   const [pwaDismissed, setPwaDismissed] = useState(()=>lsGet("gbh:pwaDismissed",false));
-  const [pwaInstalled, setPwaInstalled] = useState(()=>window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone===true);
+  const [pwaInstalled, setPwaInstalled] = useState(()=>{try{return window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone===true;}catch{return false;}});
   const [showOfflineBanner,  setShowOfflineBanner]  = useState(false);
   const [showSyncBanner,     setShowSyncBanner]     = useState(false);
   const offlineTimerRef = useRef(null);
@@ -2862,4 +2891,9 @@ export default function GBHApp(){
       </div>
     </div>
   );
+}
+
+// ─── Wrapped export with Error Boundary ──────────────────────────────────────
+export default function App(){
+  return <ErrorBoundary><GBHApp/></ErrorBoundary>;
 }
