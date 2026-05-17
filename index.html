@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <!-- ── PWA esencial ─────────────────────────────────────────── -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#1A3A10" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- ── iOS Safari ────────────────────────────────────────────── -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="GBH" />
+    <link rel="apple-touch-icon" href="/icons/icon-152x152.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192x192.png" />
+
+    <!-- ── Favicon ───────────────────────────────────────────────── -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-96x96.png" />
+    <link rel="shortcut icon" href="/icons/icon-96x96.png" />
+
+    <!-- ── SEO ───────────────────────────────────────────────────── -->
+    <title>GBH Nutrición</title>
+    <meta name="description" content="Tu compañero de hábitos saludables" />
+    <meta name="msapplication-TileImage" content="/icons/icon-144x144.png" />
+    <meta name="msapplication-TileColor" content="#1A3A10" />
+
+    <!-- ── OneSignal SDK (notificaciones push) ───────────────────── -->
+    <!-- IMPORTANTE: Sustituir TU_ONESIGNAL_APP_ID por tu App ID real de OneSignal -->
+    <script>
+      window.OneSignalDeferred = window.OneSignalDeferred || [];
+    </script>
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+
+    <!-- ── Fuentes ───────────────────────────────────────────────── -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+
+    <!-- ── Service Worker (PWA offline) ──────────────────────────── -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(reg => console.log('GBH SW registrado:', reg.scope))
+            .catch(err => console.warn('SW error:', err));
+        });
+      }
+    </script>
+  </body>
+</html>
