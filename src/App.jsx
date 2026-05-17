@@ -381,7 +381,7 @@ function getBubbleMsg(name,streak,expr){
   if(expr==="excited")     return`🔥 ¡${streak} días seguidos! ¡Imparable, ${n}!`;
   if(expr==="happy")       return`✅ ¡Dieta registrada! Sigue así, ${n}`;
   if(expr==="sleeping")    return`😴 Buen descanso, ${n}. ¡Mañana a tope!`;
-  if(!dietDone&&new Date().getHours()>=20) return`⚠️ ${n}, ¡aún puedes registrar la dieta! No pierdas la racha 🔥`;
+  if(expr==="sad"&&new Date().getHours()>=20) return`⚠️ ${n}, ¡aún puedes registrar la dieta! No pierdas la racha 🔥`;
   if(expr==="sad")         return`💚 Hola ${n}! Hoy es el día para empezar`;
   return`¡Hola ${n}! ¿Listo para marcar el día? 🌱`;
 }
