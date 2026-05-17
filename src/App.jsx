@@ -1463,7 +1463,7 @@ function UserAvatar({size=52, photoB64, initials, borderColor, onClick}){
 }
 
 // ─── ProfileCardModal — tarjeta de perfil del paciente ──────────────────────
-function ProfileCardModal({onClose, profile, userPhoto, onSavePhoto, onSaveProfile, weights, lv, xp, streak, badges}){
+function ProfileCardModal({onClose, profile, userPhoto, onSavePhoto, onSaveProfile, weights, lv, xp, streak, badges, onSubscribeNotifications}){
   const [photo,     setPhoto]    = useState(userPhoto||null);
   const [editField, setEditField]= useState(null);
   const [editVal,   setEditVal]  = useState("");
@@ -1574,7 +1574,7 @@ function ProfileCardModal({onClose, profile, userPhoto, onSavePhoto, onSaveProfi
               </div>
             </div>
             {typeof Notification!=="undefined"&&Notification.permission!=="granted"&&(
-              <button onClick={subscribeNotifications} style={{
+              <button onClick={onSubscribeNotifications} style={{
                 background:"rgba(100,130,255,0.15)",border:"1.5px solid rgba(100,130,255,0.4)",
                 borderRadius:10,padding:"7px 12px",color:"rgba(150,170,255,0.9)",
                 fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
@@ -2021,7 +2021,7 @@ function GBHApp(){
 
   const CSS=`
     @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&family=DM+Sans:wght@400;500;700&display=swap');
-    *{box-sizing:border-box;margin:0;padding:0}body{background:${T.bg};font-family:'Nunito',sans-serif}
+    *{box-sizing:border-box;margin:0;padding:0}html,body{background:${T.bg};font-family:'Nunito',sans-serif;min-height:100vh}
     @keyframes aura{0%,100%{opacity:0.5;transform:scale(1)}50%{opacity:1;transform:scale(1.08)}}
     @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
     @keyframes bounce{0%,100%{transform:translateY(0) rotate(-3deg)}40%{transform:translateY(-16px) rotate(3deg)}65%{transform:translateY(-6px) rotate(-1deg)}} @keyframes headTilt{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
@@ -2318,6 +2318,7 @@ function GBHApp(){
           xp={xp}
           streak={streak}
           badges={badges.length}
+          onSubscribeNotifications={subscribeNotifications}
         />
       )}
 
