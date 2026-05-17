@@ -5,7 +5,7 @@ import { ComposedChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 
 const SB  = "https://kszytoufvqogcitzbzqs.supabase.co";
 const KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtzenl0b3VmdnFvZ2NpdHpienFzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1OTQzOTgsImV4cCI6MjA5NDE3MDM5OH0.OcOUrgbyAL6aPBSW_hSNapmwSYMV5mNjLrJCmRghg-c";
 
-
+// ─── Mascot image path (upload avatar.jpg to /public in GitHub) ───────────────
 
 // ─── Design tokens ───────────────────────────────────────────────────────────
 const T = {
@@ -121,9 +121,9 @@ const sbReq = async(method, path, body=null) => {
 
 
 // ─── Avatar base GBH (oveja 3D) — fondo transparente ────────────────────────
-// Las 3 resoluciones evitan re-escalar en cada uso // 320px — pantalla inicio // 160px — modales
+// Las 3 resoluciones evitan re-escalar en cada uso
 
-// ─── AvatarDisplay — delega en el Mascot SVG (sin imágenes base64) ───────────
+// ─── AvatarDisplay usa directamente el Mascot SVG ──────────────────────────
 function AvatarDisplay({expr="idle", size=200}){
   return <Mascot expr={expr} size={size}/>;
 }
@@ -1574,7 +1574,7 @@ function ProfileCardModal({onClose, profile, userPhoto, onSavePhoto, onSaveProfi
               </div>
             </div>
             {typeof Notification!=="undefined"&&Notification.permission!=="granted"&&(
-              <button onClick={onSubscribeNotifications} style={{
+              <button onClick={onSubscribeNotifications||subscribeNotifications} style={{
                 background:"rgba(100,130,255,0.15)",border:"1.5px solid rgba(100,130,255,0.4)",
                 borderRadius:10,padding:"7px 12px",color:"rgba(150,170,255,0.9)",
                 fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
@@ -2021,7 +2021,7 @@ function GBHApp(){
 
   const CSS=`
     @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&family=DM+Sans:wght@400;500;700&display=swap');
-    *{box-sizing:border-box;margin:0;padding:0}html,body{background:${T.bg};font-family:'Nunito',sans-serif;min-height:100vh}
+    *{box-sizing:border-box;margin:0;padding:0}body{background:${T.bg};font-family:'Nunito',sans-serif}
     @keyframes aura{0%,100%{opacity:0.5;transform:scale(1)}50%{opacity:1;transform:scale(1.08)}}
     @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
     @keyframes bounce{0%,100%{transform:translateY(0) rotate(-3deg)}40%{transform:translateY(-16px) rotate(3deg)}65%{transform:translateY(-6px) rotate(-1deg)}} @keyframes headTilt{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
@@ -2864,30 +2864,26 @@ function GBHApp(){
   );
 }
 
-// ─── Error Boundary — captura errores de render y los muestra ────────────────
+// ─── Error Boundary ──────────────────────────────────────────────────────────
 class ErrorBoundary extends React.Component {
-  constructor(props){ super(props); this.state = { err: null }; }
-  static getDerivedStateFromError(e){ return { err: e }; }
-  componentDidCatch(e, info){ console.error("GBH Error:", e, info); }
+  constructor(props){ super(props); this.state={err:null}; }
+  static getDerivedStateFromError(e){ return {err:e}; }
+  componentDidCatch(e){ console.error("GBH:",e.message); }
   render(){
     if(this.state.err) return(
       <div style={{minHeight:"100vh",background:"#0A1A0F",display:"flex",
         flexDirection:"column",alignItems:"center",justifyContent:"center",
         padding:24,color:"white",fontFamily:"monospace"}}>
         <div style={{fontSize:48,marginBottom:12}}>💥</div>
-        <div style={{fontSize:16,fontWeight:700,color:"#FF4B4B",marginBottom:12}}>
-          Error en la app
-        </div>
-        <div style={{fontSize:12,color:"rgba(255,255,255,0.75)",
-          background:"rgba(255,0,0,0.12)",border:"1px solid rgba(255,0,0,0.3)",
-          borderRadius:8,padding:16,maxWidth:360,wordBreak:"break-all",
-          whiteSpace:"pre-wrap",textAlign:"left",lineHeight:1.6}}>
-          {this.state.err?.message || String(this.state.err)}
+        <div style={{fontSize:16,fontWeight:700,color:"#FF4B4B",marginBottom:12}}>Error en la app</div>
+        <div style={{fontSize:12,color:"rgba(255,255,255,0.75)",background:"rgba(255,0,0,0.12)",
+          border:"1px solid rgba(255,0,0,0.3)",borderRadius:8,padding:16,maxWidth:360,
+          wordBreak:"break-all",whiteSpace:"pre-wrap",textAlign:"left",lineHeight:1.6}}>
+          {this.state.err?.message||String(this.state.err)}
         </div>
         <button onClick={()=>this.setState({err:null})}
-          style={{marginTop:20,padding:"12px 28px",background:"#58CC02",
-            border:"none",borderRadius:14,color:"white",fontWeight:900,
-            cursor:"pointer",fontSize:15,fontFamily:"'Nunito',sans-serif"}}>
+          style={{marginTop:20,padding:"12px 28px",background:"#58CC02",border:"none",
+            borderRadius:14,color:"white",fontWeight:900,cursor:"pointer",fontSize:15}}>
           Reintentar
         </button>
       </div>
@@ -2895,7 +2891,6 @@ class ErrorBoundary extends React.Component {
     return this.props.children;
   }
 }
-
 export default function App(){
   return <ErrorBoundary><GBHApp/></ErrorBoundary>;
 }
