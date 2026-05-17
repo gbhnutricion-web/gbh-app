@@ -5,7 +5,7 @@ import { ComposedChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 
 const SB  = "https://kszytoufvqogcitzbzqs.supabase.co";
 const KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtzenl0b3VmdnFvZ2NpdHpienFzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1OTQzOTgsImV4cCI6MjA5NDE3MDM5OH0.OcOUrgbyAL6aPBSW_hSNapmwSYMV5mNjLrJCmRghg-c";
 
-// ─── Avatar: se usa el componente Mascot SVG (más ligero) ───────────────────
+
 
 // ─── Design tokens ───────────────────────────────────────────────────────────
 const T = {
@@ -121,13 +121,60 @@ const sbReq = async(method, path, body=null) => {
 
 
 // ─── Avatar base GBH (oveja 3D) — fondo transparente ────────────────────────
-// Las 3 resoluciones evitan re-escalar en cada uso
- // 320px — pantalla inicio
- // 160px — modales
+// Las 3 resoluciones evitan re-escalar en cada uso // 320px — pantalla inicio // 160px — modales
 
-// ─── AvatarDisplay — usa el Mascot SVG directamente (sin base64) ────────────
-function AvatarDisplay({expr="idle", size=200}){
-  return <Mascot expr={expr} size={size}/>;
+// Emoji flotante según expresión del día
+const EXPR_EMOJI = {
+  idle:        "🙂",
+  happy:       "😄",
+  excited:     "🤩",
+  celebrating: "🎉",
+  sad:         "😔",
+  sleeping:    "💤",
+  legend:      "👑",
+};
+
+// ─── AvatarDisplay — imagen real + emoji flotante ─────────────────────────────
+// Sustituye al pixel-art. En el futuro: src viene de Supabase Storage (avatar elegido).
+function AvatarDisplay({expr="idle", size=200, src=null}){
+  const imgSrc = src || (size>=200 ? AV_LARGE : size>=120 ? AV_MEDIUM : AV_LARGE);
+  const emoji  = EXPR_EMOJI[expr] || "🙂";
+
+  // Tamaño del emoji relativo a la imagen
+  const em = Math.max(24, Math.round(size*0.28));
+
+  return(
+    <div style={{position:"relative",width:size,height:size,flexShrink:0}}>
+      <img
+        src={imgSrc}
+        alt="GBH mascota"
+        style={{
+          width:"100%",height:"100%",
+          objectFit:"contain",
+          filter:"drop-shadow(0 4px 12px rgba(0,0,0,0.5))",
+        }}
+      />
+      {/* Emoji flotante — esquina inferior derecha */}
+      <div style={{
+        position:"absolute",
+        bottom: Math.round(size*0.04),
+        right:  Math.round(size*0.02),
+        fontSize:em,
+        lineHeight:1,
+        filter:"drop-shadow(0 2px 4px rgba(0,0,0,0.6))",
+        animation:expr==="celebrating"?"bounce 0.5s ease-in-out infinite"
+                 :expr==="legend"    ?"pulse 1.5s ease-in-out infinite"
+                 :expr==="excited"   ?"bounce 0.8s ease-in-out 3"
+                 :expr==="sleeping"  ?"breatheSlow 4s ease-in-out infinite"
+                 :expr==="idle"      ?"breathe 3s ease-in-out infinite"
+                 :"none",
+        userSelect:"none",
+        pointerEvents:"none",
+      }}>
+        {emoji}
+      </div>
+    </div>
+  );
 }
 
 // ─── Pixel-art mascota GBH — cuernos curvados, lana rizada, 7 expresiones ────
@@ -1441,15 +1488,11 @@ function UserAvatar({size=52, photoB64, initials, borderColor, onClick}){
       background:`linear-gradient(135deg,#2A5A2A,#1A3A10)`,
       cursor:"pointer", flexShrink:0, position:"relative", overflow:"hidden",
     }}>
-      <svg viewBox="0 0 52 52" width={size} height={size} style={{display:"block"}}>
-        {/* Silueta cuerpo */}
-        <circle cx="26" cy="20" r="10" fill="rgba(255,255,255,0.18)"/>
-        <ellipse cx="26" cy="44" rx="16" ry="12" fill="rgba(255,255,255,0.12)"/>
-        {/* Inicial */}
-        <text x="26" y="25" textAnchor="middle" dominantBaseline="middle"
-          fontSize={size*0.38} fontWeight="900" fill="rgba(255,255,255,0.9)"
-          fontFamily="'Nunito',sans-serif">{letter}</text>
-      </svg>
+      <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",
+        justifyContent:"center",fontSize:size*0.4,fontWeight:900,
+        color:"rgba(255,255,255,0.9)",fontFamily:"'Nunito',sans-serif"}}>
+        {letter}
+      </div>
       {/* Cámara hint — pequeño icono en esquina */}
       <div style={{
         position:"absolute", bottom:2, right:2,
@@ -1601,35 +1644,6 @@ function ProfileCardModal({onClose, profile, userPhoto, onSavePhoto, onSaveProfi
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════════════════════
-
-// ─── Error Boundary — muestra el error en vez de pantalla en blanco ──────────
-class ErrorBoundary extends React.Component {
-  constructor(props){ super(props); this.state = { error: null }; }
-  static getDerivedStateFromError(e){ return { error: e }; }
-  render(){
-    if(this.state.error){
-      return(
-        <div style={{minHeight:"100vh",background:"#0A1A0F",display:"flex",flexDirection:"column",
-          alignItems:"center",justifyContent:"center",padding:24,color:"white",fontFamily:"monospace"}}>
-          <div style={{fontSize:40,marginBottom:16}}>💥</div>
-          <div style={{fontSize:18,fontWeight:700,marginBottom:12,color:"#FF4B4B"}}>Error de renderizado</div>
-          <div style={{fontSize:12,color:"rgba(255,255,255,0.7)",background:"rgba(255,0,0,0.1)",
-            border:"1px solid rgba(255,0,0,0.3)",borderRadius:8,padding:16,maxWidth:380,
-            wordBreak:"break-all",whiteSpace:"pre-wrap",textAlign:"left"}}>
-            {this.state.error?.message || String(this.state.error)}
-          </div>
-          <button onClick={()=>this.setState({error:null})}
-            style={{marginTop:20,padding:"10px 24px",background:"#58CC02",border:"none",
-              borderRadius:12,color:"white",fontWeight:700,cursor:"pointer",fontSize:14}}>
-            Reintentar
-          </button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
 function GBHApp(){
   const [screen,  setScreen]  = useState("auth");
   const [tab,     setTab]     = useState("home");
@@ -2893,7 +2907,30 @@ function GBHApp(){
   );
 }
 
-// ─── Wrapped export with Error Boundary ──────────────────────────────────────
+// ─── Error Boundary ───────────────────────────────────────────────────────────
+class ErrorBoundary extends React.Component {
+  constructor(props){ super(props); this.state={err:null}; }
+  static getDerivedStateFromError(e){ return {err:e}; }
+  render(){
+    if(this.state.err) return(
+      <div style={{minHeight:"100vh",background:"#0A1A0F",display:"flex",flexDirection:"column",
+        alignItems:"center",justifyContent:"center",padding:24,color:"white"}}>
+        <div style={{fontSize:48,marginBottom:12}}>💥</div>
+        <div style={{fontSize:16,fontWeight:700,color:"#FF4B4B",marginBottom:12}}>Error en la app</div>
+        <div style={{fontSize:12,color:"rgba(255,255,255,0.7)",background:"rgba(255,0,0,0.1)",
+          border:"1px solid rgba(255,0,0,0.3)",borderRadius:8,padding:16,maxWidth:360,
+          wordBreak:"break-all",textAlign:"left",whiteSpace:"pre-wrap"}}>
+          {this.state.err?.message||String(this.state.err)}
+        </div>
+        <button onClick={()=>this.setState({err:null})} style={{marginTop:16,padding:"10px 24px",
+          background:"#58CC02",border:"none",borderRadius:12,color:"white",fontWeight:700,cursor:"pointer"}}>
+          Reintentar
+        </button>
+      </div>
+    );
+    return this.props.children;
+  }
+}
 export default function App(){
   return <ErrorBoundary><GBHApp/></ErrorBoundary>;
 }
