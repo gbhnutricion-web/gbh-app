@@ -1719,8 +1719,8 @@ export default function GBHApp(){
     if(typeof window.OneSignalDeferred === "undefined") return;
     window.OneSignalDeferred.push(async (OneSignal)=>{
       await OneSignal.init({
-        appId: "TU_ONESIGNAL_APP_ID", // ← Reemplazar con tu App ID real
-        safari_web_id: "web.onesignal.auto.TU_SAFARI_ID", // ← Solo si quieres Safari Mac
+        appId: "fc697ca2-52eb-4c9e-9301-531d417fe37a",
+        safari_web_id: "web.onesignal.auto.6514249a-4cb8-451b-a889-88f5913c9a7f",
         notifyButton: { enable: false }, // No mostrar el botón flotante de OneSignal
         allowLocalhostAsSecureOrigin: true,
       });
