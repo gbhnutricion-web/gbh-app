@@ -1843,6 +1843,8 @@ function GBHApp(){
   const [pwaInstalled, setPwaInstalled] = useState(()=>{try{return window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone===true;}catch{return false;}});
   const [showOfflineBanner,  setShowOfflineBanner]  = useState(false);
   const [showSyncBanner,     setShowSyncBanner]     = useState(false);
+  const [updateAvailable,    setUpdateAvailable]    = useState(false);
+  const swRegistrationRef = useRef(null);
   const offlineTimerRef = useRef(null);
   const syncTimerRef    = useRef(null); // "default" | "input" | "chart"
   const [toast,   setToast]   = useState(null);
@@ -1857,6 +1859,7 @@ function GBHApp(){
   const [authErr, setAuthErr] = useState("");
   const [dailyRecipe,setDailyRecipe] = useState(null);
   const [recipeLoading,setRecipeLoading] = useState(false);
+  const [recipeRefreshes,setRecipeRefreshes] = useState(()=>lsGet(`gbh:recipe:refreshes:${toKey()}`,0));
   const [streakAnim,  setStreakAnim]   = useState(false);
   const [missionsAnim,setMissionsAnim] = useState(false);
   const [floatItems,  setFloatItems]   = useState([]);
@@ -1880,6 +1883,30 @@ function GBHApp(){
         notifyButton: { enable: false }, // No mostrar el botón flotante de OneSignal
         allowLocalhostAsSecureOrigin: true,
       });
+    });
+  },[]);
+
+  // ── Service Worker — detección de nueva versión ─────────────────────────────
+  useEffect(()=>{
+    if(!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.register("/sw.js").then((reg)=>{
+      swRegistrationRef.current = reg;
+      // Ya hay un SW esperando (ej: recargó con pestaña abierta)
+      if(reg.waiting){ setUpdateAvailable(true); return; }
+      // SW encontró actualización mientras la app estaba abierta
+      reg.addEventListener("updatefound",()=>{
+        const newSW = reg.installing;
+        newSW?.addEventListener("statechange",()=>{
+          if(newSW.state==="installed" && navigator.serviceWorker.controller){
+            setUpdateAvailable(true);
+          }
+        });
+      });
+    }).catch(err=>console.warn("[SW] registro fallido:",err));
+    // Cuando el nuevo SW toma el control → recarga limpia automática
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener("controllerchange",()=>{
+      if(!refreshing){ refreshing=true; window.location.reload(); }
     });
   },[]);
 
@@ -2802,6 +2829,35 @@ function GBHApp(){
             </div>
           </div>
           <button onClick={()=>setQuizBannerDismissed(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:"50%",width:28,height:28,color:"rgba(255,255,255,0.6)",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
+        </div>
+      )}
+      {/* Banner nueva versión disponible */}
+      {updateAvailable&&(
+        <div style={{background:"linear-gradient(135deg,#1A3A00,#2B5C00)",padding:"10px 14px",
+          display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,
+          borderBottom:`2px solid ${T.g1}`,animation:"slideDown 0.35s ease",zIndex:200}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,flex:1}}>
+            <div style={{fontSize:24,lineHeight:1}}>🆕</div>
+            <div>
+              <div style={{fontSize:12,fontWeight:900,color:T.wh,fontFamily:"'Nunito',sans-serif",lineHeight:1.3}}>
+                Nueva versión disponible
+              </div>
+              <div style={{fontSize:10,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:1}}>
+                Toca para actualizar la app ahora
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={()=>{
+              // Decirle al SW en espera que tome el control → dispara controllerchange → reload
+              swRegistrationRef.current?.waiting?.postMessage({type:"SKIP_WAITING"});
+            }}
+            style={{background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:"none",
+              borderRadius:12,padding:"8px 16px",color:"#0A1A0F",fontWeight:900,fontSize:12,
+              cursor:"pointer",fontFamily:"'Nunito',sans-serif",
+              boxShadow:`0 3px 0 ${T.g3}`,flexShrink:0}}>
+            Actualizar
+          </button>
         </div>
       )}
       {/* Banner offline — slideDown/slideUp automático, sin interacción */}
