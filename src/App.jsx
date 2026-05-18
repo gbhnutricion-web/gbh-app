@@ -1899,21 +1899,29 @@ function GBHApp(){
   // ── Service Worker — detección de nueva versión ─────────────────────────────
   useEffect(()=>{
     if(!("serviceWorker" in navigator)) return;
+
+    const trackWaiting = (sw) => {
+      if(!sw) return;
+      swRegistrationRef.current = sw; // guardar el worker en espera directamente
+      setUpdateAvailable(true);
+    };
+
     navigator.serviceWorker.register("/sw.js").then((reg)=>{
-      swRegistrationRef.current = reg;
-      // Ya hay un SW esperando (ej: recargó con pestaña abierta)
-      if(reg.waiting){ setUpdateAvailable(true); return; }
-      // SW encontró actualización mientras la app estaba abierta
+      // ① Ya hay un SW esperando al registrar
+      if(reg.waiting){ trackWaiting(reg.waiting); return; }
+
+      // ② SW encuentra actualización mientras la app está abierta
       reg.addEventListener("updatefound",()=>{
         const newSW = reg.installing;
         newSW?.addEventListener("statechange",()=>{
           if(newSW.state==="installed" && navigator.serviceWorker.controller){
-            setUpdateAvailable(true);
+            trackWaiting(newSW);
           }
         });
       });
     }).catch(err=>console.warn("[SW] registro fallido:",err));
-    // Cuando el nuevo SW toma el control → recarga limpia automática
+
+    // ③ Cuando el nuevo SW toma el control → recarga automática
     let refreshing = false;
     navigator.serviceWorker.addEventListener("controllerchange",()=>{
       if(!refreshing){ refreshing=true; window.location.reload(); }
@@ -2885,8 +2893,17 @@ function GBHApp(){
           </div>
           <button
             onClick={()=>{
-              // Decirle al SW en espera que tome el control → dispara controllerchange → reload
-              swRegistrationRef.current?.waiting?.postMessage({type:"SKIP_WAITING"});
+              const waitingSW = swRegistrationRef.current;
+              if(waitingSW){
+                // Mandar SKIP_WAITING al worker en espera
+                waitingSW.postMessage({type:"SKIP_WAITING"});
+                // Fallback: si en 3s no hubo controllerchange, recargar forzado
+                setTimeout(()=>window.location.reload(), 3000);
+              } else {
+                // Sin SW registrado → limpiar caché manualmente y recargar
+                caches.keys().then(keys=>Promise.all(keys.map(k=>caches.delete(k))))
+                  .finally(()=>window.location.reload());
+              }
             }}
             style={{background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:"none",
               borderRadius:12,padding:"8px 16px",color:"#0A1A0F",fontWeight:900,fontSize:12,
