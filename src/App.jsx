@@ -2128,7 +2128,8 @@ function GBHApp(){
   const [showOfflineBanner,  setShowOfflineBanner]  = useState(false);
   const [showSyncBanner,     setShowSyncBanner]     = useState(false);
   const [updateAvailable,    setUpdateAvailable]    = useState(false);
-  const swRegistrationRef = useRef(null);
+  const swRegistrationRef     = useRef(null);
+  const intentionalUpdateRef  = useRef(false); // true solo cuando el usuario pulsa "Actualizar"
   const offlineTimerRef = useRef(null);
   const syncTimerRef    = useRef(null); // "default" | "input" | "chart"
   const [toast,   setToast]   = useState(null);
@@ -2195,11 +2196,14 @@ function GBHApp(){
       });
     }).catch(err=>console.warn("[SW] registro fallido:",err));
 
-    // ③ Solo recargar si ya había un SW activo antes (= es una ACTUALIZACIÓN, no primera instalación)
-    const hadController = !!navigator.serviceWorker.controller;
+    // ③ Recargar solo cuando el usuario intencionalmente pulsó "Actualizar"
+    //    (evita el bucle de primera instalación)
     let refreshing = false;
     navigator.serviceWorker.addEventListener("controllerchange",()=>{
-      if(hadController && !refreshing){ refreshing=true; window.location.reload(); }
+      if(intentionalUpdateRef.current && !refreshing){
+        refreshing = true;
+        window.location.reload();
+      }
     });
   },[]);
 
@@ -3184,14 +3188,15 @@ function GBHApp(){
           </div>
           <button
             onClick={()=>{
+              // Marcar como actualización intencional → controllerchange recargará
+              intentionalUpdateRef.current = true;
               const waitingSW = swRegistrationRef.current;
               if(waitingSW){
-                // Mandar SKIP_WAITING al worker en espera
                 waitingSW.postMessage({type:"SKIP_WAITING"});
-                // Fallback: si en 3s no hubo controllerchange, recargar forzado
-                setTimeout(()=>window.location.reload(), 3000);
+                // Fallback: si en 2s no disparó controllerchange, recargar igualmente
+                setTimeout(()=>window.location.reload(), 2000);
               } else {
-                // Sin SW registrado → limpiar caché manualmente y recargar
+                // Sin SW registrado → limpiar caché y recargar
                 caches.keys().then(keys=>Promise.all(keys.map(k=>caches.delete(k))))
                   .finally(()=>window.location.reload());
               }
