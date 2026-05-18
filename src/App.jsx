@@ -1803,7 +1803,17 @@ function ProfileCardModal({onClose, profile, userPhoto, onSavePhoto, onSaveProfi
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════════════════════
 function GBHApp(){
-  const [screen,  setScreen]  = useState("auth");
+  // Inicialización síncrona: si hay sesión guardada → "loading" (nunca "auth" en frío)
+  const [screen,  setScreen]  = useState(()=>{
+    try{
+      const em = lsGet("gbh:lastEmail",null);
+      if(!em) return "auth";
+      const lid = lsGet(`gbh:em:${em}`,null);
+      if(!lid) return "auth";
+      const lp = lsGet(`gbh:p:${lid}`,null);
+      return lp?.id ? "loading" : "auth";
+    }catch{ return "auth"; }
+  });
   const [tab,     setTab]     = useState("home");
   const [profile, setProfile] = useState(null);
   const [tLog,    setTLog]    = useState({diet:false,steps:false,hydration:false,sleep:false});
@@ -2267,8 +2277,21 @@ function GBHApp(){
   };
 
   const saveUserPhoto = (b64) => {
-    setUserPhoto(b64);
-    lsSet("gbh:userPhoto", b64);
+    // Comprimir a máx 256×256 antes de guardar (evita exceder cuota localStorage)
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 256;
+      const scale = Math.min(MAX/img.width, MAX/img.height, 1);
+      const w = Math.round(img.width  * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      const compressed = canvas.toDataURL("image/jpeg", 0.72);
+      setUserPhoto(compressed);
+      lsSet("gbh:userPhoto", compressed);
+    };
+    img.src = b64;
   };
 
   const saveProfileField = async (field, val) => {
@@ -2445,6 +2468,19 @@ function GBHApp(){
 
   const tabSt=(a)=>({flex:1,padding:"10px 0 8px",background:"none",border:"none",color:a?T.au1:T.t2,fontSize:9,fontWeight:a?900:700,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,textTransform:"uppercase",letterSpacing:"0.07em",transition:"all 0.18s",fontFamily:"'Nunito',sans-serif"});
   const inp={width:"100%",background:"rgba(255,255,255,0.07)",border:`2px solid ${T.bW}`,borderRadius:16,padding:"15px 18px",color:T.cr,fontSize:16,fontWeight:700,fontFamily:"'DM Sans',sans-serif"};
+
+  // ── LOADING (sesión guardada, cargando perfil) ────────────────────────────────
+  if(screen==="loading")return(
+    <div style={{fontFamily:"'Nunito',sans-serif",background:T.bg,minHeight:"100vh",maxWidth:420,
+      margin:"0 auto",display:"flex",flexDirection:"column",alignItems:"center",
+      justifyContent:"center",gap:20,color:T.t1}}>
+      <style>{CSS}</style>
+      <Mascot expr="happy" size={120}/>
+      <div style={{fontSize:16,fontWeight:900,color:T.g1,letterSpacing:"0.05em"}}>Cargando GBH…</div>
+      <div style={{width:48,height:48,border:`4px solid rgba(88,204,2,0.2)`,
+        borderTopColor:T.g1,borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+    </div>
+  );
 
   // ── AUTH ─────────────────────────────────────────────────────────────────────
   if(screen==="auth")return(
