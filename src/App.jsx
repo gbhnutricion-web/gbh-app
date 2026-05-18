@@ -114,6 +114,40 @@ const TRANS = {
     errorTitle:"Error en la app", retryBtn:"Reintentar",
     // Language
     langLabel:"Idioma",
+    // Steps widget
+    stepsLabel:"Dar 10.000 pasos",
+    stepsXP:"+5 XP · {n} / 10.000 pasos",
+    // Hydration
+    hydrationLabel:"Beber 1.5 - 2 L de agua",
+    hydrationXP:"+5 XP · {g}/{target} vasos",
+    hydrationDone:"¡Completado!",
+    hydrationHint:"Pulsa cada vaso al beberlo — meta: {target} vasos (≈ 2L)",
+    // Tomorrow card
+    tomorrowTitle:"¡Día completado, {n}!",
+    tomorrowDesc:"Has completado todas las misiones.",
+    tomorrowStreak:"Tu racha es de {s} 🔥 días.",
+    tomorrowBack:"🕐 Vuelve mañana",
+    // Weight chart
+    chartTitle:"📈 Evolución de peso",
+    chartReal:"Real", chartTrend:"Tendencia", chartGoalLabel:"Objetivo",
+    chartTotalChange:"Cambio total · {n} pesajes",
+    chartLost:"perdidos", chartGained:"ganados", chartNoChange:"sin cambios ⚖️",
+    chartInitialWeight:"Peso inicial ({d})",
+    chartGoalReached:"🎯 ¡Objetivo alcanzado!", chartGoalSection:"🎯 Objetivo",
+    chartGoalTarget:"Meta: {n} kg",
+    chartGoalUpdate:"¡Actualiza tu objetivo!",
+    chartGoalRemaining:"Te faltan {n} kg", chartGoalExcess:"Te sobran {n} kg",
+    chartTooltipTrend:"Tendencia:",
+    // Rewards modal
+    rewardsTitle:"Recompensas", rewardsByLevel:"Por nivel", rewardsClose:"✕ Cerrar",
+    rewardsAll:"Todos", rewardsFreeMeal:"🍽️ Comida libre",
+    rewardsReports:"📊 Informes", rewardsFrames:"🖼️ Marcos",
+    rewardsFreeMealTag:"🍽️ Comida libre", rewardsChampion:"🏆 CAMPEÓN",
+    rewardsShowingLevels:"Mostrando primeros 200 niveles · {n} niveles restantes para el máximo",
+    // Challenges banner
+    challengeBanner:"Racha en peligro · Pesaje semanal · Dieta diaria",
+    // Register weight button
+    registerWeightBtn:"⚖️ Registrar peso de hoy",
   },
   en:{
     tagline:"Your healthy habits companion 🌱",
@@ -225,6 +259,40 @@ const TRANS = {
     errorTitle:"App error", retryBtn:"Retry",
     // Language
     langLabel:"Language",
+    // Steps widget
+    stepsLabel:"Walk 10,000 steps",
+    stepsXP:"+5 XP · {n} / 10,000 steps",
+    // Hydration
+    hydrationLabel:"Drink 1.5 - 2 L of water",
+    hydrationXP:"+5 XP · {g}/{target} glasses",
+    hydrationDone:"Completed!",
+    hydrationHint:"Tap each glass as you drink it — goal: {target} glasses (≈ 2L)",
+    // Tomorrow card
+    tomorrowTitle:"Day complete, {n}!",
+    tomorrowDesc:"You've completed all missions.",
+    tomorrowStreak:"Your streak is {s} 🔥 days.",
+    tomorrowBack:"🕐 Come back tomorrow",
+    // Weight chart
+    chartTitle:"📈 Weight progress",
+    chartReal:"Actual", chartTrend:"Trend", chartGoalLabel:"Goal",
+    chartTotalChange:"Total change · {n} weigh-ins",
+    chartLost:"lost", chartGained:"gained", chartNoChange:"no change ⚖️",
+    chartInitialWeight:"Initial weight ({d})",
+    chartGoalReached:"🎯 Goal reached!", chartGoalSection:"🎯 Goal",
+    chartGoalTarget:"Target: {n} kg",
+    chartGoalUpdate:"Update your goal!",
+    chartGoalRemaining:"{n} kg to go", chartGoalExcess:"{n} kg over goal",
+    chartTooltipTrend:"Trend:",
+    // Rewards modal
+    rewardsTitle:"Rewards", rewardsByLevel:"By level", rewardsClose:"✕ Close",
+    rewardsAll:"All", rewardsFreeMeal:"🍽️ Free meal",
+    rewardsReports:"📊 Reports", rewardsFrames:"🖼️ Frames",
+    rewardsFreeMealTag:"🍽️ Free meal", rewardsChampion:"🏆 CHAMPION",
+    rewardsShowingLevels:"Showing first 200 levels · {n} levels to maximum",
+    // Challenges banner
+    challengeBanner:"Streak at risk · Weekly weigh-in · Daily diet",
+    // Register weight button
+    registerWeightBtn:"⚖️ Log today's weight",
   }
 };
 
@@ -894,6 +962,7 @@ function MRow({num,icon,label,done,onToggle,xpR=5,children}){
 
 // ─── Steps progress bar ───────────────────────────────────────────────────────
 function StepsWidget({done,stepCount,onToggle,onUpdateSteps}){
+  const t=useLang();
   const pct=Math.min((stepCount/10000)*100,100);
   return(
     <div style={{background:done?`linear-gradient(135deg,rgba(43,122,0,0.45),rgba(88,204,2,0.2))`:T.bgCard,border:`2px solid ${done?T.g1:T.bW}`,borderRadius:20,padding:"14px 16px",marginBottom:10,boxShadow:done?`0 5px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)"}}>
@@ -905,22 +974,19 @@ function StepsWidget({done,stepCount,onToggle,onUpdateSteps}){
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:22}}>👟</span>
             <div>
-              <div style={{fontSize:14,fontWeight:800,color:done?T.t1:"rgba(255,255,255,0.55)"}}>Dar 10.000 pasos</div>
-              <div style={{fontSize:11,color:T.au1,fontWeight:700}}>+5 XP · {stepCount.toLocaleString()} / 10.000 pasos</div>
+              <div style={{fontSize:14,fontWeight:800,color:done?T.t1:"rgba(255,255,255,0.55)"}}>{t("stepsLabel")}</div>
+              <div style={{fontSize:11,color:T.au1,fontWeight:700}}>{t("stepsXP",{n:stepCount.toLocaleString()})}</div>
             </div>
           </div>
         </div>
       </div>
-      {/* Progress bar */}
       <div style={{background:"rgba(255,255,255,0.08)",borderRadius:10,height:12,overflow:"hidden",marginBottom:10,boxShadow:"inset 0 2px 4px rgba(0,0,0,0.3)"}}>
         <div style={{height:"100%",width:`${pct}%`,background:`linear-gradient(90deg,${T.g1},${T.g2})`,borderRadius:10,transition:"width 0.5s ease",boxShadow:`0 0 8px ${T.g1}60`}}/>
       </div>
-      {/* Add buttons */}
       <div style={{display:"flex",gap:8}}>
         {!done&&[1000,2500,5000,10000].map(v=>(
           <button key={v} onClick={()=>onUpdateSteps(Math.min(stepCount+v,99999))} style={{flex:1,background:"rgba(255,255,255,0.08)",border:`1.5px solid rgba(255,255,255,0.12)`,borderRadius:12,padding:"10px 0",color:T.t1,fontWeight:800,fontSize:11,cursor:"pointer",boxShadow:"0 3px 0 rgba(0,0,0,0.4)",fontFamily:"'Nunito',sans-serif"}}>+{v>=1000?v/1000+"k":v}</button>
         ))}
-        
       </div>
     </div>
   );
@@ -928,9 +994,10 @@ function StepsWidget({done,stepCount,onToggle,onUpdateSteps}){
 
 // ─── Chart tooltip ────────────────────────────────────────────────────────────
 const CTip=({active,payload})=>{
+  const t=useLang();
   if(!active||!payload?.length)return null;
   const d=payload[0]?.payload;
-  return(<div style={{background:T.bgWood,border:`1px solid ${T.bA}`,borderRadius:12,padding:"8px 14px"}}><div style={{color:T.t2,fontSize:11}}>{d?.date}</div>{d?.weight&&<div style={{color:T.au1,fontWeight:800,fontSize:15}}>{d.weight} kg</div>}{d?.ma&&<div style={{color:T.xp,fontSize:12,marginTop:2}}>Tendencia: {d.ma.toFixed(1)} kg</div>}</div>);
+  return(<div style={{background:T.bgWood,border:`1px solid ${T.bA}`,borderRadius:12,padding:"8px 14px"}}><div style={{color:T.t2,fontSize:11}}>{d?.date}</div>{d?.weight&&<div style={{color:T.au1,fontWeight:800,fontSize:15}}>{d.weight} kg</div>}{d?.ma&&<div style={{color:T.xp,fontSize:12,marginTop:2}}>{t("chartTooltipTrend")} {d.ma.toFixed(1)} kg</div>}</div>);
 };
 
 // ─── Streak overlay (Duolingo-style, negro) ───────────────────────────────────
@@ -1117,16 +1184,17 @@ Gracias!`
 
 // ─── "Vuelve mañana" card ─────────────────────────────────────────────────────
 function TomorrowCard({name,streak}){
+  const t=useLang();
   const n=name.split(" ")[0];
   return(
     <div style={{background:"linear-gradient(135deg,rgba(43,122,0,0.35),rgba(88,204,2,0.15))",border:`2px solid ${T.g1}`,borderRadius:24,padding:"22px 20px",textAlign:"center",marginBottom:14,boxShadow:`0 6px 0 ${T.g3}`}}>
       <div style={{fontSize:40,marginBottom:8}}>🌙</div>
-      <div style={{fontSize:20,fontWeight:900,color:T.g2,marginBottom:6}}>¡Día completado, {n}!</div>
+      <div style={{fontSize:20,fontWeight:900,color:T.g2,marginBottom:6}}>{t("tomorrowTitle",{n})}</div>
       <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6,marginBottom:14}}>
-        Has completado todas las misiones.<br/>Tu racha es de <span style={{color:"#FF8040",fontWeight:900}}>{streak} 🔥</span> días.
+        {t("tomorrowDesc")}<br/>{t("tomorrowStreak",{s:streak})}
       </div>
       <div style={{display:"flex",justifyContent:"center",gap:10}}>
-        <div style={{background:"rgba(255,255,255,0.07)",borderRadius:16,padding:"10px 20px",fontSize:13,fontWeight:800,color:T.au1}}>🕐 Vuelve mañana</div>
+        <div style={{background:"rgba(255,255,255,0.07)",borderRadius:16,padding:"10px 20px",fontSize:13,fontWeight:800,color:T.au1}}>{t("tomorrowBack")}</div>
       </div>
     </div>
   );
@@ -1134,16 +1202,37 @@ function TomorrowCard({name,streak}){
 
 // ─── Hydration tracker (vasos de agua) ───────────────────────────────────────
 function HydrationWidget({done,onToggle}){
+  const t=useLang();
+  const todayStr = new Date().toISOString().slice(0,10);
   const [glasses,setGlasses]=useState(()=>{
-    try{return parseInt(localStorage.getItem("gbh:glasses:"+new Date().toISOString().slice(0,10))||"0");}catch{return 0;}
+    try{
+      // Solo recuperar vasos del día actual
+      const saved = localStorage.getItem("gbh:glasses:"+todayStr);
+      return saved ? Math.min(parseInt(saved)||0, 8) : 0;
+    }catch{return 0;}
   });
-  const target=8; // 8 vasos ≈ 2L
+  const target=8;
+
+  // Llamar onToggle cuando se llega al target (si aún no está done)
+  useEffect(()=>{
+    if(glasses>=target && !done) onToggle();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[glasses]);
+
+  // Si ya está done pero glasses<target (vino de server), sincronizar vasos
+  useEffect(()=>{
+    if(done && glasses<target){
+      setGlasses(target);
+      try{ localStorage.setItem("gbh:glasses:"+todayStr, target); }catch{}
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[done]);
+
   const addGlass=()=>{
-    if(done)return;
-    const ng=Math.min(glasses+1,target);
+    if(done || glasses>=target) return;
+    const ng = glasses + 1;
     setGlasses(ng);
-    try{localStorage.setItem("gbh:glasses:"+new Date().toISOString().slice(0,10),ng);}catch{}
-    if(ng>=target&&!done)onToggle();
+    try{ localStorage.setItem("gbh:glasses:"+todayStr, ng); }catch{}
   };
   const pct=Math.min((glasses/target)*100,100);
   return(
@@ -1156,17 +1245,15 @@ function HydrationWidget({done,onToggle}){
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:22}}>💧</span>
             <div>
-              <div style={{fontSize:14,fontWeight:800,color:done?T.t1:"rgba(255,255,255,0.55)"}}>Beber 1.5 - 2 L de agua</div>
-              <div style={{fontSize:11,color:T.au1,fontWeight:700}}>+5 XP · {glasses}/{target} vasos{done?" · ¡Completado!":""}</div>
+              <div style={{fontSize:14,fontWeight:800,color:done?T.t1:"rgba(255,255,255,0.55)"}}>{t("hydrationLabel")}</div>
+              <div style={{fontSize:11,color:T.au1,fontWeight:700}}>{t("hydrationXP",{g:glasses,target})}{done?` · ${t("hydrationDone")}`:""}</div>
             </div>
           </div>
         </div>
       </div>
-      {/* Barra de progreso */}
       <div style={{background:"rgba(255,255,255,0.08)",borderRadius:10,height:10,overflow:"hidden",marginBottom:10,boxShadow:"inset 0 2px 4px rgba(0,0,0,0.3)"}}>
         <div style={{height:"100%",width:`${pct}%`,background:`linear-gradient(90deg,#29B6F6,#0288D1)`,borderRadius:10,transition:"width 0.4s ease",boxShadow:"0 0 8px #29B6F660"}}/>
       </div>
-      {/* Vasos */}
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
         {Array.from({length:target},(_,i)=>(
           <button key={i} onClick={addGlass} disabled={done||i<glasses} style={{
@@ -1174,14 +1261,13 @@ function HydrationWidget({done,onToggle}){
             background:i<glasses?"rgba(41,182,246,0.25)":"rgba(255,255,255,0.06)",
             cursor:done||i<glasses?"default":"pointer",
             fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",
-            transition:"all 0.2s",
-            boxShadow:i<glasses?"0 2px 0 #0277BD":"0 2px 0 rgba(0,0,0,0.4)",
+            transition:"all 0.2s",boxShadow:i<glasses?"0 2px 0 #0277BD":"0 2px 0 rgba(0,0,0,0.4)",
           }}>
             {i<glasses?"🥤":"🫙"}
           </button>
         ))}
       </div>
-      {!done&&glasses<target&&<div style={{fontSize:10,color:T.t2,marginTop:8,fontFamily:"'DM Sans',sans-serif"}}>Pulsa cada vaso al beberlo — meta: {target} vasos (≈ 2L)</div>}
+      {!done&&glasses<target&&<div style={{fontSize:10,color:T.t2,marginTop:8,fontFamily:"'DM Sans',sans-serif"}}>{t("hydrationHint",{target})}</div>}
     </div>
   );
 }
@@ -1757,16 +1843,17 @@ function ChestOpenModal({streak, onClose, onCollect}){
 
 // ─── Weight chart component ───────────────────────────────────────────────────
 function WeightChart({chartData,setWeightMode,goalWeight}){
+  const t=useLang();
   if(!chartData.length)return null;
   const f=chartData[0].weight,l=chartData[chartData.length-1].weight,diff=l-f,down=diff<0;
   return(
     <Card>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-        <div style={{fontSize:11,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900}}>📈 Evolución de peso</div>
+        <div style={{fontSize:11,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900}}>{t("chartTitle")}</div>
         <div style={{display:"flex",gap:10,flexWrap:"wrap",justifyContent:"flex-end"}}>
-          <div style={{fontSize:10,color:T.t2,fontFamily:"'DM Sans',sans-serif",display:"flex",alignItems:"center",gap:4}}><div style={{width:12,height:3,background:T.au1,borderRadius:2}}/> Real</div>
-          <div style={{fontSize:10,color:T.t2,fontFamily:"'DM Sans',sans-serif",display:"flex",alignItems:"center",gap:4}}><div style={{width:12,height:2,background:T.xp,borderRadius:2}}/> Tendencia</div>
-          {goalWeight&&<div style={{fontSize:10,color:"#FF6B9D",fontFamily:"'DM Sans',sans-serif",display:"flex",alignItems:"center",gap:4}}><div style={{width:12,height:2,background:"#FF6B9D",borderRadius:2,borderTop:"2px dashed #FF6B9D"}}/> Objetivo</div>}
+          <div style={{fontSize:10,color:T.t2,fontFamily:"'DM Sans',sans-serif",display:"flex",alignItems:"center",gap:4}}><div style={{width:12,height:3,background:T.au1,borderRadius:2}}/> {t("chartReal")}</div>
+          <div style={{fontSize:10,color:T.t2,fontFamily:"'DM Sans',sans-serif",display:"flex",alignItems:"center",gap:4}}><div style={{width:12,height:2,background:T.xp,borderRadius:2}}/> {t("chartTrend")}</div>
+          {goalWeight&&<div style={{fontSize:10,color:"#FF6B9D",fontFamily:"'DM Sans',sans-serif",display:"flex",alignItems:"center",gap:4}}><div style={{width:12,height:2,background:"#FF6B9D",borderRadius:2,borderTop:"2px dashed #FF6B9D"}}/> {t("chartGoalLabel")}</div>}
         </div>
       </div>
       <ResponsiveContainer width="100%" height={200}>
@@ -1774,80 +1861,61 @@ function WeightChart({chartData,setWeightMode,goalWeight}){
           <XAxis dataKey="date" tickFormatter={d=>d.slice(5)} tick={{fontSize:9,fill:T.t2}} tickLine={false} axisLine={false}/>
           <YAxis domain={goalWeight?[d=>{const mn=Math.min(...chartData.map(x=>x.weight||99),goalWeight)-2;return Math.floor(mn);},"auto"]:(["auto","auto"])} tick={{fontSize:9,fill:T.t2}} tickLine={false} axisLine={false}/>
           <Tooltip content={<CTip/>}/>
-          {goalWeight&&<Line type="monotone" dataKey={()=>goalWeight} stroke="#FF6B9D" strokeWidth={2} strokeDasharray="6 4" dot={false} name="Objetivo"/>}
+          {goalWeight&&<Line type="monotone" dataKey={()=>goalWeight} stroke="#FF6B9D" strokeWidth={2} strokeDasharray="6 4" dot={false} name={t("chartGoalLabel")}/>}
           <Line type="monotone" dataKey="weight" stroke={T.au1} strokeWidth={2.5} dot={{r:4.5,fill:T.au1,strokeWidth:0}} activeDot={{r:7,fill:T.au2}}/>
           <Line type="monotone" dataKey="ma" stroke={T.xp} strokeWidth={2} strokeDasharray="5 3" dot={false}/>
         </ComposedChart>
       </ResponsiveContainer>
       {chartData.length>=2&&(()=>{
-        // Buscar peso inicial (isInitial) o primer punto
-        const initialEntry = chartData.find(d=>d.isInitial) || chartData[0];
-        const lastEntry    = chartData[chartData.length-1];
-        const totalDiff    = lastEntry.weight - initialEntry.weight;
-        const lost         = totalDiff < 0;
-        const gained       = totalDiff > 0;
+        const initialEntry=chartData.find(d=>d.isInitial)||chartData[0];
+        const lastEntry=chartData[chartData.length-1];
+        const totalDiff=lastEntry.weight-initialEntry.weight;
+        const lost=totalDiff<0,gained=totalDiff>0;
         return(
           <>
-            {/* Barra cambio total */}
             <div style={{marginTop:12,padding:"11px 16px",background:"rgba(255,255,255,0.05)",borderRadius:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <span style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>Cambio total · {chartData.length} pesajes</span>
+              <span style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>{t("chartTotalChange",{n:chartData.length})}</span>
               <span style={{fontWeight:900,fontSize:18,color:down?T.g1:T.red}}>{down?"↓":"↑"} {Math.abs(diff).toFixed(1)} kg</span>
             </div>
-            {/* Comparativa inicial vs último — texto grande */}
             <div style={{marginTop:14,padding:"20px 18px",background:"rgba(255,255,255,0.05)",borderRadius:18,border:`2px solid rgba(255,255,255,0.1)`,textAlign:"center"}}>
               <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8}}>
-                Peso inicial ({initialEntry.date.slice(5).replace("-","/")})
+                {t("chartInitialWeight",{d:initialEntry.date.slice(5).replace("-","/")})}
               </div>
-              <div style={{fontSize:42,fontWeight:900,lineHeight:1,color:T.t1}}>
-                {lost?"🪶":"💪🏼"}
-              </div>
+              <div style={{fontSize:42,fontWeight:900,lineHeight:1,color:T.t1}}>{lost?"🪶":"💪🏼"}</div>
               <div style={{fontSize:36,fontWeight:900,color:T.wh,marginTop:6,fontFamily:"'Nunito',sans-serif",lineHeight:1}}>
                 {Math.abs(totalDiff).toFixed(1)} kg
               </div>
               <div style={{fontSize:16,fontWeight:800,color:T.t2,marginTop:6,fontFamily:"'DM Sans',sans-serif"}}>
-                {lost?"perdidos":gained?"ganados":totalDiff===0?"sin cambios ⚖️":""}
+                {lost?t("chartLost"):gained?t("chartGained"):t("chartNoChange")}
               </div>
               <div style={{fontSize:11,color:T.t2,marginTop:10,fontFamily:"'DM Sans',sans-serif"}}>
                 {initialEntry.weight} kg → {lastEntry.weight} kg
               </div>
             </div>
-            {/* Progreso hacia el objetivo */}
             {goalWeight&&(()=>{
-              const toGoal      = lastEntry.weight - goalWeight;
-              const totalNeeded = initialEntry.weight - goalWeight;
-              const pct = totalNeeded===0 ? 100 : Math.min(100,Math.max(0,Math.round((1-(toGoal/totalNeeded))*100)));
-              const reached = Math.abs(toGoal)<=0.5;
-              const losing  = totalNeeded>0; // baja peso
+              const toGoal=lastEntry.weight-goalWeight;
+              const totalNeeded=initialEntry.weight-goalWeight;
+              const pct=totalNeeded===0?100:Math.min(100,Math.max(0,Math.round((1-(toGoal/totalNeeded))*100)));
+              const reached=Math.abs(toGoal)<=0.5;
+              const losing=totalNeeded>0;
               return(
-                <div style={{marginTop:12,padding:"16px 18px",
-                  background:reached?"rgba(88,204,2,0.12)":"rgba(255,107,157,0.08)",
-                  borderRadius:18,border:`2px solid ${reached?T.g1:"rgba(255,107,157,0.3)"}`,
-                }}>
+                <div style={{marginTop:12,padding:"16px 18px",background:reached?"rgba(88,204,2,0.12)":"rgba(255,107,157,0.08)",borderRadius:18,border:`2px solid ${reached?T.g1:"rgba(255,107,157,0.3)"}`}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
                     <div style={{fontSize:12,fontWeight:900,color:reached?T.g1:"#FF6B9D"}}>
-                      {reached?"🎯 ¡Objetivo alcanzado!":"🎯 Objetivo"}
+                      {reached?t("chartGoalReached"):t("chartGoalSection")}
                     </div>
                     <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>
-                      Meta: {goalWeight} kg
+                      {t("chartGoalTarget",{n:goalWeight})}
                     </div>
                   </div>
-                  {/* Barra de progreso */}
                   <div style={{background:"rgba(255,255,255,0.08)",borderRadius:10,height:10,overflow:"hidden",marginBottom:10}}>
-                    <div style={{height:"100%",width:`${pct}%`,borderRadius:10,
-                      background:reached?`linear-gradient(90deg,${T.g1},${T.g2})`:"linear-gradient(90deg,#FF6B9D,#FF4081)",
-                      transition:"width 0.8s ease",
-                      boxShadow:reached?`0 0 8px ${T.g1}60`:"0 0 8px #FF6B9D60",
-                    }}/>
+                    <div style={{height:"100%",width:`${pct}%`,borderRadius:10,background:reached?`linear-gradient(90deg,${T.g1},${T.g2})`:"linear-gradient(90deg,#FF6B9D,#FF4081)",transition:"width 0.8s ease",boxShadow:reached?`0 0 8px ${T.g1}60`:"0 0 8px #FF6B9D60"}}/>
                   </div>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                     <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>
-                      {reached
-                        ? "¡Actualiza tu objetivo!"
-                        : `Te ${losing?"faltan":"sobran"} ${Math.abs(toGoal).toFixed(1)} kg`}
+                      {reached?t("chartGoalUpdate"):losing?t("chartGoalRemaining",{n:Math.abs(toGoal).toFixed(1)}):t("chartGoalExcess",{n:Math.abs(toGoal).toFixed(1)})}
                     </div>
-                    <div style={{fontSize:14,fontWeight:900,color:reached?T.g1:"#FF6B9D"}}>
-                      {pct}%
-                    </div>
+                    <div style={{fontSize:14,fontWeight:900,color:reached?T.g1:"#FF6B9D"}}>{pct}%</div>
                   </div>
                 </div>
               );
@@ -2127,9 +2195,6 @@ function GBHApp(){
   const [pwaInstalled, setPwaInstalled] = useState(()=>{try{return window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone===true;}catch{return false;}});
   const [showOfflineBanner,  setShowOfflineBanner]  = useState(false);
   const [showSyncBanner,     setShowSyncBanner]     = useState(false);
-  const [updateAvailable,    setUpdateAvailable]    = useState(false);
-  const swRegistrationRef     = useRef(null);
-  const intentionalUpdateRef  = useRef(false); // true solo cuando el usuario pulsa "Actualizar"
   const offlineTimerRef = useRef(null);
   const syncTimerRef    = useRef(null); // "default" | "input" | "chart"
   const [toast,   setToast]   = useState(null);
@@ -2144,6 +2209,7 @@ function GBHApp(){
   const [authErr, setAuthErr] = useState("");
   const [dailyRecipe,setDailyRecipe] = useState(null);
   const [recipeLoading,setRecipeLoading] = useState(false);
+  const refreshingRef = useRef(false); // bloqueo síncrono para evitar doble tap
   const [recipeRefreshes,setRecipeRefreshes] = useState(()=>lsGet(`gbh:recipe:refreshes:${toKey()}`,0));
   const [streakAnim,  setStreakAnim]   = useState(false);
   const [missionsAnim,setMissionsAnim] = useState(false);
@@ -2171,40 +2237,35 @@ function GBHApp(){
     });
   },[]);
 
-  // ── Service Worker — detección de nueva versión ─────────────────────────────
+  // ── Service Worker — actualización automática silenciosa ───────────────────
   useEffect(()=>{
     if(!("serviceWorker" in navigator)) return;
 
-    const trackWaiting = (sw) => {
+    const applyUpdate = (sw) => {
       if(!sw) return;
-      swRegistrationRef.current = sw; // guardar el worker en espera directamente
-      setUpdateAvailable(true);
+      // Activar el nuevo SW inmediatamente y recargar
+      sw.postMessage({type:"SKIP_WAITING"});
+      sw.addEventListener("statechange", ()=>{
+        if(sw.state==="activating" || sw.state==="activated"){
+          window.location.reload();
+        }
+      });
+      // Fallback de 2s por si statechange no dispara
+      setTimeout(()=>window.location.reload(), 2000);
     };
 
     navigator.serviceWorker.register("/sw.js").then((reg)=>{
-      // ① Ya hay un SW esperando al registrar
-      if(reg.waiting){ trackWaiting(reg.waiting); return; }
+      // Ya hay un SW esperando → actualizar ahora
+      if(reg.waiting){ applyUpdate(reg.waiting); return; }
 
-      // ② SW encuentra actualización mientras la app está abierta
+      // Nuevo SW encontrado mientras la app está abierta
       reg.addEventListener("updatefound",()=>{
         const newSW = reg.installing;
         newSW?.addEventListener("statechange",()=>{
-          if(newSW.state==="installed" && navigator.serviceWorker.controller){
-            trackWaiting(newSW);
-          }
+          if(newSW.state==="installed") applyUpdate(newSW);
         });
       });
     }).catch(err=>console.warn("[SW] registro fallido:",err));
-
-    // ③ Recargar solo cuando el usuario intencionalmente pulsó "Actualizar"
-    //    (evita el bucle de primera instalación)
-    let refreshing = false;
-    navigator.serviceWorker.addEventListener("controllerchange",()=>{
-      if(intentionalUpdateRef.current && !refreshing){
-        refreshing = true;
-        window.location.reload();
-      }
-    });
   },[]);
 
   // ── PWA install prompt ──────────────────────────────────────────────────────
@@ -2257,7 +2318,13 @@ function GBHApp(){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
-  const t = useLang();
+  // t() lee directamente del estado lang (no del contexto, que está dentro del return)
+  const t = (key, vars={}) => {
+    let str = (TRANS[lang]?.[key] ?? TRANS.es[key] ?? key);
+    if(Array.isArray(str)) return str;
+    for(const [k,v] of Object.entries(vars)) str = str.split(`{${k}}`).join(String(v));
+    return str;
+  };
   const streak=useMemo(()=>{let s=0;const d=new Date();while(true){if(logs.find(l=>l.date===toKey(d)&&l.diet)){s++;d.setDate(d.getDate()-1);}else break;}return s;},[logs,tLog]);
   const xp=profile?.xp??0,gems=profile?.gems??0;
   const lv=getLevel(xp),nextLv=getNextLevel(lv);
@@ -2276,50 +2343,121 @@ function GBHApp(){
   // Carga inicial del día — gratis
   const fetchDailyRecipe = async () => {
     const todayKey = toKey();
+    // Prioridad 1: receta cambiada hoy (refresh)
+    const current = lsGet(`gbh:recipe:current:${todayKey}`, null);
+    if(current){ setDailyRecipe(current); return; }
+    // Prioridad 2: receta del día en caché
     const cached = lsGet(`gbh:recipe:${todayKey}`, null);
-    if(cached){ setDailyRecipe(cached); return; }
+    if(cached){
+      // Si es EN y aún no está traducida, traducir ahora
+      if(lang==="en" && !cached._translated){
+        setDailyRecipe(cached); // mostrar en español mientras traduce
+        const translated = await translateRecipe(cached);
+        lsSet(`gbh:recipe:${todayKey}`, translated);
+        setDailyRecipe(translated);
+      } else {
+        setDailyRecipe(cached);
+      }
+      return;
+    }
     setRecipeLoading(true);
     try {
       const d = new Date();
       const dayOfYear = Math.floor((d - new Date(d.getFullYear(),0,0)) / 86400000);
       const offset = (dayOfYear * 7 + d.getFullYear()) % 472;
       const r = await sbReq("GET", `recipes?select=*&order=id_receta.asc&limit=1&offset=${offset}`);
-      if(r?.length){ lsSet(`gbh:recipe:${todayKey}`, r[0]); setDailyRecipe(r[0]); }
+      if(r?.length){
+        const recipe = await getRecipeForDisplay(r[0]);
+        lsSet(`gbh:recipe:${todayKey}`, recipe);
+        setDailyRecipe(recipe);
+      }
     } catch(e){ console.warn("fetchDailyRecipe:", e); }
     setRecipeLoading(false);
   };
 
+  // Traduce una receta al inglés usando Claude
+  const translateRecipe = async (recipe) => {
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          model:"claude-sonnet-4-20250514",
+          max_tokens:1000,
+          messages:[{role:"user",content:`Translate this Spanish recipe to English. Return ONLY a valid JSON object with keys: nombre, tipo, ingredientes, instrucciones. Keep numbers, units and quantities unchanged. Recipe: ${JSON.stringify({nombre:recipe.nombre,tipo:recipe.tipo,ingredientes:recipe.ingredientes,instrucciones:recipe.instrucciones})}`}]
+        })
+      });
+      const data = await res.json();
+      const text = data.content?.find(b=>b.type==="text")?.text||"";
+      const parsed = JSON.parse(text.replace(/```json|```/g,"").trim());
+      return {...recipe,...parsed,_translated:true};
+    } catch(e){ console.warn("translateRecipe:",e); return recipe; }
+  };
+
+  // Aplica traducción si lang===en, con caché por receta
+  const getRecipeForDisplay = async (recipe) => {
+    if(lang!=="en") return recipe;
+    const key=`gbh:recipe:en:${recipe.id_receta}`;
+    const cached=lsGet(key,null);
+    if(cached) return cached;
+    const translated = await translateRecipe(recipe);
+    lsSet(key, translated);
+    return translated;
+  };
+
   // Refresca la receta — cuesta 10💎, máximo 3 veces al día
   const refreshRecipe = async () => {
+    // Bloqueo síncrono inmediato — evita doble tap
+    if(refreshingRef.current) return;
+    refreshingRef.current = true;
+
     const todayKey = toKey();
     const used = lsGet(`gbh:recipe:refreshes:${todayKey}`, 0);
     if(used >= 3){
-      showT({icon:"🚫",title:"Sin refrescos",sub:"Máximo 3 cambios por día. ¡Vuelve mañana!"});
-      return;
+      showT({icon:"🚫",
+        title:lang==="en"?"No more changes":"Sin refrescos",
+        sub:lang==="en"?"Max 3 changes/day. Come back tomorrow!":"Máximo 3 cambios por día. ¡Vuelve mañana!"});
+      refreshingRef.current = false; return;
     }
     if(gems < 10){
       showT({icon:"💎",title:t("insufficientGems"),sub:t("needGemsRecipe")});
-      return;
+      refreshingRef.current = false; return;
     }
+
+    // Descontar gemas y mostrar loading inmediatamente
     const newGems = gems - 10;
     const updP = {...profile, gems: newGems};
     setProfile(updP); lsSet(`gbh:p:${profile.id}`, updP);
-    await sbReq("PATCH", `profiles?id=eq.${profile.id}`, {gems: newGems});
+    setDailyRecipe(null);
+    setRecipeLoading(true);
+
+    // Guardar conteo y persistir gemas en background
     const newUsed = used + 1;
     lsSet(`gbh:recipe:refreshes:${todayKey}`, newUsed);
     setRecipeRefreshes(newUsed);
-    setRecipeLoading(true);
+    sbReq("PATCH", `profiles?id=eq.${profile.id}`, {gems: newGems}); // fire & forget
+
     try {
       const d = new Date();
       const dayOfYear = Math.floor((d - new Date(d.getFullYear(),0,0)) / 86400000);
       const base = (dayOfYear * 7 + d.getFullYear()) % 472;
       const offset = (base + newUsed * 137) % 472;
       const r = await sbReq("GET", `recipes?select=*&order=id_receta.asc&limit=1&offset=${offset}`);
-      if(r?.length){ setDailyRecipe(r[0]); }
-      const left = 3 - newUsed;
-      showT({icon:"🍰",title:"¡Nueva receta!",sub:`-10 💎 · ${left > 0 ? left+" cambio"+(left>1?"s":"")+" más hoy" : "Sin más cambios hoy"}`});
-    } catch(e){ console.warn("refreshRecipe:", e); }
+      if(r?.length){
+        const recipe = await getRecipeForDisplay(r[0]);
+        lsSet(`gbh:recipe:current:${todayKey}`, recipe);
+        setDailyRecipe(recipe);
+        const left = 3 - newUsed;
+        showT({icon:"🍰",
+          title:lang==="en"?"New recipe!":"¡Nueva receta!",
+          sub:lang==="en"
+            ?`-10 💎 · ${left>0?left+" change"+(left>1?"s":"")+" left today":"No more changes today"}`
+            :`-10 💎 · ${left>0?left+" cambio"+(left>1?"s":"")+" más hoy":"Sin más cambios hoy"}`
+        });
+      }
+    } catch(e){ console.warn("refreshRecipe:",e); }
     setRecipeLoading(false);
+    refreshingRef.current = false;
   };
 
     // ─── Restaurar datos desde Supabase cuando localStorage está vacío ─────────
@@ -3138,7 +3276,7 @@ function GBHApp(){
                 Activa los recordatorios
               </div>
               <div style={{fontSize:10,color:"rgba(180,200,255,0.8)",fontFamily:"'DM Sans',sans-serif",marginTop:1}}>
-                Racha en peligro · Pesaje semanal · Dieta diaria
+                Racha en peligro · {lang==="en"?"Weekly weigh-in · Daily diet":"Pesaje semanal · Dieta diaria"}
               </div>
             </div>
           </div>
@@ -3168,45 +3306,6 @@ function GBHApp(){
             </div>
           </div>
           <button onClick={()=>setQuizBannerDismissed(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:"50%",width:28,height:28,color:"rgba(255,255,255,0.6)",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
-        </div>
-      )}
-      {/* Banner nueva versión disponible */}
-      {updateAvailable&&(
-        <div style={{background:"linear-gradient(135deg,#1A3A00,#2B5C00)",padding:"10px 14px",
-          display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,
-          borderBottom:`2px solid ${T.g1}`,animation:"slideDown 0.35s ease",zIndex:200}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,flex:1}}>
-            <div style={{fontSize:24,lineHeight:1}}>🆕</div>
-            <div>
-              <div style={{fontSize:12,fontWeight:900,color:T.wh,fontFamily:"'Nunito',sans-serif",lineHeight:1.3}}>
-                {t("updateAvailable")}
-              </div>
-              <div style={{fontSize:10,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:1}}>
-                {t("updateDesc")}
-              </div>
-            </div>
-          </div>
-          <button
-            onClick={()=>{
-              // Marcar como actualización intencional → controllerchange recargará
-              intentionalUpdateRef.current = true;
-              const waitingSW = swRegistrationRef.current;
-              if(waitingSW){
-                waitingSW.postMessage({type:"SKIP_WAITING"});
-                // Fallback: si en 2s no disparó controllerchange, recargar igualmente
-                setTimeout(()=>window.location.reload(), 2000);
-              } else {
-                // Sin SW registrado → limpiar caché y recargar
-                caches.keys().then(keys=>Promise.all(keys.map(k=>caches.delete(k))))
-                  .finally(()=>window.location.reload());
-              }
-            }}
-            style={{background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:"none",
-              borderRadius:12,padding:"8px 16px",color:"#0A1A0F",fontWeight:900,fontSize:12,
-              cursor:"pointer",fontFamily:"'Nunito',sans-serif",
-              boxShadow:`0 3px 0 ${T.g3}`,flexShrink:0}}>
-            {t("updateBtn")}
-          </button>
         </div>
       )}
       {/* Banner offline */}
@@ -3471,7 +3570,7 @@ function GBHApp(){
               {/* Sin pesaje hoy */}
               {!todayW&&(
                 <button onClick={()=>{setWInput("");setWeightMode("input");}} style={{width:"100%",padding:"17px 20px",borderRadius:20,border:`3px solid ${T.g3}`,cursor:"pointer",fontSize:17,fontWeight:900,background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"white",boxShadow:`0 6px 0 ${T.g3}`,animation:"glow 2.5s ease-in-out infinite",marginBottom:14,fontFamily:"'Nunito',sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:12}}>
-                  <span style={{fontSize:26}}>⚖️</span> Registrar peso de hoy
+                  <span style={{fontSize:26}}>⚖️</span> {t("registerWeightBtn").replace("⚖️ ","")}
                 </button>
               )}
               {/* Gráfica */}
@@ -3660,11 +3759,16 @@ function GBHApp(){
           const r = dailyRecipe;
           const tipoColor = {
             Carne:"#E57373",Pescado:"#64B5F6",Vegetariana:"#81C784",
-            Vegana:"#A5D6A7",Postre:"#F06292",Ensalada:"#AED581","Sopa/Crema":"#FFB74D"
+            Vegana:"#A5D6A7",Postre:"#F06292",Ensalada:"#AED581","Sopa/Crema":"#FFB74D",
+            // EN equivalents
+            Meat:"#E57373",Fish:"#64B5F6",Vegetarian:"#81C784",
+            Vegan:"#A5D6A7",Dessert:"#F06292",Salad:"#AED581","Soup/Cream":"#FFB74D"
           };
           const tipoIcon = {
             Carne:"🥩",Pescado:"🐟",Vegetariana:"🥦",
-            Vegana:"🌱",Postre:"🍰",Ensalada:"🥗","Sopa/Crema":"🍲"
+            Vegana:"🌱",Postre:"🍰",Ensalada:"🥗","Sopa/Crema":"🍲",
+            Meat:"🥩",Fish:"🐟",Vegetarian:"🥦",
+            Vegan:"🌱",Dessert:"🍰",Salad:"🥗","Soup/Cream":"🍲"
           };
           const tc = r ? (tipoColor[r.tipo]||T.g1) : T.g1;
           const ti = r ? (tipoIcon[r.tipo]||"🍽️") : "🍽️";
@@ -3805,8 +3909,8 @@ function GBHApp(){
           {badges.length===0&&(
             <div style={{textAlign:"center",padding:"20px 0 10px"}}>
               <div style={{display:"flex",justifyContent:"center",marginBottom:10}}><Mascot expr="idle" size={110}/></div>
-              <div style={{fontSize:16,fontWeight:900,color:T.t1,marginBottom:6}}>¡Desbloquea tu primer logro!</div>
-              <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6}}>Registra la dieta hoy para<br/>conseguir tu primera medalla 🏅</div>
+              <div style={{fontSize:16,fontWeight:900,color:T.t1,marginBottom:6}}>{lang==="en"?"Unlock your first achievement!":"¡Desbloquea tu primer logro!"}</div>
+              <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6}}>{lang==="en"?"Log your diet today to\nearn your first medal 🏅":"Registra la dieta hoy para\nconseguir tu primera medalla 🏅"}</div>
             </div>
           )}
           {badges.length>=3&&(
@@ -3849,7 +3953,8 @@ function GBHApp(){
 
 // ─── RewardsModal — tabla de recompensas por nivel ───────────────────────────
 function RewardsModal({onClose, currentLevel}){
-  const [filter, setFilter] = React.useState("all"); // all | freemeal | milestone
+  const t=useLang();
+  const [filter, setFilter] = React.useState("all");
   const rows = [];
   for(let i=1;i<=500;i++){
     const r=LEVEL_REWARDS[i];
@@ -3864,22 +3969,18 @@ function RewardsModal({onClose, currentLevel}){
       backdropFilter:"blur(6px)",display:"flex",flexDirection:"column",
       alignItems:"center",justifyContent:"flex-start",overflowY:"auto",padding:"20px 0 40px"}}>
       <div style={{width:"100%",maxWidth:420,padding:"0 16px"}}>
-
-        {/* Header */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
           <div>
             <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:"uppercase",
-              letterSpacing:"0.1em",marginBottom:2}}>🎁 Recompensas</div>
-            <div style={{fontSize:22,fontWeight:900,color:T.wh}}>Por nivel</div>
+              letterSpacing:"0.1em",marginBottom:2}}>🎁 {t("rewardsTitle")}</div>
+            <div style={{fontSize:22,fontWeight:900,color:T.wh}}>{t("rewardsByLevel")}</div>
           </div>
           <button onClick={onClose} style={{background:T.bgCard,border:`1.5px solid ${T.bW}`,
             borderRadius:12,padding:"8px 16px",color:T.t1,fontWeight:700,cursor:"pointer",
-            fontSize:13,fontFamily:"'Nunito',sans-serif"}}>✕ Cerrar</button>
+            fontSize:13,fontFamily:"'Nunito',sans-serif"}}>{t("rewardsClose")}</button>
         </div>
-
-        {/* Filtros */}
         <div style={{display:"flex",gap:8,marginBottom:14}}>
-          {[["all","Todos"],["freemeal","🍽️ Comida libre"],["report","📊 Informes"],["frame","🖼️ Marcos"]].map(([k,l])=>(
+          {[["all",t("rewardsAll")],["freemeal",t("rewardsFreeMeal")],["report",t("rewardsReports")],["frame",t("rewardsFrames")]].map(([k,l])=>(
             <button key={k} onClick={()=>setFilter(k)} style={{
               flex:1,padding:"8px 4px",borderRadius:12,border:"none",fontSize:11,fontWeight:900,
               cursor:"pointer",fontFamily:"'Nunito',sans-serif",
@@ -3889,43 +3990,34 @@ function RewardsModal({onClose, currentLevel}){
             </button>
           ))}
         </div>
-
-        {/* Lista */}
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
           {rows.slice(0,200).map(({l,gems,shield,freeMeal,special})=>{
-            const done = l<=lv;
-            const current = l===lv;
-            const bg = current?"rgba(255,200,0,0.15)":done?"rgba(88,204,2,0.08)":"rgba(255,255,255,0.04)";
-            const border = current?`1.5px solid ${T.au2}`:done?`1px solid rgba(88,204,2,0.2)`:`1px solid rgba(255,255,255,0.06)`;
+            const done=l<=lv,current=l===lv;
+            const bg=current?"rgba(255,200,0,0.15)":done?"rgba(88,204,2,0.08)":"rgba(255,255,255,0.04)";
+            const border=current?`1.5px solid ${T.au2}`:done?`1px solid rgba(88,204,2,0.2)`:`1px solid rgba(255,255,255,0.06)`;
             return(
-              <div key={l} style={{background:bg,border,borderRadius:14,
-                padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
-                {/* Level badge */}
+              <div key={l} style={{background:bg,border,borderRadius:14,padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
                 <div style={{width:44,height:44,borderRadius:12,flexShrink:0,
                   background:done?"rgba(88,204,2,0.15)":current?"rgba(255,200,0,0.15)":"rgba(255,255,255,0.06)",
                   display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
                   border:done?`1.5px solid rgba(88,204,2,0.4)`:current?`1.5px solid ${T.au2}`:`1px solid rgba(255,255,255,0.1)`}}>
-                  <div style={{fontSize:done||current?9:9,color:done?T.g1:current?T.au1:T.t3,fontWeight:900}}>
+                  <div style={{fontSize:9,color:done?T.g1:current?T.au1:T.t3,fontWeight:900}}>
                     {done&&!current?"✅":"Lv"}
                   </div>
-                  <div style={{fontSize:13,fontWeight:900,color:done?T.g2:current?T.au1:T.t2}}>
-                    {l}
-                  </div>
+                  <div style={{fontSize:13,fontWeight:900,color:done?T.g2:current?T.au1:T.t2}}>{l}</div>
                 </div>
-                {/* Rewards */}
                 <div style={{flex:1,display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
                   <span style={{fontSize:12,fontWeight:700,color:T.au1}}>+{gems}💎</span>
-                  {freeMeal&&<span style={{fontSize:12,fontWeight:900,color:"#FFD700",
-                    background:"rgba(255,200,0,0.12)",borderRadius:8,padding:"2px 8px"}}>🍽️ Comida libre</span>}
-                  {shield&&<span style={{fontSize:11,color:"#64B5F6",fontWeight:700}}>🛡️ Escudo</span>}
-                  {special&&l===500&&<span style={{fontSize:11,color:"#CE82FF",fontWeight:700}}>🏆 CAMPEÓN</span>}
+                  {freeMeal&&<span style={{fontSize:12,fontWeight:900,color:"#FFD700",background:"rgba(255,200,0,0.12)",borderRadius:8,padding:"2px 8px"}}>{t("rewardsFreeMealTag")}</span>}
+                  {shield&&<span style={{fontSize:11,color:"#64B5F6",fontWeight:700}}>🛡️ {t("streakShield").replace("🛡️ ","")}</span>}
+                  {special&&l===500&&<span style={{fontSize:11,color:"#CE82FF",fontWeight:700}}>{t("rewardsChampion")}</span>}
                 </div>
               </div>
             );
           })}
           {filter==="all"&&<div style={{textAlign:"center",padding:"12px 0",fontSize:11,
             color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>
-            Mostrando primeros 200 niveles · {500-lv} niveles restantes para el máximo
+            {t("rewardsShowingLevels",{n:500-lv})}
           </div>}
         </div>
       </div>
