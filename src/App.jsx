@@ -1651,6 +1651,8 @@ function GBHApp(){
   const [aEmail,  setAEmail]  = useState("");
   const [aWeight, setAWeight] = useState("");
   const [aGoal,   setAGoal]   = useState("");
+  const [authMode,setAuthMode]= useState("new"); // "new" | "returning" | "checking"
+  const [authErr, setAuthErr] = useState("");
   const [streakAnim,  setStreakAnim]   = useState(false);
   const [missionsAnim,setMissionsAnim] = useState(false);
   const [floatItems,  setFloatItems]   = useState([]);
@@ -1738,8 +1740,55 @@ function GBHApp(){
     return weights.map((w,i)=>{const win=weights.slice(Math.max(0,i-3),i+1);return{...w,ma:parseFloat((win.reduce((a,b)=>a+b.weight,0)/win.length).toFixed(2))};});
   },[weights]);
 
+
+  // ─── Restaurar datos desde Supabase cuando localStorage está vacío ─────────
+  // Se llama cuando el perfil existe en Supabase pero los datos locales faltan.
+  // Esto protege contra: borrar caché, cambio de dispositivo, navegador nuevo.
+  const restoreFromServer = async (profileId) => {
+    try {
+      // 1. Restaurar logs diarios
+      const remoteLogs = await sbReq("GET", `daily_logs?profile_id=eq.${profileId}&select=*&order=log_date.asc&limit=365`);
+      if (remoteLogs?.length) {
+        const mapped = remoteLogs.map(r => ({
+          profile_id: r.profile_id,
+          date: r.log_date || r.date,
+          diet: r.diet_followed ?? r.diet ?? false,
+          steps: r.steps_done ?? r.steps ?? false,
+          hydration: r.hydration_done ?? r.hydration ?? false,
+          sleep: r.sleep_done ?? r.sleep ?? false,
+          sc: r.sc || 0,
+        }));
+        lsSet(`gbh:logs:${profileId}`, mapped);
+      }
+      // 2. Restaurar historial de peso
+      const remoteWeights = await sbReq("GET", `weight_logs?profile_id=eq.${profileId}&select=*&order=log_date.asc`);
+      if (remoteWeights?.length) {
+        const mappedW = remoteWeights.map(r => ({
+          date: r.log_date || r.date,
+          weight: r.weight_kg ?? r.weight,
+          isInitial: r.log_date === "2000-01-01",
+        }));
+        lsSet(`gbh:weights:${profileId}`, mappedW);
+      }
+      // 3. Restaurar logros desde achievements
+      const remoteAch = await sbReq("GET", `achievements?profile_id=eq.${profileId}&select=badge_id`);
+      if (remoteAch?.length) {
+        const badgeIds = remoteAch.map(r => r.badge_id);
+        lsSet(`gbh:badges:${profileId}`, badgeIds);
+      }
+    } catch(e) {
+      console.warn("restoreFromServer error:", e);
+    }
+  };
+
   const loadP=useCallback(async(p)=>{
     setProfile(p);
+    // Si localStorage está vacío y hay conexión → restaurar desde Supabase
+    const localLogs = lsGet(`gbh:logs:${p.id}`,[]);
+    const localWeights = lsGet(`gbh:weights:${p.id}`,[]);
+    if(navigator.onLine && (localLogs.length===0 || localWeights.length<=1)){
+      await restoreFromServer(p.id);
+    }
     const l=lsGet(`gbh:logs:${p.id}`,[]);setLogs(l);
     const t=l.find(x=>x.date===toKey());
     if(t){setTLog({diet:t.diet,steps:t.steps,hydration:t.hydration,sleep:t.sleep});setSteps(t.sc||0);}
@@ -1766,25 +1815,65 @@ function GBHApp(){
     if(navigator.onLine) flushQueue().then(()=>setPendingSync(lsGet(QUEUE_KEY,[]).length));
   },[]);
 
+  // Detecta si el email ya existe en Supabase al salir del campo
+  const checkEmail = async (email) => {
+    if(!email.includes("@")) return;
+    setAuthMode("checking");
+    setAuthErr("");
+    const r = await sbReq("GET", `profiles?email=eq.${email.trim().toLowerCase()}&select=id,name`);
+    if(r?.length){
+      setAuthMode("returning");
+      setAName(r[0].name || aName); // Pre-rellena el nombre si existe
+    } else {
+      setAuthMode("new");
+    }
+  };
+
   const doAuth=async()=>{
-    if(!aName.trim()||!aEmail.trim())return;setLoading(true);
-    const email=aEmail.trim().toLowerCase(),name=aName.trim();
-    let r=await sbReq("GET",`profiles?email=eq.${email}&select=*`);
-    if(r?.length){lsSet(`gbh:p:${r[0].id}`,r[0]);lsSet("gbh:lastEmail",email);await loadP(r[0]);setLoading(false);return;}
-    const lid=lsGet(`gbh:em:${email}`,null);
-    if(lid){const lp=lsGet(`gbh:p:${lid}`,null);if(lp){lsSet("gbh:lastEmail",email);await loadP(lp);setLoading(false);return;}}
-    const np={id:crypto.randomUUID(),name,email,xp:0,gems:0,shields:0,initial_weight:parseFloat(aWeight)||null,goal_weight:parseFloat(aGoal)||null};
-    const cr=await sbReq("POST","profiles",np);const fp=cr?.[0]||np;
-    lsSet(`gbh:p:${fp.id}`,fp);lsSet(`gbh:em:${email}`,fp.id);lsSet("gbh:lastEmail",email);
-    // Guardar peso inicial como primer punto de la gráfica
+    if(!aName.trim()||!aEmail.trim())return;
+    setLoading(true); setAuthErr("");
+    const email=aEmail.trim().toLowerCase(), name=aName.trim();
+
+    // 1️⃣ Buscar en Supabase (fuente de verdad)
+    const r = await sbReq("GET", `profiles?email=eq.${email}&select=*`);
+    if(r?.length){
+      // ── Usuario existente encontrado ──
+      const ep = r[0];
+      // Restaurar badges desde achievements al hacer login
+      const ach = await sbReq("GET", `achievements?profile_id=eq.${ep.id}&select=badge_id`);
+      if(ach?.length) lsSet(`gbh:badges:${ep.id}`, ach.map(a=>a.badge_id));
+      lsSet(`gbh:p:${ep.id}`, ep);
+      lsSet(`gbh:em:${email}`, ep.id);
+      lsSet("gbh:lastEmail", email);
+      await loadP(ep);
+      setLoading(false);
+      return;
+    }
+
+    // 2️⃣ Sin conexión y el usuario ya existe localmente → no crear cuenta nueva
+    if(!navigator.onLine || r === null) {
+      const lid = lsGet(`gbh:em:${email}`, null);
+      if(lid){ const lp=lsGet(`gbh:p:${lid}`,null); if(lp){ lsSet("gbh:lastEmail",email); await loadP(lp); setLoading(false); return; }}
+      setAuthErr("Sin conexión. Conéctate a internet para recuperar tu cuenta.");
+      setLoading(false);
+      return;
+    }
+
+    // 3️⃣ Usuario genuinamente nuevo → crear cuenta
+    if(!aWeight || isNaN(parseFloat(aWeight))){
+      setAuthErr("Introduce tu peso actual para comenzar.");
+      setLoading(false); return;
+    }
+    const np={id:crypto.randomUUID(),name,email,xp:0,gems:0,shields:0};
+    const cr=await sbReq("POST","profiles",np); const fp=cr?.[0]||np;
+    lsSet(`gbh:p:${fp.id}`,fp); lsSet(`gbh:em:${email}`,fp.id); lsSet("gbh:lastEmail",email);
     const initW=parseFloat(aWeight);
     if(!isNaN(initW)&&initW>20&&initW<300){
-      const initDate="2000-01-01"; // fecha ficticia antigua para que quede como "origen"
-      const initEntry={date:initDate,weight:initW,isInitial:true};
+      const initEntry={date:"2000-01-01",weight:initW,isInitial:true};
       lsSet(`gbh:weights:${fp.id}`,[initEntry]);
-      await sbReq("POST","weight_logs",{profile_id:fp.id,log_date:initDate,weight_kg:initW});
+      await sbReq("POST","weight_logs",{profile_id:fp.id,log_date:"2000-01-01",weight_kg:initW});
     }
-    await loadP(fp);setLoading(false);
+    await loadP(fp); setLoading(false);
   };
 
   const saveLog=useCallback(async(nl,sc)=>{
@@ -1794,7 +1883,7 @@ function GBHApp(){
     const e={profile_id:profile.id,date:today,...nl,sc};
     if(idx>=0)l[idx]=e;else l.push(e);
     setLogs(l);lsSet(`gbh:logs:${profile.id}`,l);
-    await sbReq("POST","daily_logs",{...e,log_date:today,diet_followed:nl.diet,steps_done:nl.steps,hydration_done:nl.hydration,sleep_done:nl.sleep});
+    await sbReq("POST","daily_logs",{profile_id:profile.id,log_date:today,diet_followed:nl.diet,steps_done:nl.steps,hydration_done:nl.hydration,sleep_done:nl.sleep,sc:sc||0});
     setPendingSync(lsGet(QUEUE_KEY,[]).length);
   },[profile,logs]);
 
@@ -2062,33 +2151,87 @@ function GBHApp(){
       <h1 style={{fontSize:32,fontWeight:900,color:T.wh,marginBottom:4,textAlign:"center",marginTop:8,textShadow:"0 2px 12px rgba(0,0,0,0.5)"}}>GBH Nutrición</h1>
       <p style={{fontSize:14,color:T.t2,marginBottom:32,textAlign:"center",fontFamily:"'DM Sans',sans-serif"}}>Tu compañero de hábitos saludables 🌱</p>
       <Card style={{width:"100%",maxWidth:360,marginBottom:0}}>
-        <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>Nombre completo</div>
-        <input type="text" value={aName} onChange={e=>setAName(e.target.value)} placeholder="Nombre Apellido" style={{...inp,marginBottom:16}}/>
+
+        {/* Email — siempre visible, es la clave de identificación */}
         <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>Email</div>
-        <input type="email" value={aEmail} onChange={e=>setAEmail(e.target.value)} placeholder="nombre@ejemplo.com" style={{...inp,marginBottom:16}}/>
-        <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>Peso actual</div>
-        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
-          <input type="number" value={aWeight} onChange={e=>setAWeight(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doAuth()} placeholder="75.5" step="0.1" min="20" max="300"
-            style={{...inp,flex:1}}/>
-          <span style={{color:T.t2,fontSize:15,fontWeight:700,flexShrink:0}}>kg</span>
-        </div>
-        <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:16}}>
-          💡 Será tu punto de partida en la gráfica de evolución
-        </div>
-        <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>Peso objetivo</div>
-        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
-          <input type="number" value={aGoal} onChange={e=>setAGoal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doAuth()} placeholder="70.0" step="0.1" min="20" max="300"
-            style={{...inp,flex:1}}/>
-          <span style={{color:T.t2,fontSize:15,fontWeight:700,flexShrink:0}}>kg</span>
-        </div>
-        <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:20}}>
-          🎯 Opcional — te ayuda a ver cuánto te queda para llegar
-        </div>
-        {(()=>{const dis=loading||!aName.trim()||!aEmail.trim()||!aWeight||isNaN(parseFloat(aWeight));return(
-          <button onClick={doAuth} disabled={dis} style={{width:"100%",padding:"17px 20px",borderRadius:18,border:`3px solid ${T.g3}`,cursor:dis?"not-allowed":"pointer",fontSize:17,fontWeight:900,background:dis?"rgba(255,255,255,0.12)":`linear-gradient(135deg,${T.g1},${T.g2})`,color:dis?T.t2:"white",boxShadow:dis?"none":`0 6px 0 ${T.g3}`,transition:"all 0.15s",fontFamily:"'Nunito',sans-serif"}}>
-            {loading?"Cargando...":"¡Empezar mi aventura! 🚀"}
-          </button>
-        );})()}
+        <input type="email" value={aEmail}
+          onChange={e=>{setAEmail(e.target.value);setAuthMode("new");setAuthErr("");}}
+          onBlur={e=>checkEmail(e.target.value)}
+          placeholder="nombre@ejemplo.com" style={{...inp,marginBottom:authMode==="returning"?0:16}}/>
+
+        {/* Usuario que vuelve — mensaje de bienvenida */}
+        {authMode==="returning"&&(
+          <div style={{background:"rgba(88,204,2,0.12)",border:`1.5px solid ${T.g3}`,borderRadius:14,
+            padding:"12px 16px",margin:"12px 0",display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:22}}>👋</span>
+            <div>
+              <div style={{fontSize:13,fontWeight:900,color:T.g2}}>¡Bienvenido de nuevo, {aName.split(" ")[0]}!</div>
+              <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:2}}>
+                Tu cuenta existe — recuperaremos todos tus datos.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Comprobando email */}
+        {authMode==="checking"&&(
+          <div style={{textAlign:"center",padding:"10px 0",fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>
+            Verificando cuenta...
+          </div>
+        )}
+
+        {/* Campos solo para usuarios nuevos */}
+        {authMode!=="returning"&&(<>
+          <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8,marginTop:4}}>Nombre completo</div>
+          <input type="text" value={aName} onChange={e=>setAName(e.target.value)}
+            placeholder="Nombre Apellido" style={{...inp,marginBottom:16}}/>
+          <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>Peso actual</div>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
+            <input type="number" value={aWeight} onChange={e=>setAWeight(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&doAuth()} placeholder="75.5" step="0.1" min="20" max="300"
+              style={{...inp,flex:1}}/>
+            <span style={{color:T.t2,fontSize:15,fontWeight:700,flexShrink:0}}>kg</span>
+          </div>
+          <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:16}}>
+            💡 Será tu punto de partida en la gráfica de evolución
+          </div>
+          <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>Peso objetivo</div>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
+            <input type="number" value={aGoal} onChange={e=>setAGoal(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&doAuth()} placeholder="70.0" step="0.1" min="20" max="300"
+              style={{...inp,flex:1}}/>
+            <span style={{color:T.t2,fontSize:15,fontWeight:700,flexShrink:0}}>kg</span>
+          </div>
+          <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:20}}>
+            🎯 Opcional — te ayuda a ver cuánto te queda para llegar
+          </div>
+        </>)}
+
+        {/* Error de conexión */}
+        {authErr&&(
+          <div style={{background:"rgba(255,75,75,0.12)",border:"1.5px solid rgba(255,75,75,0.4)",
+            borderRadius:12,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#FF8080",
+            fontFamily:"'DM Sans',sans-serif",textAlign:"center"}}>
+            ⚠️ {authErr}
+          </div>
+        )}
+
+        {(()=>{
+          const isReturning = authMode==="returning";
+          const dis = loading || authMode==="checking" ||
+                      !aEmail.trim() ||
+                      (!isReturning && (!aName.trim()||!aWeight||isNaN(parseFloat(aWeight))));
+          return(
+            <button onClick={doAuth} disabled={dis}
+              style={{width:"100%",padding:"17px 20px",borderRadius:18,border:`3px solid ${T.g3}`,
+                cursor:dis?"not-allowed":"pointer",fontSize:17,fontWeight:900,
+                background:dis?"rgba(255,255,255,0.12)":`linear-gradient(135deg,${T.g1},${T.g2})`,
+                color:dis?T.t2:"white",boxShadow:dis?"none":`0 6px 0 ${T.g3}`,
+                transition:"all 0.15s",fontFamily:"'Nunito',sans-serif"}}>
+              {loading?"Verificando...":isReturning?"Recuperar mi cuenta 🔄":"¡Empezar mi aventura! 🚀"}
+            </button>
+          );
+        })()}
       </Card>
     </div>
   );
@@ -2595,14 +2738,14 @@ function GBHApp(){
                 💡 En ayunas, antes de desayunar
               </div>
               {/* Input grande centrado */}
-              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:10,width:"100%",maxWidth:280}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,width:"100%",maxWidth:280,overflow:"hidden"}}>
                 <input
                   type="number" value={wInput}
                   onChange={e=>setWInput(e.target.value)}
                   onKeyDown={e=>e.key==="Enter"&&saveW(!!todayW)}
                   placeholder={todayW?String(todayW.weight):"75.5"}
                   step="0.1" autoFocus
-                  style={{flex:1,background:"rgba(255,255,255,0.09)",border:`3px solid ${T.g1}`,borderRadius:20,padding:"18px 22px",color:T.cr,fontSize:32,fontWeight:900,fontFamily:"'DM Sans',sans-serif",textAlign:"center",boxShadow:`0 0 0 4px ${T.g1}22`}}
+                  style={{flex:1,background:"rgba(255,255,255,0.09)",border:`3px solid ${T.g1}`,borderRadius:20,padding:"16px 12px",color:T.cr,fontSize:28,fontWeight:900,fontFamily:"'DM Sans',sans-serif",textAlign:"center",boxShadow:`0 0 0 4px ${T.g1}22`,minWidth:0,maxWidth:"100%"}}
                 />
                 <span style={{fontSize:20,fontWeight:800,color:T.t2}}>kg</span>
               </div>
