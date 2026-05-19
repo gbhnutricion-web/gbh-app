@@ -3736,63 +3736,10 @@ function GBHApp(){
               <div onClick={()=>setRewardsOpen(true)} style={{fontSize:9,color:T.t2,marginTop:3,fontFamily:"'DM Sans',sans-serif",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:4}}>{xp} XP · Lv {lv.l} <span style={{color:T.au1}}>🎁</span></div>
             </div>
           </div>
-          {/* Counters + mute + diana */}
+          {/* Counters */}
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             <StreakBadge value={streak} label={t("streakLabel")} icon="🔥" color="#FF8040" bg="rgba(255,128,64,0.12)"/>
             <StreakBadge value={gems}  label={t("gemsLabel")}  icon="💎" color={T.au1}   bg="rgba(255,200,0,0.1)"/>
-            <button onClick={()=>{ const nm=!muted; setMuted(nm); lsSet("gbh:mute",nm); if(!nm) SFX.tap(); }}
-              style={{background:"rgba(255,255,255,0.07)",border:`1.5px solid rgba(255,255,255,0.12)`,
-                borderRadius:14,width:36,height:36,cursor:"pointer",fontSize:18,
-                display:"flex",alignItems:"center",justifyContent:"center"}}>
-              {muted?"🔇":"🔊"}
-            </button>
-            {/* ── Botón diana desafíos — fijo en header ── */}
-            {(()=>{
-              const weekChs    = getWeekChallenges();
-              const allClaimed = claimedChallenges.length>=weekChs.length;
-              const anyDone    = weekChs.some(ch=>{
-                const prog=getChallengeProgress(ch,logs,weights,xp,streak);
-                return prog>=ch.goal && !claimedChallenges.includes(ch.id);
-              });
-              const claimCount = weekChs.filter(ch=>{
-                const prog=getChallengeProgress(ch,logs,weights,xp,streak);
-                return prog>=ch.goal && !claimedChallenges.includes(ch.id);
-              }).length;
-              return(
-                <div style={{position:"relative"}}>
-                  <button
-                    onClick={()=>setShowChallenges(true)}
-                    style={{
-                      width:36,height:36,borderRadius:14,
-                      background:anyDone
-                        ?`linear-gradient(135deg,${T.au1},${T.au2})`
-                        :allClaimed
-                          ?"rgba(88,204,2,0.2)"
-                          :"rgba(255,255,255,0.07)",
-                      border:anyDone?`2px solid ${T.au3}`:allClaimed?`1.5px solid ${T.g3}`:`1.5px solid rgba(255,255,255,0.12)`,
-                      boxShadow:anyDone?`0 3px 0 ${T.au3},0 0 12px ${T.au1}60`:allClaimed?`0 3px 0 ${T.g3}`:"none",
-                      cursor:"pointer",
-                      display:"flex",alignItems:"center",justifyContent:"center",
-                      animation:anyDone?"pulse 1.5s ease-in-out infinite":"none",
-                      transition:"all 0.3s",
-                    }}>
-                    <span style={{fontSize:18,lineHeight:1}}>
-                      {allClaimed?"✓":anyDone?"❕":"🎯"}
-                    </span>
-                  </button>
-                  {anyDone&&claimCount>0&&(
-                    <div style={{
-                      position:"absolute",top:-4,right:-4,
-                      width:16,height:16,borderRadius:"50%",
-                      background:"#FF3B30",border:"2px solid #0A1A0F",
-                      fontSize:9,fontWeight:900,color:"white",
-                      display:"flex",alignItems:"center",justifyContent:"center",
-                      fontFamily:"'Nunito',sans-serif",
-                    }}>{claimCount}</div>
-                  )}
-                </div>
-              );
-            })()}
           </div>
         </div>
       </div>
@@ -3801,9 +3748,82 @@ function GBHApp(){
 
         {/* ── HOME ──────────────────────────────────────────────────────────── */}
         {tab==="home"&&<>
-          {/* Mascot + bubble */}
+          {/* Mascot + bubble con diana y mute a los lados */}
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,paddingTop:4,paddingBottom:18}}>
-            <Bubble msg={getBubbleMsg(profile?.name||"",streak,expr,lang)}/>
+
+            {/* Fila: 🎯 | Bocadillo | 🔇 */}
+            <div style={{display:"flex",alignItems:"center",width:"100%",gap:8,paddingLeft:4,paddingRight:4}}>
+
+              {/* ── Diana desafíos (izquierda) ── */}
+              {(()=>{
+                const weekChs    = getWeekChallenges();
+                const allClaimed = claimedChallenges.length>=weekChs.length;
+                const anyDone    = weekChs.some(ch=>{
+                  const prog=getChallengeProgress(ch,logs,weights,xp,streak);
+                  return prog>=ch.goal && !claimedChallenges.includes(ch.id);
+                });
+                const claimCount = weekChs.filter(ch=>{
+                  const prog=getChallengeProgress(ch,logs,weights,xp,streak);
+                  return prog>=ch.goal && !claimedChallenges.includes(ch.id);
+                }).length;
+                return(
+                  <div style={{position:"relative",flexShrink:0}}>
+                    <button
+                      onClick={()=>setShowChallenges(true)}
+                      style={{
+                        width:44,height:44,borderRadius:16,
+                        background:anyDone
+                          ?`linear-gradient(135deg,${T.au1},${T.au2})`
+                          :allClaimed
+                            ?"rgba(88,204,2,0.18)"
+                            :"rgba(255,255,255,0.07)",
+                        border:anyDone?`2px solid ${T.au3}`:allClaimed?`1.5px solid ${T.g3}`:`1.5px solid rgba(255,255,255,0.12)`,
+                        boxShadow:anyDone?`0 4px 0 ${T.au3},0 0 14px ${T.au1}60`:allClaimed?`0 3px 0 ${T.g3}`:"0 3px 0 rgba(0,0,0,0.4)",
+                        cursor:"pointer",
+                        display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:1,
+                        animation:anyDone?"pulse 1.5s ease-in-out infinite":"none",
+                        transition:"all 0.3s",
+                      }}>
+                      <span style={{fontSize:20,lineHeight:1}}>{allClaimed?"✓":anyDone?"❕":"🎯"}</span>
+                    </button>
+                    {anyDone&&claimCount>0&&(
+                      <div style={{
+                        position:"absolute",top:-5,right:-5,
+                        width:18,height:18,borderRadius:"50%",
+                        background:"#FF3B30",border:"2px solid #0A1A0F",
+                        fontSize:10,fontWeight:900,color:"white",
+                        display:"flex",alignItems:"center",justifyContent:"center",
+                        fontFamily:"'Nunito',sans-serif",
+                      }}>{claimCount}</div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Bocadillo centrado */}
+              <div style={{flex:1,display:"flex",justifyContent:"center"}}>
+                <Bubble msg={getBubbleMsg(profile?.name||"",streak,expr,lang)}/>
+              </div>
+
+              {/* ── Mute (derecha) ── */}
+              <button
+                onClick={()=>{ const nm=!muted; setMuted(nm); lsSet("gbh:mute",nm); if(!nm) SFX.tap(); }}
+                style={{
+                  flexShrink:0,
+                  width:44,height:44,borderRadius:16,
+                  background:"rgba(255,255,255,0.07)",
+                  border:`1.5px solid rgba(255,255,255,0.12)`,
+                  cursor:"pointer",fontSize:20,
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  boxShadow:"0 3px 0 rgba(0,0,0,0.4)",
+                  transition:"all 0.2s",
+                }}>
+                {muted?"🔇":"🔊"}
+              </button>
+
+            </div>
+
+            {/* Avatar */}
             <div onClick={tapSheep} style={{cursor:"pointer"}}>
               <AvatarDisplay expr={expr} size={200}/>
             </div>
