@@ -319,6 +319,147 @@ function translateLvName(name, lang){
 
 // ─── Datos de contacto GBH — editar aquí ─────────────────────────────────────
 const GBH_WHATSAPP = "34697848500";
+
+// ─── Sistema de sonido GBH — Web Audio API (sin archivos externos) ────────────
+const AudioCtx = (() => {
+  let ctx = null;
+  return () => {
+    if(!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if(ctx.state === "suspended") ctx.resume();
+    return ctx;
+  };
+})();
+
+const SFX = {
+  // Tono suave con envelope
+  _tone(freq, type="sine", dur=0.18, vol=0.35, delay=0){
+    try{
+      const c=AudioCtx(), g=c.createGain(), o=c.createOscillator();
+      o.type=type; o.frequency.setValueAtTime(freq,c.currentTime+delay);
+      g.gain.setValueAtTime(0,c.currentTime+delay);
+      g.gain.linearRampToValueAtTime(vol,c.currentTime+delay+0.01);
+      g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+delay+dur);
+      o.connect(g); g.connect(c.destination);
+      o.start(c.currentTime+delay); o.stop(c.currentTime+delay+dur+0.05);
+    }catch{}
+  },
+  // Ruido filtrado (para efectos de agua, pasos)
+  _noise(dur=0.12, freq=800, vol=0.15, delay=0){
+    try{
+      const c=AudioCtx(), buf=c.createBuffer(1,c.sampleRate*dur,c.sampleRate);
+      const d=buf.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+      const src=c.createBufferSource(), flt=c.createBiquadFilter(), g=c.createGain();
+      src.buffer=buf; flt.type="bandpass"; flt.frequency.value=freq; flt.Q.value=2;
+      g.gain.setValueAtTime(vol,c.currentTime+delay);
+      g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+delay+dur);
+      src.connect(flt); flt.connect(g); g.connect(c.destination);
+      src.start(c.currentTime+delay); src.stop(c.currentTime+delay+dur+0.05);
+    }catch{}
+  },
+
+  // ── Sonidos específicos ───────────────────────────────────────────────────
+
+  // Completar misión diaria (dieta) — acorde triunfal
+  complete(){
+    this._tone(523,  "sine", 0.15, 0.3,  0);
+    this._tone(659,  "sine", 0.15, 0.3,  0.08);
+    this._tone(784,  "sine", 0.22, 0.35, 0.16);
+  },
+  // Misión menor completada (sueño, pasos) — ding doble
+  missionDone(){
+    this._tone(880, "sine", 0.12, 0.25, 0);
+    this._tone(1109,"sine", 0.14, 0.25, 0.1);
+  },
+  // Ganar XP/gemas — coin clásico
+  coin(){
+    this._tone(988, "sine",   0.08, 0.3,  0);
+    this._tone(1319,"triangle",0.15, 0.28, 0.06);
+  },
+  // Level up — fanfare épica
+  levelUp(){
+    [[523,0],[659,0.1],[784,0.2],[1047,0.32]].forEach(([f,d])=>
+      this._tone(f,"square",0.18,0.22,d));
+    this._tone(1319,"sine",0.4,0.3,0.52);
+  },
+  // Logro desbloqueado — brillo mágico
+  badge(){
+    [1047,1319,1568,2093].forEach((f,i)=>this._tone(f,"sine",0.12,0.2,i*0.07));
+  },
+  // Quiz correcto — éxito
+  quizOk(){
+    this._tone(659,"sine",  0.1,  0.3, 0);
+    this._tone(880,"sine",  0.16, 0.3, 0.09);
+  },
+  // Quiz incorrecto — error suave
+  quizFail(){
+    this._tone(330,"triangle",0.12,0.3, 0);
+    this._tone(277,"triangle",0.18,0.25,0.1);
+  },
+  // Ruleta girando — tick repetido
+  roulette(ticks=8){
+    for(let i=0;i<ticks;i++)
+      this._tone(400+Math.random()*200,"square",0.04,0.1,i*0.08);
+  },
+  // Premio ruleta — fanfare corta
+  ruletteWin(){
+    this._tone(784,"sine",0.12,0.3,0);
+    this._tone(988,"sine",0.12,0.3,0.1);
+    this._tone(1175,"sine",0.2,0.35,0.2);
+  },
+  // Cofre semanal — apertura épica
+  chest(){
+    this._noise(0.15, 600, 0.2, 0);
+    this._tone(392,"sine",0.12,0.25,0.1);
+    this._tone(523,"sine",0.12,0.25,0.22);
+    this._tone(659,"sine",0.12,0.3, 0.34);
+    this._tone(784,"sine",0.3, 0.4, 0.46);
+  },
+  // Vaso de agua — gota
+  water(){
+    this._tone(1400,"sine",0.06,0.2,0);
+    this._tone(1800,"sine",0.08,0.15,0.04);
+    this._tone(2200,"sine",0.05,0.1,0.08);
+  },
+  // Pasos — tap ligero
+  step(){
+    this._noise(0.07,1200,0.12,0);
+    this._tone(200,"triangle",0.07,0.12,0.02);
+  },
+  // Error / sin gemas — buzz suave
+  error(){
+    this._tone(220,"sawtooth",0.08,0.25,0);
+    this._tone(196,"sawtooth",0.12,0.2,0.07);
+  },
+  // Escudo activado — protección mágica
+  shield(){
+    this._tone(523,"sine",0.1,0.2,0);
+    this._tone(784,"sine",0.1,0.2,0.12);
+    this._tone(1047,"sine",0.2,0.3,0.24);
+  },
+  // Nueva receta — plato servido
+  recipe(){
+    this._tone(659,"sine",0.1,0.2,0);
+    this._tone(784,"sine",0.15,0.25,0.1);
+  },
+  // Tab click — tap suave
+  tap(){
+    this._tone(600,"sine",0.06,0.12,0);
+  },
+  // Confetti / celebración — cascada
+  confetti(){
+    [1047,1319,1568,1760,2093].forEach((f,i)=>
+      this._tone(f,"sine",0.1,0.18,i*0.06));
+  },
+};
+
+// Hook para usar sonido con mute toggle persistido
+function useSFX(){
+  const muted = lsGet("gbh:mute",false);
+  return (name,...args)=>{
+    if(muted) return;
+    SFX[name]?.(...args);
+  };
+}
 const GBH_EMAIL    = "gbh.nutricion@gmail.com";
 const GBH_NOMBRE   = "GBH Nutrición";
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1235,6 +1376,7 @@ function HydrationWidget({done,onToggle}){
     if(done || glasses>=target) return;
     const ng = glasses + 1;
     setGlasses(ng);
+    SFX.water(); // sonido directo (no pasa sfx como prop)
     try{ localStorage.setItem("gbh:glasses:"+todayStr, ng); }catch{}
   };
   const pct=Math.min((glasses/target)*100,100);
@@ -1647,6 +1789,8 @@ function QuizModal({onClose, onComplete, todayKey}){
     if(revealed) return;
     setSelected(i);
     setRevealed(true);
+    const isOk = i === q.ans;
+    if(isOk) SFX.quizOk(); else SFX.quizFail();
     setTimeout(()=>setPhase("result"), 900);
   };
 
@@ -2160,6 +2304,8 @@ function GBHApp(){
   });
   const [tab,     setTab]     = useState("home");
   const [lang,    setLang]    = useState(()=>lsGet("gbh:lang","es"));
+  const [muted,   setMuted]   = useState(()=>lsGet("gbh:mute",false));
+  const sfx = (name,...args) => { if(!muted) SFX[name]?.(...args); };
   const [profile, setProfile] = useState(null);
   const [tLog,    setTLog]    = useState({diet:false,steps:false,hydration:false,sleep:false});
   const [steps,   setSteps]   = useState(0);
@@ -2324,20 +2470,16 @@ function GBHApp(){
     const todayKey = toKey();
     // Prioridad 1: receta cambiada hoy (refresh)
     const current = lsGet(`gbh:recipe:current:${todayKey}`, null);
-    if(current){ setDailyRecipe(current); return; }
+    if(current){ setDailyRecipe(normalizeRecipe(current)); return; }
     // Prioridad 2: receta del día en caché
     const cached = lsGet(`gbh:recipe:${todayKey}`, null);
     if(cached){
-      // Si es EN y aún no está traducida, traducir ahora
+      // Si lang=EN y la receta en caché no está traducida → borrar caché y re-fetch
       if(lang==="en" && !cached._translated){
-        setDailyRecipe(cached); // mostrar en español mientras traduce
-        const translated = await translateRecipe(cached);
-        lsSet(`gbh:recipe:${todayKey}`, translated);
-        setDailyRecipe(translated);
+        lsSet(`gbh:recipe:${todayKey}`, null); // invalidar
       } else {
-        setDailyRecipe(cached);
+        setDailyRecipe(normalizeRecipe(cached)); return;
       }
-      return;
     }
     setRecipeLoading(true);
     try {
@@ -2354,8 +2496,23 @@ function GBHApp(){
     setRecipeLoading(false);
   };
 
+  // Normaliza los campos de la receta (Supabase puede devolver nombre_receta o nombre)
+  const normalizeRecipe = (r) => ({
+    ...r,
+    nombre:      r.nombre       || r.nombre_receta  || r.Nombre_Receta  || "",
+    tipo:        r.tipo         || r.Tipo            || "",
+    ingredientes:r.ingredientes || r.Ingredientes    || "",
+    instrucciones:r.instrucciones||r.Instrucciones   || "",
+    calorias:    r.calorias     || r.Calorias_Totales|| r.calorias_totales || 0,
+    proteinas_g: r.proteinas_g  || r.Proteinas_g     || 0,
+    hidratos_g:  r.hidratos_g   || r.Hidratos_g      || 0,
+    grasas_g:    r.grasas_g     || r.Grasas_g        || 0,
+    id_receta:   r.id_receta    || r.ID_Receta        || r.id || "",
+  });
+
   // Traduce una receta al inglés usando Claude
   const translateRecipe = async (recipe) => {
+    const norm = normalizeRecipe(recipe);
     try {
       const res = await fetch("https://api.anthropic.com/v1/messages",{
         method:"POST",
@@ -2363,23 +2520,24 @@ function GBHApp(){
         body:JSON.stringify({
           model:"claude-sonnet-4-20250514",
           max_tokens:1000,
-          messages:[{role:"user",content:`Translate this Spanish recipe to English. Return ONLY a valid JSON object with keys: nombre, tipo, ingredientes, instrucciones. Keep numbers, units and quantities unchanged. Recipe: ${JSON.stringify({nombre:recipe.nombre,tipo:recipe.tipo,ingredientes:recipe.ingredientes,instrucciones:recipe.instrucciones})}`}]
+          messages:[{role:"user",content:`Translate this Spanish recipe to English. Return ONLY a valid JSON object with exactly these keys: nombre, tipo, ingredientes, instrucciones. Keep all numbers, units and quantities exactly as-is. Recipe:\n${JSON.stringify({nombre:norm.nombre,tipo:norm.tipo,ingredientes:norm.ingredientes,instrucciones:norm.instrucciones})}`}]
         })
       });
       const data = await res.json();
       const text = data.content?.find(b=>b.type==="text")?.text||"";
       const parsed = JSON.parse(text.replace(/```json|```/g,"").trim());
-      return {...recipe,...parsed,_translated:true};
-    } catch(e){ console.warn("translateRecipe:",e); return recipe; }
+      return {...norm,...parsed,_translated:true};
+    } catch(e){ console.warn("translateRecipe:",e); return norm; }
   };
 
   // Aplica traducción si lang===en, con caché por receta
   const getRecipeForDisplay = async (recipe) => {
-    if(lang!=="en") return recipe;
-    const key=`gbh:recipe:en:${recipe.id_receta}`;
+    const norm = normalizeRecipe(recipe);
+    if(lang!=="en") return norm;
+    const key=`gbh:recipe:en:${norm.id_receta||norm.nombre}`;
     const cached=lsGet(key,null);
     if(cached) return cached;
-    const translated = await translateRecipe(recipe);
+    const translated = await translateRecipe(norm);
     lsSet(key, translated);
     return translated;
   };
@@ -2423,6 +2581,7 @@ function GBHApp(){
       const offset = (base + newUsed * 137) % 472;
       const r = await sbReq("GET", `recipes?select=*&order=id_receta.asc&limit=1&offset=${offset}`);
       if(r?.length){
+        sfx("recipe");
         const recipe = await getRecipeForDisplay(r[0]);
         lsSet(`gbh:recipe:current:${todayKey}`, recipe);
         setDailyRecipe(recipe);
@@ -2602,10 +2761,11 @@ function GBHApp(){
     const chips=[];
     if(ax>0)chips.push({id:Date.now()+"xp",label:`+${ax} XP ⚡`,color:"#C8FF40"});
     if(ag>0)chips.push({id:Date.now()+"g", label:`+${ag} 💎`,color:"#FFD700"});
-    if(chips.length){setFloatItems(chips);setTimeout(()=>setFloatItems([]),1600);}
+    if(chips.length){setFloatItems(chips);setTimeout(()=>setFloatItems([]),1600);sfx("coin");}
     // Level-up check + distribute rewards
     const oldLv=getLevel(prevXP),newLv=getLevel(u.xp);
     if(newLv.l>oldLv.l){
+      sfx("levelUp");
       const rew=LEVEL_REWARDS[newLv.l];
       setLevelUpNum(newLv.l); setLevelUpRew(rew); setLevelUpAnim(true);
       setTimeout(()=>setLevelUpAnim(false),3600);
@@ -2636,6 +2796,7 @@ function GBHApp(){
         const nb=[...b,badge.id];setBadges(nb);lsSet(`gbh:badges:${profile?.id}`,nb);
         await sbReq("POST","achievements",{profile_id:profile?.id,badge_id:badge.id});
         await addXG(badge.xp,badge.g);
+        sfx("badge");
         showT({icon:badge.icon,title:"¡Logro desbloqueado!",sub:badge.t,reward:badge.r});return nb;
       }
     }return b;
@@ -2643,13 +2804,15 @@ function GBHApp(){
 
   const toggleM=useCallback(async(key)=>{
     const was=tLog[key];
-    if(was) return; // Misiones solo se pueden marcar, nunca desmarcar
+    if(was) return;
     const nl={...tLog,[key]:true};setTLog(nl);await saveLog(nl,steps);
+    if(key==="diet") sfx("complete"); else sfx("missionDone");
     await addXG(key==="diet"?15:5,key==="diet"?5:2);
     if(key==="diet"){setStreakAnim(true);setTimeout(()=>setStreakAnim(false),2600);}
     const wasAllDone=tLog.diet&&tLog.steps&&tLog.hydration&&tLog.sleep;
     if(nl.diet&&nl.steps&&nl.hydration&&nl.sleep&&!wasAllDone){
       await addXG(20,10);
+      sfx("confetti");
       setTimeout(()=>{setMissionsAnim(true);setTimeout(()=>setMissionsAnim(false),2800);},key==="diet"?2700:0);
     }
     await chkBadges(streak,weights,badges);
@@ -2658,8 +2821,8 @@ function GBHApp(){
   const updSteps=useCallback(async(val)=>{
     const sc=Math.max(0,Math.min(99999,val));setSteps(sc);
     const done=sc>=10000;
-    if(done!==tLog.steps){const nl={...tLog,steps:done};setTLog(nl);await saveLog(nl,sc);if(done){await addXG(5,2);showT({icon:"👟",title:"¡10.000 pasos!",sub:"Meta de pasos alcanzada ✅"});}}
-    else await saveLog(tLog,sc);
+    if(done!==tLog.steps){const nl={...tLog,steps:done};setTLog(nl);await saveLog(nl,sc);if(done){sfx("missionDone");await addXG(5,2);showT({icon:"👟",title:"¡10.000 pasos!",sub:"Meta de pasos alcanzada ✅"});}}
+    else{ sfx("step"); await saveLog(tLog,sc); }
   },[tLog,saveLog,addXG]);
 
   const saveW=async(isEdit=false)=>{
@@ -2673,6 +2836,7 @@ function GBHApp(){
     await sbReq("POST","weight_logs",{profile_id:profile.id,log_date:today,weight_kg:val});
     // Solo dar XP/gemas la primera vez, no en ediciones
     if(!alreadyLogged&&!isEdit){
+      sfx("coin");
       await addXG(10,5);
       if(nw.length>=4){const l4=nw.slice(-4).map(w=>w.weight);const ma=l4.reduce((a,b)=>a+b,0)/4;if(val<ma){setConfetti(true);setTimeout(()=>setConfetti(false),2400);showT({icon:"📉",title:"¡Tendencia bajando!",sub:"La línea va en la dirección correcta 💚"});}}
       await chkBadges(streak,nw,badges);
@@ -2824,6 +2988,7 @@ function GBHApp(){
   };
 
   const onRuletaCollect = async (xpG, gemG) => {
+    sfx("ruletteWin");
     const today = new Date().toISOString().slice(0,10);
     lsSet("gbh:ruleta:"+today, true);
     setRuletaDone(true);
@@ -2838,7 +3003,7 @@ function GBHApp(){
 
   const tapSheep=()=>{const n=taps+1;setTaps(n);if(tapRef.current)clearTimeout(tapRef.current);tapRef.current=setTimeout(()=>setTaps(0),2500);if(n>=5){setScreen("admin");loadAdmin();setTaps(0);}};
   const loadAdmin=async()=>{const d=await sbReq("GET","admin_overview?select=*")||[];if(d.length){setAllP(d);return;}setAllP(Object.keys(localStorage).filter(k=>k.startsWith("gbh:p:")).map(k=>lsGet(k,{})).filter(p=>p.id));};
-  const buyShield=async()=>{if(gems<200){showT({icon:"💎",title:t("insufficientGems"),sub:t("needGemsShield")});return;}const u={...profile,gems:gems-200,shields:(profile.shields||0)+1};setProfile(u);lsSet(`gbh:p:${u.id}`,u);await sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:u.gems,shields:u.shields});showT({icon:"🛡️",title:t("shieldActivated"),sub:t("shieldProtected")});};
+  const buyShield=async()=>{if(gems<200){sfx("error");showT({icon:"💎",title:t("insufficientGems"),sub:t("needGemsShield")});return;}const u={...profile,gems:gems-200,shields:(profile.shields||0)+1};setProfile(u);lsSet(`gbh:p:${u.id}`,u);await sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:u.gems,shields:u.shields});sfx("shield");showT({icon:"🛡️",title:t("shieldActivated"),sub:t("shieldProtected")});};
 
   const CSS=`
     @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&family=DM+Sans:wght@400;500;700&display=swap');
@@ -2870,10 +3035,49 @@ function GBHApp(){
   // Cargar ranking cuando se activa la pestaña
   useEffect(()=>{ if(tab==="ranking") loadRanking(); },[tab]);
   useEffect(()=>{ if(tab==="receta"&&!dailyRecipe&&!recipeLoading) fetchDailyRecipe(); },[tab]);
-  useEffect(()=>{ lsSet("gbh:lang",lang); },[lang]);
+  const [langSwitching, setLangSwitching] = useState(false);
+
+  // Cambia idioma con pantalla de carga intermedia
+  const switchLang = async (newLang) => {
+    if(newLang === lang) return;
+    setLangSwitching(true);
+    // Guardar nuevo idioma
+    lsSet("gbh:lang", newLang);
+    setLang(newLang);
+    // Limpiar caché de receta para forzar re-fetch en nuevo idioma
+    const todayKey = toKey();
+    lsSet(`gbh:recipe:${todayKey}`, null);
+    lsSet(`gbh:recipe:current:${todayKey}`, null);
+    // Limpiar receta en estado para que se recargue
+    setDailyRecipe(null);
+    // Pequeña pausa para que la pantalla de carga sea visible
+    await new Promise(r => setTimeout(r, 800));
+    setLangSwitching(false);
+    // Si estamos en la pestaña de receta, recargar
+    if(tab === "receta") fetchDailyRecipe();
+  };
 
   const tabSt=(a)=>({flex:1,padding:"10px 0 8px",background:"none",border:"none",color:a?T.au1:T.t2,fontSize:9,fontWeight:a?900:700,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,textTransform:"uppercase",letterSpacing:"0.07em",transition:"all 0.18s",fontFamily:"'Nunito',sans-serif"});
   const inp={width:"100%",background:"rgba(255,255,255,0.07)",border:`2px solid ${T.bW}`,borderRadius:16,padding:"15px 18px",color:T.cr,fontSize:16,fontWeight:700,fontFamily:"'DM Sans',sans-serif"};
+
+  // ── LANG SWITCHING overlay ────────────────────────────────────────────────────
+  if(langSwitching)return(
+    <LangCtx.Provider value={lang}>
+    <div style={{fontFamily:"'Nunito',sans-serif",background:T.bg,minHeight:"100vh",maxWidth:420,
+      margin:"0 auto",display:"flex",flexDirection:"column",alignItems:"center",
+      justifyContent:"center",gap:20,color:T.t1}}>
+      <style>{CSS}</style>
+      <div style={{fontSize:40,animation:"spin 0.8s linear infinite",display:"inline-block"}}>
+        {lang==="en"?"🇬🇧":"🇪🇸"}
+      </div>
+      <div style={{fontSize:16,fontWeight:900,color:T.g1}}>
+        {lang==="en"?"Switching to English…":"Cambiando a Español…"}
+      </div>
+      <div style={{width:48,height:48,border:`4px solid rgba(88,204,2,0.2)`,
+        borderTopColor:T.g1,borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+    </div>
+    </LangCtx.Provider>
+  );
 
   // ── LOADING (sesión guardada, cargando perfil) ────────────────────────────────
   if(screen==="loading")return(
@@ -2898,7 +3102,7 @@ function GBHApp(){
       {/* Selector de idioma — esquina superior derecha */}
       <div style={{position:"fixed",top:16,right:16,display:"flex",gap:6,zIndex:100}}>
         {[{code:"es",flag:"🇪🇸"},{code:"en",flag:"🇬🇧"}].map(({code,flag})=>(
-          <button key={code} onClick={()=>setLang(code)}
+          <button key={code} onClick={()=>{ lsSet("gbh:lang",code); setLang(code); }}
             style={{fontSize:20,background:lang===code?"rgba(88,204,2,0.2)":"rgba(255,255,255,0.08)",
               border:`2px solid ${lang===code?T.g1:"rgba(255,255,255,0.15)"}`,
               borderRadius:10,padding:"4px 8px",cursor:"pointer",
@@ -3223,7 +3427,7 @@ function GBHApp(){
           badges={badges.length}
           onSubscribeNotifications={subscribeNotifications}
           lang={lang}
-          setLang={setLang}
+          setLang={switchLang}
         />
       )}
 
@@ -3395,10 +3599,16 @@ function GBHApp(){
               <div onClick={()=>setRewardsOpen(true)} style={{fontSize:9,color:T.t2,marginTop:3,fontFamily:"'DM Sans',sans-serif",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:4}}>{xp} XP · Lv {lv.l} <span style={{color:T.au1}}>🎁</span></div>
             </div>
           </div>
-          {/* Counters */}
-          <div style={{display:"flex",gap:8}}>
-            <StreakBadge value={streak} label="racha" icon="🔥" color="#FF8040" bg="rgba(255,128,64,0.12)"/>
-            <StreakBadge value={gems} label="gemas" icon="💎" color={T.au1} bg="rgba(255,200,0,0.1)"/>
+          {/* Counters + mute */}
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <StreakBadge value={streak} label={t("streakLabel")} icon="🔥" color="#FF8040" bg="rgba(255,128,64,0.12)"/>
+            <StreakBadge value={gems}  label={t("gemsLabel")}  icon="💎" color={T.au1}   bg="rgba(255,200,0,0.1)"/>
+            <button onClick={()=>{ const nm=!muted; setMuted(nm); lsSet("gbh:mute",nm); if(!nm) SFX.tap(); }}
+              style={{background:"rgba(255,255,255,0.07)",border:`1.5px solid rgba(255,255,255,0.12)`,
+                borderRadius:14,width:36,height:36,cursor:"pointer",fontSize:18,
+                display:"flex",alignItems:"center",justifyContent:"center"}}>
+              {muted?"🔇":"🔊"}
+            </button>
           </div>
         </div>
       </div>
@@ -3416,7 +3626,7 @@ function GBHApp(){
           </div>
 
           <WeeklyXPGoal logs={logs} xp={xp}/>
-          <WeekPath logs={logs} onOpenChest={()=>setShowWeekChest(true)}/>
+          <WeekPath logs={logs} onOpenChest={()=>{ sfx("chest"); setShowWeekChest(true); }}/>
           {allDone&&<TomorrowCard name={profile?.name||""} streak={streak}/>}
 
           {/* Section label */}
@@ -3918,7 +4128,7 @@ function GBHApp(){
       {/* ── BOTTOM NAV ────────────────────────────────────────────────────── */}
       <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:420,background:"rgba(8,18,8,0.97)",backdropFilter:"blur(30px)",borderTop:`3px solid ${T.bW}`,display:"flex",padding:"10px 0 10px",zIndex:100}}>
         {[{id:"home",icon:"🏠",l:t("tabHome")},{id:"receta",icon:"🍰",l:t("tabRecipe")},{id:"weight",icon:"⚖️",l:t("tabWeight")},{id:"ranking",icon:"👑",l:t("tabRanking")},{id:"achievements",icon:"🏅",l:t("tabAchievements")}].map(({id,icon,l})=>(
-          <button key={id} onClick={()=>setTab(id)} style={tabSt(tab===id)}>
+          <button key={id} onClick={()=>{ sfx("tap"); setTab(id); }} style={tabSt(tab===id)}>
             <span style={{fontSize:26,filter:tab===id?"none":"grayscale(0.6)",transition:"all 0.2s"}}>{icon}</span>
             <span>{l}</span>
             {tab===id&&<div style={{width:24,height:4,background:T.au1,borderRadius:4,boxShadow:`0 0 10px ${T.au1}`,marginTop:1}}/>}
