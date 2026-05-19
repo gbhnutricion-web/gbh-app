@@ -3445,65 +3445,6 @@ function GBHApp(){
       <LevelUpOverlay active={levelUpAnim} level={levelUpNum} reward={levelUpRew} patientName={profile?.name||""} onClose={()=>setLevelUpAnim(false)}/>
       {rewardsOpen&&<RewardsModal onClose={()=>setRewardsOpen(false)} currentLevel={lv.l}/>}
       {/* ── Burbuja flotante desafíos ────────────────────────────────────── */}
-      {(tab==="home"||tab==="weight"||tab==="ranking")&&(()=>{
-        const weekChs   = getWeekChallenges();
-        const allClaimed= claimedChallenges.length>=weekChs.length;
-        const anyDone   = weekChs.some(ch=>{
-          const prog=getChallengeProgress(ch,logs,weights,xp,streak);
-          return prog>=ch.goal && !claimedChallenges.includes(ch.id);
-        });
-        return(
-          <button
-            onClick={()=>setShowChallenges(true)}
-            style={{
-              position:"fixed",
-              right:14,
-              top:72, // arriba a la derecha, bajo el header fijo
-              width:52,height:52,
-              borderRadius:"50%",
-              background:anyDone
-                ?`linear-gradient(135deg,${T.au1},${T.au2})`
-                :allClaimed
-                  ?"rgba(88,204,2,0.85)"
-                  :"rgba(28,18,8,0.92)",
-              border:anyDone?`3px solid ${T.au3}`:`2px solid ${allClaimed?T.g3:T.bW}`,
-              boxShadow:anyDone
-                ?`0 4px 0 ${T.au3},0 0 16px ${T.au1}80`
-                :allClaimed
-                  ?`0 4px 0 ${T.g3}`
-                  :"0 4px 12px rgba(0,0,0,0.5)",
-              cursor:"pointer",
-              display:"flex",flexDirection:"column",
-              alignItems:"center",justifyContent:"center",
-              zIndex:9000,
-              animation:anyDone?"pulse 1.5s ease-in-out infinite":"none",
-              transition:"all 0.3s",
-            }}>
-            <span style={{fontSize:anyDone?20:18,lineHeight:1}}>
-              {allClaimed?"✓":anyDone?"❕":"🎯"}
-            </span>
-            {/* Contador de reclamables */}
-            {anyDone&&(()=>{
-              const n=weekChs.filter(ch=>{
-                const prog=getChallengeProgress(ch,logs,weights,xp,streak);
-                return prog>=ch.goal&&!claimedChallenges.includes(ch.id);
-              }).length;
-              return n>0?(
-                <div style={{
-                  position:"absolute",top:-4,right:-4,
-                  width:18,height:18,borderRadius:"50%",
-                  background:"#FF3B30",border:"2px solid #1C1208",
-                  fontSize:10,fontWeight:900,color:"white",
-                  display:"flex",alignItems:"center",justifyContent:"center",
-                  fontFamily:"'Nunito',sans-serif",
-                }}>{n}</div>
-              ):null;
-            })()}
-          </button>
-        );
-      })()}
-
-
       {/* ── Modal Desafíos Semanales ─────────────────────────────────────── */}
       {showChallenges&&(()=>{
         const weekChs = getWeekChallenges();
@@ -3795,7 +3736,7 @@ function GBHApp(){
               <div onClick={()=>setRewardsOpen(true)} style={{fontSize:9,color:T.t2,marginTop:3,fontFamily:"'DM Sans',sans-serif",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:4}}>{xp} XP · Lv {lv.l} <span style={{color:T.au1}}>🎁</span></div>
             </div>
           </div>
-          {/* Counters + mute */}
+          {/* Counters + mute + diana */}
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             <StreakBadge value={streak} label={t("streakLabel")} icon="🔥" color="#FF8040" bg="rgba(255,128,64,0.12)"/>
             <StreakBadge value={gems}  label={t("gemsLabel")}  icon="💎" color={T.au1}   bg="rgba(255,200,0,0.1)"/>
@@ -3805,6 +3746,53 @@ function GBHApp(){
                 display:"flex",alignItems:"center",justifyContent:"center"}}>
               {muted?"🔇":"🔊"}
             </button>
+            {/* ── Botón diana desafíos — fijo en header ── */}
+            {(()=>{
+              const weekChs    = getWeekChallenges();
+              const allClaimed = claimedChallenges.length>=weekChs.length;
+              const anyDone    = weekChs.some(ch=>{
+                const prog=getChallengeProgress(ch,logs,weights,xp,streak);
+                return prog>=ch.goal && !claimedChallenges.includes(ch.id);
+              });
+              const claimCount = weekChs.filter(ch=>{
+                const prog=getChallengeProgress(ch,logs,weights,xp,streak);
+                return prog>=ch.goal && !claimedChallenges.includes(ch.id);
+              }).length;
+              return(
+                <div style={{position:"relative"}}>
+                  <button
+                    onClick={()=>setShowChallenges(true)}
+                    style={{
+                      width:36,height:36,borderRadius:14,
+                      background:anyDone
+                        ?`linear-gradient(135deg,${T.au1},${T.au2})`
+                        :allClaimed
+                          ?"rgba(88,204,2,0.2)"
+                          :"rgba(255,255,255,0.07)",
+                      border:anyDone?`2px solid ${T.au3}`:allClaimed?`1.5px solid ${T.g3}`:`1.5px solid rgba(255,255,255,0.12)`,
+                      boxShadow:anyDone?`0 3px 0 ${T.au3},0 0 12px ${T.au1}60`:allClaimed?`0 3px 0 ${T.g3}`:"none",
+                      cursor:"pointer",
+                      display:"flex",alignItems:"center",justifyContent:"center",
+                      animation:anyDone?"pulse 1.5s ease-in-out infinite":"none",
+                      transition:"all 0.3s",
+                    }}>
+                    <span style={{fontSize:18,lineHeight:1}}>
+                      {allClaimed?"✓":anyDone?"❕":"🎯"}
+                    </span>
+                  </button>
+                  {anyDone&&claimCount>0&&(
+                    <div style={{
+                      position:"absolute",top:-4,right:-4,
+                      width:16,height:16,borderRadius:"50%",
+                      background:"#FF3B30",border:"2px solid #0A1A0F",
+                      fontSize:9,fontWeight:900,color:"white",
+                      display:"flex",alignItems:"center",justifyContent:"center",
+                      fontFamily:"'Nunito',sans-serif",
+                    }}>{claimCount}</div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>
@@ -3813,9 +3801,6 @@ function GBHApp(){
 
         {/* ── HOME ──────────────────────────────────────────────────────────── */}
         {tab==="home"&&<>
-          {/* ── Meta semanal XP — debajo de las gemas ── */}
-          <WeeklyXPGoal logs={logs} xp={xp}/>
-
           {/* Mascot + bubble */}
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,paddingTop:4,paddingBottom:18}}>
             <Bubble msg={getBubbleMsg(profile?.name||"",streak,expr,lang)}/>
@@ -3824,6 +3809,7 @@ function GBHApp(){
             </div>
           </div>
 
+          <WeeklyXPGoal logs={logs} xp={xp}/>
           <WeekPath logs={logs} onOpenChest={()=>{ sfx("chest"); setShowWeekChest(true); }}/>
           {allDone&&<TomorrowCard name={profile?.name||""} streak={streak}/>}
 
