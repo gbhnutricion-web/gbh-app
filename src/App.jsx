@@ -2510,33 +2510,52 @@ function GBHApp(){
     id_receta:   r.id_receta    || r.ID_Receta        || r.id || "",
   });
 
-  // Traduce una receta al inglés usando Claude
+  // Traduce un texto ES→EN usando MyMemory (gratuito, sin API key, funciona desde el browser)
+  const translateText = async (text) => {
+    if(!text) return text;
+    try {
+      const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=es|en&de=gbhnutricion@app.com`;
+      const res = await fetch(url);
+      const data = await res.json();
+      const t = data?.responseData?.translatedText;
+      // MyMemory devuelve el original si falla — detectarlo
+      if(!t || t === text || data?.responseStatus !== 200) return text;
+      return t;
+    } catch(e) { return text; }
+  };
+
+  // Traduce una receta completa campo a campo
   const translateRecipe = async (recipe) => {
     const norm = normalizeRecipe(recipe);
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-          model:"claude-sonnet-4-20250514",
-          max_tokens:1000,
-          messages:[{role:"user",content:`Translate this Spanish recipe to English. Return ONLY a valid JSON object with exactly these keys: nombre, tipo, ingredientes, instrucciones. Keep all numbers, units and quantities exactly as-is. Recipe:\n${JSON.stringify({nombre:norm.nombre,tipo:norm.tipo,ingredientes:norm.ingredientes,instrucciones:norm.instrucciones})}`}]
-        })
-      });
-      const data = await res.json();
-      const text = data.content?.find(b=>b.type==="text")?.text||"";
-      const parsed = JSON.parse(text.replace(/```json|```/g,"").trim());
-      return {...norm,...parsed,_translated:true};
-    } catch(e){ console.warn("translateRecipe:",e); return norm; }
+      // Tipo: mapeo fijo para no gastar cuota de API
+      const tipoMap = {
+        "Carne":"Meat","Pescado":"Fish","Vegetariana":"Vegetarian",
+        "Vegana":"Vegan","Postre":"Dessert","Ensalada":"Salad","Sopa/Crema":"Soup"
+      };
+      const [nombre, ingredientes, instrucciones] = await Promise.all([
+        translateText(norm.nombre),
+        translateText(norm.ingredientes),
+        translateText(norm.instrucciones),
+      ]);
+      return {
+        ...norm,
+        nombre,
+        tipo: tipoMap[norm.tipo] || norm.tipo,
+        ingredientes,
+        instrucciones,
+        _translated: true,
+      };
+    } catch(e) { console.warn("translateRecipe:",e); return norm; }
   };
 
-  // Aplica traducción si lang===en, con caché por receta
+  // Aplica traducción si lang===en, con caché persistida en localStorage
   const getRecipeForDisplay = async (recipe) => {
     const norm = normalizeRecipe(recipe);
     if(lang!=="en") return norm;
     const key=`gbh:recipe:en:${norm.id_receta||norm.nombre}`;
     const cached=lsGet(key,null);
-    if(cached) return cached;
+    if(cached && cached._translated) return cached;
     const translated = await translateRecipe(norm);
     lsSet(key, translated);
     return translated;
