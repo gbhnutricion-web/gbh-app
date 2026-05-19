@@ -148,6 +148,16 @@ const TRANS = {
     challengeBanner:"Racha en peligro · Pesaje semanal · Dieta diaria",
     // Register weight button
     registerWeightBtn:"⚖️ Registrar peso de hoy",
+    // Landing page
+    landingHeadline:"Tu dieta, convertida en juego",
+    landingTagline:"Registra hábitos, sube de nivel y alcanza tu objetivo de peso.",
+    landingF1:"Registra dieta, agua, pasos y sueño",
+    landingF2:"Sube de nivel y gana recompensas",
+    landingF3:"Compite en el ranking con otros",
+    landingF4:"Sigue tu evolución de peso real",
+    landingCTA:"Empezar gratis 🚀",
+    landingLogin:"Ya tengo cuenta → Entrar",
+    landingFree:"Gratis · Sin publicidad · Sin suscripción",
   },
   en:{
     tagline:"Your healthy habits companion 🌱",
@@ -293,6 +303,16 @@ const TRANS = {
     challengeBanner:"Streak at risk · Weekly weigh-in · Daily diet",
     // Register weight button
     registerWeightBtn:"⚖️ Log today's weight",
+    // Landing page
+    landingHeadline:"Your diet, turned into a game",
+    landingTagline:"Track habits, level up and reach your weight goal.",
+    landingF1:"Log diet, water, steps and sleep",
+    landingF2:"Level up and earn rewards",
+    landingF3:"Compete in the ranking with others",
+    landingF4:"Track your real weight progress",
+    landingCTA:"Start for free 🚀",
+    landingLogin:"I already have an account → Log in",
+    landingFree:"Free · No ads · No subscription",
   }
 };
 
@@ -2371,12 +2391,12 @@ function GBHApp(){
   const [screen,  setScreen]  = useState(()=>{
     try{
       const em = lsGet("gbh:lastEmail",null);
-      if(!em) return "auth";
+      if(!em) return "landing";
       const lid = lsGet(`gbh:em:${em}`,null);
-      if(!lid) return "auth";
+      if(!lid) return "landing";
       const lp = lsGet(`gbh:p:${lid}`,null);
-      return lp?.id ? "loading" : "auth";
-    }catch{ return "auth"; }
+      return lp?.id ? "loading" : "landing";
+    }catch{ return "landing"; }
   });
   const [tab,     setTab]     = useState("home");
   const [lang,    setLang]    = useState(()=>lsGet("gbh:lang","es"));
@@ -3161,7 +3181,7 @@ function GBHApp(){
     setBadges([]);
     setTLog({diet:false,steps:false,hydration:false,sleep:false});
     setShowPhotoPicker(false);
-    setScreen("auth");
+    setScreen("landing");
   };
 
   const CSS=`
@@ -3172,6 +3192,8 @@ function GBHApp(){
     @keyframes bounce{0%,100%{transform:translateY(0) rotate(-3deg)}40%{transform:translateY(-16px) rotate(3deg)}65%{transform:translateY(-6px) rotate(-1deg)}} @keyframes headTilt{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
     @keyframes popIn{0%{transform:scale(0.65);opacity:0}100%{transform:scale(1);opacity:1}}
     @keyframes slideUp{from{transform:translateY(80px);opacity:0}to{transform:translateY(0);opacity:1}}
+    @keyframes bounceIn{0%{transform:scale(0.5);opacity:0}60%{transform:scale(1.15)}80%{transform:scale(0.95)}100%{transform:scale(1);opacity:1}}
+    @keyframes slideInLeft{from{transform:translateX(-24px);opacity:0}to{transform:translateX(0);opacity:1}}
     @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,200,0,0.55)}50%{box-shadow:0 0 0 10px rgba(255,200,0,0)}}
     @keyframes confettiFall{to{transform:translateY(110vh) rotate(800deg);opacity:0}}
     @keyframes glow{0%,100%{box-shadow:0 6px 0 ${T.g3},0 0 18px rgba(88,204,2,0.35)}50%{box-shadow:0 6px 0 ${T.g3},0 0 38px rgba(88,204,2,0.8)}}
@@ -3250,6 +3272,131 @@ function GBHApp(){
       <div style={{fontSize:16,fontWeight:900,color:T.g1,letterSpacing:"0.05em"}}>{t("loading")}</div>
       <div style={{width:48,height:48,border:`4px solid rgba(88,204,2,0.2)`,
         borderTopColor:T.g1,borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+    </div>
+    </LangCtx.Provider>
+  );
+
+  // ── LANDING ───────────────────────────────────────────────────────────────────
+  if(screen==="landing")return(
+    <LangCtx.Provider value={lang}>
+    <div style={{
+      fontFamily:"'Nunito',sans-serif",
+      background:`radial-gradient(ellipse at top, #1A3A10, ${T.bg})`,
+      minHeight:"100vh",maxWidth:420,margin:"0 auto",
+      display:"flex",flexDirection:"column",
+      alignItems:"center",justifyContent:"center",
+      padding:"32px 24px 40px",color:T.t1,
+      overflowX:"hidden",
+    }}>
+      <style>{CSS}</style>
+
+      {/* Selector de idioma — arriba derecha */}
+      <div style={{position:"fixed",top:16,right:16,display:"flex",gap:6,zIndex:100}}>
+        {[{code:"es",flag:"🇪🇸"},{code:"en",flag:"🇬🇧"}].map(({code,flag})=>(
+          <button key={code} onClick={()=>{ lsSet("gbh:lang",code); setLang(code); }}
+            style={{fontSize:20,background:lang===code?"rgba(88,204,2,0.2)":"rgba(255,255,255,0.08)",
+              border:`2px solid ${lang===code?T.g1:"rgba(255,255,255,0.15)"}`,
+              borderRadius:10,padding:"4px 8px",cursor:"pointer",
+              boxShadow:lang===code?`0 2px 0 ${T.g3}`:"none",transition:"all 0.15s"}}>
+            {flag}
+          </button>
+        ))}
+      </div>
+
+      {/* Mascota */}
+      <div onClick={tapSheep} style={{cursor:"pointer",marginBottom:8,animation:"bounceIn 0.6s cubic-bezier(0.34,1.56,0.64,1)"}}>
+        <Mascot expr="happy" size={160}/>
+      </div>
+
+      {/* Headline */}
+      <h1 style={{
+        fontSize:30,fontWeight:900,color:T.wh,
+        textAlign:"center",margin:"0 0 10px",
+        textShadow:"0 2px 16px rgba(0,0,0,0.5)",
+        lineHeight:1.2,
+      }}>
+        {t("landingHeadline")}
+      </h1>
+      <p style={{
+        fontSize:14,color:T.t2,textAlign:"center",
+        marginBottom:28,fontFamily:"'DM Sans',sans-serif",
+        lineHeight:1.5,maxWidth:300,
+      }}>
+        {t("landingTagline")}
+      </p>
+
+      {/* Features */}
+      <div style={{width:"100%",maxWidth:360,display:"flex",flexDirection:"column",gap:10,marginBottom:28}}>
+        {[
+          {icon:"🥗", key:"landingF1"},
+          {icon:"⚡", key:"landingF2"},
+          {icon:"👑", key:"landingF3"},
+          {icon:"📈", key:"landingF4"},
+        ].map(({icon,key},i)=>(
+          <div key={i} style={{
+            display:"flex",alignItems:"center",gap:14,
+            background:"rgba(255,255,255,0.05)",
+            border:`1.5px solid rgba(88,204,2,0.2)`,
+            borderRadius:16,padding:"13px 16px",
+            animation:`slideInLeft 0.4s ${0.1+i*0.08}s both cubic-bezier(0.34,1.12,0.64,1)`,
+          }}>
+            <span style={{fontSize:24,flexShrink:0}}>{icon}</span>
+            <span style={{fontSize:14,fontWeight:700,color:T.wh,fontFamily:"'DM Sans',sans-serif"}}>
+              {t(key)}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* CTA principal */}
+      <button
+        onClick={()=>setScreen("auth")}
+        style={{
+          width:"100%",maxWidth:360,
+          padding:"18px 24px",
+          borderRadius:20,
+          border:`3px solid ${T.g3}`,
+          background:`linear-gradient(135deg,${T.g1},${T.g2})`,
+          color:"white",fontSize:18,fontWeight:900,
+          cursor:"pointer",
+          boxShadow:`0 8px 0 ${T.g3}, 0 12px 30px rgba(88,204,2,0.25)`,
+          fontFamily:"'Nunito',sans-serif",
+          transition:"all 0.15s",
+          marginBottom:14,
+        }}
+        onMouseDown={e=>e.currentTarget.style.transform="scale(0.97)"}
+        onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}
+        onTouchStart={e=>e.currentTarget.style.transform="scale(0.97)"}
+        onTouchEnd={e=>e.currentTarget.style.transform="scale(1)"}
+      >
+        {t("landingCTA")}
+      </button>
+
+      {/* Login usuarios existentes */}
+      <button
+        onClick={()=>setScreen("auth")}
+        style={{
+          background:"none",border:"none",
+          color:T.t2,fontSize:13,cursor:"pointer",
+          fontFamily:"'DM Sans',sans-serif",
+          padding:"8px 0",marginBottom:20,
+          textDecoration:"underline",
+          textDecorationColor:"rgba(255,255,255,0.2)",
+        }}>
+        {t("landingLogin")}
+      </button>
+
+      {/* Free badge */}
+      <div style={{
+        fontSize:11,color:"rgba(88,204,2,0.7)",
+        fontFamily:"'DM Sans',sans-serif",
+        letterSpacing:"0.05em",textAlign:"center",
+        padding:"6px 16px",
+        border:"1px solid rgba(88,204,2,0.2)",
+        borderRadius:20,
+      }}>
+        {t("landingFree")}
+      </div>
     </div>
     </LangCtx.Provider>
   );
