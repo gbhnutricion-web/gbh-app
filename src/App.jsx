@@ -1213,13 +1213,16 @@ function HydrationWidget({done,onToggle}){
   });
   const target=8;
 
-  // Llamar onToggle cuando se llega al target (si aún no está done)
+  const isMounted = useRef(false);
+
+  // Solo llamar onToggle cuando glasses cambia (no en el mount inicial)
   useEffect(()=>{
+    if(!isMounted.current){ isMounted.current=true; return; }
     if(glasses>=target && !done) onToggle();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[glasses]);
 
-  // Si ya está done pero glasses<target (vino de server), sincronizar vasos
+  // Si ya está done desde el servidor pero glasses<target, sincronizar vasos visualmente (sin llamar onToggle)
   useEffect(()=>{
     if(done && glasses<target){
       setGlasses(target);
@@ -2237,35 +2240,11 @@ function GBHApp(){
     });
   },[]);
 
-  // ── Service Worker — actualización automática silenciosa ───────────────────
+  // ── Service Worker — solo para caché offline, sin auto-reload ──────────────
   useEffect(()=>{
     if(!("serviceWorker" in navigator)) return;
-
-    const applyUpdate = (sw) => {
-      if(!sw) return;
-      // Activar el nuevo SW inmediatamente y recargar
-      sw.postMessage({type:"SKIP_WAITING"});
-      sw.addEventListener("statechange", ()=>{
-        if(sw.state==="activating" || sw.state==="activated"){
-          window.location.reload();
-        }
-      });
-      // Fallback de 2s por si statechange no dispara
-      setTimeout(()=>window.location.reload(), 2000);
-    };
-
-    navigator.serviceWorker.register("/sw.js").then((reg)=>{
-      // Ya hay un SW esperando → actualizar ahora
-      if(reg.waiting){ applyUpdate(reg.waiting); return; }
-
-      // Nuevo SW encontrado mientras la app está abierta
-      reg.addEventListener("updatefound",()=>{
-        const newSW = reg.installing;
-        newSW?.addEventListener("statechange",()=>{
-          if(newSW.state==="installed") applyUpdate(newSW);
-        });
-      });
-    }).catch(err=>console.warn("[SW] registro fallido:",err));
+    navigator.serviceWorker.register("/sw.js")
+      .catch(err=>console.warn("[SW] registro fallido:",err));
   },[]);
 
   // ── PWA install prompt ──────────────────────────────────────────────────────
