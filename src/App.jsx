@@ -2307,7 +2307,11 @@ function GBHApp(){
   const [muted,   setMuted]   = useState(()=>lsGet("gbh:mute",false));
   const sfx = (name,...args) => { if(!muted) SFX[name]?.(...args); };
   const [profile, setProfile] = useState(null);
-  const [tLog,    setTLog]    = useState({diet:false,steps:false,hydration:false,sleep:false});
+  const [tLog,    setTLog]    = useState(()=>{
+    // Leer tLog del día directamente desde localStorage — nunca depende de Supabase
+    const today = toKey();
+    return lsGet(`gbh:tlog:${today}`, {diet:false,steps:false,hydration:false,sleep:false});
+  });
   const [steps,   setSteps]   = useState(0);
   const [weights, setWeights] = useState([]);
   const [badges,  setBadges]  = useState([]);
@@ -2659,15 +2663,31 @@ function GBHApp(){
 
   const loadP=useCallback(async(p)=>{
     setProfile(p);
-    // Si localStorage está vacío y hay conexión → restaurar desde Supabase
     const localLogs = lsGet(`gbh:logs:${p.id}`,[]);
     const localWeights = lsGet(`gbh:weights:${p.id}`,[]);
-    if(navigator.onLine && (localLogs.length===0 || localWeights.length<=1)){
+    // Restaurar desde Supabase solo si NO hay logs locales (primera instalación real)
+    if(navigator.onLine && localLogs.length===0){
       await restoreFromServer(p.id);
     }
     const l=lsGet(`gbh:logs:${p.id}`,[]);setLogs(l);
-    const t=l.find(x=>x.date===toKey());
-    if(t){setTLog({diet:t.diet,steps:t.steps,hydration:t.hydration,sleep:t.sleep});setSteps(t.sc||0);}
+    // tLog: prioridad a la clave del día en localStorage (nunca se pierde)
+    const today=toKey();
+    const savedTLog=lsGet(`gbh:tlog:${today}`,null);
+    if(savedTLog){
+      setTLog(savedTLog);
+      // Restaurar también el conteo de pasos del log del día
+      const t=l.find(x=>x.date===today);
+      setSteps(t?.sc||0);
+    } else {
+      // Fallback: leer del array de logs (compatibilidad hacia atrás)
+      const t=l.find(x=>x.date===today);
+      if(t){
+        const tl={diet:!!t.diet,steps:!!t.steps,hydration:!!t.hydration,sleep:!!t.sleep};
+        setTLog(tl);
+        lsSet(`gbh:tlog:${today}`,tl); // migrar al nuevo sistema
+        setSteps(t.sc||0);
+      }
+    }
     setWeights(lsGet(`gbh:weights:${p.id}`,[]).sort((a,b)=>a.date>b.date?1:-1));
     setBadges(lsGet(`gbh:badges:${p.id}`,[]) );
     setWeightBannerDismissed(false);
@@ -2756,7 +2776,10 @@ function GBHApp(){
 
   const saveLog=useCallback(async(nl,sc)=>{
     if(!profile)return;
-    const today=toKey(),l=[...logs];
+    const today=toKey();
+    // Persistir tLog del día en su propia clave — nunca se pierde
+    lsSet(`gbh:tlog:${today}`, nl);
+    const l=[...logs];
     const idx=l.findIndex(x=>x.date===today);
     const e={profile_id:profile.id,date:today,...nl,sc};
     if(idx>=0)l[idx]=e;else l.push(e);
