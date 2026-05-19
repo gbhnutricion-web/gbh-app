@@ -462,6 +462,7 @@ function useSFX(){
 }
 const GBH_EMAIL    = "gbh.nutricion@gmail.com";
 const GBH_NOMBRE   = "GBH Nutrición";
+const GBH_PRIVACY_URL = "https://docs.google.com/document/d/e/2PACX-1vQwTU8nGSbI3JVn1EfHqHVXxZxW4c6kNpALvt9K-8oMU0sKZJq5gFhf3B2kP0XJLP7D9bT8cQz0Rk/pub";
 // ─────────────────────────────────────────────────────────────────────────────
 import { ComposedChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -2135,11 +2136,13 @@ function UserAvatar({size=52, photoB64, initials, borderColor, onClick, frame=nu
 }
 
 // ─── ProfileCardModal — tarjeta de perfil del paciente ──────────────────────
-function ProfileCardModal({onClose, profile, userPhoto, onSavePhoto, onSaveProfile, weights, lv, xp, streak, badges, onSubscribeNotifications, lang, setLang}){
+function ProfileCardModal({onClose, profile, userPhoto, onSavePhoto, onSaveProfile, weights, lv, xp, streak, badges, onSubscribeNotifications, lang, setLang, onDeleteAccount}){
   const t=useLang();
-  const [photo,     setPhoto]    = useState(userPhoto||null);
-  const [editField, setEditField]= useState(null);
-  const [editVal,   setEditVal]  = useState("");
+  const [photo,       setPhoto]      = useState(userPhoto||null);
+  const [editField,   setEditField]  = useState(null);
+  const [editVal,     setEditVal]    = useState("");
+  const [showDelConf, setShowDelConf]= useState(false);
+  const [delInput,    setDelInput]   = useState("");
   const fileRef = useRef(null);
 
   const onFile = (e) => {
@@ -2281,6 +2284,79 @@ function ProfileCardModal({onClose, profile, userPhoto, onSavePhoto, onSaveProfi
               </div>
             </div>
           )}
+
+          {/* ── Eliminar cuenta ── */}
+          <div style={{marginTop:20,paddingTop:16,borderTop:"1px solid rgba(255,75,75,0.2)"}}>
+            {!showDelConf?(
+              <button
+                onClick={()=>{setShowDelConf(true);setDelInput("");}}
+                style={{
+                  width:"100%",padding:"12px",borderRadius:14,
+                  background:"rgba(255,75,75,0.07)",
+                  border:"1.5px solid rgba(255,75,75,0.25)",
+                  color:"rgba(255,120,120,0.85)",fontSize:13,fontWeight:800,
+                  cursor:"pointer",fontFamily:"'Nunito',sans-serif",
+                  transition:"all 0.2s",
+                }}>
+                🗑️ Eliminar mi cuenta
+              </button>
+            ):(
+              <div style={{
+                background:"rgba(255,75,75,0.1)",
+                border:"1.5px solid rgba(255,75,75,0.35)",
+                borderRadius:16,padding:"16px 14px",
+              }}>
+                <div style={{fontSize:13,fontWeight:900,color:"#FF8080",marginBottom:6,textAlign:"center"}}>
+                  ⚠️ Eliminar cuenta permanentemente
+                </div>
+                <div style={{fontSize:11,color:"rgba(255,180,180,0.8)",fontFamily:"'DM Sans',sans-serif",
+                  marginBottom:14,textAlign:"center",lineHeight:1.5}}>
+                  Se borrarán todos tus datos: dieta, peso, logros y gemas.{"\n"}
+                  Esta acción <b style={{color:"#FF8080"}}>no se puede deshacer</b>.
+                </div>
+                <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:8}}>
+                  Escribe <b style={{color:"#FF8080",letterSpacing:"0.05em"}}>BORRAR DATOS</b> para confirmar:
+                </div>
+                <input
+                  autoFocus
+                  value={delInput}
+                  onChange={e=>setDelInput(e.target.value)}
+                  placeholder="BORRAR DATOS"
+                  style={{
+                    width:"100%",background:"rgba(255,255,255,0.07)",
+                    border:`1.5px solid ${delInput==="BORRAR DATOS"?"rgba(255,75,75,0.7)":"rgba(255,255,255,0.15)"}`,
+                    borderRadius:10,padding:"10px 12px",color:"#FF8080",
+                    fontSize:14,fontWeight:700,fontFamily:"'DM Sans',sans-serif",
+                    marginBottom:12,outline:"none",letterSpacing:"0.05em",
+                  }}
+                />
+                <div style={{display:"flex",gap:8}}>
+                  <button
+                    onClick={()=>{setShowDelConf(false);setDelInput("");}}
+                    style={{flex:1,padding:"11px",borderRadius:12,
+                      background:"rgba(255,255,255,0.08)",border:"1.5px solid rgba(255,255,255,0.14)",
+                      color:T.t2,fontWeight:800,fontSize:13,cursor:"pointer",
+                      fontFamily:"'Nunito',sans-serif"}}>
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={()=>{ if(delInput==="BORRAR DATOS") onDeleteAccount(); }}
+                    disabled={delInput!=="BORRAR DATOS"}
+                    style={{flex:1,padding:"11px",borderRadius:12,
+                      background:delInput==="BORRAR DATOS"?"rgba(255,75,75,0.9)":"rgba(255,75,75,0.15)",
+                      border:`1.5px solid ${delInput==="BORRAR DATOS"?"rgba(255,100,100,0.8)":"rgba(255,75,75,0.2)"}`,
+                      color:delInput==="BORRAR DATOS"?"white":"rgba(255,120,120,0.4)",
+                      fontWeight:900,fontSize:13,
+                      cursor:delInput==="BORRAR DATOS"?"pointer":"not-allowed",
+                      fontFamily:"'Nunito',sans-serif",
+                      transition:"all 0.2s",
+                    }}>
+                    🗑️ Borrar
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -2354,10 +2430,11 @@ function GBHApp(){
   const [confetti,setConfetti]= useState(false);
   const [loading, setLoading] = useState(false);
   const [taps,    setTaps]    = useState(0);
-  const [aName,   setAName]   = useState("");
-  const [aEmail,  setAEmail]  = useState("");
-  const [aWeight, setAWeight] = useState("");
-  const [aGoal,   setAGoal]   = useState("");
+  const [aName,    setAName]    = useState("");
+  const [aEmail,   setAEmail]   = useState("");
+  const [aWeight,  setAWeight]  = useState("");
+  const [aGoal,    setAGoal]    = useState("");
+  const [aPrivacy, setAPrivacy] = useState(false);
   const [authMode,setAuthMode]= useState("new"); // "new" | "returning" | "checking"
   const [authErr, setAuthErr] = useState("");
   const [dailyRecipe,setDailyRecipe] = useState(null);
@@ -3047,6 +3124,46 @@ function GBHApp(){
   const loadAdmin=async()=>{const d=await sbReq("GET","admin_overview?select=*")||[];if(d.length){setAllP(d);return;}setAllP(Object.keys(localStorage).filter(k=>k.startsWith("gbh:p:")).map(k=>lsGet(k,{})).filter(p=>p.id));};
   const buyShield=async()=>{if(gems<200){sfx("error");showT({icon:"💎",title:t("insufficientGems"),sub:t("needGemsShield")});return;}const u={...profile,gems:gems-200,shields:(profile.shields||0)+1};setProfile(u);lsSet(`gbh:p:${u.id}`,u);await sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:u.gems,shields:u.shields});sfx("shield");showT({icon:"🛡️",title:t("shieldActivated"),sub:t("shieldProtected")});};
 
+  const deleteAccount = async () => {
+    if(!profile) return;
+    const id = profile.id;
+    const email = profile.email;
+    // 1. Borrar en Supabase (orden: logs → logros → pesos → perfil)
+    await sbReq("DELETE", `daily_logs?profile_id=eq.${id}`);
+    await sbReq("DELETE", `achievements?profile_id=eq.${id}`);
+    await sbReq("DELETE", `weight_logs?profile_id=eq.${id}`);
+    await sbReq("DELETE", `profiles?id=eq.${id}`);
+    // 2. Borrar todas las claves del usuario en localStorage
+    const keysToDelete = Object.keys(localStorage).filter(k =>
+      k.startsWith(`gbh:logs:${id}`) ||
+      k.startsWith(`gbh:weights:${id}`) ||
+      k.startsWith(`gbh:badges:${id}`) ||
+      k.startsWith(`gbh:p:${id}`) ||
+      k === `gbh:em:${email}` ||
+      k === "gbh:lastEmail" ||
+      k === "gbh:userPhoto" ||
+      k === "gbh:mute" ||
+      k === "gbh:lang" ||
+      k.startsWith("gbh:tlog:") ||
+      k.startsWith("gbh:recipe:") ||
+      k.startsWith("gbh:quiz:") ||
+      k.startsWith("gbh:ruleta") ||
+      k.startsWith("gbh:weekXP:") ||
+      k.startsWith("gbh:weekChest:") ||
+      k.startsWith("gbh:challenges:") ||
+      k === QUEUE_KEY
+    );
+    keysToDelete.forEach(k => { try { localStorage.removeItem(k); } catch {} });
+    // 3. Resetear estado y volver al registro
+    setProfile(null);
+    setLogs([]);
+    setWeights([]);
+    setBadges([]);
+    setTLog({diet:false,steps:false,hydration:false,sleep:false});
+    setShowPhotoPicker(false);
+    setScreen("auth");
+  };
+
   const CSS=`
     @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&family=DM+Sans:wght@400;500;700&display=swap');
     *{box-sizing:border-box;margin:0;padding:0}body{background:${T.bg};font-family:'Nunito',sans-serif}
@@ -3072,6 +3189,7 @@ function GBHApp(){
     @keyframes sparkle2{0%,100%{opacity:1;transform:scale(1.1) rotate(-15deg)}50%{opacity:0.6;transform:scale(0.8) rotate(15deg)}}
     input::placeholder{color:rgba(255,255,255,0.22)}input:focus{outline:none!important;border-color:rgba(88,204,2,0.75)!important}
     ::-webkit-scrollbar{width:0}button:active{transform:scale(0.94)!important;transition:transform 0.08s!important}
+    .nav-scroll::-webkit-scrollbar{display:none}.nav-scroll{scrollbar-width:none;-ms-overflow-style:none;}
   `;
 
   // Cargar ranking cuando se activa la pestaña
@@ -3219,11 +3337,46 @@ function GBHApp(){
           </div>
         )}
 
+        {/* ── Checkbox política de privacidad (solo para nuevos usuarios) ── */}
+        {authMode!=="returning"&&(
+          <div
+            onClick={()=>setAPrivacy(p=>!p)}
+            style={{
+              display:"flex",alignItems:"flex-start",gap:12,
+              marginBottom:18,cursor:"pointer",
+              padding:"12px 14px",
+              background:aPrivacy?"rgba(88,204,2,0.08)":"rgba(255,255,255,0.04)",
+              border:`1.5px solid ${aPrivacy?"rgba(88,204,2,0.4)":"rgba(255,255,255,0.12)"}`,
+              borderRadius:14,transition:"all 0.2s",
+            }}>
+            {/* Caja checkbox visual */}
+            <div style={{
+              width:22,height:22,borderRadius:7,flexShrink:0,marginTop:1,
+              background:aPrivacy?`linear-gradient(135deg,${T.g1},${T.g2})`:"rgba(255,255,255,0.08)",
+              border:`2px solid ${aPrivacy?T.g1:"rgba(255,255,255,0.25)"}`,
+              display:"flex",alignItems:"center",justifyContent:"center",
+              boxShadow:aPrivacy?`0 2px 0 ${T.g3}`:"none",
+              transition:"all 0.18s",
+            }}>
+              {aPrivacy&&<span style={{fontSize:13,color:"white",fontWeight:900,lineHeight:1}}>✓</span>}
+            </div>
+            <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>
+              He leído y acepto la{" "}
+              <span
+                onClick={e=>{e.stopPropagation();window.open(GBH_PRIVACY_URL,"_blank","noopener");}}
+                style={{color:T.g2,fontWeight:700,textDecoration:"underline",cursor:"pointer"}}>
+                política de privacidad
+              </span>
+              {" "}de GBH Nutrición. Entiendo cómo se gestionan mis datos.
+            </div>
+          </div>
+        )}
+
         {(()=>{
           const isReturning = authMode==="returning";
           const dis = loading || authMode==="checking" ||
                       !aEmail.trim() ||
-                      (!isReturning && (!aName.trim()||!aWeight||isNaN(parseFloat(aWeight))));
+                      (!isReturning && (!aName.trim()||!aWeight||isNaN(parseFloat(aWeight))||!aPrivacy));
           return(
             <button onClick={doAuth} disabled={dis}
               style={{width:"100%",padding:"17px 20px",borderRadius:18,border:`3px solid ${T.g3}`,
@@ -3470,6 +3623,7 @@ function GBHApp(){
           onSubscribeNotifications={subscribeNotifications}
           lang={lang}
           setLang={switchLang}
+          onDeleteAccount={deleteAccount}
         />
       )}
 
@@ -3659,6 +3813,9 @@ function GBHApp(){
 
         {/* ── HOME ──────────────────────────────────────────────────────────── */}
         {tab==="home"&&<>
+          {/* ── Meta semanal XP — debajo de las gemas ── */}
+          <WeeklyXPGoal logs={logs} xp={xp}/>
+
           {/* Mascot + bubble */}
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,paddingTop:4,paddingBottom:18}}>
             <Bubble msg={getBubbleMsg(profile?.name||"",streak,expr,lang)}/>
@@ -3667,7 +3824,6 @@ function GBHApp(){
             </div>
           </div>
 
-          <WeeklyXPGoal logs={logs} xp={xp}/>
           <WeekPath logs={logs} onOpenChest={()=>{ sfx("chest"); setShowWeekChest(true); }}/>
           {allDone&&<TomorrowCard name={profile?.name||""} streak={streak}/>}
 
@@ -4168,14 +4324,16 @@ function GBHApp(){
       </div>
 
       {/* ── BOTTOM NAV ────────────────────────────────────────────────────── */}
-      <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:420,background:"rgba(8,18,8,0.97)",backdropFilter:"blur(30px)",borderTop:`3px solid ${T.bW}`,display:"flex",padding:"10px 0 10px",zIndex:100}}>
-        {[{id:"home",icon:"🏠",l:t("tabHome")},{id:"receta",icon:"🍰",l:t("tabRecipe")},{id:"weight",icon:"⚖️",l:t("tabWeight")},{id:"ranking",icon:"👑",l:t("tabRanking")},{id:"achievements",icon:"🏅",l:t("tabAchievements")}].map(({id,icon,l})=>(
-          <button key={id} onClick={()=>{ sfx("tap"); setTab(id); }} style={tabSt(tab===id)}>
-            <span style={{fontSize:26,filter:tab===id?"none":"grayscale(0.6)",transition:"all 0.2s"}}>{icon}</span>
-            <span>{l}</span>
-            {tab===id&&<div style={{width:24,height:4,background:T.au1,borderRadius:4,boxShadow:`0 0 10px ${T.au1}`,marginTop:1}}/>}
-          </button>
-        ))}
+      <div className="nav-scroll" style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:420,background:"rgba(8,18,8,0.97)",backdropFilter:"blur(30px)",borderTop:`3px solid ${T.bW}`,zIndex:100,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+        <div style={{display:"flex",padding:"10px 12px 10px",gap:2,width:"max-content",minWidth:"100%",justifyContent:"space-around"}}>
+          {[{id:"home",icon:"🏠",l:t("tabHome")},{id:"receta",icon:"🍰",l:t("tabRecipe")},{id:"weight",icon:"⚖️",l:t("tabWeight")},{id:"ranking",icon:"👑",l:t("tabRanking")},{id:"achievements",icon:"🏅",l:t("tabAchievements")}].map(({id,icon,l})=>(
+            <button key={id} onClick={()=>{ sfx("tap"); setTab(id); }} style={{...tabSt(tab===id),flex:"0 0 auto",minWidth:64,padding:"8px 10px"}}>
+              <span style={{fontSize:26,filter:tab===id?"none":"grayscale(0.6)",transition:"all 0.2s"}}>{icon}</span>
+              <span style={{fontSize:9,whiteSpace:"nowrap"}}>{l}</span>
+              {tab===id&&<div style={{width:24,height:4,background:T.au1,borderRadius:4,boxShadow:`0 0 10px ${T.au1}`,marginTop:1}}/>}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
     </LangCtx.Provider>
