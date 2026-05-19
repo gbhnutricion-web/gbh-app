@@ -900,29 +900,29 @@ function StreakBadge({value,label,icon,color,bg}){
 
 // ─── Sistema de Desafíos Semanales ───────────────────────────────────────────
 const CHALLENGE_POOL = [
-  // Formato: {id, icon, title, desc, type, goal, xp, gems}
+  // Formato: {id, icon, title, title_en, desc, desc_en, type, goal, xp, gems}
   // type: "diet_days"|"perfect_days"|"steps_day"|"hydration_days"|"sleep_days"|"quiz_days"|"streak_keep"|"weight_reg"|"xp_week"
-  {id:"c01",icon:"🥗",title:"Semana de dieta",       desc:"Registra la dieta 5 días esta semana",        type:"diet_days",       goal:5,  xp:40, gems:10},
-  {id:"c02",icon:"💪",title:"Semana perfecta",        desc:"Completa 3 días perfectos (4 misiones)",      type:"perfect_days",    goal:3,  xp:60, gems:15},
-  {id:"c03",icon:"👟",title:"10k tres veces",         desc:"Llega a 10.000 pasos al menos 3 días",        type:"steps_day",       goal:3,  xp:45, gems:10},
-  {id:"c04",icon:"💧",title:"Hidratación constante",  desc:"Completa la hidratación 4 días esta semana",  type:"hydration_days",  goal:4,  xp:35, gems:8 },
-  {id:"c05",icon:"😴",title:"Duerme bien",            desc:"Duerme 7h al menos 4 días esta semana",       type:"sleep_days",      goal:4,  xp:35, gems:8 },
-  {id:"c06",icon:"🧠",title:"Semana quiz",            desc:"Haz el quiz 4 días esta semana",              type:"quiz_days",       goal:4,  xp:50, gems:12},
-  {id:"c07",icon:"🔥",title:"Mantén la racha",        desc:"No pierdas la racha durante 5 días seguidos", type:"streak_keep",     goal:5,  xp:55, gems:12},
-  {id:"c08",icon:"⚖️",title:"Pesaje semanal",         desc:"Registra tu peso este fin de semana",         type:"weight_reg",      goal:1,  xp:30, gems:8 },
-  {id:"c09",icon:"⚡",title:"Acumula XP",             desc:"Consigue 80 XP esta semana",                  type:"xp_week",         goal:80, xp:50, gems:15},
-  {id:"c10",icon:"🍽️",title:"Dieta impecable",        desc:"Registra la dieta los 7 días de la semana",   type:"diet_days",       goal:7,  xp:80, gems:20},
-  {id:"c11",icon:"🌟",title:"Semana de lujo",         desc:"Completa 5 días perfectos (4 misiones)",      type:"perfect_days",    goal:5,  xp:90, gems:25},
-  {id:"c12",icon:"🏃",title:"Maratonista",            desc:"Llega a 10.000 pasos 5 días esta semana",     type:"steps_day",       goal:5,  xp:60, gems:15},
-  {id:"c13",icon:"🚿",title:"Hidratación total",      desc:"Completa la hidratación los 7 días",          type:"hydration_days",  goal:7,  xp:55, gems:14},
-  {id:"c14",icon:"🛌",title:"Sueño de campeón",       desc:"Duerme 7h los 7 días de la semana",           type:"sleep_days",      goal:7,  xp:55, gems:14},
-  {id:"c15",icon:"📚",title:"Quiz adicto",            desc:"Haz el quiz los 7 días de la semana",         type:"quiz_days",       goal:7,  xp:70, gems:18},
-  {id:"c16",icon:"🐑",title:"Racha imparable",        desc:"Mantén la racha los 7 días de la semana",     type:"streak_keep",     goal:7,  xp:75, gems:18},
-  {id:"c17",icon:"📈",title:"Máquina de XP",          desc:"Consigue 150 XP esta semana",                 type:"xp_week",         goal:150,xp:75, gems:20},
-  {id:"c18",icon:"🎯",title:"Constancia total",       desc:"Registra la dieta y duerme bien 5 días",      type:"perfect_days",    goal:4,  xp:65, gems:16},
-  {id:"c19",icon:"💦",title:"Semana saludable",       desc:"Hidratación y sueño completos 5 días",        type:"hydration_days",  goal:5,  xp:50, gems:12},
-  {id:"c20",icon:"🏆",title:"Campeón total",          desc:"Completa las 4 misiones 6 días esta semana",  type:"perfect_days",    goal:6,  xp:100,gems:30},
-  {id:"c21",icon:"⚡",title:"Sprint de XP",           desc:"Consigue 100 XP en 5 días",                  type:"xp_week",         goal:100,xp:60, gems:18},
+  {id:"c01",icon:"🥗",title:"Semana de dieta",       title_en:"Diet week",          desc:"Registra la dieta 5 días esta semana",        desc_en:"Log your diet 5 days this week",         type:"diet_days",       goal:5,  xp:40, gems:10},
+  {id:"c02",icon:"💪",title:"Semana perfecta",        title_en:"Perfect week",       desc:"Completa 3 días perfectos (4 misiones)",      desc_en:"Complete 3 perfect days (4 missions)",   type:"perfect_days",    goal:3,  xp:60, gems:15},
+  {id:"c03",icon:"👟",title:"10k tres veces",         title_en:"10k three times",    desc:"Llega a 10.000 pasos al menos 3 días",        desc_en:"Reach 10,000 steps at least 3 days",     type:"steps_day",       goal:3,  xp:45, gems:10},
+  {id:"c04",icon:"💧",title:"Hidratación constante",  title_en:"Stay hydrated",      desc:"Completa la hidratación 4 días esta semana",  desc_en:"Complete hydration 4 days this week",    type:"hydration_days",  goal:4,  xp:35, gems:8 },
+  {id:"c05",icon:"😴",title:"Duerme bien",            title_en:"Sleep well",         desc:"Duerme 7h al menos 4 días esta semana",       desc_en:"Sleep 7h at least 4 days this week",     type:"sleep_days",      goal:4,  xp:35, gems:8 },
+  {id:"c06",icon:"🧠",title:"Semana quiz",            title_en:"Quiz week",          desc:"Haz el quiz 4 días esta semana",              desc_en:"Complete the quiz 4 days this week",     type:"quiz_days",       goal:4,  xp:50, gems:12},
+  {id:"c07",icon:"🔥",title:"Mantén la racha",        title_en:"Keep the streak",    desc:"No pierdas la racha durante 5 días seguidos", desc_en:"Don't break your streak for 5 days",     type:"streak_keep",     goal:5,  xp:55, gems:12},
+  {id:"c08",icon:"⚖️",title:"Pesaje semanal",         title_en:"Weekly weigh-in",    desc:"Registra tu peso este fin de semana",         desc_en:"Log your weight this weekend",           type:"weight_reg",      goal:1,  xp:30, gems:8 },
+  {id:"c09",icon:"⚡",title:"Acumula XP",             title_en:"XP boost",           desc:"Consigue 80 XP esta semana",                  desc_en:"Earn 80 XP this week",                   type:"xp_week",         goal:80, xp:50, gems:15},
+  {id:"c10",icon:"🍽️",title:"Dieta impecable",        title_en:"Flawless diet",      desc:"Registra la dieta los 7 días de la semana",   desc_en:"Log your diet all 7 days this week",     type:"diet_days",       goal:7,  xp:80, gems:20},
+  {id:"c11",icon:"🌟",title:"Semana de lujo",         title_en:"Luxury week",        desc:"Completa 5 días perfectos (4 misiones)",      desc_en:"Complete 5 perfect days (4 missions)",   type:"perfect_days",    goal:5,  xp:90, gems:25},
+  {id:"c12",icon:"🏃",title:"Maratonista",            title_en:"Marathoner",         desc:"Llega a 10.000 pasos 5 días esta semana",     desc_en:"Reach 10,000 steps 5 days this week",    type:"steps_day",       goal:5,  xp:60, gems:15},
+  {id:"c13",icon:"🚿",title:"Hidratación total",      title_en:"Full hydration",     desc:"Completa la hidratación los 7 días",          desc_en:"Complete hydration all 7 days",          type:"hydration_days",  goal:7,  xp:55, gems:14},
+  {id:"c14",icon:"🛌",title:"Sueño de campeón",       title_en:"Champion sleep",     desc:"Duerme 7h los 7 días de la semana",           desc_en:"Sleep 7h all 7 days this week",          type:"sleep_days",      goal:7,  xp:55, gems:14},
+  {id:"c15",icon:"📚",title:"Quiz adicto",            title_en:"Quiz addict",        desc:"Haz el quiz los 7 días de la semana",         desc_en:"Complete the quiz all 7 days",           type:"quiz_days",       goal:7,  xp:70, gems:18},
+  {id:"c16",icon:"🐑",title:"Racha imparable",        title_en:"Unstoppable streak", desc:"Mantén la racha los 7 días de la semana",     desc_en:"Keep your streak all 7 days",            type:"streak_keep",     goal:7,  xp:75, gems:18},
+  {id:"c17",icon:"📈",title:"Máquina de XP",          title_en:"XP machine",         desc:"Consigue 150 XP esta semana",                 desc_en:"Earn 150 XP this week",                  type:"xp_week",         goal:150,xp:75, gems:20},
+  {id:"c18",icon:"🎯",title:"Constancia total",       title_en:"Total consistency",  desc:"Registra la dieta y duerme bien 5 días",      desc_en:"Log diet and sleep well 5 days",         type:"perfect_days",    goal:4,  xp:65, gems:16},
+  {id:"c19",icon:"💦",title:"Semana saludable",       title_en:"Healthy week",       desc:"Hidratación y sueño completos 5 días",        desc_en:"Full hydration and sleep 5 days",        type:"hydration_days",  goal:5,  xp:50, gems:12},
+  {id:"c20",icon:"🏆",title:"Campeón total",          title_en:"Total champion",     desc:"Completa las 4 misiones 6 días esta semana",  desc_en:"Complete all 4 missions 6 days this week",type:"perfect_days",   goal:6,  xp:100,gems:30},
+  {id:"c21",icon:"⚡",title:"Sprint de XP",           title_en:"XP sprint",          desc:"Consigue 100 XP en 5 días",                  desc_en:"Earn 100 XP in 5 days",                  type:"xp_week",         goal:100,xp:60, gems:18},
 ];
 
 // Obtener los 3 desafíos de la semana actual (rotan cada lunes)
@@ -3472,9 +3472,13 @@ function GBHApp(){
               {/* Cabecera */}
               <div style={{padding:"8px 20px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                 <div>
-                  <div style={{fontSize:18,fontWeight:900,color:T.wh}}>🎯 Desafíos semanales</div>
+                  <div style={{fontSize:18,fontWeight:900,color:T.wh}}>
+                    🎯 {lang==="en"?"Weekly challenges":"Desafíos semanales"}
+                  </div>
                   <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:2}}>
-                    {claimedChallenges.length}/{weekChs.length} completados · Se renuevan el lunes
+                    {lang==="en"
+                      ? `${claimedChallenges.length}/${weekChs.length} completed · Resets every Monday`
+                      : `${claimedChallenges.length}/${weekChs.length} completados · Se renuevan el lunes`}
                   </div>
                 </div>
                 <button onClick={()=>setShowChallenges(false)} style={{
@@ -3490,6 +3494,8 @@ function GBHApp(){
                   const pct     = Math.min(100,Math.round((prog/ch.goal)*100));
                   const done    = pct>=100;
                   const claimed = claimedChallenges.includes(ch.id);
+                  const chTitle = lang==="en" ? (ch.title_en||ch.title) : ch.title;
+                  const chDesc  = lang==="en" ? (ch.desc_en||ch.desc)   : ch.desc;
                   return(
                     <div key={ch.id} style={{
                       background:claimed?"rgba(88,204,2,0.1)":done?"rgba(88,204,2,0.06)":"rgba(255,255,255,0.04)",
@@ -3499,12 +3505,14 @@ function GBHApp(){
                       <div style={{display:"flex",alignItems:"center",gap:12}}>
                         <div style={{fontSize:26,flexShrink:0}}>{claimed?"✅":ch.icon}</div>
                         <div style={{flex:1,minWidth:0}}>
-                          <div style={{fontSize:14,fontWeight:900,color:claimed?T.g2:T.wh}}>{ch.title}</div>
-                          <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:2}}>{ch.desc}</div>
+                          <div style={{fontSize:14,fontWeight:900,color:claimed?T.g2:T.wh}}>{chTitle}</div>
+                          <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:2}}>{chDesc}</div>
                         </div>
                         <div style={{flexShrink:0,textAlign:"right"}}>
                           {claimed?(
-                            <div style={{fontSize:12,color:T.g1,fontWeight:800}}>¡Listo! 🎉</div>
+                            <div style={{fontSize:12,color:T.g1,fontWeight:800}}>
+                              {lang==="en"?"Done! 🎉":"¡Listo! 🎉"}
+                            </div>
                           ):done?(
                             <button onClick={()=>claimChallenge(ch)} style={{
                               background:`linear-gradient(135deg,${T.g1},${T.g2})`,
