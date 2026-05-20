@@ -659,6 +659,7 @@ function getQuizFact(q, lang){
   return out;
 }
 const isWeekend=()=>{const d=new Date().getDay();return d===0||d===6;};
+const toKey=(d=new Date())=>d.toISOString().slice(0,10);
 const WLABELS=["L","M","X","J","V","S","D"];
 
 
