@@ -627,8 +627,37 @@ const BADGES=[
   {id:"pW",   icon:"⭐",t:"Semana Perfecta",    t_en:"Perfect Week",        d:"4 misiones 7 días seguidos", d_en:"4 missions 7 days in a row",   xp:100,g:60},
 ];
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-const toKey=(d=new Date())=>d.toISOString().slice(0,10);
+// ─── Helper: obtener pregunta/opciones en el idioma activo ──────────────────
+// Las preguntas del QUIZ_RECETARIO sin q_en siguen siempre el mismo patrón.
+// En lugar de añadir 50+ campos, usamos sustitución automática.
+const MACRO_MAP = {
+  "calorías":"calories","grasas":"fat","proteínas":"protein",
+  "hidratos de carbono":"carbohydrates"
+};
+const FACT_MAP  = {
+  " grasa":" fat"," prot":" protein"," HC":" carbs"
+};
+function getQuizQ(q, lang){
+  if(lang!=="en") return q.q;
+  if(q.q_en) return q.q_en;
+  // Auto-traducir: "¿Cuál de estos platos del recetario GBH tiene más X?"
+  let out = q.q
+    .replace("¿Cuál de estos platos del recetario GBH tiene más ","Which GBH recipe has the most ")
+    .replace("?","?");
+  Object.entries(MACRO_MAP).forEach(([es,en])=>{ out = out.replace(es,en); });
+  return out;
+}
+function getQuizOpts(q, lang){
+  if(lang!=="en") return q.opts;
+  return q.opts_en || q.opts; // dish names stay as-is if no opts_en
+}
+function getQuizFact(q, lang){
+  if(lang!=="en"||!q.fact) return q.fact||"";
+  if(q.fact_en) return q.fact_en;
+  let out = q.fact;
+  Object.entries(FACT_MAP).forEach(([es,en])=>{ out = out.replace(es,en); });
+  return out;
+}
 const isWeekend=()=>{const d=new Date().getDay();return d===0||d===6;};
 const WLABELS=["L","M","X","J","V","S","D"];
 
@@ -1860,11 +1889,11 @@ function QuizModal({onClose, onComplete, todayKey, lang}){
             {/* Pregunta */}
             <div style={{padding:"22px 20px 16px"}}>
               <div style={{fontSize:16,fontWeight:800,color:T.wh,lineHeight:1.5,marginBottom:20,fontFamily:"'DM Sans',sans-serif"}}>
-                {lang==="en" ? (q.q_en||q.q) : q.q}
+                {getQuizQ(q, lang)}
               </div>
               {/* Opciones */}
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                {(lang==="en" ? (q.opts_en||q.opts) : q.opts).map((opt,i)=>{
+                {getQuizOpts(q, lang).map((opt,i)=>{
                   let bg="rgba(255,255,255,0.07)";
                   let border=T.bW;
                   let col=T.t1;
@@ -1901,7 +1930,7 @@ function QuizModal({onClose, onComplete, todayKey, lang}){
               {correct
                 ? (lang==="en"?"You knew the answer! Your nutritionist would be proud 🐑":"¡Sabías la respuesta! Tu nutricionista estaría orgulloso 🐑")
                 : lang==="en"
-                  ? `The correct answer was: "${(q.opts_en||q.opts)[q.ans]}"${q.fact_en?" · "+q.fact_en:""}`
+                  ? `The correct answer was: "${getQuizOpts(q,lang)[q.ans]}"${getQuizFact(q,lang)?" · "+getQuizFact(q,lang):""}`
                   : `La respuesta correcta era: "${q.opts[q.ans]}"${q.fact?" · "+q.fact:""}`}
             </div>
             {/* Recompensa */}
@@ -2353,7 +2382,7 @@ function ProfileCardModal({onClose, profile, userPhoto, onSavePhoto, onSaveProfi
                   cursor:"pointer",fontFamily:"'Nunito',sans-serif",
                   transition:"all 0.2s",
                 }}>
-                🗑️ Eliminar mi cuenta
+                🗑️ {lang==="en"?"Delete my account":"Eliminar mi cuenta"}
               </button>
             ):(
               <div style={{
@@ -2362,24 +2391,25 @@ function ProfileCardModal({onClose, profile, userPhoto, onSavePhoto, onSaveProfi
                 borderRadius:16,padding:"16px 14px",
               }}>
                 <div style={{fontSize:13,fontWeight:900,color:"#FF8080",marginBottom:6,textAlign:"center"}}>
-                  ⚠️ Eliminar cuenta permanentemente
+                  ⚠️ {lang==="en"?"Permanently delete account":"Eliminar cuenta permanentemente"}
                 </div>
                 <div style={{fontSize:11,color:"rgba(255,180,180,0.8)",fontFamily:"'DM Sans',sans-serif",
                   marginBottom:14,textAlign:"center",lineHeight:1.5}}>
-                  Se borrarán todos tus datos: dieta, peso, logros y gemas.{"\n"}
-                  Esta acción <b style={{color:"#FF8080"}}>no se puede deshacer</b>.
+                  {lang==="en"
+                    ?<>All your data will be deleted: diet, weight, achievements and gems.<br/><b style={{color:"#FF8080"}}>This action cannot be undone.</b></>
+                    :<>Se borrarán todos tus datos: dieta, peso, logros y gemas.<br/><b style={{color:"#FF8080"}}>Esta acción no se puede deshacer.</b></>}
                 </div>
                 <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:8}}>
-                  Escribe <b style={{color:"#FF8080",letterSpacing:"0.05em"}}>BORRAR DATOS</b> para confirmar:
+                  {lang==="en"?<>Type <b style={{color:"#FF8080",letterSpacing:"0.05em"}}>DELETE DATA</b> to confirm:</>:<>Escribe <b style={{color:"#FF8080",letterSpacing:"0.05em"}}>BORRAR DATOS</b> para confirmar:</>}
                 </div>
                 <input
                   autoFocus
                   value={delInput}
                   onChange={e=>setDelInput(e.target.value)}
-                  placeholder="BORRAR DATOS"
+                  placeholder={lang==="en"?"DELETE DATA":"BORRAR DATOS"}
                   style={{
                     width:"100%",background:"rgba(255,255,255,0.07)",
-                    border:`1.5px solid ${delInput==="BORRAR DATOS"?"rgba(255,75,75,0.7)":"rgba(255,255,255,0.15)"}`,
+                    border:`1.5px solid ${(lang==="en"?delInput==="DELETE DATA":delInput==="BORRAR DATOS")?"rgba(255,75,75,0.7)":"rgba(255,255,255,0.15)"}`,
                     borderRadius:10,padding:"10px 12px",color:"#FF8080",
                     fontSize:14,fontWeight:700,fontFamily:"'DM Sans',sans-serif",
                     marginBottom:12,outline:"none",letterSpacing:"0.05em",
@@ -2392,21 +2422,21 @@ function ProfileCardModal({onClose, profile, userPhoto, onSavePhoto, onSaveProfi
                       background:"rgba(255,255,255,0.08)",border:"1.5px solid rgba(255,255,255,0.14)",
                       color:T.t2,fontWeight:800,fontSize:13,cursor:"pointer",
                       fontFamily:"'Nunito',sans-serif"}}>
-                    Cancelar
+                    {lang==="en"?"Cancel":"Cancelar"}
                   </button>
                   <button
-                    onClick={()=>{ if(delInput==="BORRAR DATOS") onDeleteAccount(); }}
-                    disabled={delInput!=="BORRAR DATOS"}
+                    onClick={()=>{ const ok=lang==="en"?delInput==="DELETE DATA":delInput==="BORRAR DATOS"; if(ok) onDeleteAccount(); }}
+                    disabled={lang==="en"?delInput!=="DELETE DATA":delInput!=="BORRAR DATOS"}
                     style={{flex:1,padding:"11px",borderRadius:12,
-                      background:delInput==="BORRAR DATOS"?"rgba(255,75,75,0.9)":"rgba(255,75,75,0.15)",
-                      border:`1.5px solid ${delInput==="BORRAR DATOS"?"rgba(255,100,100,0.8)":"rgba(255,75,75,0.2)"}`,
-                      color:delInput==="BORRAR DATOS"?"white":"rgba(255,120,120,0.4)",
+                      background:(lang==="en"?delInput==="DELETE DATA":delInput==="BORRAR DATOS")?"rgba(255,75,75,0.9)":"rgba(255,75,75,0.15)",
+                      border:`1.5px solid ${(lang==="en"?delInput==="DELETE DATA":delInput==="BORRAR DATOS")?"rgba(255,100,100,0.8)":"rgba(255,75,75,0.2)"}`,
+                      color:(lang==="en"?delInput==="DELETE DATA":delInput==="BORRAR DATOS")?"white":"rgba(255,120,120,0.4)",
                       fontWeight:900,fontSize:13,
-                      cursor:delInput==="BORRAR DATOS"?"pointer":"not-allowed",
+                      cursor:(lang==="en"?delInput==="DELETE DATA":delInput==="BORRAR DATOS")?"pointer":"not-allowed",
                       fontFamily:"'Nunito',sans-serif",
                       transition:"all 0.2s",
                     }}>
-                    🗑️ Borrar
+                    🗑️ {lang==="en"?"Delete":"Borrar"}
                   </button>
                 </div>
               </div>
