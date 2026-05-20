@@ -148,6 +148,16 @@ const TRANS = {
     challengeBanner:"Racha en peligro · Pesaje semanal · Dieta diaria",
     // Register weight button
     registerWeightBtn:"⚖️ Registrar peso de hoy",
+    // Recetario personal
+    myRecipeBook:"📖 Mi recetario",
+    recipeBookEmpty:"Aún no tienes recetas guardadas",
+    recipeBookEmptyDesc:"Guarda la receta del día para construir tu colección personal.",
+    saveRecipe:"💾 Guardar · 20 💎",
+    recipeAlreadySaved:"✓ Guardada en tu recetario",
+    recipeSavedToast:"¡Receta guardada! -20 💎",
+    recipeDeleteFromBook:"Eliminar del recetario",
+    recipeTabDaily:"Receta del día",
+    recipeTabBook:"Mi recetario",
     // Landing page
     landingHeadline:"Tu dieta, convertida en juego",
     landingTagline:"Registra hábitos, sube de nivel y alcanza tu objetivo de peso.",
@@ -303,6 +313,16 @@ const TRANS = {
     challengeBanner:"Streak at risk · Weekly weigh-in · Daily diet",
     // Register weight button
     registerWeightBtn:"⚖️ Log today's weight",
+    // Recetario personal
+    myRecipeBook:"📖 My recipe book",
+    recipeBookEmpty:"No saved recipes yet",
+    recipeBookEmptyDesc:"Save the daily recipe to build your personal collection.",
+    saveRecipe:"💾 Save · 20 💎",
+    recipeAlreadySaved:"✓ Saved in your book",
+    recipeSavedToast:"Recipe saved! -20 💎",
+    recipeDeleteFromBook:"Remove from book",
+    recipeTabDaily:"Recipe of the day",
+    recipeTabBook:"My book",
     // Landing page
     landingHeadline:"Your diet, turned into a game",
     landingTagline:"Track habits, level up and reach your weight goal.",
@@ -482,7 +502,7 @@ function useSFX(){
 }
 const GBH_EMAIL    = "gbh.nutricion@gmail.com";
 const GBH_NOMBRE   = "GBH Nutrición";
-const GBH_PRIVACY_URL = "https://docs.google.com/document/d/e/2PACX-1vQwTU8nGSbI3JVn1EfHqHVXxZxW4c6kNpALvt9K-8oMU0sKZJq5gFhf3B2kP0XJLP7D9bT8cQz0Rk/pub";
+const GBH_PRIVACY_URL = "https://drive.google.com/file/d/1RXWjKRHGYCe1F20l2w9VOuqA0qshwSvm/view?usp=sharing";
 // ─────────────────────────────────────────────────────────────────────────────
 import { ComposedChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -2187,12 +2207,13 @@ function ProfileCardModal({onClose, profile, userPhoto, onSavePhoto, onSaveProfi
         {editField===field?(
           <input autoFocus value={editVal} onChange={e=>setEditVal(e.target.value)}
             onKeyDown={e=>{if(e.key==="Enter")saveEdit();if(e.key==="Escape")setEditField(null);}}
-            type={field==="weight"?"number":"text"} step={field==="weight"?"0.1":undefined}
+            type={field==="weight"||field==="goal"?"number":"text"}
+            step={field==="weight"||field==="goal"?"0.1":undefined}
             style={{background:"rgba(255,255,255,0.1)",border:`1.5px solid ${T.g1}`,borderRadius:10,padding:"6px 10px",color:T.wh,fontSize:15,fontWeight:700,fontFamily:"'DM Sans',sans-serif",width:"90%",outline:"none"}}
           />
         ):(
           <div style={{fontSize:16,fontWeight:800,color:T.wh,fontFamily:"'DM Sans',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-            {value}{field==="weight"&&value!=="—"?" kg":""}
+            {value}{(field==="weight"||field==="goal")&&value!=="—"?" kg":""}
           </div>
         )}
       </div>
@@ -2281,9 +2302,13 @@ function ProfileCardModal({onClose, profile, userPhoto, onSavePhoto, onSaveProfi
           {/* Notificaciones */}
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 0",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
             <div>
-              <div style={{fontSize:10,color:T.t2,textTransform:"uppercase",letterSpacing:"0.08em",fontFamily:"'DM Sans',sans-serif",marginBottom:3}}>Recordatorios</div>
+              <div style={{fontSize:10,color:T.t2,textTransform:"uppercase",letterSpacing:"0.08em",fontFamily:"'DM Sans',sans-serif",marginBottom:3}}>
+                {lang==="en"?"Reminders":"Recordatorios"}
+              </div>
               <div style={{fontSize:14,fontWeight:800,color:T.wh,fontFamily:"'DM Sans',sans-serif"}}>
-                {typeof Notification!=="undefined"&&Notification.permission==="granted"?"🔔 Activados":"🔕 Desactivados"}
+                {typeof Notification!=="undefined"&&Notification.permission==="granted"
+                  ? (lang==="en"?"🔔 Enabled":"🔔 Activados")
+                  : (lang==="en"?"🔕 Disabled":"🔕 Desactivados")}
               </div>
             </div>
             {typeof Notification!=="undefined"&&Notification.permission!=="granted"&&(
@@ -2291,7 +2316,7 @@ function ProfileCardModal({onClose, profile, userPhoto, onSavePhoto, onSaveProfi
                 background:"rgba(100,130,255,0.15)",border:"1.5px solid rgba(100,130,255,0.4)",
                 borderRadius:10,padding:"7px 12px",color:"rgba(150,170,255,0.9)",
                 fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
-                Activar
+                {lang==="en"?"Enable":"Activar"}
               </button>
             )}
           </div>
@@ -2299,7 +2324,9 @@ function ProfileCardModal({onClose, profile, userPhoto, onSavePhoto, onSaveProfi
           {lastW!=="—"&&String(lastW)!==String(initW)&&(
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0"}}>
               <div>
-                <div style={{fontSize:10,color:T.t2,textTransform:"uppercase",letterSpacing:"0.08em",fontFamily:"'DM Sans',sans-serif",marginBottom:3}}>Último peso registrado</div>
+                <div style={{fontSize:10,color:T.t2,textTransform:"uppercase",letterSpacing:"0.08em",fontFamily:"'DM Sans',sans-serif",marginBottom:3}}>
+                  {lang==="en"?"Last recorded weight":"Ultimo peso registrado"}
+                </div>
                 <div style={{fontSize:16,fontWeight:800,color:T.wh,fontFamily:"'DM Sans',sans-serif"}}>{lastW} kg</div>
               </div>
             </div>
@@ -2458,6 +2485,8 @@ function GBHApp(){
   const [authMode,setAuthMode]= useState("new"); // "new" | "returning" | "checking"
   const [authErr, setAuthErr] = useState("");
   const [dailyRecipe,setDailyRecipe] = useState(null);
+  const [savedRecipes,setSavedRecipes] = useState([]);
+  const [recipeView, setRecipeView]  = useState("daily"); // "daily" | "book"
   const [recipeLoading,setRecipeLoading] = useState(false);
   const refreshingRef = useRef(false); // bloqueo síncrono para evitar doble tap
   const [recipeRefreshes,setRecipeRefreshes] = useState(()=>lsGet(`gbh:recipe:refreshes:${toKey()}`,0));
@@ -2787,6 +2816,15 @@ function GBHApp(){
     }
     setWeights(lsGet(`gbh:weights:${p.id}`,[]).sort((a,b)=>a.date>b.date?1:-1));
     setBadges(lsGet(`gbh:badges:${p.id}`,[]) );
+    // Cargar recetas guardadas desde localStorage (con sync Supabase al fondo)
+    const localSaved = lsGet(`gbh:saved_recipes:${p.id}`,[]);
+    setSavedRecipes(localSaved);
+    sbReq("GET",`saved_recipes?profile_id=eq.${p.id}&select=*&order=saved_at.desc`).then(remote=>{
+      if(remote?.length){
+        lsSet(`gbh:saved_recipes:${p.id}`,remote);
+        setSavedRecipes(remote);
+      }
+    });
     setWeightBannerDismissed(false);
     setScreen("main");
     fetchDailyRecipe(); // cargar receta del día
@@ -3143,6 +3181,45 @@ function GBHApp(){
   const tapSheep=()=>{const n=taps+1;setTaps(n);if(tapRef.current)clearTimeout(tapRef.current);tapRef.current=setTimeout(()=>setTaps(0),2500);if(n>=5){setScreen("admin");loadAdmin();setTaps(0);}};
   const loadAdmin=async()=>{const d=await sbReq("GET","admin_overview?select=*")||[];if(d.length){setAllP(d);return;}setAllP(Object.keys(localStorage).filter(k=>k.startsWith("gbh:p:")).map(k=>lsGet(k,{})).filter(p=>p.id));};
   const buyShield=async()=>{if(gems<200){sfx("error");showT({icon:"💎",title:t("insufficientGems"),sub:t("needGemsShield")});return;}const u={...profile,gems:gems-200,shields:(profile.shields||0)+1};setProfile(u);lsSet(`gbh:p:${u.id}`,u);await sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:u.gems,shields:u.shields});sfx("shield");showT({icon:"🛡️",title:t("shieldActivated"),sub:t("shieldProtected")});};
+
+  const saveRecipeToBook = async () => {
+    if(!dailyRecipe||!profile) return;
+    if(gems < 20){ sfx("error"); showT({icon:"💎",title:t("insufficientGems"),sub:lang==="en"?"You need 20 💎 to save a recipe":"Necesitas 20 💎 para guardar una receta"}); return; }
+    const alreadySaved = savedRecipes.some(r => r.recipe_id === dailyRecipe.id_receta);
+    if(alreadySaved) return;
+    // Descontar gemas
+    const newGems = gems - 20;
+    const updP = {...profile, gems: newGems};
+    setProfile(updP); lsSet(`gbh:p:${profile.id}`, updP);
+    sbReq("PATCH", `profiles?id=eq.${profile.id}`, {gems: newGems});
+    // Guardar receta
+    const entry = {
+      profile_id: profile.id,
+      recipe_id: dailyRecipe.id_receta,
+      nombre: dailyRecipe.nombre,
+      tipo: dailyRecipe.tipo,
+      calorias: dailyRecipe.calorias,
+      proteinas_g: dailyRecipe.proteinas_g,
+      hidratos_g: dailyRecipe.hidratos_g,
+      grasas_g: dailyRecipe.grasas_g,
+      ingredientes: dailyRecipe.ingredientes,
+      instrucciones: dailyRecipe.instrucciones,
+      saved_at: new Date().toISOString(),
+    };
+    const newSaved = [entry, ...savedRecipes];
+    setSavedRecipes(newSaved);
+    lsSet(`gbh:saved_recipes:${profile.id}`, newSaved);
+    await sbReq("POST", "saved_recipes", entry);
+    sfx("recipe");
+    showT({icon:"📖", title:t("recipeSavedToast"), sub:dailyRecipe.nombre});
+  };
+
+  const removeFromBook = async (recipeId) => {
+    const newSaved = savedRecipes.filter(r => r.recipe_id !== recipeId);
+    setSavedRecipes(newSaved);
+    lsSet(`gbh:saved_recipes:${profile.id}`, newSaved);
+    await sbReq("DELETE", `saved_recipes?profile_id=eq.${profile.id}&recipe_id=eq.${recipeId}`);
+  };
 
   const deleteAccount = async () => {
     if(!profile) return;
@@ -3508,13 +3585,23 @@ function GBHApp(){
               {aPrivacy&&<span style={{fontSize:13,color:"white",fontWeight:900,lineHeight:1}}>✓</span>}
             </div>
             <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>
-              He leído y acepto la{" "}
-              <span
-                onClick={e=>{e.stopPropagation();window.open(GBH_PRIVACY_URL,"_blank","noopener");}}
-                style={{color:T.g2,fontWeight:700,textDecoration:"underline",cursor:"pointer"}}>
-                política de privacidad
-              </span>
-              {" "}de GBH Nutrición. Entiendo cómo se gestionan mis datos.
+              {lang==="en"?(
+                <>I have read and accept the{" "}
+                  <span onClick={e=>{e.stopPropagation();window.open(GBH_PRIVACY_URL,"_blank","noopener");}}
+                    style={{color:T.g2,fontWeight:700,textDecoration:"underline",cursor:"pointer"}}>
+                    privacy policy
+                  </span>
+                  {" "}of GBH Nutricion. I understand how my data is managed.
+                </>
+              ):(
+                <>He leido y acepto la{" "}
+                  <span onClick={e=>{e.stopPropagation();window.open(GBH_PRIVACY_URL,"_blank","noopener");}}
+                    style={{color:T.g2,fontWeight:700,textDecoration:"underline",cursor:"pointer"}}>
+                    politica de privacidad
+                  </span>
+                  {" "}de GBH Nutricion. Entiendo como se gestionan mis datos.
+                </>
+              )}
             </div>
           </div>
         )}
@@ -3748,10 +3835,10 @@ function GBHApp(){
               background:"rgba(100,130,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center"}}>🔔</div>
             <div>
               <div style={{fontSize:12,fontWeight:900,color:"white",fontFamily:"'Nunito',sans-serif",lineHeight:1.2}}>
-                Activa los recordatorios
+                {lang==="en"?"Enable reminders":"Activa los recordatorios"}
               </div>
               <div style={{fontSize:10,color:"rgba(180,200,255,0.8)",fontFamily:"'DM Sans',sans-serif",marginTop:1}}>
-                Racha en peligro · {lang==="en"?"Weekly weigh-in · Daily diet":"Pesaje semanal · Dieta diaria"}
+                {lang==="en"?"Streak at risk · Weekly weigh-in · Daily diet":"Racha en peligro · Pesaje semanal · Dieta diaria"}
               </div>
             </div>
           </div>
@@ -3761,7 +3848,7 @@ function GBHApp(){
               borderRadius:12,padding:"7px 14px",color:"white",fontWeight:900,
               fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif",
               boxShadow:"0 3px 0 rgba(60,80,200,0.5)",whiteSpace:"nowrap"}}>
-              Activar
+              {lang==="en"?"Enable":"Activar"}
             </button>
             <button onClick={dismissNotifBanner} style={{
               background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",
@@ -4308,7 +4395,6 @@ function GBHApp(){
           const tipoColor = {
             Carne:"#E57373",Pescado:"#64B5F6",Vegetariana:"#81C784",
             Vegana:"#A5D6A7",Postre:"#F06292",Ensalada:"#AED581","Sopa/Crema":"#FFB74D",
-            // EN equivalents
             Meat:"#E57373",Fish:"#64B5F6",Vegetarian:"#81C784",
             Vegan:"#A5D6A7",Dessert:"#F06292",Salad:"#AED581","Soup/Cream":"#FFB74D"
           };
@@ -4320,130 +4406,218 @@ function GBHApp(){
           };
           const tc = r ? (tipoColor[r.tipo]||T.g1) : T.g1;
           const ti = r ? (tipoIcon[r.tipo]||"🍽️") : "🍽️";
-
-          // Parse ingredients as bullet list
           const ingList = r?.ingredientes?.split(/,(?![^(]*\))/).map(s=>s.trim()).filter(Boolean) || [];
+          const alreadySaved = r && savedRecipes.some(s => s.recipe_id === r.id_receta);
 
           return(
             <div style={{padding:"0 16px 24px"}}>
-              {/* Header */}
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",
-                marginBottom:16,paddingTop:4}}>
-                <div>
-                  <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:"uppercase",
-                    letterSpacing:"0.1em",marginBottom:2}}>{t("recipeOfDay")}</div>
-                  <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>
-                    {new Date().toLocaleDateString(lang==="en"?"en-GB":"es-ES",{weekday:"long",day:"numeric",month:"long"})}
-                  </div>
-                </div>
-                {(()=>{
-                  const refreshesLeft = 3 - recipeRefreshes;
-                  const blocked = recipeRefreshes >= 3;
-                  const noGems  = gems < 10;
-                  const dis = blocked || noGems || recipeLoading;
-                  return(
-                    <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
-                      <button onClick={refreshRecipe} disabled={dis} style={{
-                        background:dis?"rgba(255,255,255,0.05)":"rgba(255,200,0,0.12)",
-                        border:`1.5px solid ${dis?"rgba(255,255,255,0.1)":T.au2}`,
-                        borderRadius:12,padding:"8px 14px",
-                        color:dis?T.t3:T.au1,fontSize:12,fontWeight:700,
-                        cursor:dis?"not-allowed":"pointer",
-                        fontFamily:"'DM Sans',sans-serif",transition:"all 0.2s"}}>
-                        {blocked?t("recipeLocked"):noGems?t("recipeNoGems"):t("recipeChange")}
-                      </button>
-                      <div style={{fontSize:10,color:T.t3,fontFamily:"'DM Sans',sans-serif",textAlign:"right"}}>
-                        {blocked ? t("availableTomorrow") : t("changesLeft",{n:refreshesLeft,s:refreshesLeft!==1?"s":""})}
-                      </div>
-                    </div>
-                  );
-                })()}
+
+              {/* ── Toggle Receta del día / Mi recetario ── */}
+              <div style={{display:"flex",background:"rgba(255,255,255,0.06)",borderRadius:16,padding:4,marginBottom:16,gap:4}}>
+                {[{id:"daily",label:t("recipeTabDaily"),icon:"🍰"},{id:"book",label:t("recipeTabBook"),icon:"📖"}].map(({id,label,icon})=>(
+                  <button key={id} onClick={()=>setRecipeView(id)}
+                    style={{
+                      flex:1,padding:"10px 8px",borderRadius:12,border:"none",cursor:"pointer",
+                      background:recipeView===id?`linear-gradient(135deg,${T.g1},${T.g2})`:"transparent",
+                      color:recipeView===id?"white":T.t2,
+                      fontWeight:recipeView===id?900:600,fontSize:13,
+                      boxShadow:recipeView===id?`0 3px 0 ${T.g3}`:"none",
+                      transition:"all 0.2s",fontFamily:"'Nunito',sans-serif",
+                    }}>
+                    {icon} {label}{id==="book"&&savedRecipes.length>0?` (${savedRecipes.length})`:""}
+                  </button>
+                ))}
               </div>
 
-              {recipeLoading&&(
-                <div style={{textAlign:"center",padding:40,color:T.t2,fontSize:14}}>
-                  {t("loadingRecipe")}
-                </div>
-              )}
-
-              {!recipeLoading&&r&&(<>
-                {/* Nombre y tipo */}
-                <Card style={{marginBottom:12,padding:"20px 18px"}}>
-                  <div style={{display:"flex",alignItems:"flex-start",gap:14,marginBottom:16}}>
-                    <div style={{fontSize:52,lineHeight:1,flexShrink:0}}>{ti}</div>
-                    <div style={{flex:1}}>
-                      <div style={{display:"inline-block",background:`${tc}22`,border:`1.5px solid ${tc}55`,
-                        borderRadius:20,padding:"3px 12px",fontSize:10,fontWeight:900,
-                        color:tc,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8}}>
-                        {r.tipo}
-                      </div>
-                      <div style={{fontSize:20,fontWeight:900,color:T.wh,lineHeight:1.25}}>
-                        {r.nombre}
-                      </div>
+              {/* ══════════════ VISTA: RECETA DEL DÍA ══════════════ */}
+              {recipeView==="daily"&&(<>
+                {/* Header */}
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,paddingTop:4}}>
+                  <div>
+                    <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>{t("recipeOfDay")}</div>
+                    <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>
+                      {new Date().toLocaleDateString(lang==="en"?"en-GB":"es-ES",{weekday:"long",day:"numeric",month:"long"})}
                     </div>
                   </div>
-
-                  {/* Macros */}
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8}}>
-                    {[
-                      {l:t("calories"),v:`${r.calorias}`,u:"kcal",c:T.au1},
-                      {l:t("protein"),v:`${r.proteinas_g}`,u:"g",c:"#64B5F6"},
-                      {l:t("carbs"),v:`${r.hidratos_g}`,u:"g",c:T.g1},
-                      {l:t("fat"),v:`${r.grasas_g}`,u:"g",c:"#FFB74D"},
-                    ].map(({l,v,u,c})=>(
-                      <div key={l} style={{background:"rgba(255,255,255,0.05)",borderRadius:12,
-                        padding:"10px 6px",textAlign:"center",border:`1px solid rgba(255,255,255,0.08)`}}>
-                        <div style={{fontSize:16,fontWeight:900,color:c}}>{v}</div>
-                        <div style={{fontSize:9,color:c,fontWeight:700,opacity:0.8}}>{u}</div>
-                        <div style={{fontSize:9,color:T.t3,marginTop:2,fontFamily:"'DM Sans',sans-serif"}}>{l}</div>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-
-                {/* Ingredientes */}
-                <Card style={{marginBottom:12,padding:"18px 18px"}}>
-                  <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:"uppercase",
-                    letterSpacing:"0.1em",marginBottom:12}}>{t("ingredients")}</div>
-                  <div style={{display:"flex",flexDirection:"column",gap:7}}>
-                    {ingList.map((ing,i)=>(
-                      <div key={i} style={{display:"flex",alignItems:"flex-start",gap:10}}>
-                        <div style={{width:6,height:6,borderRadius:"50%",background:tc,
-                          flexShrink:0,marginTop:6}}/>
-                        <div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",
-                          lineHeight:1.4}}>
-                          {ing}
+                  {(()=>{
+                    const refreshesLeft = 3 - recipeRefreshes;
+                    const blocked = recipeRefreshes >= 3;
+                    const noGems  = gems < 10;
+                    const dis = blocked || noGems || recipeLoading;
+                    return(
+                      <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
+                        <button onClick={refreshRecipe} disabled={dis} style={{
+                          background:dis?"rgba(255,255,255,0.05)":"rgba(255,200,0,0.12)",
+                          border:`1.5px solid ${dis?"rgba(255,255,255,0.1)":T.au2}`,
+                          borderRadius:12,padding:"8px 14px",
+                          color:dis?T.t3:T.au1,fontSize:12,fontWeight:700,
+                          cursor:dis?"not-allowed":"pointer",
+                          fontFamily:"'DM Sans',sans-serif",transition:"all 0.2s"}}>
+                          {blocked?t("recipeLocked"):noGems?t("recipeNoGems"):t("recipeChange")}
+                        </button>
+                        <div style={{fontSize:10,color:T.t3,fontFamily:"'DM Sans',sans-serif",textAlign:"right"}}>
+                          {blocked ? t("availableTomorrow") : t("changesLeft",{n:refreshesLeft,s:refreshesLeft!==1?"s":""})}
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </Card>
+                    );
+                  })()}
+                </div>
 
-                {/* Preparación */}
-                <Card style={{padding:"18px 18px"}}>
-                  <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:"uppercase",
-                    letterSpacing:"0.1em",marginBottom:12}}>{t("preparation")}</div>
-                  <div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",
-                    lineHeight:1.7,whiteSpace:"pre-wrap"}}>
-                    {r.instrucciones}
+                {recipeLoading&&(
+                  <div style={{textAlign:"center",padding:40,color:T.t2,fontSize:14}}>{t("loadingRecipe")}</div>
+                )}
+
+                {!recipeLoading&&r&&(<>
+                  {/* Nombre y tipo */}
+                  <Card style={{marginBottom:12,padding:"20px 18px"}}>
+                    <div style={{display:"flex",alignItems:"flex-start",gap:14,marginBottom:16}}>
+                      <div style={{fontSize:52,lineHeight:1,flexShrink:0}}>{ti}</div>
+                      <div style={{flex:1}}>
+                        <div style={{display:"inline-block",background:`${tc}22`,border:`1.5px solid ${tc}55`,
+                          borderRadius:20,padding:"3px 12px",fontSize:10,fontWeight:900,
+                          color:tc,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8}}>
+                          {r.tipo}
+                        </div>
+                        <div style={{fontSize:20,fontWeight:900,color:T.wh,lineHeight:1.25}}>{r.nombre}</div>
+                      </div>
+                    </div>
+                    {/* Macros */}
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,marginBottom:16}}>
+                      {[
+                        {l:t("calories"),v:`${r.calorias}`,u:"kcal",c:T.au1},
+                        {l:t("protein"),v:`${r.proteinas_g}`,u:"g",c:"#64B5F6"},
+                        {l:t("carbs"),v:`${r.hidratos_g}`,u:"g",c:T.g1},
+                        {l:t("fat"),v:`${r.grasas_g}`,u:"g",c:"#FFB74D"},
+                      ].map(({l,v,u,c})=>(
+                        <div key={l} style={{background:"rgba(255,255,255,0.05)",borderRadius:12,
+                          padding:"10px 6px",textAlign:"center",border:`1px solid rgba(255,255,255,0.08)`}}>
+                          <div style={{fontSize:16,fontWeight:900,color:c}}>{v}</div>
+                          <div style={{fontSize:9,color:c,fontWeight:700,opacity:0.8}}>{u}</div>
+                          <div style={{fontSize:9,color:T.t3,marginTop:2,fontFamily:"'DM Sans',sans-serif"}}>{l}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Botón guardar en recetario */}
+                    <button
+                      onClick={alreadySaved ? undefined : saveRecipeToBook}
+                      disabled={alreadySaved || gems < 20}
+                      style={{
+                        width:"100%",padding:"12px",borderRadius:14,
+                        background:alreadySaved
+                          ?"rgba(88,204,2,0.1)"
+                          :gems<20
+                            ?"rgba(255,255,255,0.05)"
+                            :`linear-gradient(135deg,rgba(88,204,2,0.15),rgba(88,204,2,0.08))`,
+                        border:`1.5px solid ${alreadySaved?T.g1:gems<20?"rgba(255,255,255,0.1)":"rgba(88,204,2,0.35)"}`,
+                        color:alreadySaved?T.g2:gems<20?T.t3:T.g1,
+                        fontSize:13,fontWeight:800,
+                        cursor:alreadySaved||gems<20?"default":"pointer",
+                        fontFamily:"'Nunito',sans-serif",
+                        transition:"all 0.2s",
+                      }}>
+                      {alreadySaved ? t("recipeAlreadySaved") : gems<20 ? `💎 ${lang==="en"?"Need 20 gems":"Necesitas 20 💎"}` : t("saveRecipe")}
+                    </button>
+                  </Card>
+
+                  {/* Ingredientes */}
+                  <Card style={{marginBottom:12,padding:"18px 18px"}}>
+                    <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:12}}>{t("ingredients")}</div>
+                    <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                      {ingList.map((ing,i)=>(
+                        <div key={i} style={{display:"flex",alignItems:"flex-start",gap:10}}>
+                          <div style={{width:6,height:6,borderRadius:"50%",background:tc,flexShrink:0,marginTop:6}}/>
+                          <div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>{ing}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+
+                  {/* Preparación */}
+                  <Card style={{padding:"18px 18px"}}>
+                    <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:12}}>{t("preparation")}</div>
+                    <div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{r.instrucciones}</div>
+                  </Card>
+                </>)}
+
+                {!recipeLoading&&!r&&(
+                  <div style={{textAlign:"center",padding:40}}>
+                    <div style={{fontSize:48,marginBottom:12}}>🍽️</div>
+                    <div style={{fontSize:15,color:T.t2,fontFamily:"'DM Sans',sans-serif",whiteSpace:"pre-line"}}>{t("recipeLoadError")}</div>
+                    <button onClick={fetchDailyRecipe} style={{marginTop:16,padding:"12px 24px",background:T.g1,border:"none",borderRadius:14,color:"white",fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>{t("retry")}</button>
                   </div>
-                </Card>
+                )}
               </>)}
 
-              {!recipeLoading&&!r&&(
-                <div style={{textAlign:"center",padding:40}}>
-                  <div style={{fontSize:48,marginBottom:12}}>🍽️</div>
-                  <div style={{fontSize:15,color:T.t2,fontFamily:"'DM Sans',sans-serif",whiteSpace:"pre-line"}}>
-                    {t("recipeLoadError")}
+              {/* ══════════════ VISTA: MI RECETARIO ══════════════ */}
+              {recipeView==="book"&&(<>
+                {savedRecipes.length===0?(
+                  <div style={{textAlign:"center",padding:"40px 20px"}}>
+                    <div style={{fontSize:64,marginBottom:16}}>📖</div>
+                    <div style={{fontSize:16,fontWeight:900,color:T.wh,marginBottom:8}}>{t("recipeBookEmpty")}</div>
+                    <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{t("recipeBookEmptyDesc")}</div>
+                    <button onClick={()=>setRecipeView("daily")} style={{
+                      marginTop:20,padding:"12px 24px",
+                      background:`linear-gradient(135deg,${T.g1},${T.g2})`,
+                      border:`2px solid ${T.g3}`,borderRadius:14,
+                      color:"white",fontWeight:900,fontSize:14,cursor:"pointer",
+                      fontFamily:"'Nunito',sans-serif",boxShadow:`0 4px 0 ${T.g3}`,
+                    }}>
+                      {lang==="en"?"← Go to today's recipe":"← Ver receta de hoy"}
+                    </button>
                   </div>
-                  <button onClick={fetchDailyRecipe}
-                    style={{marginTop:16,padding:"12px 24px",background:T.g1,border:"none",
-                      borderRadius:14,color:"white",fontWeight:900,cursor:"pointer",
-                      fontFamily:"'Nunito',sans-serif"}}>
-                    {t("retry")}
-                  </button>
-                </div>
-              )}
+                ):(
+                  <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                    {savedRecipes.map((rec,idx)=>{
+                      const tc2 = tipoColor[rec.tipo]||T.g1;
+                      const ti2 = tipoIcon[rec.tipo]||"🍽️";
+                      const [expanded, setExpanded] = React.useState(false);
+                      const ingList2 = rec.ingredientes?.split(/,(?![^(]*\))/).map(s=>s.trim()).filter(Boolean)||[];
+                      return(
+                        <Card key={rec.recipe_id||idx} style={{padding:"16px 16px"}}>
+                          {/* Cabecera compacta */}
+                          <div style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}
+                            onClick={()=>setExpanded(e=>!e)}>
+                            <div style={{fontSize:32,flexShrink:0}}>{ti2}</div>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:14,fontWeight:900,color:T.wh,lineHeight:1.2,marginBottom:4}}>{rec.nombre}</div>
+                              <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                                <div style={{background:`${tc2}22`,border:`1px solid ${tc2}55`,borderRadius:20,padding:"2px 10px",fontSize:10,fontWeight:900,color:tc2,textTransform:"uppercase",letterSpacing:"0.08em"}}>{rec.tipo}</div>
+                                <div style={{fontSize:11,color:T.au1,fontWeight:700}}>{rec.calorias} kcal</div>
+                                <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>P:{rec.proteinas_g}g · H:{rec.hidratos_g}g · G:{rec.grasas_g}g</div>
+                              </div>
+                            </div>
+                            <div style={{fontSize:18,color:T.t2,flexShrink:0,transform:expanded?"rotate(180deg)":"none",transition:"transform 0.2s"}}>▾</div>
+                          </div>
+
+                          {/* Detalle expandido */}
+                          {expanded&&(
+                            <div style={{marginTop:14,borderTop:"1px solid rgba(255,255,255,0.08)",paddingTop:14}}>
+                              <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8}}>{t("ingredients")}</div>
+                              <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:14}}>
+                                {ingList2.map((ing,i)=>(
+                                  <div key={i} style={{display:"flex",alignItems:"flex-start",gap:8}}>
+                                    <div style={{width:5,height:5,borderRadius:"50%",background:tc2,flexShrink:0,marginTop:6}}/>
+                                    <div style={{fontSize:12,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>{ing}</div>
+                                  </div>
+                                ))}
+                              </div>
+                              <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8}}>{t("preparation")}</div>
+                              <div style={{fontSize:12,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6,marginBottom:14,whiteSpace:"pre-wrap"}}>{rec.instrucciones}</div>
+                              <button onClick={()=>removeFromBook(rec.recipe_id)} style={{
+                                width:"100%",padding:"9px",borderRadius:12,
+                                background:"rgba(255,75,75,0.07)",border:"1.5px solid rgba(255,75,75,0.2)",
+                                color:"rgba(255,120,120,0.8)",fontSize:12,fontWeight:800,
+                                cursor:"pointer",fontFamily:"'Nunito',sans-serif",
+                              }}>🗑️ {t("recipeDeleteFromBook")}</button>
+                            </div>
+                          )}
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )}
+              </>)}
+
             </div>
           );
         })()}
