@@ -1819,7 +1819,7 @@ function RuletaModal({onClose, onCollect}){
 }
 
 // ─── QuizModal ────────────────────────────────────────────────────────────────
-function QuizModal({onClose, onComplete, todayKey}){
+function QuizModal({onClose, onComplete, todayKey, lang}){
   const dayIdx = (()=>{const d=new Date();return(d.getFullYear()*366+Math.floor((d-new Date(d.getFullYear(),0,0))/(1000*60*60*24)))%QUIZ_ALL.length;})();
   const q = QUIZ_ALL[dayIdx];
   const [selected, setSelected] = useState(null);
@@ -3849,7 +3849,7 @@ function GBHApp(){
         );
       })()}
 
-      {showQuiz&&<QuizModal onClose={()=>setShowQuiz(false)} onComplete={onQuizComplete} todayKey={new Date().toISOString().slice(0,10)}/>}
+      {showQuiz&&<QuizModal onClose={()=>setShowQuiz(false)} onComplete={onQuizComplete} todayKey={new Date().toISOString().slice(0,10)} lang={lang}/>}
       {showChest&&<ChestOpenModal streak={streak} onClose={()=>setShowChest(false)} onCollect={onChestCollect}/>}
       {showWeekChest&&<ChestOpenModal streak={7} onClose={()=>setShowWeekChest(false)} onCollect={onWeekChestCollect}/>}
       {showRuleta&&<RuletaModal
