@@ -487,8 +487,20 @@ const SFX = {
   },
   // Confetti / celebración — cascada
   confetti(){
-    [1047,1319,1568,1760,2093].forEach((f,i)=>
-      this._tone(f,"sine",0.1,0.18,i*0.06));
+  // Celebración de racha — fanfare ascendente con acorde final
+  streakCelebration(){
+    // Intro: tres notas rápidas ascendentes
+    this._tone(523,"sine",  0.12, 0.15, 0);
+    this._tone(659,"sine",  0.14, 0.15, 0.12);
+    this._tone(784,"sine",  0.16, 0.18, 0.24);
+    // Redoble de emoción
+    this._noise(0.05, 800, 0.18, 0.38);
+    // Acorde triunfal final
+    this._tone(1047,"sine",  0.18, 0.35, 0.42);
+    this._tone(1319,"triangle",0.14,0.3,  0.50);
+    this._tone(1568,"sine",  0.20, 0.5,  0.58);
+    // Brillo final
+    this._tone(2093,"sine",  0.10, 0.4,  0.85);
   },
 };
 
@@ -1213,14 +1225,174 @@ const CTip=({active,payload})=>{
 };
 
 // ─── Streak overlay (Duolingo-style, negro) ───────────────────────────────────
-function StreakOverlay({active,streak}){
-  if(!active)return null;
+// ─── StreakCelebrationOverlay — oveja pixelart + llama que sube de nivel ──────
+function StreakOverlay({active, streak}){
+  if(!active) return null;
+  const t = useLang();
+  const lang = lsGet("gbh:lang","es");
+
+  // Pixel-art sheep SVG inline (la mascota GBH en verde)
+  const SheepPixel = ({style={}})=>(
+    <svg width="80" height="80" viewBox="0 0 16 16" style={{imageRendering:"pixelated",...style}}>
+      {/* cuerpo — verde oscuro */}
+      <rect x="3" y="7" width="10" height="7" fill="#2E7D32"/>
+      {/* barriga más clara */}
+      <rect x="5" y="9" width="6" height="4" fill="#43A047"/>
+      {/* cabeza */}
+      <rect x="4" y="3" width="8" height="6" fill="#2E7D32"/>
+      {/* orejas */}
+      <rect x="2" y="4" width="2" height="3" fill="#388E3C"/>
+      <rect x="12" y="4" width="2" height="3" fill="#388E3C"/>
+      {/* ojos — blancos con pupila */}
+      <rect x="6" y="5" width="2" height="2" fill="white"/>
+      <rect x="9" y="5" width="2" height="2" fill="white"/>
+      <rect x="7" y="5" width="1" height="1" fill="#1B5E20"/>
+      <rect x="10" y="5" width="1" height="1" fill="#1B5E20"/>
+      {/* hocico */}
+      <rect x="6" y="7" width="4" height="2" fill="#A5D6A7"/>
+      {/* patas */}
+      <rect x="4" y="14" width="2" height="2" fill="#1B5E20"/>
+      <rect x="10" y="14" width="2" height="2" fill="#1B5E20"/>
+      {/* cuernos */}
+      <rect x="5" y="1" width="1" height="3" fill="#6D4C41"/>
+      <rect x="10" y="1" width="1" height="3" fill="#6D4C41"/>
+      <rect x="4" y="1" width="2" height="1" fill="#6D4C41"/>
+      <rect x="10" y="1" width="2" height="1" fill="#6D4C41"/>
+    </svg>
+  );
+
+  // Llama SVG animada
+  const Flame = ({size=80, glow=false})=>(
+    <svg width={size} height={size*1.3} viewBox="0 0 40 52" style={{
+      filter:glow?"drop-shadow(0 0 12px #FF8C00) drop-shadow(0 0 24px #FF4500)":"drop-shadow(0 0 6px #FF8C00)",
+    }}>
+      <path d="M20 50 C8 50 4 40 4 32 C4 20 12 16 12 8 C12 8 14 14 16 16 C16 8 20 2 20 2 C20 2 24 12 26 14 C28 10 28 6 28 6 C28 6 36 16 36 28 C36 40 32 50 20 50 Z"
+        fill="url(#flameGrad)" style={{animation:"flameDance 0.4s ease-in-out infinite alternate"}}/>
+      {/* núcleo brillante */}
+      <path d="M20 46 C14 46 12 40 12 34 C12 28 16 24 18 20 C18 26 22 28 24 30 C26 26 25 22 25 22 C28 26 30 32 30 36 C30 42 26 46 20 46 Z"
+        fill="url(#innerGrad)" opacity="0.9"/>
+      <defs>
+        <radialGradient id="flameGrad" cx="50%" cy="80%">
+          <stop offset="0%"  stopColor="#FFE066"/>
+          <stop offset="40%" stopColor="#FF8C00"/>
+          <stop offset="100%"stopColor="#FF3300"/>
+        </radialGradient>
+        <radialGradient id="innerGrad" cx="50%" cy="70%">
+          <stop offset="0%"  stopColor="#FFFFFF" stopOpacity="0.9"/>
+          <stop offset="60%" stopColor="#FFE066" stopOpacity="0.7"/>
+          <stop offset="100%"stopColor="#FF8C00" stopOpacity="0"/>
+        </radialGradient>
+      </defs>
+    </svg>
+  );
+
   return(
-    <div style={{position:"fixed",inset:0,zIndex:10000,background:"#000",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",animation:"fadeInOut 2.6s ease forwards",pointerEvents:"none"}}>
-      <div style={{fontSize:90,animation:"scaleIn 0.5s cubic-bezier(0.34,1.56,0.64,1)"}}>🔥</div>
-      <div style={{fontSize:62,fontWeight:900,color:"#FF8040",fontFamily:"'Nunito',sans-serif",lineHeight:1,animation:"scaleIn 0.5s 0.15s cubic-bezier(0.34,1.56,0.64,1) both"}}>{streak}</div>
-      <div style={{fontSize:22,fontWeight:900,color:"#FFF",fontFamily:"'Nunito',sans-serif",marginTop:10,animation:"scaleIn 0.5s 0.3s cubic-bezier(0.34,1.56,0.64,1) both",textAlign:"center",letterSpacing:"0.04em"}}>día{streak!==1?"s":""} de racha</div>
-      <div style={{marginTop:24,fontSize:15,color:"rgba(255,255,255,0.5)",fontFamily:"'DM Sans',sans-serif",animation:"scaleIn 0.5s 0.5s ease both"}}>¡Sigue así! 💪</div>
+    <div style={{
+      position:"fixed",inset:0,zIndex:10000,
+      background:"radial-gradient(ellipse at 50% 60%, #1A0A00 0%, #000 100%)",
+      display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+      animation:"fadeInOut 5s ease forwards",pointerEvents:"none",
+      overflow:"hidden",
+    }}>
+      <style>{`
+        @keyframes sheepEntrance{
+          0%{transform:translateX(-140px) scaleX(-1);opacity:0}
+          30%{transform:translateX(0px) scaleX(-1);opacity:1}
+          60%{transform:translateX(0px) scaleX(-1)}
+          80%{transform:translateX(-8px) scaleX(-1)}
+          100%{transform:translateX(0px) scaleX(-1)}
+        }
+        @keyframes sheepBounce{
+          0%,100%{transform:translateY(0) scaleX(-1)}
+          50%{transform:translateY(-10px) scaleX(-1)}
+        }
+        @keyframes flameGrow{
+          0%{transform:scale(0.6);opacity:0.6}
+          40%{transform:scale(1.1);opacity:1}
+          70%{transform:scale(1.3);opacity:1}
+          100%{transform:scale(1.2);opacity:1}
+        }
+        @keyframes flameDance{
+          0%{d:path("M20 50 C8 50 4 40 4 32 C4 20 12 16 12 8 C12 8 14 14 16 16 C16 8 20 2 20 2 C20 2 24 12 26 14 C28 10 28 6 28 6 C28 6 36 16 36 28 C36 40 32 50 20 50 Z")}
+          100%{d:path("M20 50 C9 50 5 39 5 31 C5 21 13 15 11 7 C11 7 15 13 17 15 C15 9 21 1 21 1 C21 1 25 11 27 15 C29 9 27 7 27 7 C27 7 37 17 37 29 C37 41 31 50 20 50 Z")}
+        }
+        @keyframes streakNumPop{
+          0%{transform:scale(0);opacity:0}
+          60%{transform:scale(1.3);opacity:1}
+          80%{transform:scale(0.95)}
+          100%{transform:scale(1);opacity:1}
+        }
+        @keyframes sparklePop{
+          0%{transform:scale(0) rotate(0deg);opacity:0}
+          50%{transform:scale(1.2) rotate(180deg);opacity:1}
+          100%{transform:scale(0.8) rotate(360deg);opacity:0.7}
+        }
+      `}</style>
+
+      {/* Destellos de fondo */}
+      {[...Array(12)].map((_,i)=>(
+        <div key={i} style={{
+          position:"absolute",
+          left:`${10+i*7}%`,top:`${20+Math.sin(i)*30}%`,
+          fontSize:[14,18,12,20,16][i%5],
+          animation:`sparklePop ${0.6+i*0.15}s ${0.3+i*0.1}s ease both`,
+          pointerEvents:"none",
+        }}>
+          {["✨","⭐","🌟","💫","✨"][i%5]}
+        </div>
+      ))}
+
+      {/* Escena principal */}
+      <div style={{display:"flex",alignItems:"flex-end",justifyContent:"center",gap:16,marginBottom:20}}>
+
+        {/* Oveja animada */}
+        <div style={{
+          animation:"sheepEntrance 1.2s ease-out forwards, sheepBounce 0.6s 2.5s ease-in-out infinite",
+          transformOrigin:"bottom center",
+        }}>
+          <SheepPixel style={{width:72,height:72}}/>
+        </div>
+
+        {/* Llama que crece */}
+        <div style={{
+          animation:"flameGrow 1.4s 0.6s cubic-bezier(0.34,1.56,0.64,1) both",
+          transformOrigin:"bottom center",
+        }}>
+          <Flame size={84} glow/>
+        </div>
+
+      </div>
+
+      {/* Número de racha */}
+      <div style={{
+        display:"flex",alignItems:"center",gap:12,
+        animation:"streakNumPop 0.6s 1.8s cubic-bezier(0.34,1.56,0.64,1) both",
+      }}>
+        <span style={{fontSize:90,lineHeight:1,filter:"drop-shadow(0 0 20px #FF6600)"}}>🔥</span>
+        <div style={{fontFamily:"'Nunito',sans-serif"}}>
+          <div style={{fontSize:88,fontWeight:900,color:"#FF6600",lineHeight:1,
+            textShadow:"0 0 30px rgba(255,100,0,0.8), 0 4px 0 rgba(0,0,0,0.6)"}}>
+            {streak}
+          </div>
+        </div>
+      </div>
+
+      {/* Texto */}
+      <div style={{
+        marginTop:12,textAlign:"center",
+        animation:"scaleIn 0.5s 2.2s both",
+      }}>
+        <div style={{fontSize:22,fontWeight:900,color:"white",fontFamily:"'Nunito',sans-serif",
+          letterSpacing:"0.04em",marginBottom:4}}>
+          {lang==="en"
+            ? `${streak} day${streak!==1?"s":""} on fire!`
+            : `¡${streak} día${streak!==1?"s":""} de racha!`}
+        </div>
+        <div style={{fontSize:14,color:"rgba(255,180,100,0.8)",fontFamily:"'DM Sans',sans-serif"}}>
+          {lang==="en"?"Your sheep is proud of you 🐑":"Tu oveja está orgullosa de ti 🐑"}
+        </div>
+      </div>
+
     </div>
   );
 }
@@ -1275,120 +1447,270 @@ function FloatReward({items}){
 }
 
 // ─── Level-up overlay ─────────────────────────────────────────────────────────
-function LevelUpOverlay({active,level,reward,patientName,onClose}){
+// ─── Helper: próxima recompensa desde un nivel dado ──────────────────────────
+function getNextReward(currentLevel){
+  for(let i=currentLevel+1; i<=500; i++){
+    const r=LEVEL_REWARDS[i];
+    if(r?.special) return {level:i, diff:i-currentLevel, reward:r};
+  }
+  return null;
+}
+
+// ─── LevelUpOverlay — pop-up animado al subir de nivel ───────────────────────
+function LevelUpOverlay({active,level,reward,patientName,streak,lang,onClose}){
   if(!active)return null;
+
+  const t       = useLang();
   const isMilestone = level%50===0||level===500;
   const isFreeMeal  = reward?.freeMeal;
-  const bg = level===500?"linear-gradient(135deg,#7B2FBE,#FFD700)"
-           : isMilestone?"linear-gradient(135deg,#1A3A10,#2B7A00)"
-           : "rgba(0,0,0,0.96)";
+  const next    = getNextReward(level);
+
+  // Colores de fondo según importancia
+  const bg = level===500
+    ?"linear-gradient(135deg,#7B2FBE,#FFD700)"
+    : isMilestone
+      ?"linear-gradient(135deg,#0D2A0A,#1A5C10)"
+      :"rgba(6,14,6,0.97)";
+
+  // Icono principal
+  const icon = level===500?"🏆":isMilestone?"👑":reward?.report?"📊":isFreeMeal?"🍽️":reward?.shield?"🛡️":"⭐";
+
+  // Texto motivacional final
+  const motivText = level===500
+    ? (lang==="en"?"ABSOLUTE LEGEND! 🔥":"¡LEYENDA ABSOLUTA! 🔥")
+    : isMilestone
+      ? (lang==="en"?"Epic milestone reached!":"¡Hito épico alcanzado!")
+      : (lang==="en"?"Keep going, unstoppable!":"¡Sigue imparable! 💪");
+
   return(
-    <div style={{position:"fixed",inset:0,zIndex:10001,background:bg,display:"flex",
-      flexDirection:"column",alignItems:"center",justifyContent:"center",
-      animation:reward?.report?"popIn 0.4s ease":"fadeInOut 3.5s ease forwards",
-      pointerEvents:reward?.report?"auto":"none",padding:24}}>
-      <div style={{fontSize:isMilestone?80:70,animation:"scaleIn 0.6s cubic-bezier(0.34,1.56,0.64,1)"}}>
-        {level===500?"🏆":isMilestone?"👑":isFreeMeal?"🍽️":"⭐"}
-      </div>
-      <div style={{fontSize:13,fontWeight:900,color:"rgba(255,255,255,0.55)",
-        fontFamily:"'DM Sans',sans-serif",textTransform:"uppercase",
-        letterSpacing:"0.18em",marginTop:14,animation:"scaleIn 0.5s 0.2s both"}}>
-        NIVEL ALCANZADO
-      </div>
-      <div style={{fontSize:76,fontWeight:900,color:"#FFD700",fontFamily:"'Nunito',sans-serif",
-        lineHeight:1,animation:"scaleIn 0.6s 0.35s cubic-bezier(0.34,1.56,0.64,1) both"}}>
-        {level}
-      </div>
-      {reward&&(
-        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8,marginTop:14,
-          animation:"scaleIn 0.5s 0.55s both"}}>
-          {reward.frame>0&&FRAMES[reward.frame]&&(
-            <div style={{background:"rgba(255,255,255,0.08)",border:`2px solid ${FRAMES[reward.frame].color}`,
-              borderRadius:18,padding:"10px 24px",fontSize:15,fontWeight:900,
-              color:FRAMES[reward.frame].color,textAlign:"center"}}>
-              🖼️ {FRAMES[reward.frame].label} desbloqueado
-              <div style={{fontSize:11,fontWeight:600,opacity:0.8,marginTop:3}}>
-                Visible en tu perfil y en el ranking
-              </div>
-            </div>
-          )}
-          {reward.report&&(()=>{
-            const name = encodeURIComponent(patientName||"");
-            const lvl  = level;
-            const waMsg = encodeURIComponent(
-              `Hola, soy ${patientName||"tu paciente"} y acabo de alcanzar el nivel ${lvl} en la app GBH. He desbloqueado mi informe de progreso gratuito. ¿Puedes enviármelo? 📊`
-            );
-            const mailSubject = encodeURIComponent(`Informe de progreso — Nivel ${lvl} — ${patientName||""}`);
-            const mailBody    = encodeURIComponent(
-              `Hola,
+    <div
+      onClick={reward?.report ? undefined : onClose}
+      style={{
+        position:"fixed",inset:0,zIndex:10001,background:bg,
+        display:"flex",flexDirection:"column",alignItems:"center",
+        justifyContent:"center",
+        animation:reward?.report?"popIn 0.4s ease":"fadeInOut 4.5s ease forwards",
+        pointerEvents:reward?.report?"auto":"auto",
+        padding:"24px 20px",overflowY:"auto",
+      }}>
 
-Acabo de alcanzar el Nivel ${lvl} en la app de GBH Nutrición y he desbloqueado mi informe de progreso.
-
-¿Puedes enviármelo?
-
-Gracias!`
-            );
-            return(
-              <div style={{background:"rgba(100,181,246,0.12)",border:"2px solid #64B5F6",
-                borderRadius:20,padding:"16px 20px",textAlign:"center",maxWidth:300}}>
-                <div style={{fontSize:15,fontWeight:900,color:"#64B5F6",marginBottom:4}}>
-                  📊 Informe desbloqueado
-                </div>
-                <div style={{fontSize:12,color:"rgba(255,255,255,0.65)",
-                  fontFamily:"'DM Sans',sans-serif",marginBottom:14}}>
-                  Toca para solicitarlo ahora
-                </div>
-                <div style={{display:"flex",gap:10,justifyContent:"center"}}>
-                  {/* WhatsApp */}
-                  <a href={`https://wa.me/${GBH_WHATSAPP}?text=${waMsg}`}
-                    target="_blank" rel="noreferrer"
-                    style={{display:"flex",alignItems:"center",gap:7,
-                      padding:"11px 18px",borderRadius:16,
-                      background:"#25D366",border:"none",
-                      color:"white",fontWeight:900,fontSize:14,
-                      textDecoration:"none",fontFamily:"'Nunito',sans-serif",
-                      boxShadow:"0 4px 0 #1aad4e"}}>
-                    <span style={{fontSize:18}}>📱</span> WhatsApp
-                  </a>
-                  {/* Email */}
-                  <a href={`mailto:${GBH_EMAIL}?subject=${mailSubject}&body=${mailBody}`}
-                    style={{display:"flex",alignItems:"center",gap:7,
-                      padding:"11px 18px",borderRadius:16,
-                      background:"rgba(255,255,255,0.12)",
-                      border:"1.5px solid rgba(255,255,255,0.25)",
-                      color:"white",fontWeight:900,fontSize:14,
-                      textDecoration:"none",fontFamily:"'Nunito',sans-serif",
-                      boxShadow:"0 4px 0 rgba(0,0,0,0.3)"}}>
-                    <span style={{fontSize:18}}>✉️</span> Email
-                  </a>
-                </div>
-                <button onClick={onClose}
-                  style={{marginTop:14,background:"none",border:"none",
-                    color:"rgba(255,255,255,0.45)",fontSize:12,cursor:"pointer",
-                    fontFamily:"'DM Sans',sans-serif"}}>
-                  Cerrar
-                </button>
-              </div>
-            );
-          })()}
-          {reward.freeMeal&&(
-            <div style={{background:"rgba(255,200,0,0.18)",border:"2px solid #FFD700",borderRadius:18,
-              padding:"10px 24px",fontSize:15,fontWeight:900,color:"#FFD700"}}>
-              🍽️ ¡Comida libre desbloqueada!
-            </div>
-          )}
-          {reward.shield&&!reward.frame&&(
-            <div style={{background:"rgba(100,181,246,0.18)",border:"2px solid #64B5F6",
-              borderRadius:18,padding:"8px 20px",fontSize:14,fontWeight:900,color:"#64B5F6"}}>
-              🛡️ Escudo ganado
-            </div>
-          )}
-          <div style={{fontSize:14,fontWeight:700,color:"#C8FF40"}}>+{reward.gems} 💎</div>
+      {/* ── Confetti background for milestones ── */}
+      {isMilestone&&(
+        <div style={{position:"absolute",inset:0,overflow:"hidden",pointerEvents:"none",zIndex:0}}>
+          {[...Array(20)].map((_,i)=>(
+            <div key={i} style={{
+              position:"absolute",
+              left:`${Math.random()*100}%`,
+              top:`${Math.random()*100}%`,
+              width:8,height:8,
+              borderRadius:"50%",
+              background:["#FFD700","#C8FF40","#64B5F6","#FF8080","#A78BFA"][i%5],
+              animation:`confettiFall ${1.5+Math.random()*2}s ${Math.random()*1}s ease-in forwards`,
+              opacity:0.8,
+            }}/>
+          ))}
         </div>
       )}
-      <div style={{fontSize:16,fontWeight:800,color:"rgba(255,255,255,0.8)",
-        fontFamily:"'Nunito',sans-serif",marginTop:16,animation:"scaleIn 0.5s 0.7s both"}}>
-        {level===500?"¡LEYENDA ABSOLUTA! 🔥":isMilestone?"¡Hito épico alcanzado!":"¡Sigue imparable! 💪"}
+
+      <div style={{position:"relative",zIndex:1,display:"flex",flexDirection:"column",alignItems:"center",width:"100%",maxWidth:340}}>
+
+        {/* ── Icono principal ── */}
+        <div style={{
+          fontSize:isMilestone?96:80,
+          animation:"scaleIn 0.6s cubic-bezier(0.34,1.56,0.64,1)",
+          filter:isMilestone?"drop-shadow(0 0 24px rgba(255,215,0,0.6))":"none",
+          marginBottom:8,
+        }}>
+          {icon}
+        </div>
+
+        {/* ── "NIVEL ALCANZADO" ── */}
+        <div style={{
+          fontSize:11,fontWeight:900,
+          color:"rgba(255,255,255,0.5)",
+          fontFamily:"'DM Sans',sans-serif",
+          textTransform:"uppercase",letterSpacing:"0.2em",
+          animation:"scaleIn 0.5s 0.15s both",
+          marginBottom:4,
+        }}>
+          {lang==="en"?"LEVEL REACHED":"NIVEL ALCANZADO"}
+        </div>
+
+        {/* ── Número de nivel ── */}
+        <div style={{
+          fontSize:90,fontWeight:900,color:"#FFD700",
+          fontFamily:"'Nunito',sans-serif",lineHeight:1,
+          animation:"scaleIn 0.7s 0.3s cubic-bezier(0.34,1.56,0.64,1) both",
+          textShadow:"0 4px 30px rgba(255,215,0,0.5)",
+          marginBottom:16,
+        }}>
+          {level}
+        </div>
+
+        {/* ── Racha ── */}
+        {streak>0&&(
+          <div style={{
+            display:"flex",alignItems:"center",gap:8,
+            background:"rgba(255,128,64,0.18)",
+            border:"2px solid rgba(255,128,64,0.5)",
+            borderRadius:20,padding:"8px 20px",
+            marginBottom:14,
+            animation:"scaleIn 0.5s 0.45s both",
+          }}>
+            <span style={{fontSize:22}}>🔥</span>
+            <div style={{fontFamily:"'Nunito',sans-serif"}}>
+              <div style={{fontSize:20,fontWeight:900,color:"#FF8040",lineHeight:1}}>
+                {streak}
+              </div>
+              <div style={{fontSize:10,color:"rgba(255,180,140,0.8)",fontWeight:700,
+                textTransform:"uppercase",letterSpacing:"0.1em"}}>
+                {lang==="en"?"day streak":"días de racha"}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Recompensa actual (si la hay) ── */}
+        {reward&&(
+          <div style={{
+            display:"flex",flexDirection:"column",alignItems:"center",gap:8,
+            width:"100%",marginBottom:14,
+            animation:"scaleIn 0.5s 0.55s both",
+          }}>
+            {reward.frame>0&&FRAMES[reward.frame]&&(
+              <div style={{
+                background:"rgba(255,255,255,0.08)",
+                border:`2px solid ${FRAMES[reward.frame].color}`,
+                borderRadius:18,padding:"10px 24px",fontSize:15,
+                fontWeight:900,color:FRAMES[reward.frame].color,textAlign:"center",
+                width:"100%",
+              }}>
+                🖼️ {lang==="en"
+                  ? FRAMES[reward.frame].label.replace("Marco","Frame")+" unlocked"
+                  : FRAMES[reward.frame].label+" desbloqueado"}
+                <div style={{fontSize:11,fontWeight:600,opacity:0.8,marginTop:3}}>
+                  {lang==="en"?"Visible in your profile and ranking":"Visible en tu perfil y en el ranking"}
+                </div>
+              </div>
+            )}
+            {reward.report&&(()=>{
+              const waMsg = encodeURIComponent(
+                lang==="en"
+                  ? `Hi, I'm ${patientName||"your patient"} and I just reached level ${level} on the GBH app. I've unlocked my free progress report. Can you send it to me? 📊`
+                  : `Hola, soy ${patientName||"tu paciente"} y acabo de alcanzar el nivel ${level} en la app GBH. He desbloqueado mi informe de progreso gratuito. ¿Puedes enviármelo? 📊`
+              );
+              const mailSubject = encodeURIComponent(`${lang==="en"?"Progress report":"Informe de progreso"} — ${lang==="en"?"Level":"Nivel"} ${level} — ${patientName||""}`);
+              const mailBody = encodeURIComponent(lang==="en"
+                ? `Hi,\n\nI just reached Level ${level} on the GBH Nutrition app and unlocked my progress report.\n\nCould you send it to me?\n\nThanks!`
+                : `Hola,\n\nAcabo de alcanzar el Nivel ${level} en la app de GBH Nutrición y he desbloqueado mi informe de progreso.\n\n¿Puedes enviármelo?\n\n¡Gracias!`
+              );
+              return(
+                <div style={{background:"rgba(100,181,246,0.12)",border:"2px solid #64B5F6",
+                  borderRadius:20,padding:"16px 20px",textAlign:"center",width:"100%"}}>
+                  <div style={{fontSize:15,fontWeight:900,color:"#64B5F6",marginBottom:4}}>
+                    📊 {lang==="en"?"Progress report unlocked":"Informe desbloqueado"}
+                  </div>
+                  <div style={{fontSize:12,color:"rgba(255,255,255,0.65)",
+                    fontFamily:"'DM Sans',sans-serif",marginBottom:14}}>
+                    {lang==="en"?"Tap to request it now":"Toca para solicitarlo ahora"}
+                  </div>
+                  <div style={{display:"flex",gap:10,justifyContent:"center"}}>
+                    <a href={`https://wa.me/${GBH_WHATSAPP}?text=${waMsg}`}
+                      target="_blank" rel="noreferrer"
+                      style={{display:"flex",alignItems:"center",gap:7,padding:"11px 18px",
+                        borderRadius:16,background:"#25D366",color:"white",fontWeight:900,
+                        fontSize:14,textDecoration:"none",fontFamily:"'Nunito',sans-serif",
+                        boxShadow:"0 4px 0 #1aad4e"}}>
+                      <span style={{fontSize:18}}>📱</span> WhatsApp
+                    </a>
+                    <a href={`mailto:${GBH_EMAIL}?subject=${mailSubject}&body=${mailBody}`}
+                      style={{display:"flex",alignItems:"center",gap:7,padding:"11px 18px",
+                        borderRadius:16,background:"rgba(255,255,255,0.12)",
+                        border:"1.5px solid rgba(255,255,255,0.25)",color:"white",fontWeight:900,
+                        fontSize:14,textDecoration:"none",fontFamily:"'Nunito',sans-serif",
+                        boxShadow:"0 4px 0 rgba(0,0,0,0.3)"}}>
+                      <span style={{fontSize:18}}>✉️</span> Email
+                    </a>
+                  </div>
+                  <button onClick={onClose}
+                    style={{marginTop:14,background:"none",border:"none",
+                      color:"rgba(255,255,255,0.45)",fontSize:12,cursor:"pointer",
+                      fontFamily:"'DM Sans',sans-serif"}}>
+                    {lang==="en"?"Close":"Cerrar"}
+                  </button>
+                </div>
+              );
+            })()}
+            {reward.freeMeal&&!reward.report&&(
+              <div style={{background:"rgba(255,200,0,0.18)",border:"2px solid #FFD700",
+                borderRadius:18,padding:"10px 24px",fontSize:15,fontWeight:900,
+                color:"#FFD700",width:"100%",textAlign:"center"}}>
+                🍽️ {lang==="en"?"Free meal unlocked!":"¡Comida libre desbloqueada!"}
+              </div>
+            )}
+            {reward.shield&&!reward.frame&&(
+              <div style={{background:"rgba(100,181,246,0.18)",border:"2px solid #64B5F6",
+                borderRadius:18,padding:"8px 20px",fontSize:14,fontWeight:900,
+                color:"#64B5F6",textAlign:"center"}}>
+                🛡️ {lang==="en"?"Shield earned!":"¡Escudo ganado!"}
+              </div>
+            )}
+            <div style={{fontSize:16,fontWeight:900,color:"#C8FF40"}}>+{reward.gems} 💎</div>
+          </div>
+        )}
+
+        {/* ── Próxima recompensa ── */}
+        {next&&level<500&&(
+          <div style={{
+            background:"rgba(255,255,255,0.06)",
+            border:"1.5px solid rgba(255,255,255,0.14)",
+            borderRadius:16,padding:"10px 18px",
+            textAlign:"center",width:"100%",
+            animation:"scaleIn 0.5s 0.7s both",
+            marginBottom:12,
+          }}>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.45)",fontFamily:"'DM Sans',sans-serif",
+              textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:4}}>
+              {lang==="en"?"Next reward":"Próxima recompensa"}
+            </div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+              <div style={{
+                background:"rgba(88,204,2,0.15)",border:"1.5px solid rgba(88,204,2,0.3)",
+                borderRadius:20,padding:"4px 14px",
+                fontSize:13,fontWeight:900,color:"#C8FF40",
+                fontFamily:"'Nunito',sans-serif",
+              }}>
+                {lang==="en"
+                  ? `${next.diff} level${next.diff!==1?"s":""} away · Lv ${next.level}`
+                  : `${next.diff} nivel${next.diff!==1?"es":""} más · Nv ${next.level}`}
+              </div>
+              <span style={{fontSize:18}}>
+                {next.reward.frame>0?"🖼️":next.reward.report?"📊":next.reward.freeMeal?"🍽️":next.reward.shield?"🛡️":"⭐"}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* ── Mensaje final ── */}
+        <div style={{
+          fontSize:15,fontWeight:800,color:"rgba(255,255,255,0.75)",
+          fontFamily:"'Nunito',sans-serif",
+          animation:"scaleIn 0.5s 0.85s both",
+          textAlign:"center",marginBottom:16,
+        }}>
+          {motivText}
+        </div>
+
+        {/* ── Toca para continuar (si no hay report) ── */}
+        {!reward?.report&&(
+          <div style={{
+            fontSize:11,color:"rgba(255,255,255,0.3)",
+            fontFamily:"'DM Sans',sans-serif",
+            animation:"scaleIn 0.4s 1s both",
+          }}>
+            {lang==="en"?"Tap anywhere to continue":"Toca en cualquier lugar para continuar"}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -3093,7 +3415,7 @@ function GBHApp(){
     const nl={...tLog,[key]:true};setTLog(nl);await saveLog(nl,steps);
     if(key==="diet") sfx("complete"); else sfx("missionDone");
     await addXG(key==="diet"?15:5,key==="diet"?5:2);
-    if(key==="diet"){setStreakAnim(true);setTimeout(()=>setStreakAnim(false),2600);}
+    if(key==="diet"){sfx("streakCelebration");setStreakAnim(true);setTimeout(()=>setStreakAnim(false),5000);}
     const wasAllDone=tLog.diet&&tLog.steps&&tLog.hydration&&tLog.sleep;
     if(nl.diet&&nl.steps&&nl.hydration&&nl.sleep&&!wasAllDone){
       await addXG(20,10);
@@ -3379,6 +3701,7 @@ function GBHApp(){
     @keyframes slideUp{from{transform:translateY(80px);opacity:0}to{transform:translateY(0);opacity:1}}
     @keyframes bounceIn{0%{transform:scale(0.5);opacity:0}60%{transform:scale(1.15)}80%{transform:scale(0.95)}100%{transform:scale(1);opacity:1}}
     @keyframes slideInLeft{from{transform:translateX(-24px);opacity:0}to{transform:translateX(0);opacity:1}}
+    @keyframes confettiFall{0%{transform:translateY(-20px) rotate(0deg);opacity:1}100%{transform:translateY(100vh) rotate(720deg);opacity:0}}
     @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,200,0,0.55)}50%{box-shadow:0 0 0 10px rgba(255,200,0,0)}}
     @keyframes confettiFall{to{transform:translateY(110vh) rotate(800deg);opacity:0}}
     @keyframes glow{0%,100%{box-shadow:0 6px 0 ${T.g3},0 0 18px rgba(88,204,2,0.35)}50%{box-shadow:0 6px 0 ${T.g3},0 0 38px rgba(88,204,2,0.8)}}
@@ -3784,7 +4107,7 @@ function GBHApp(){
       <StreakOverlay active={streakAnim} streak={streak+1}/>
       <MissionsOverlay active={missionsAnim}/>
       {floatItems.length>0&&<FloatReward items={floatItems}/>}
-      <LevelUpOverlay active={levelUpAnim} level={levelUpNum} reward={levelUpRew} patientName={profile?.name||""} onClose={()=>setLevelUpAnim(false)}/>
+      <LevelUpOverlay active={levelUpAnim} level={levelUpNum} reward={levelUpRew} patientName={profile?.name||""} streak={streak} lang={lang} onClose={()=>setLevelUpAnim(false)}/>
       {rewardsOpen&&<RewardsModal onClose={()=>setRewardsOpen(false)} currentLevel={lv.l}/>}
       {/* ── Burbuja flotante desafíos ────────────────────────────────────── */}
       {/* ── Modal Desafíos Semanales ─────────────────────────────────────── */}
