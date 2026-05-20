@@ -97,7 +97,11 @@ const TRANS = {
     // Profile
     profileFullName:"Nombre completo", profileEmail:"Email",
     profileInitialWeight:"Peso inicial", profileGoalWeight:"Peso objetivo",
+    profileHeight:"Estatura",
     closeBtn:"✕ Cerrar",
+    // Height slider
+    heightLabel:"Estatura", heightHint:"📏 Tu altura nos ayuda a calcular tu IMC",
+    heightUnit:"cm", heightSliderTitle:"¿Cuánto mides?",
     // Update banner
     updateAvailable:"Nueva versión disponible",
     updateDesc:"Toca para actualizar la app ahora",
@@ -262,7 +266,11 @@ const TRANS = {
     // Profile
     profileFullName:"Full name", profileEmail:"Email",
     profileInitialWeight:"Initial weight", profileGoalWeight:"Goal weight",
+    profileHeight:"Height",
     closeBtn:"✕ Close",
+    // Height slider
+    heightLabel:"Height", heightHint:"📏 Your height helps us calculate your BMI",
+    heightUnit:"cm", heightSliderTitle:"How tall are you?",
     // Update banner
     updateAvailable:"New version available",
     updateDesc:"Tap to update the app now",
@@ -2564,6 +2572,12 @@ function ProfileCardModal({onClose, profile, userPhoto, onSavePhoto, onSaveProfi
   const startEdit = (field, current) => { setEditField(field); setEditVal(String(current||"")); };
   const saveEdit  = () => { if(editField) onSaveProfile(editField, editVal); setEditField(null); };
 
+  // Slider de estatura para edición en el perfil
+  const [heightSliderVal, setHeightSliderVal] = useState(profile?.height_cm||170);
+  const [editingHeight, setEditingHeight] = useState(false);
+  const startHeightEdit = () => { setHeightSliderVal(profile?.height_cm||170); setEditingHeight(true); };
+  const saveHeightEdit  = () => { onSaveProfile("height", heightSliderVal); setEditingHeight(false); };
+
   const initW = weights.find(w=>w.isInitial)?.weight ?? profile?.initial_weight ?? "—";
   const lastW = weights.filter(w=>!w.isInitial).slice(-1)[0]?.weight ?? "—";
 
@@ -2651,6 +2665,50 @@ function ProfileCardModal({onClose, profile, userPhoto, onSavePhoto, onSaveProfi
           <DataRow label={t("profileEmail")}    value={profile?.email||"—"} field="email"/>
           <DataRow label={t("profileInitialWeight")} value={initW} field="weight"/>
           <DataRow label={t("profileGoalWeight")}    value={profile?.goal_weight||"—"} field="goal"/>
+          {/* ── Estatura / Height ── */}
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 0",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:10,color:T.t2,textTransform:"uppercase",letterSpacing:"0.08em",fontFamily:"'DM Sans',sans-serif",marginBottom:3}}>{t("profileHeight")}</div>
+              {editingHeight?(
+                <div style={{paddingTop:4}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>
+                    <span style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>📏</span>
+                    <div style={{display:"flex",alignItems:"baseline",gap:3}}>
+                      <span style={{fontSize:26,fontWeight:900,color:T.g2,lineHeight:1}}>{heightSliderVal}</span>
+                      <span style={{fontSize:12,color:T.t2,fontWeight:700}}>{t("heightUnit")}</span>
+                    </div>
+                  </div>
+                  <div style={{position:"relative",height:30,display:"flex",alignItems:"center",marginBottom:4}}>
+                    <div style={{position:"absolute",left:0,right:0,height:7,borderRadius:7,background:"rgba(255,255,255,0.1)",overflow:"hidden"}}>
+                      <div style={{height:"100%",width:`${((heightSliderVal-140)/(220-140))*100}%`,background:`linear-gradient(90deg,${T.g1},${T.g2})`,borderRadius:7}}/>
+                    </div>
+                    <input type="range" min={140} max={220} step={1} value={heightSliderVal}
+                      onChange={e=>setHeightSliderVal(Number(e.target.value))}
+                      style={{position:"absolute",left:0,right:0,width:"100%",opacity:0,height:30,cursor:"pointer",margin:0,padding:0}}/>
+                    <div style={{position:"absolute",left:`calc(${((heightSliderVal-140)/(220-140))*100}% - 10px)`,width:20,height:20,borderRadius:"50%",background:`linear-gradient(135deg,${T.g1},${T.g2})`,boxShadow:`0 2px 6px rgba(0,0,0,0.5),0 0 0 2px ${T.g3}`,pointerEvents:"none"}}/>
+                  </div>
+                  <div style={{display:"flex",justifyContent:"space-between"}}>
+                    <span style={{fontSize:9,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>140cm</span>
+                    <span style={{fontSize:9,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>220cm</span>
+                  </div>
+                </div>
+              ):(
+                <div style={{fontSize:16,fontWeight:800,color:T.wh,fontFamily:"'DM Sans',sans-serif"}}>
+                  {profile?.height_cm||"—"}{profile?.height_cm?" cm":""}
+                </div>
+              )}
+            </div>
+            <div style={{marginLeft:12,flexShrink:0,display:"flex",gap:6}}>
+              {editingHeight?(
+                <>
+                  <button onClick={saveHeightEdit} style={{background:T.g1,border:"none",borderRadius:10,padding:"7px 14px",color:"white",fontWeight:900,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>✓</button>
+                  <button onClick={()=>setEditingHeight(false)} style={{background:"rgba(255,255,255,0.08)",border:"1.5px solid rgba(255,255,255,0.14)",borderRadius:10,padding:"7px 10px",color:T.t2,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>✕</button>
+                </>
+              ):(
+                <button onClick={startHeightEdit} style={{background:"rgba(255,255,255,0.08)",border:"1.5px solid rgba(255,255,255,0.14)",borderRadius:10,padding:"7px 10px",color:T.t2,fontSize:16,cursor:"pointer",lineHeight:1}}>✏️</button>
+              )}
+            </div>
+          </div>
           {/* Selector de idioma */}
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 0",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
             <div style={{fontSize:10,color:T.t2,textTransform:"uppercase",letterSpacing:"0.08em",fontFamily:"'DM Sans',sans-serif"}}>{t("langLabel")}</div>
@@ -2911,6 +2969,7 @@ function GBHApp(){
   const [aEmail,   setAEmail]   = useState("");
   const [aWeight,  setAWeight]  = useState("");
   const [aGoal,    setAGoal]    = useState("");
+  const [aHeight,  setAHeight]  = useState(170);
   const [aPrivacy, setAPrivacy] = useState(false);
   const [authMode,setAuthMode]= useState("new"); // "new" | "returning" | "checking"
   const [authErr, setAuthErr] = useState("");
@@ -3326,7 +3385,7 @@ function GBHApp(){
       setAuthErr("Introduce tu peso actual para comenzar.");
       setLoading(false); return;
     }
-    const np={id:crypto.randomUUID(),name,email,xp:0,gems:0,shields:0};
+    const np={id:crypto.randomUUID(),name,email,xp:0,gems:0,shields:0,height_cm:Math.round(aHeight)||null};
     const cr=await sbReq("POST","profiles",np); const fp=cr?.[0]||np;
     lsSet(`gbh:p:${fp.id}`,fp); lsSet(`gbh:em:${email}`,fp.id); lsSet("gbh:lastEmail",email);
     const initW=parseFloat(aWeight);
@@ -3479,6 +3538,10 @@ function GBHApp(){
       const g = parseFloat(val);
       if(!isNaN(g)&&g>20&&g<300) updated.goal_weight=g;
     }
+    if(field==="height"){
+      const h = parseInt(val,10);
+      if(!isNaN(h)&&h>=100&&h<=250) updated.height_cm=h;
+    }
     if(field==="weight"){
       const w = parseFloat(val);
       if(!isNaN(w)&&w>20&&w<300){
@@ -3494,7 +3557,7 @@ function GBHApp(){
     }
     setProfile(updated);
     lsSet(`gbh:p:${updated.id}`, updated);
-    await sbReq("PATCH",`profiles?id=eq.${profile.id}`,{name:updated.name,email:updated.email,initial_weight:updated.initial_weight,goal_weight:updated.goal_weight||null});
+    await sbReq("PATCH",`profiles?id=eq.${profile.id}`,{name:updated.name,email:updated.email,initial_weight:updated.initial_weight,goal_weight:updated.goal_weight||null,height_cm:updated.height_cm||null});
   };
 
   const loadRanking = async () => {
@@ -3981,6 +4044,35 @@ function GBHApp(){
           </div>
           <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:20}}>
             {t("goalHint")}
+          </div>
+          {/* ── Estatura / Height slider ── */}
+          <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:10}}>
+            {t("heightSliderTitle")}
+          </div>
+          <div style={{background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.12)",borderRadius:18,padding:"16px 18px",marginBottom:6}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:14}}>
+              <span style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>📏 {t("heightLabel")}</span>
+              <div style={{display:"flex",alignItems:"baseline",gap:3}}>
+                <span style={{fontSize:34,fontWeight:900,color:T.g2,lineHeight:1}}>{aHeight}</span>
+                <span style={{fontSize:14,color:T.t2,fontWeight:700}}>{t("heightUnit")}</span>
+              </div>
+            </div>
+            <div style={{position:"relative",height:36,display:"flex",alignItems:"center"}}>
+              <div style={{position:"absolute",left:0,right:0,height:8,borderRadius:8,background:"rgba(255,255,255,0.1)",overflow:"hidden"}}>
+                <div style={{height:"100%",width:`${((aHeight-140)/(220-140))*100}%`,background:`linear-gradient(90deg,${T.g1},${T.g2})`,borderRadius:8,transition:"width 0.05s"}}/>
+              </div>
+              <input type="range" min={140} max={220} step={1} value={aHeight}
+                onChange={e=>setAHeight(Number(e.target.value))}
+                style={{position:"absolute",left:0,right:0,width:"100%",opacity:0,height:36,cursor:"pointer",margin:0,padding:0}}/>
+              <div style={{position:"absolute",left:`calc(${((aHeight-140)/(220-140))*100}% - 12px)`,width:24,height:24,borderRadius:"50%",background:`linear-gradient(135deg,${T.g1},${T.g2})`,boxShadow:`0 3px 8px rgba(0,0,0,0.5),0 0 0 3px ${T.g3}`,pointerEvents:"none",transition:"left 0.05s"}}/>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",marginTop:8}}>
+              <span style={{fontSize:10,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>140 cm</span>
+              <span style={{fontSize:10,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>220 cm</span>
+            </div>
+          </div>
+          <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:20}}>
+            {t("heightHint")}
           </div>
         </>)}
 
