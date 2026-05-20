@@ -616,15 +616,15 @@ const getNextLevel=(lv)=>LEVELS[lv.l]||lv; // lv.l is 1-based, LEVELS[lv.l] = ne
 
 // ─── Badges ──────────────────────────────────────────────────────────────────
 const BADGES=[
-  {id:"d1",   icon:"🌱",t:"Primer Paso",       d:"Primer check-in",            xp:20, g:10},
-  {id:"s7",   icon:"🔥",t:"Semana de Fuego",    d:"7 días consecutivos",        xp:70, g:50},
-  {id:"s30",  icon:"💪",t:"Hábito Forjado",     d:"30 días consecutivos",       xp:200,g:150,r:"📄 PDF extra de recetas"},
-  {id:"s100", icon:"🏆",t:"Centenario",         d:"100 días consecutivos",      xp:500,g:300,r:"🤝 Consulta presencial gratuita"},
-  {id:"s365", icon:"👑",t:"Leyenda GBH",        d:"365 días seguidos",          xp:1500,g:1000,r:"📚 Recetario anual completo"},
-  {id:"w1",   icon:"⚖️",t:"Báscula Activada",   d:"Primera medición de peso",   xp:15, g:10},
-  {id:"w8",   icon:"📊",t:"8 Semanas al Día",   d:"8 pesajes registrados",      xp:100,g:80},
-  {id:"w12",  icon:"📈",t:"Trimestre Fiel",     d:"12 pesajes registrados",     xp:200,g:150,r:"🎯 Análisis trimestral personalizado"},
-  {id:"pW",   icon:"⭐",t:"Semana Perfecta",    d:"4 misiones 7 días seguidos", xp:100,g:60},
+  {id:"d1",   icon:"🌱",t:"Primer Paso",       t_en:"First Step",          d:"Primer check-in",            d_en:"First check-in",               xp:20, g:10},
+  {id:"s7",   icon:"🔥",t:"Semana de Fuego",    t_en:"Week on Fire",        d:"7 días consecutivos",        d_en:"7 days in a row",              xp:70, g:50},
+  {id:"s30",  icon:"💪",t:"Hábito Forjado",     t_en:"Habit Forged",        d:"30 días consecutivos",       d_en:"30 days in a row",             xp:200,g:150,r:"📄 PDF extra de recetas",    r_en:"📄 Extra recipe PDF"},
+  {id:"s100", icon:"🏆",t:"Centenario",         t_en:"Centurion",           d:"100 días consecutivos",      d_en:"100 days in a row",            xp:500,g:300,r:"🤝 Consulta presencial gratuita",r_en:"🤝 Free in-person consultation"},
+  {id:"s365", icon:"👑",t:"Leyenda GBH",        t_en:"GBH Legend",          d:"365 días seguidos",          d_en:"365 days in a row",            xp:1500,g:1000,r:"📚 Recetario anual completo",r_en:"📚 Full annual recipe book"},
+  {id:"w1",   icon:"⚖️",t:"Báscula Activada",   t_en:"Scale Activated",     d:"Primera medición de peso",   d_en:"First weight measurement",     xp:15, g:10},
+  {id:"w8",   icon:"📊",t:"8 Semanas al Día",   t_en:"8 Weeks Strong",      d:"8 pesajes registrados",      d_en:"8 weigh-ins logged",           xp:100,g:80},
+  {id:"w12",  icon:"📈",t:"Trimestre Fiel",     t_en:"Faithful Quarter",    d:"12 pesajes registrados",     d_en:"12 weigh-ins logged",          xp:200,g:150,r:"🎯 Análisis trimestral personalizado",r_en:"🎯 Personalised quarterly analysis"},
+  {id:"pW",   icon:"⭐",t:"Semana Perfecta",    t_en:"Perfect Week",        d:"4 misiones 7 días seguidos", d_en:"4 missions 7 days in a row",   xp:100,g:60},
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -1490,54 +1490,54 @@ function WeeklyXPGoal({logs,xp}){
 
 // ─── Banco de preguntas de nutrición (30 preguntas) ──────────────────────────
 const QUIZ_BANK = [
-  {q:"¿Cuántas calorías tiene aproximadamente 100g de pechuga de pollo a la plancha?",opts:["85 kcal","165 kcal","240 kcal","310 kcal"],ans:1},
-  {q:"¿Qué macronutriente proporciona más energía por gramo?",opts:["Proteína (4 kcal/g)","Hidratos (4 kcal/g)","Grasa (9 kcal/g)","Fibra (2 kcal/g)"],ans:2},
-  {q:"¿Cuál de estos alimentos tiene más proteína por 100g?",opts:["Huevo entero","Atún en lata","Leche entera","Yogur natural"],ans:1},
-  {q:"¿Qué vitamina produce el cuerpo con la exposición al sol?",opts:["Vitamina A","Vitamina B12","Vitamina C","Vitamina D"],ans:3},
-  {q:"¿Cuántos vasos de agua equivalen aproximadamente a 2 litros?",opts:["4 vasos","6 vasos","8 vasos","10 vasos"],ans:2},
-  {q:"¿Cuál de estos alimentos tiene el índice glucémico más bajo?",opts:["Pan blanco","Arroz blanco","Legumbres","Sandía"],ans:2},
-  {q:"¿Qué porcentaje del cuerpo humano es agua aproximadamente?",opts:["40%","55-60%","75-80%","90%"],ans:1},
-  {q:"¿Cuántas kcal tiene 1 gramo de alcohol?",opts:["4 kcal","5 kcal","7 kcal","9 kcal"],ans:2},
-  {q:"¿Cuál es la principal función de los hidratos de carbono?",opts:["Construir músculo","Proporcionar energía rápida","Regular el sistema inmune","Transportar vitaminas"],ans:1},
-  {q:"¿Qué alimento es rico en omega-3?",opts:["Aceite de girasol","Salmón","Carne de cerdo","Queso curado"],ans:1},
-  {q:"¿Cuántas calorías tiene aproximadamente 1 cucharada de aceite de oliva?",opts:["50 kcal","90 kcal","120 kcal","150 kcal"],ans:1},
-  {q:"¿Cuál de estos es un ejemplo de proteína completa?",opts:["Arroz","Lentejas","Huevo","Pan"],ans:2},
-  {q:"¿Qué mineral es esencial para la salud ósea?",opts:["Hierro","Zinc","Calcio","Magnesio"],ans:2},
-  {q:"¿Cuántas calorías tiene 100g de aguacate?",opts:["80 kcal","160 kcal","250 kcal","320 kcal"],ans:1},
-  {q:"¿Qué es el metabolismo basal?",opts:["Calorías quemadas haciendo ejercicio","Calorías mínimas para funciones vitales en reposo","Velocidad de digestión","Absorción de nutrientes"],ans:1},
-  {q:"¿Cuál de estos cereales tiene más fibra?",opts:["Arroz blanco","Maíz","Avena","Trigo refinado"],ans:2},
-  {q:"¿En qué alimento hay más hierro por 100g?",opts:["Lentejas","Espinacas","Hígado de ternera","Almejas"],ans:3},
-  {q:"¿Cuántas calorías tiene 100g de plátano?",opts:["55 kcal","89 kcal","120 kcal","145 kcal"],ans:1},
-  {q:"¿Qué vitamina es fundamental para la absorción del hierro?",opts:["Vitamina A","Vitamina B6","Vitamina C","Vitamina K"],ans:2},
-  {q:"¿Cuántas horas sin comer se considera ayuno intermitente básico?",opts:["8 horas","12 horas","16 horas","24 horas"],ans:2},
-  {q:"¿Cuál de estos NO es un aminoácido esencial?",opts:["Leucina","Valina","Alanina","Lisina"],ans:2},
-  {q:"¿Cuántas calorías tiene 100g de almendras?",opts:["350 kcal","460 kcal","580 kcal","700 kcal"],ans:2},
-  {q:"¿Qué hormona regula el azúcar en sangre?",opts:["Cortisol","Insulina","Adrenalina","Melatonina"],ans:1},
-  {q:"¿Cuál es la temperatura interna segura para cocinar pollo?",opts:["60°C","70°C","74°C","85°C"],ans:2},
-  {q:"¿Cuántos gramos de proteína necesita aproximadamente una persona activa por kg de peso?",opts:["0.4-0.6g","0.8-1.2g","1.6-2.2g","3-4g"],ans:2},
-  {q:"¿Cuál de estos alimentos tiene más potasio?",opts:["Plátano","Naranja","Espinacas","Patata cocida"],ans:3},
-  {q:"¿Qué proceso ocurre durante el sueño en relación a los músculos?",opts:["Se pierden","Se sintetiza proteína muscular","Se quema grasa muscular","No pasa nada"],ans:1},
-  {q:"¿Cuántas calorías tiene 100g de pasta cocida?",opts:["80 kcal","131 kcal","200 kcal","260 kcal"],ans:1},
-  {q:"¿Cuál de estos tiene menos azúcar?",opts:["Zumo de naranja natural","Naranja entera","Refresco light","Yogur con frutas"],ans:1},
-  {q:"¿Qué significa IMC?",opts:["Índice de Masa Corporal","Ingesta Máxima Calórica","Índice Metabólico Corporal","Ingesta Mínima de Carbohidratos"],ans:0},
+  {q:"¿Cuántas calorías tiene aproximadamente 100g de pechuga de pollo a la plancha?",q_en:"How many calories does 100g of grilled chicken breast have?",opts:["85 kcal","165 kcal","240 kcal","310 kcal"],ans:1},
+  {q:"¿Qué macronutriente proporciona más energía por gramo?",q_en:"Which macronutrient provides the most energy per gram?",opts:["Proteína (4 kcal/g)","Hidratos (4 kcal/g)","Grasa (9 kcal/g)","Fibra (2 kcal/g)"],opts_en:["Protein (4 kcal/g)","Carbs (4 kcal/g)","Fat (9 kcal/g)","Fibre (2 kcal/g)"],ans:2},
+  {q:"¿Cuál de estos alimentos tiene más proteína por 100g?",q_en:"Which of these foods has the most protein per 100g?",opts:["Huevo entero","Atún en lata","Leche entera","Yogur natural"],opts_en:["Whole egg","Canned tuna","Whole milk","Natural yogurt"],ans:1},
+  {q:"¿Qué vitamina produce el cuerpo con la exposición al sol?",q_en:"Which vitamin does the body produce with sun exposure?",opts:["Vitamina A","Vitamina B12","Vitamina C","Vitamina D"],opts_en:["Vitamin A","Vitamin B12","Vitamin C","Vitamin D"],ans:3},
+  {q:"¿Cuántos vasos de agua equivalen aproximadamente a 2 litros?",q_en:"How many glasses of water equal approximately 2 litres?",opts:["4 vasos","6 vasos","8 vasos","10 vasos"],opts_en:["4 glasses","6 glasses","8 glasses","10 glasses"],ans:2},
+  {q:"¿Cuál de estos alimentos tiene el índice glucémico más bajo?",q_en:"Which of these foods has the lowest glycaemic index?",opts:["Pan blanco","Arroz blanco","Legumbres","Sandía"],opts_en:["White bread","White rice","Legumes","Watermelon"],ans:2},
+  {q:"¿Qué porcentaje del cuerpo humano es agua aproximadamente?",q_en:"What percentage of the human body is approximately water?",opts:["40%","55-60%","75-80%","90%"],ans:1},
+  {q:"¿Cuántas kcal tiene 1 gramo de alcohol?",q_en:"How many kcal does 1 gram of alcohol have?",opts:["4 kcal","5 kcal","7 kcal","9 kcal"],ans:2},
+  {q:"¿Cuál es la principal función de los hidratos de carbono?",q_en:"What is the main function of carbohydrates?",opts:["Construir músculo","Proporcionar energía rápida","Regular el sistema inmune","Transportar vitaminas"],opts_en:["Build muscle","Provide quick energy","Regulate the immune system","Transport vitamins"],ans:1},
+  {q:"¿Qué alimento es rico en omega-3?",q_en:"Which food is rich in omega-3?",opts:["Aceite de girasol","Salmón","Carne de cerdo","Queso curado"],opts_en:["Sunflower oil","Salmon","Pork","Aged cheese"],ans:1},
+  {q:"¿Cuántas calorías tiene aproximadamente 1 cucharada de aceite de oliva?",q_en:"How many calories does approximately 1 tablespoon of olive oil have?",opts:["50 kcal","90 kcal","120 kcal","150 kcal"],ans:1},
+  {q:"¿Cuál de estos es un ejemplo de proteína completa?",q_en:"Which of these is an example of a complete protein?",opts:["Arroz","Lentejas","Huevo","Pan"],opts_en:["Rice","Lentils","Egg","Bread"],ans:2},
+  {q:"¿Qué mineral es esencial para la salud ósea?",q_en:"Which mineral is essential for bone health?",opts:["Hierro","Zinc","Calcio","Magnesio"],opts_en:["Iron","Zinc","Calcium","Magnesium"],ans:2},
+  {q:"¿Cuántas calorías tiene 100g de aguacate?",q_en:"How many calories does 100g of avocado have?",opts:["80 kcal","160 kcal","250 kcal","320 kcal"],ans:1},
+  {q:"¿Qué es el metabolismo basal?",q_en:"What is basal metabolic rate?",opts:["Calorías quemadas haciendo ejercicio","Calorías mínimas para funciones vitales en reposo","Velocidad de digestión","Absorción de nutrientes"],opts_en:["Calories burned during exercise","Minimum calories for vital functions at rest","Speed of digestion","Nutrient absorption"],ans:1},
+  {q:"¿Cuál de estos cereales tiene más fibra?",q_en:"Which of these cereals has the most fibre?",opts:["Arroz blanco","Maíz","Avena","Trigo refinado"],opts_en:["White rice","Corn","Oats","Refined wheat"],ans:2},
+  {q:"¿En qué alimento hay más hierro por 100g?",q_en:"Which food has the most iron per 100g?",opts:["Lentejas","Espinacas","Hígado de ternera","Almejas"],opts_en:["Lentils","Spinach","Veal liver","Clams"],ans:3},
+  {q:"¿Cuántas calorías tiene 100g de plátano?",q_en:"How many calories does 100g of banana have?",opts:["55 kcal","89 kcal","120 kcal","145 kcal"],ans:1},
+  {q:"¿Qué vitamina es fundamental para la absorción del hierro?",q_en:"Which vitamin is key for iron absorption?",opts:["Vitamina A","Vitamina B6","Vitamina C","Vitamina K"],opts_en:["Vitamin A","Vitamin B6","Vitamin C","Vitamin K"],ans:2},
+  {q:"¿Cuántas horas sin comer se considera ayuno intermitente básico?",q_en:"How many hours without eating is considered basic intermittent fasting?",opts:["8 horas","12 horas","16 horas","24 horas"],opts_en:["8 hours","12 hours","16 hours","24 hours"],ans:2},
+  {q:"¿Cuál de estos NO es un aminoácido esencial?",q_en:"Which of these is NOT an essential amino acid?",opts:["Leucina","Valina","Alanina","Lisina"],opts_en:["Leucine","Valine","Alanine","Lysine"],ans:2},
+  {q:"¿Cuántas calorías tiene 100g de almendras?",q_en:"How many calories does 100g of almonds have?",opts:["350 kcal","460 kcal","580 kcal","700 kcal"],ans:2},
+  {q:"¿Qué hormona regula el azúcar en sangre?",q_en:"Which hormone regulates blood sugar?",opts:["Cortisol","Insulina","Adrenalina","Melatonina"],opts_en:["Cortisol","Insulin","Adrenaline","Melatonin"],ans:1},
+  {q:"¿Cuál es la temperatura interna segura para cocinar pollo?",q_en:"What is the safe internal temperature for cooking chicken?",opts:["60°C","70°C","74°C","85°C"],ans:2},
+  {q:"¿Cuántos gramos de proteína necesita aproximadamente una persona activa por kg de peso?",q_en:"How many grams of protein does an active person need per kg of body weight?",opts:["0.4-0.6g","0.8-1.2g","1.6-2.2g","3-4g"],ans:2},
+  {q:"¿Cuál de estos alimentos tiene más potasio?",q_en:"Which of these foods has the most potassium?",opts:["Plátano","Naranja","Espinacas","Patata cocida"],opts_en:["Banana","Orange","Spinach","Boiled potato"],ans:3},
+  {q:"¿Qué proceso ocurre durante el sueño en relación a los músculos?",q_en:"What process occurs during sleep in relation to muscles?",opts:["Se pierden","Se sintetiza proteína muscular","Se quema grasa muscular","No pasa nada"],opts_en:["They are lost","Muscle protein is synthesised","Muscle fat is burned","Nothing happens"],ans:1},
+  {q:"¿Cuántas calorías tiene 100g de pasta cocida?",q_en:"How many calories does 100g of cooked pasta have?",opts:["80 kcal","131 kcal","200 kcal","260 kcal"],ans:1},
+  {q:"¿Cuál de estos tiene menos azúcar?",q_en:"Which of these has the least sugar?",opts:["Zumo de naranja natural","Naranja entera","Refresco light","Yogur con frutas"],opts_en:["Fresh orange juice","Whole orange","Diet soft drink","Fruit yogurt"],ans:1},
+  {q:"¿Qué significa IMC?",q_en:"What does BMI stand for?",opts:["Índice de Masa Corporal","Ingesta Máxima Calórica","Índice Metabólico Corporal","Ingesta Mínima de Carbohidratos"],opts_en:["Body Mass Index","Maximum Caloric Intake","Metabolic Body Index","Minimum Carbohydrate Intake"],ans:0},
 ];
 
 const QUIZ_RECETARIO = [
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Pastel de pescado','Ensalada de patata','Bircher Muesli','Guiso de alubias con hongos'],ans:2,fact:'Bircher Muesli · 60g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Arroz asiático con huevo','Gnocchi con mozzarella y pollo','Calabacines rellenos de gambas y rape','Guiso de verduras'],ans:3,fact:'Guiso de verduras · 35g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Sopa crema de patatas y cebollas','Avena al horno con manzana pera y nueces','Ensalada de escarola con tomate granada y naranja','Ensalada de berenjena y queso'],ans:3,fact:'Ensalada de berenjena y queso · 510kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Bizcocho keto de limón','Estofado de habichuelas','Guiso de merluza y gambas','Huevos revueltos con espárragos'],ans:2,fact:'Guiso de merluza y gambas · 40g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Hamburguesa de berenjenas','Pizzeta de calabaza','Ensalada de espinacas','Guiso de garbanzos y calamares'],ans:1,fact:'Pizzeta de calabaza · 20g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Ensalada de lentejas y aguacate','Batido de plátano y avena','Lentejas con verduras','Ensalada de brócoli y manzana'],ans:2,fact:'Lentejas con verduras · 22g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Tosta de atún con gambas y tomate','Macedonia de sandia y melon','Guiso de alubias blancas y verduras','Ensalada mixta'],ans:0,fact:'Tosta de atún con gambas y tomate · 20g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Ensalada de col y manzana','Berenjenas asadas con cuscús de garbanzos','Tarta de dulce de leche','Guiso de alubias con hongos'],ans:1,fact:'Berenjenas asadas con cuscús de garbanzos · 50g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Sopa postre de avellanas y chocolate blanco','Tortilla de champiñón','Alubias con pulpo','Brazo de tiramisú'],ans:3,fact:'Brazo de tiramisú · 21g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Flan de avena','Tortitas de plátano y avena','Ensalada de naranjas','Sorbete de café'],ans:0,fact:'Flan de avena · 430kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Pisto de verduras con carne','Hamburguesa de garbanzo y curry','Pizza de yuca','Ensalada de gourmet'],ans:0,fact:'Pisto de verduras con carne · 27g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Pollo con salsa de frutos rojos y yuca','Lasaña de calabacín','Pasta con brócoli y queso','Albóndigas de pollo con arroz al curry'],ans:3,fact:'Albóndigas de pollo con arroz al curry · 550kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Guiso de pavo','Boloñesa de lentejas','Rape con verduras','Arroz con leche al chocolate'],ans:3,fact:'Arroz con leche al chocolate · 36g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Lentejas sin sofrito','Crema con rape y gambas','Tosta de atún con gambas y tomate','Rollitos de salmón ahumado'],ans:3,fact:'Rollitos de salmón ahumado · 41g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Triángulos de maíz con carne','Pastelitos de patata y brócoli','Estofado de cordero','Sándwich de salmón, queso y aguacate'],ans:2,fact:'Estofado de cordero · 500kcal'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',q_en:'Which GBH recipe has the most fat?',opts:['Pastel de pescado','Ensalada de patata','Bircher Muesli','Guiso de alubias con hongos'],opts_en:['Fish cake','Potato salad','Bircher Muesli','Bean and mushroom stew'],ans:2,fact:'Bircher Muesli · 60g grasa',fact_en:'Bircher Muesli · 60g fat'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',q_en:'Which GBH recipe has the most carbohydrates?',opts:['Arroz asiático con huevo','Gnocchi con mozzarella y pollo','Calabacines rellenos de gambas y rape','Guiso de verduras'],opts_en:['Asian rice with egg','Gnocchi with mozzarella and chicken','Courgettes stuffed with prawns and monkfish','Vegetable stew'],ans:3,fact:'Guiso de verduras · 35g HC',fact_en:'Vegetable stew · 35g carbs'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',q_en:'Which GBH recipe has the most calories?',opts:['Sopa crema de patatas y cebollas','Avena al horno con manzana pera y nueces','Ensalada de escarola con tomate granada y naranja','Ensalada de berenjena y queso'],opts_en:['Creamy potato and onion soup','Baked oats with apple pear and nuts','Endive salad with pomegranate and orange','Aubergine and cheese salad'],ans:3,fact:'Ensalada de berenjena y queso · 510kcal',fact_en:'Aubergine and cheese salad · 510kcal'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',q_en:'Which GBH recipe has the most protein?',opts:['Bizcocho keto de limón','Estofado de habichuelas','Guiso de merluza y gambas','Huevos revueltos con espárragos'],opts_en:['Keto lemon cake','Bean stew','Hake and prawn stew','Scrambled eggs with asparagus'],ans:2,fact:'Guiso de merluza y gambas · 40g prot',fact_en:'Hake and prawn stew · 40g protein'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',q_en:'Which GBH recipe has the most fat?',opts:['Hamburguesa de berenjenas','Pizzeta de calabaza','Ensalada de espinacas','Guiso de garbanzos y calamares'],opts_en:['Aubergine burger','Pumpkin pizza','Spinach salad','Chickpea and squid stew'],ans:1,fact:'Pizzeta de calabaza · 20g grasa',fact_en:'Pumpkin pizza · 20g fat'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',q_en:'Which GBH recipe has the most protein?',opts:['Ensalada de lentejas y aguacate','Batido de plátano y avena','Lentejas con verduras','Ensalada de brócoli y manzana'],opts_en:['Lentil and avocado salad','Banana and oat smoothie','Lentils with vegetables','Broccoli and apple salad'],ans:2,fact:'Lentejas con verduras · 22g prot',fact_en:'Lentils with vegetables · 22g protein'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',q_en:'Which GBH recipe has the most protein?',opts:['Tosta de atún con gambas y tomate','Macedonia de sandia y melon','Guiso de alubias blancas y verduras','Ensalada mixta'],opts_en:['Tuna toast with prawns and tomato','Watermelon and melon salad','White bean and vegetable stew','Mixed salad'],ans:0,fact:'Tosta de atún con gambas y tomate · 20g prot',fact_en:'Tuna toast with prawns and tomato · 20g protein'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',q_en:'Which GBH recipe has the most carbohydrates?',opts:['Ensalada de col y manzana','Berenjenas asadas con cuscús de garbanzos','Tarta de dulce de leche','Guiso de alubias con hongos'],opts_en:['Cabbage and apple salad','Roasted aubergine with chickpea couscous','Dulce de leche tart','Bean and mushroom stew'],ans:1,fact:'Berenjenas asadas con cuscús de garbanzos · 50g HC',fact_en:'Roasted aubergine with chickpea couscous · 50g carbs'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',q_en:'Which GBH recipe has the most fat?',opts:['Sopa postre de avellanas y chocolate blanco','Tortilla de champiñón','Alubias con pulpo','Brazo de tiramisú'],opts_en:['Hazelnut and white chocolate dessert soup','Mushroom omelette','Beans with octopus','Tiramisu roll'],ans:3,fact:'Brazo de tiramisú · 21g grasa',fact_en:'Tiramisu roll · 21g fat'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',q_en:'Which GBH recipe has the most calories?',opts:['Flan de avena','Tortitas de plátano y avena','Ensalada de naranjas','Sorbete de café'],opts_en:['Oat flan','Banana and oat pancakes','Orange salad','Coffee sorbet'],ans:0,fact:'Flan de avena · 430kcal',fact_en:'Oat flan · 430kcal'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',q_en:'Which GBH recipe has the most protein?',opts:['Pisto de verduras con carne','Hamburguesa de garbanzo y curry','Pizza de yuca','Ensalada de gourmet'],opts_en:['Vegetable ratatouille with meat','Chickpea and curry burger','Cassava pizza','Gourmet salad'],ans:0,fact:'Pisto de verduras con carne · 27g prot',fact_en:'Vegetable ratatouille with meat · 27g protein'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',q_en:'Which GBH recipe has the most calories?',opts:['Pollo con salsa de frutos rojos y yuca','Lasaña de calabacín','Pasta con brócoli y queso','Albóndigas de pollo con arroz al curry'],opts_en:['Chicken with berry sauce and cassava','Courgette lasagne','Pasta with broccoli and cheese','Chicken meatballs with curry rice'],ans:3,fact:'Albóndigas de pollo con arroz al curry · 550kcal',fact_en:'Chicken meatballs with curry rice · 550kcal'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',q_en:'Which GBH recipe has the most fat?',opts:['Guiso de pavo','Boloñesa de lentejas','Rape con verduras','Arroz con leche al chocolate'],opts_en:['Turkey stew','Lentil bolognese','Monkfish with vegetables','Chocolate rice pudding'],ans:3,fact:'Arroz con leche al chocolate · 36g grasa',fact_en:'Chocolate rice pudding · 36g fat'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',q_en:'Which GBH recipe has the most protein?',opts:['Lentejas sin sofrito','Crema con rape y gambas','Tosta de atún con gambas y tomate','Rollitos de salmón ahumado'],opts_en:['Plain lentils','Monkfish and prawn cream','Tuna toast with prawns and tomato','Smoked salmon rolls'],ans:3,fact:'Rollitos de salmón ahumado · 41g prot',fact_en:'Smoked salmon rolls · 41g protein'},
+  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',q_en:'Which GBH recipe has the most calories?',opts:['Triángulos de maíz con carne','Pastelitos de patata y brócoli','Estofado de cordero','Sándwich de salmón, queso y aguacate'],opts_en:['Corn triangles with meat','Potato and broccoli cakes','Lamb stew','Salmon, cheese and avocado sandwich'],ans:2,fact:'Estofado de cordero · 500kcal',fact_en:'Lamb stew · 500kcal'},
   {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Pastel de champiñones y soya','Huevos revueltos con jamón','Guiso marinero','Guiso pavo con verduras'],ans:1,fact:'Huevos revueltos con jamón · 35g prot'},
   {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Ensalada california','Salmón con salsa de yogur','Berenjenas a la parmesana','Guiso de patatas con champiñones'],ans:0,fact:'Ensalada california · 15g grasa'},
   {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Coulant de pistacho','Quesadillas','Parrillada de verduras','Ensalada de pollo y aguacate'],ans:1,fact:'Quesadillas · 32g grasa'},
@@ -1849,18 +1849,22 @@ function QuizModal({onClose, onComplete, todayKey}){
             <div style={{background:`linear-gradient(135deg,${T.g1},${T.g2})`,padding:"16px 20px",display:"flex",alignItems:"center",gap:12}}>
               <div style={{fontSize:28}}>🧠</div>
               <div>
-                <div style={{fontSize:11,fontWeight:900,color:"rgba(255,255,255,0.7)",textTransform:"uppercase",letterSpacing:"0.1em"}}>Quiz del día</div>
-                <div style={{fontSize:14,fontWeight:900,color:"white"}}>Nutrición · {correct?"":"Gana hasta"} +20 XP +8 💎</div>
+                <div style={{fontSize:11,fontWeight:900,color:"rgba(255,255,255,0.7)",textTransform:"uppercase",letterSpacing:"0.1em"}}>
+                  {lang==="en"?"Daily quiz":"Quiz del día"}
+                </div>
+                <div style={{fontSize:14,fontWeight:900,color:"white"}}>
+                  {lang==="en"?"Nutrition":"Nutrición"} · {correct?"":(lang==="en"?"Earn up to":"Gana hasta")} +20 XP +8 💎
+                </div>
               </div>
             </div>
             {/* Pregunta */}
             <div style={{padding:"22px 20px 16px"}}>
               <div style={{fontSize:16,fontWeight:800,color:T.wh,lineHeight:1.5,marginBottom:20,fontFamily:"'DM Sans',sans-serif"}}>
-                {q.q}
+                {lang==="en" ? (q.q_en||q.q) : q.q}
               </div>
               {/* Opciones */}
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                {q.opts.map((opt,i)=>{
+                {(lang==="en" ? (q.opts_en||q.opts) : q.opts).map((opt,i)=>{
                   let bg="rgba(255,255,255,0.07)";
                   let border=T.bW;
                   let col=T.t1;
@@ -1891,12 +1895,14 @@ function QuizModal({onClose, onComplete, todayKey}){
           <div style={{padding:"32px 24px",textAlign:"center"}} onClick={()=>{onComplete(xpGain,gemGain);onClose();}}>
             <div style={{fontSize:64,marginBottom:12,animation:"scaleIn 0.5s cubic-bezier(0.34,1.56,0.64,1)"}}>{correct?"🎉":"💡"}</div>
             <div style={{fontSize:22,fontWeight:900,color:correct?T.g1:"#FF8080",marginBottom:8}}>
-              {correct?"¡Correcto!":"Casi..."}
+              {correct?(lang==="en"?"Correct!":"¡Correcto!"):(lang==="en"?"Almost...":"Casi...")}
             </div>
             <div style={{fontSize:14,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:20,lineHeight:1.5}}>
               {correct
-                ? "¡Sabías la respuesta! Tu nutricionista estaría orgulloso 🐑"
-                : `La respuesta correcta era: "${q.opts[q.ans]}"${q.fact?" · "+q.fact:""}`}
+                ? (lang==="en"?"You knew the answer! Your nutritionist would be proud 🐑":"¡Sabías la respuesta! Tu nutricionista estaría orgulloso 🐑")
+                : lang==="en"
+                  ? `The correct answer was: "${(q.opts_en||q.opts)[q.ans]}"${q.fact_en?" · "+q.fact_en:""}`
+                  : `La respuesta correcta era: "${q.opts[q.ans]}"${q.fact?" · "+q.fact:""}`}
             </div>
             {/* Recompensa */}
             <div style={{display:"flex",justifyContent:"center",gap:16,marginBottom:24}}>
@@ -1907,7 +1913,9 @@ function QuizModal({onClose, onComplete, todayKey}){
                 </div>
               ))}
             </div>
-            <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>Toca en cualquier lugar para continuar</div>
+            <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>
+              {lang==="en"?"Tap anywhere to continue":"Toca en cualquier lugar para continuar"}
+            </div>
           </div>
         )}
       </div>
@@ -2413,6 +2421,68 @@ function ProfileCardModal({onClose, profile, userPhoto, onSavePhoto, onSaveProfi
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════════════════════
+// ─── SavedRecipeCard — tarjeta expandible del recetario personal ─────────────
+function SavedRecipeCard({rec, t, T, removeFromBook}){
+  const [expanded, setExpanded] = React.useState(false);
+  const tipoColor = {
+    Carne:"#E57373",Pescado:"#64B5F6",Vegetariana:"#81C784",
+    Vegana:"#A5D6A7",Postre:"#F06292",Ensalada:"#AED581","Sopa/Crema":"#FFB74D",
+    Meat:"#E57373",Fish:"#64B5F6",Vegetarian:"#81C784",
+    Vegan:"#A5D6A7",Dessert:"#F06292",Salad:"#AED581","Soup/Cream":"#FFB74D",
+  };
+  const tipoIcon = {
+    Carne:"🥩",Pescado:"🐟",Vegetariana:"🥦",Vegana:"🌱",
+    Postre:"🍰",Ensalada:"🥗","Sopa/Crema":"🍲",
+    Meat:"🥩",Fish:"🐟",Vegetarian:"🥦",Vegan:"🌱",
+    Dessert:"🍰",Salad:"🥗","Soup/Cream":"🍲",
+  };
+  const tc  = tipoColor[rec.tipo] || T.g1;
+  const ti  = tipoIcon[rec.tipo]  || "🍽️";
+  const ing = rec.ingredientes?.split(/,(?![^(]*\))/).map(s=>s.trim()).filter(Boolean) || [];
+
+  return(
+    <Card style={{padding:"16px 16px"}}>
+      {/* Cabecera compacta */}
+      <div style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}
+        onClick={()=>setExpanded(e=>!e)}>
+        <div style={{fontSize:32,flexShrink:0}}>{ti}</div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:14,fontWeight:900,color:T.wh,lineHeight:1.2,marginBottom:4}}>{rec.nombre}</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+            <div style={{background:`${tc}22`,border:`1px solid ${tc}55`,borderRadius:20,padding:"2px 10px",fontSize:10,fontWeight:900,color:tc,textTransform:"uppercase",letterSpacing:"0.08em"}}>{rec.tipo}</div>
+            <div style={{fontSize:11,color:T.au1,fontWeight:700}}>{rec.calorias} kcal</div>
+            <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>P:{rec.proteinas_g}g · H:{rec.hidratos_g}g · G:{rec.grasas_g}g</div>
+          </div>
+        </div>
+        <div style={{fontSize:18,color:T.t2,flexShrink:0,transform:expanded?"rotate(180deg)":"none",transition:"transform 0.2s"}}>▾</div>
+      </div>
+
+      {/* Detalle expandido */}
+      {expanded&&(
+        <div style={{marginTop:14,borderTop:"1px solid rgba(255,255,255,0.08)",paddingTop:14}}>
+          <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8}}>{t("ingredients")}</div>
+          <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:14}}>
+            {ing.map((item,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"flex-start",gap:8}}>
+                <div style={{width:5,height:5,borderRadius:"50%",background:tc,flexShrink:0,marginTop:6}}/>
+                <div style={{fontSize:12,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>{item}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8}}>{t("preparation")}</div>
+          <div style={{fontSize:12,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6,marginBottom:14,whiteSpace:"pre-wrap"}}>{rec.instrucciones}</div>
+          <button onClick={()=>removeFromBook(rec.recipe_id)} style={{
+            width:"100%",padding:"9px",borderRadius:12,
+            background:"rgba(255,75,75,0.07)",border:"1.5px solid rgba(255,75,75,0.2)",
+            color:"rgba(255,120,120,0.8)",fontSize:12,fontWeight:800,
+            cursor:"pointer",fontFamily:"'Nunito',sans-serif",
+          }}>🗑️ {t("recipeDeleteFromBook")}</button>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function GBHApp(){
   // Inicialización síncrona: si hay sesión guardada → "loading" (nunca "auth" en frío)
   const [screen,  setScreen]  = useState(()=>{
@@ -2974,7 +3044,7 @@ function GBHApp(){
         await sbReq("POST","achievements",{profile_id:profile?.id,badge_id:badge.id});
         await addXG(badge.xp,badge.g);
         sfx("badge");
-        showT({icon:badge.icon,title:"¡Logro desbloqueado!",sub:badge.t,reward:badge.r});return nb;
+        showT({icon:badge.icon,title:lang==="en"?"Achievement unlocked!":"¡Logro desbloqueado!",sub:lang==="en"?(badge.t_en||badge.t):badge.t,reward:lang==="en"?(badge.r_en||badge.r):badge.r});return nb;
       }
     }return b;
   },[profile,logs,addXG]);
@@ -4567,53 +4637,15 @@ function GBHApp(){
                   </div>
                 ):(
                   <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                    {savedRecipes.map((rec,idx)=>{
-                      const tc2 = tipoColor[rec.tipo]||T.g1;
-                      const ti2 = tipoIcon[rec.tipo]||"🍽️";
-                      const [expanded, setExpanded] = React.useState(false);
-                      const ingList2 = rec.ingredientes?.split(/,(?![^(]*\))/).map(s=>s.trim()).filter(Boolean)||[];
-                      return(
-                        <Card key={rec.recipe_id||idx} style={{padding:"16px 16px"}}>
-                          {/* Cabecera compacta */}
-                          <div style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}
-                            onClick={()=>setExpanded(e=>!e)}>
-                            <div style={{fontSize:32,flexShrink:0}}>{ti2}</div>
-                            <div style={{flex:1,minWidth:0}}>
-                              <div style={{fontSize:14,fontWeight:900,color:T.wh,lineHeight:1.2,marginBottom:4}}>{rec.nombre}</div>
-                              <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-                                <div style={{background:`${tc2}22`,border:`1px solid ${tc2}55`,borderRadius:20,padding:"2px 10px",fontSize:10,fontWeight:900,color:tc2,textTransform:"uppercase",letterSpacing:"0.08em"}}>{rec.tipo}</div>
-                                <div style={{fontSize:11,color:T.au1,fontWeight:700}}>{rec.calorias} kcal</div>
-                                <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>P:{rec.proteinas_g}g · H:{rec.hidratos_g}g · G:{rec.grasas_g}g</div>
-                              </div>
-                            </div>
-                            <div style={{fontSize:18,color:T.t2,flexShrink:0,transform:expanded?"rotate(180deg)":"none",transition:"transform 0.2s"}}>▾</div>
-                          </div>
-
-                          {/* Detalle expandido */}
-                          {expanded&&(
-                            <div style={{marginTop:14,borderTop:"1px solid rgba(255,255,255,0.08)",paddingTop:14}}>
-                              <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8}}>{t("ingredients")}</div>
-                              <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:14}}>
-                                {ingList2.map((ing,i)=>(
-                                  <div key={i} style={{display:"flex",alignItems:"flex-start",gap:8}}>
-                                    <div style={{width:5,height:5,borderRadius:"50%",background:tc2,flexShrink:0,marginTop:6}}/>
-                                    <div style={{fontSize:12,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>{ing}</div>
-                                  </div>
-                                ))}
-                              </div>
-                              <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8}}>{t("preparation")}</div>
-                              <div style={{fontSize:12,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6,marginBottom:14,whiteSpace:"pre-wrap"}}>{rec.instrucciones}</div>
-                              <button onClick={()=>removeFromBook(rec.recipe_id)} style={{
-                                width:"100%",padding:"9px",borderRadius:12,
-                                background:"rgba(255,75,75,0.07)",border:"1.5px solid rgba(255,75,75,0.2)",
-                                color:"rgba(255,120,120,0.8)",fontSize:12,fontWeight:800,
-                                cursor:"pointer",fontFamily:"'Nunito',sans-serif",
-                              }}>🗑️ {t("recipeDeleteFromBook")}</button>
-                            </div>
-                          )}
-                        </Card>
-                      );
-                    })}
+                    {savedRecipes.map((rec,idx)=>(
+                      <SavedRecipeCard
+                        key={rec.recipe_id||idx}
+                        rec={rec}
+                        t={t}
+                        T={T}
+                        removeFromBook={removeFromBook}
+                      />
+                    ))}
                   </div>
                 )}
               </>)}
@@ -4646,10 +4678,10 @@ function GBHApp(){
               <div key={b.id} style={{background:done?`linear-gradient(135deg,rgba(43,122,0,0.55),rgba(88,204,2,0.22))`:T.bgWood,borderRadius:22,padding:18,border:`2.5px solid ${done?T.bG:T.bW}`,boxShadow:done?`0 5px 0 ${T.g3}`:"0 5px 0 rgba(0,0,0,0.5)",marginBottom:10,opacity:done?1:0.4,display:"flex",alignItems:"center",gap:14,transition:"all 0.25s"}}>
                 <div style={{fontSize:30,width:54,height:54,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:18,flexShrink:0,background:done?"rgba(88,204,2,0.15)":"rgba(255,255,255,0.05)",filter:done?"none":"grayscale(1)",boxShadow:done?`0 4px 0 ${T.g3}`:"0 3px 0 rgba(0,0,0,0.5)",border:`2px solid ${done?T.bG:"rgba(255,255,255,0.08)"}`}}>{b.icon}</div>
                 <div style={{flex:1}}>
-                  <div style={{fontWeight:900,fontSize:15}}>{b.t}</div>
-                  <div style={{fontSize:12,color:T.t2,marginTop:2,fontFamily:"'DM Sans',sans-serif"}}>{b.d}</div>
+                  <div style={{fontWeight:900,fontSize:15}}>{lang==="en"?(b.t_en||b.t):b.t}</div>
+                  <div style={{fontSize:12,color:T.t2,marginTop:2,fontFamily:"'DM Sans',sans-serif"}}>{lang==="en"?(b.d_en||b.d):b.d}</div>
                   <div style={{fontSize:11,color:T.xp,marginTop:3,fontWeight:700}}>+{b.xp} XP · +{b.g} 💎</div>
-                  {b.r&&<div style={{fontSize:11,color:done?T.au1:"rgba(255,200,0,0.28)",marginTop:5,fontWeight:800}}>🎁 {b.r}</div>}
+                  {b.r&&<div style={{fontSize:11,color:done?T.au1:"rgba(255,200,0,0.28)",marginTop:5,fontWeight:800}}>🎁 {lang==="en"?(b.r_en||b.r):b.r}</div>}
                 </div>
                 {done&&<div style={{color:T.g1,fontSize:24,flexShrink:0,fontWeight:900,textShadow:`0 2px 8px ${T.g1}`}}>✓</div>}
               </div>
