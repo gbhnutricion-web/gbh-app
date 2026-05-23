@@ -3624,12 +3624,19 @@ function GBHApp(){
       setAuthErr("Introduce tu peso actual para comenzar.");
       setLoading(false); return;
     }
-    const np={id:crypto.randomUUID(),name,email,xp:0,gems:0,shields:0,height_cm:Math.round(aHeight)||null,sex:aSex||null};
+    const np={
+      id:crypto.randomUUID(), name, email,
+      xp:0, gems:0, shields:0,
+      height_cm: Math.round(aHeight)||null,
+      sex: aSex||null,
+      initial_weight: parseFloat(aWeight)||null,
+      goal_weight: (aGoal && !isNaN(parseFloat(aGoal)) && parseFloat(aGoal)>20) ? parseFloat(aGoal) : null,
+    };
     const cr=await sbReq("POST","profiles",np); const fp=cr?.[0]||np;
     lsSet(`gbh:p:${fp.id}`,fp); lsSet(`gbh:em:${email}`,fp.id); lsSet("gbh:lastEmail",email);
     const initW=parseFloat(aWeight);
     if(!isNaN(initW)&&initW>20&&initW<300){
-      const initDate=toKey(); // fecha real de registro
+      const initDate=toKey();
       const initEntry={date:initDate,weight:initW,isInitial:true};
       lsSet(`gbh:weights:${fp.id}`,[initEntry]);
       await sbReq("POST","weight_logs",{profile_id:fp.id,log_date:initDate,weight_kg:initW});
