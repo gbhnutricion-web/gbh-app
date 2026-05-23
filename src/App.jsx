@@ -1819,14 +1819,14 @@ function HydrationWidget({done,onToggle}){
 }
 
 // ─── Weekly XP goal ───────────────────────────────────────────────────────────
+// Meta: 150 XP semanales. Con misiones base (30 XP/día) se alcanza en ~5 días.
+// Con día perfecto (50 XP) basta con 3 días. Alcanzable pero no trivial.
 function WeeklyXPGoal({logs,xp}){
   const t=useLang();
-  const GOAL=100;
-  const monday=(()=>{const d=new Date();const day=d.getDay()||7;d.setDate(d.getDate()-day+1);d.setHours(0,0,0,0);return d;})();
-  // Approximate weekly XP from logs this week (15 per diet + 5 per other done)
-  const weekXP=logs.filter(l=>new Date(l.date)>=monday).reduce((acc,l)=>{
-    return acc+(l.diet?15:0)+(l.steps?5:0)+(l.hydration?5:0)+(l.sleep?5:0);
-  },0);
+  const GOAL=150;
+  // Lee del mismo bucket que el desafío xp_week — fuente única de verdad
+  const {w:wn,y:yn}=getISOWeek();
+  const weekXP=lsGet(`gbh:weekXP:${yn}:${wn}`,0);
   const pct=Math.min((weekXP/GOAL)*100,100);
   const done=weekXP>=GOAL;
   return(
@@ -3416,7 +3416,7 @@ function GBHApp(){
     // Acumular XP semanal para el desafío "xp_week"
     const {w:wXP,y:yXP}=getISOWeek();
     const wkKey=`gbh:weekXP:${yXP}:${wXP}`;
-    lsSet(wkKey,(lsGet(wkKey,0))+(xpG||0));
+    lsSet(wkKey,(lsGet(wkKey,0))+ax);
     // Float reward chips
     const chips=[];
     if(ax>0)chips.push({id:Date.now()+"xp",label:`+${ax} XP ⚡`,color:"#C8FF40"});
