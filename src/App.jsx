@@ -527,6 +527,12 @@ const SFX = {
   },
   // Confetti / celebración — cascada
   confetti(){
+    this._tone(880,"sine",0.12,0.18,0);
+    this._tone(1047,"sine",0.10,0.15,0.08);
+    this._tone(1319,"sine",0.14,0.20,0.16);
+    this._tone(1568,"sine",0.10,0.18,0.26);
+    this._noise(0.06,1600,0.15,0.10);
+  },
   // Celebración de racha — fanfare ascendente con acorde final
   streakCelebration(){
     // Intro: tres notas rápidas ascendentes
