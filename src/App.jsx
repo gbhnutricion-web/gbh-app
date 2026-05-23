@@ -1830,8 +1830,8 @@ function HydrationWidget({done,onToggle}){
   return(
     <div style={{background:done?`linear-gradient(135deg,rgba(43,122,0,0.45),rgba(88,204,2,0.2))`:T.bgCard,border:`2px solid ${done?T.g1:T.bW}`,borderRadius:20,padding:"14px 16px",marginBottom:10,boxShadow:done?`0 5px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)"}}>
       <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:10}}>
-        <div style={{width:38,height:38,borderRadius:14,background:done?T.g1:T.bW,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontWeight:900,fontSize:16,color:"white",boxShadow:done?`0 3px 0 ${T.g3}`:"0 3px 0 rgba(0,0,0,0.5)",border:`2px solid ${done?T.g3:"rgba(255,255,255,0.1)"}`}}>
-          {done?"✓":"4"}
+        <div style={{width:38,height:38,borderRadius:14,background:done?T.g1:"rgba(41,182,246,0.2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontWeight:900,fontSize:done?18:15,color:done?"white":"#29B6F6",boxShadow:done?`0 3px 0 ${T.g3}`:"0 3px 0 rgba(0,0,0,0.5)",border:`2px solid ${done?T.g3:"#0288D1"}`}}>
+          {done?"✓":`${glasses}/${target}`}
         </div>
         <div style={{flex:1}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -1875,8 +1875,9 @@ function CalcTab({weights,profile,lang}){
   const [saved,   setSaved]   = useState(()=>lsGet(calcKey, null));
   const [editing, setEditing] = useState(!lsGet(calcKey, null));
 
-  const [cSex,    setCsex]   = useState(saved?.inputs?.sex    || "M");
-  const [cHeight, setCheight]= useState(saved?.inputs?.height || "");
+  // Pre-rellenar desde el perfil si no hay cálculo guardado
+  const [cSex,    setCsex]   = useState(saved?.inputs?.sex    || profile?.sex    || "M");
+  const [cHeight, setCheight]= useState(saved?.inputs?.height || (profile?.height_cm ? String(profile.height_cm) : ""));
   const [cAge,    setCage]   = useState(saved?.inputs?.age    || "0");
   const [cAct,    setCact]   = useState(saved?.inputs?.act    || "0");
 
@@ -3204,6 +3205,7 @@ function GBHApp(){
   const [aWeight,  setAWeight]  = useState("");
   const [aGoal,    setAGoal]    = useState("");
   const [aHeight,  setAHeight]  = useState(170);
+  const [aSex,     setASex]     = useState("M");
   const [aPrivacy, setAPrivacy] = useState(false);
   const [authMode,setAuthMode]= useState("new"); // "new" | "returning" | "checking"
   const [authErr, setAuthErr] = useState("");
@@ -3619,7 +3621,7 @@ function GBHApp(){
       setAuthErr("Introduce tu peso actual para comenzar.");
       setLoading(false); return;
     }
-    const np={id:crypto.randomUUID(),name,email,xp:0,gems:0,shields:0,height_cm:Math.round(aHeight)||null};
+    const np={id:crypto.randomUUID(),name,email,xp:0,gems:0,shields:0,height_cm:Math.round(aHeight)||null,sex:aSex||null};
     const cr=await sbReq("POST","profiles",np); const fp=cr?.[0]||np;
     lsSet(`gbh:p:${fp.id}`,fp); lsSet(`gbh:em:${email}`,fp.id); lsSet("gbh:lastEmail",email);
     const initW=parseFloat(aWeight);
@@ -4289,6 +4291,18 @@ function GBHApp(){
           </div>
           <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:20}}>
             {t("goalHint")}
+          </div>
+          {/* ── Sexo ── */}
+          <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:10}}>
+            {t("calcSex")}
+          </div>
+          <div style={{display:"flex",gap:10,marginBottom:20}}>
+            {[{v:"M",l:t("calcMan"),c:"#64B5F6"},{v:"F",l:t("calcWoman"),c:"#F48FB1"}].map(({v,l,c})=>(
+              <button key={v} onClick={()=>setASex(v)} type="button"
+                style={{flex:1,padding:"14px 0",borderRadius:16,border:`2.5px solid ${aSex===v?c:"rgba(255,255,255,0.12)"}`,background:aSex===v?`${c}22`:"rgba(255,255,255,0.05)",color:aSex===v?c:T.t2,fontSize:15,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",transition:"all 0.18s",boxShadow:aSex===v?`0 4px 0 ${c}55`:"0 3px 0 rgba(0,0,0,0.4)"}}>
+                {l}
+              </button>
+            ))}
           </div>
           {/* ── Estatura ── */}
           <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:10}}>
