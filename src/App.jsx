@@ -1095,7 +1095,7 @@ function getChallengeProgress(ch, logs, weights, xp, streak){
     case "sleep_days":
       return weekDates.filter(d=>logs.find(l=>l.date===d&&l.sleep)).length;
     case "quiz_days":
-      return weekDates.filter(d=>lsGet("gbh:quiz:"+d,false)).length;
+      return weekDates.filter(d=>lsGet("gbh:quiz:"+(window.__gbhUID||"")+":"+d,false)).length;
     case "streak_keep":
       return Math.min(streak, ch.goal);
     case "weight_reg":
@@ -1795,7 +1795,7 @@ function HydrationWidget({done,onToggle}){
   const [glasses,setGlasses]=useState(()=>{
     try{
       // Solo recuperar vasos del día actual
-      const saved = localStorage.getItem("gbh:glasses:"+todayStr);
+      const saved = localStorage.getItem("gbh:glasses:"+(window.__gbhUID||"")+":"+todayStr);
       return saved ? Math.min(parseInt(saved)||0, 8) : 0;
     }catch{return 0;}
   });
@@ -1814,7 +1814,7 @@ function HydrationWidget({done,onToggle}){
   useEffect(()=>{
     if(done && glasses<target){
       setGlasses(target);
-      try{ localStorage.setItem("gbh:glasses:"+todayStr, target); }catch{}
+      try{ localStorage.setItem("gbh:glasses:"+(window.__gbhUID||"")+":"+todayStr, target); }catch{}
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[done]);
@@ -1824,7 +1824,7 @@ function HydrationWidget({done,onToggle}){
     const ng = glasses + 1;
     setGlasses(ng);
     SFX.water(); // sonido directo (no pasa sfx como prop)
-    try{ localStorage.setItem("gbh:glasses:"+todayStr, ng); }catch{}
+    try{ localStorage.setItem("gbh:glasses:"+(window.__gbhUID||"")+":"+todayStr, ng); }catch{}
   };
   const pct=Math.min((glasses/target)*100,100);
   return(
@@ -3153,11 +3153,7 @@ function GBHApp(){
   const [muted,   setMuted]   = useState(()=>lsGet("gbh:mute",false));
   const sfx = (name,...args) => { if(!muted) SFX[name]?.(...args); };
   const [profile, setProfile] = useState(null);
-  const [tLog,    setTLog]    = useState(()=>{
-    // Leer tLog del día directamente desde localStorage — nunca depende de Supabase
-    const today = toKey();
-    return lsGet(`gbh:tlog:${today}`, {diet:false,steps:false,hydration:false,sleep:false});
-  });
+  const [tLog,    setTLog]    = useState({diet:false,steps:false,hydration:false,sleep:false});
   const [steps,   setSteps]   = useState(0);
   const [weights, setWeights] = useState([]);
   const [badges,  setBadges]  = useState([]);
@@ -3171,8 +3167,8 @@ function GBHApp(){
   const [rankLoading, setRankLoading] = useState(false);
   const [rankTab,      setRankTab]      = useState(0);
   const [showQuiz,     setShowQuiz]     = useState(false);
-  const [quizDone,     setQuizDone]     = useState(()=>lsGet("gbh:quiz:"+new Date().toISOString().slice(0,10),false));
-  const [quizBannerDismissed, setQuizBannerDismissed] = useState(()=>lsGet("gbh:quizBanner:"+new Date().toISOString().slice(0,10),false));
+  const [quizDone,     setQuizDone]     = useState(false);
+  const [quizBannerDismissed, setQuizBannerDismissed] = useState(false);
   const [showChest,    setShowChest]    = useState(false);
   const [showWeekChest, setShowWeekChest] = useState(false);
   const [showRuleta,    setShowRuleta]    = useState(false);
@@ -3182,8 +3178,8 @@ function GBHApp(){
   const [claimedChallenges, setClaimedChallenges] = useState(()=>{
     const {w,y}=getISOWeek(); return lsGet(`gbh:challenges:${y}:${w}`,[]);
   });
-  const [ruletaDone,    setRuletaDone]    = useState(()=>lsGet("gbh:ruleta:"+new Date().toISOString().slice(0,10),false));
-  const [ruletaAutoShown,setRuletaAutoShown]=useState(()=>lsGet("gbh:ruletaSeen:"+new Date().toISOString().slice(0,10),false));
+  const [ruletaDone,    setRuletaDone]    = useState(false);
+  const [ruletaAutoShown,setRuletaAutoShown]=useState(false);
   const [chestOpened,  setChestOpened]  = useState(()=>{
     // El cofre se abre una vez por cada múltiplo de 7 — guardamos el último streak abierto
     return lsGet("gbh:chestLastOpened",0);
@@ -3523,7 +3519,7 @@ function GBHApp(){
     const l=lsGet(`gbh:logs:${p.id}`,[]);setLogs(l);
     // tLog: prioridad a la clave del día en localStorage (nunca se pierde)
     const today=toKey();
-    const savedTLog=lsGet(`gbh:tlog:${today}`,null);
+    const savedTLog=lsGet(`gbh:tlog:${p.id}:${today}`,null);
     if(savedTLog){
       setTLog(savedTLog);
       // Restaurar también el conteo de pasos del log del día
@@ -3535,12 +3531,20 @@ function GBHApp(){
       if(t){
         const tl={diet:!!t.diet,steps:!!t.steps,hydration:!!t.hydration,sleep:!!t.sleep};
         setTLog(tl);
-        lsSet(`gbh:tlog:${today}`,tl); // migrar al nuevo sistema
+        lsSet(`gbh:tlog:${p.id}:${today}`,tl); // migrar al nuevo sistema
         setSteps(t.sc||0);
       }
     }
     setWeights(lsGet(`gbh:weights:${p.id}`,[]).sort((a,b)=>a.date>b.date?1:-1));
     setBadges(lsGet(`gbh:badges:${p.id}`,[]) );
+    // Exponer UID globalmente para widgets sin acceso a profile (HydrationWidget)
+    window.__gbhUID = p.id;
+    // Sobreescribir estados de día con claves scoped al usuario
+    const todayKey2 = toKey();
+    setQuizDone(lsGet("gbh:quiz:"+p.id+":"+todayKey2, false));
+    setQuizBannerDismissed(lsGet("gbh:quizBanner:"+p.id+":"+todayKey2, false));
+    setRuletaDone(lsGet("gbh:ruleta:"+p.id+":"+todayKey2, false));
+    setRuletaAutoShown(lsGet("gbh:ruletaSeen:"+p.id+":"+todayKey2, false));
     // Cargar recetas guardadas desde localStorage (con sync Supabase al fondo)
     const localSaved = lsGet(`gbh:saved_recipes:${p.id}`,[]);
     setSavedRecipes(localSaved);
@@ -3560,12 +3564,11 @@ function GBHApp(){
       const days = Math.floor((Date.now()-new Date(firstOpen))/(1000*60*60*24));
       if(days>=1) setTimeout(()=>setShowNotifBanner(true), 3000);
     }
-    // Auto-popup ruleta: mostrar si no se ha visto hoy
+    // Auto-popup ruleta: mostrar si no se ha visto hoy (scoped a usuario)
     const todayKey = new Date().toISOString().slice(0,10);
-    const alreadySeen  = lsGet("gbh:ruletaSeen:"+todayKey, false);
-    const alreadyDone  = lsGet("gbh:ruleta:"+todayKey, false);
+    const alreadySeen  = lsGet("gbh:ruletaSeen:"+p.id+":"+todayKey, false);
+    const alreadyDone  = lsGet("gbh:ruleta:"+p.id+":"+todayKey, false);
     if(!alreadySeen && !alreadyDone){
-      // Pequeño delay para que la app cargue visualmente primero
       setTimeout(()=>setShowRuleta(true), 600);
     }
     // Vaciar cola pendiente al cargar el perfil
@@ -3638,7 +3641,7 @@ function GBHApp(){
     if(!profile)return;
     const today=toKey();
     // Persistir tLog del día en su propia clave — nunca se pierde
-    lsSet(`gbh:tlog:${today}`, nl);
+    lsSet(`gbh:tlog:${profile.id}:${today}`, nl);
     const l=[...logs];
     const idx=l.findIndex(x=>x.date===today);
     const e={profile_id:profile.id,date:today,...nl,sc};
@@ -3848,7 +3851,7 @@ function GBHApp(){
 
   const onQuizComplete = async (xpG, gemG) => {
     const today = new Date().toISOString().slice(0,10);
-    lsSet("gbh:quiz:"+today, true);
+    lsSet("gbh:quiz:"+profile.id+":"+today, true);
     setQuizDone(true);
     await addXG(xpG, gemG);
   };
@@ -3896,7 +3899,7 @@ function GBHApp(){
   const onRuletaCollect = async (xpG, gemG) => {
     sfx("ruletteWin");
     const today = new Date().toISOString().slice(0,10);
-    lsSet("gbh:ruleta:"+today, true);
+    lsSet("gbh:ruleta:"+profile.id+":"+today, true);
     setRuletaDone(true);
     await addXG(xpG, gemG);
   };
@@ -3986,6 +3989,7 @@ function GBHApp(){
     setWeights([]);
     setBadges([]);
     setTLog({diet:false,steps:false,hydration:false,sleep:false});
+    window.__gbhUID="";
     setShowPhotoPicker(false);
     setScreen("landing");
   };
@@ -4571,12 +4575,12 @@ function GBHApp(){
       {showRuleta&&<RuletaModal
         onClose={()=>{
           const todayKey=new Date().toISOString().slice(0,10);
-          lsSet("gbh:ruletaSeen:"+todayKey,true);
+          lsSet("gbh:ruletaSeen:"+(profile?.id||"")+":"+todayKey,true);
           setRuletaAutoShown(true);
           setShowRuleta(false);
         }}
         onCollect={onRuletaCollect}
-        onGoHome={()=>{const todayKey=new Date().toISOString().slice(0,10);lsSet("gbh:ruletaSeen:"+todayKey,true);setRuletaAutoShown(true);setShowRuleta(false);setTab("home");}}
+        onGoHome={()=>{const todayKey=new Date().toISOString().slice(0,10);lsSet("gbh:ruletaSeen:"+(profile?.id||"")+":"+todayKey,true);setRuletaAutoShown(true);setShowRuleta(false);setTab("home");}}
       />}
       {showPhotoPicker&&(
         <ProfileCardModal
