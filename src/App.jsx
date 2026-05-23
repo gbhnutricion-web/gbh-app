@@ -1865,15 +1865,15 @@ function HydrationWidget({done,onToggle}){
 }
 
 // ─── CalcTab — Calculadora calórica con resultado persistido ─────────────────
-const CALC_LS_KEY = "gbh:calc:saved";
 function CalcTab({weights,profile,lang}){
   const t=useLang();
+  const calcKey = `gbh:calc:saved:${profile?.id||"anon"}`;   // ← clave por usuario
   const currentW=weights.filter(w=>!w.isInitial).slice(-1)[0]?.weight??weights.find(w=>w.isInitial)?.weight??null;
   const goalW=profile?.goal_weight??null;
 
   // Cargar resultado guardado desde localStorage al montar
-  const [saved,   setSaved]   = useState(()=>lsGet(CALC_LS_KEY, null));
-  const [editing, setEditing] = useState(!lsGet(CALC_LS_KEY, null));
+  const [saved,   setSaved]   = useState(()=>lsGet(calcKey, null));
+  const [editing, setEditing] = useState(!lsGet(calcKey, null));
 
   const [cSex,    setCsex]   = useState(saved?.inputs?.sex    || "M");
   const [cHeight, setCheight]= useState(saved?.inputs?.height || "");
@@ -1885,7 +1885,9 @@ function CalcTab({weights,profile,lang}){
   const ageOpts =t("calcAgeRanges");
   const actOpts =t("calcActivityLevels");
 
-  const compute=()=>{
+  const AGE_LABELS=["18-25","26-35","36-45","46-55","56-65","65+"];
+  const ACT_LABELS=["sedentary","light","moderate","active","very_active"];
+  const compute=async()=>{
     const h=parseFloat(cHeight);
     if(!currentW||isNaN(h)||h<100||h>250)return;
     const w=currentW,age=ageMids[parseInt(cAge,10)]||30,mul=actMults[parseInt(cAct,10)]||1.2;
@@ -1895,15 +1897,32 @@ function CalcTab({weights,profile,lang}){
     const adjRaw=Math.min(Math.max(diff,-1000),1000);
     const target=Math.round(tdee-adjRaw);
     const safe=cSex==="M"?Math.max(target,1500):Math.max(target,1200);
+    const ageLabel=AGE_LABELS[parseInt(cAge,10)]||"";
+    const actLabel=ACT_LABELS[parseInt(cAct,10)]||"";
+    const loseGain=goalW?(w>goalW?"deficit":"surplus"):null;
+    const now=new Date().toISOString();
     const res={
-      bmr:Math.round(bmr),tdee,adj:Math.round(adjRaw),target:safe,
-      loseGain:goalW?(w>goalW?"deficit":"surplus"):null,
+      bmr:Math.round(bmr),tdee,adj:Math.round(adjRaw),target:safe,loseGain,
       inputs:{sex:cSex,height:cHeight,age:cAge,act:cAct},
-      goalW, currentW, date:new Date().toLocaleDateString(lang==="en"?"en-GB":"es-ES",{day:"2-digit",month:"short",year:"numeric"})
+      goalW,currentW,date:new Date().toLocaleDateString(lang==="en"?"en-GB":"es-ES",{day:"2-digit",month:"short",year:"numeric"})
     };
-    lsSet(CALC_LS_KEY, res);
+    // 1 localStorage — acceso inmediato offline
+    lsSet(calcKey,res);
     setSaved(res);
     setEditing(false);
+    // 2 Supabase: historial completo en calorie_targets
+    sbReq("POST","calorie_targets",{
+      profile_id:profile.id,sex:cSex,height_cm:Math.round(h),
+      age_range:ageLabel,activity:actLabel,current_weight:w,
+      goal_weight:goalW||null,bmr:Math.round(bmr),tdee,
+      adjustment:Math.round(adjRaw),target_kcal:safe,
+      lose_gain:loseGain,calculated_at:now,
+    });
+    // 3 Supabase: actualizar perfil con datos antropométricos
+    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{
+      sex:cSex,height_cm:Math.round(h),age_range:ageLabel,
+      activity:actLabel,target_kcal:safe,calc_updated_at:now,
+    });
   };
   const canCompute=!!currentW&&parseFloat(cHeight)>=100&&parseFloat(cHeight)<=250;
   const startEdit=()=>{
