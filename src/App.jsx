@@ -21,7 +21,7 @@ const TRANS = {
     noConnRecover:"Sin conexión. Conéctate a internet para recuperar tu cuenta.",
     // Nav
     tabHome:"Inicio", tabRecipe:"Receta", tabWeight:"Peso",
-    tabRanking:"Ranking", tabAchievements:"Logros",
+    tabRanking:"Ranking", tabAchievements:"Logros", tabCalc:"Calculadora",
     // Tiers / levels
     tiers:["Novato","Aprendiz","Constante","Comprometido","Disciplinado","Atleta","Experto","Élite","Maestro","Leyenda"],
     champion:"Campeón GBH",
@@ -48,6 +48,22 @@ const TRANS = {
     // XP goal
     weeklyXPGoal:"⚡ Meta semanal de XP",
     weeklyXPDone:"🎉 ¡Meta semanal completada! Bonus: +20 XP",
+    // Calculadora calórica
+    calcTitle:"🔢 Calculadora Calórica",
+    calcSubtitle:"Calorías diarias para llegar a tu objetivo en 3 meses",
+    calcSex:"Sexo", calcMan:"♂ Hombre", calcWoman:"♀ Mujer",
+    calcHeight:"Estatura (cm)", calcHeightPH:"Ej: 170",
+    calcAge:"Rango de edad", calcActivity:"Nivel de actividad",
+    calcBtn:"Calcular mis calorías 🔢",
+    calcResultTitle:"Tu objetivo diario",
+    calcKcal:"kcal / día", calcBMR:"Metabolismo basal (BMR)",
+    calcTDEE:"Gasto total (TDEE)", calcAdj:"Ajuste por objetivo",
+    calcDeficit:"déficit", calcSurplus:"superávit",
+    calcNote:"📌 Consulta siempre a tu nutricionista antes de hacer cambios en tu dieta.",
+    calcNoGoal:"⚠️ Añade un peso objetivo en tu perfil para ver el ajuste de calorías.",
+    calcNoWeight:"⚠️ Registra tu peso actual primero.",
+    calcAgeRanges:["18 – 25 años","26 – 35 años","36 – 45 años","46 – 55 años","56 – 65 años","Más de 65 años"],
+    calcActivityLevels:["Sedentario (sin ejercicio)","Ligero (1-3 días/semana)","Moderado (3-5 días/semana)","Activo (6-7 días/semana)","Muy activo (trabajo físico + ejercicio)"],
     // Bubbles
     b_celebrating:"🎉 ¡Día perfecto, {n}! Misiones completadas",
     b_legend:"👑 ¡{s} días, {n}! Leyenda absoluta",
@@ -190,7 +206,7 @@ const TRANS = {
     noConnRecover:"No connection. Connect to the internet to recover your account.",
     // Nav
     tabHome:"Home", tabRecipe:"Recipe", tabWeight:"Weight",
-    tabRanking:"Ranking", tabAchievements:"Medals",
+    tabRanking:"Ranking", tabAchievements:"Medals", tabCalc:"Calculator",
     // Tiers / levels
     tiers:["Beginner","Apprentice","Consistent","Committed","Disciplined","Athlete","Expert","Elite","Master","Legend"],
     champion:"GBH Champion",
@@ -217,6 +233,22 @@ const TRANS = {
     // XP goal
     weeklyXPGoal:"⚡ Weekly XP goal",
     weeklyXPDone:"🎉 Weekly goal reached! Bonus: +20 XP",
+    // Calorie Calculator
+    calcTitle:"🔢 Calorie Calculator",
+    calcSubtitle:"Daily calories to reach your goal in 3 months",
+    calcSex:"Sex", calcMan:"♂ Male", calcWoman:"♀ Female",
+    calcHeight:"Height (cm)", calcHeightPH:"e.g. 170",
+    calcAge:"Age range", calcActivity:"Activity level",
+    calcBtn:"Calculate my calories 🔢",
+    calcResultTitle:"Your daily target",
+    calcKcal:"kcal / day", calcBMR:"Basal metabolism (BMR)",
+    calcTDEE:"Total expenditure (TDEE)", calcAdj:"Goal adjustment",
+    calcDeficit:"deficit", calcSurplus:"surplus",
+    calcNote:"📌 Always consult your nutritionist before changing your diet.",
+    calcNoGoal:"⚠️ Add a goal weight in your profile to see the calorie adjustment.",
+    calcNoWeight:"⚠️ Log your current weight first.",
+    calcAgeRanges:["18 – 25 years","26 – 35 years","36 – 45 years","46 – 55 years","56 – 65 years","Over 65 years"],
+    calcActivityLevels:["Sedentary (no exercise)","Light (1-3 days/week)","Moderate (3-5 days/week)","Active (6-7 days/week)","Very active (physical job + exercise)"],
     // Bubbles
     b_celebrating:"🎉 Perfect day, {n}! All missions done",
     b_legend:"👑 {s} days, {n}! Absolute legend",
@@ -1819,12 +1851,10 @@ function HydrationWidget({done,onToggle}){
 }
 
 // ─── Weekly XP goal ───────────────────────────────────────────────────────────
-// Meta: 150 XP semanales. Con misiones base (30 XP/día) se alcanza en ~5 días.
-// Con día perfecto (50 XP) basta con 3 días. Alcanzable pero no trivial.
 function WeeklyXPGoal({logs,xp}){
   const t=useLang();
   const GOAL=150;
-  // Lee del mismo bucket que el desafío xp_week — fuente única de verdad
+  // Fuente única: mismo bucket que el desafío xp_week en la diana
   const {w:wn,y:yn}=getISOWeek();
   const weekXP=lsGet(`gbh:weekXP:${yn}:${wn}`,0);
   const pct=Math.min((weekXP/GOAL)*100,100);
@@ -3777,6 +3807,9 @@ function GBHApp(){
     input::placeholder{color:rgba(255,255,255,0.22)}input:focus{outline:none!important;border-color:rgba(88,204,2,0.75)!important}
     ::-webkit-scrollbar{width:0}button:active{transform:scale(0.94)!important;transition:transform 0.08s!important}
     .nav-scroll::-webkit-scrollbar{display:none}.nav-scroll{scrollbar-width:none;-ms-overflow-style:none;}
+    .gbh-select{width:100%;background:rgba(255,255,255,0.07);border:2px solid rgba(139,100,60,0.5);border-radius:14px;padding:14px 16px;color:#F7F0E0;font-size:15px;font-weight:700;font-family:'DM Sans',sans-serif;-webkit-appearance:none;appearance:none;cursor:pointer;outline:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23FFC800' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 16px center;}
+    .gbh-select:focus{border-color:rgba(88,204,2,0.75);}
+    .gbh-select option{background:#152210;color:#F7F0E0;}
     input[type=range].gbh-slider{-webkit-appearance:none;appearance:none;width:100%;height:8px;border-radius:8px;background:rgba(255,255,255,0.15);outline:none;cursor:pointer;margin:14px 0;}
     input[type=range].gbh-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#58CC02,#89E219);box-shadow:0 3px 8px rgba(0,0,0,0.5),0 0 0 3px #2B7A00;cursor:pointer;}
     input[type=range].gbh-slider::-moz-range-thumb{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#58CC02,#89E219);box-shadow:0 3px 8px rgba(0,0,0,0.5),0 0 0 3px #2B7A00;cursor:pointer;border:none;}
@@ -5107,6 +5140,112 @@ function GBHApp(){
           );
         })()}
 
+
+        {tab==="calculadora"&&(()=>{
+          const currentW=weights.filter(w=>!w.isInitial).slice(-1)[0]?.weight??weights.find(w=>w.isInitial)?.weight??null;
+          const goalW=profile?.goal_weight??null;
+          const [cSex,setCsex]=React.useState("M");
+          const [cHeight,setCheight]=React.useState("");
+          const [cAge,setCage]=React.useState("0");
+          const [cAct,setCact]=React.useState("0");
+          const [result,setResult]=React.useState(null);
+          const ageMids=[22,30,40,50,60,70];
+          const actMults=[1.2,1.375,1.55,1.725,1.9];
+          const ageOpts=t("calcAgeRanges");
+          const actOpts=t("calcActivityLevels");
+          const compute=()=>{
+            const h=parseFloat(cHeight);
+            if(!currentW||isNaN(h)||h<100||h>250)return;
+            const w=currentW,age=ageMids[parseInt(cAge,10)]||30,mul=actMults[parseInt(cAct,10)]||1.2;
+            const bmr=cSex==="M"?10*w+6.25*h-5*age+5:10*w+6.25*h-5*age-161;
+            const tdee=Math.round(bmr*mul);
+            const diff=goalW?(w-goalW)*7700/90:0;
+            const adjRaw=Math.min(Math.max(diff,-1000),1000);
+            const target=Math.round(tdee-adjRaw);
+            const safe=cSex==="M"?Math.max(target,1500):Math.max(target,1200);
+            setResult({bmr:Math.round(bmr),tdee,adj:Math.round(adjRaw),target:safe,loseGain:goalW?(w>goalW?"deficit":"surplus"):null});
+          };
+          const canCompute=!!currentW&&parseFloat(cHeight)>=100&&parseFloat(cHeight)<=250;
+          return(
+            <div style={{paddingBottom:8}}>
+              <div style={{textAlign:"center",padding:"8px 0 18px"}}>
+                <div style={{fontSize:22,fontWeight:900,color:T.wh}}>{t("calcTitle")}</div>
+                <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:4}}>{t("calcSubtitle")}</div>
+              </div>
+              {!currentW&&<div style={{background:"rgba(255,200,0,0.10)",border:`1.5px solid ${T.au2}`,borderRadius:14,padding:"12px 16px",marginBottom:14,fontSize:13,color:T.au1,fontFamily:"'DM Sans',sans-serif"}}>{t("calcNoWeight")}</div>}
+              {currentW&&!goalW&&<div style={{background:"rgba(255,200,0,0.10)",border:`1.5px solid ${T.au2}`,borderRadius:14,padding:"12px 16px",marginBottom:14,fontSize:13,color:T.au1,fontFamily:"'DM Sans',sans-serif"}}>{t("calcNoGoal")}</div>}
+              {/* Sexo */}
+              <Card style={{marginBottom:12}}>
+                <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:12}}>{t("calcSex")}</div>
+                <div style={{display:"flex",gap:10}}>
+                  {[{v:"M",l:t("calcMan"),c:"#64B5F6"},{v:"F",l:t("calcWoman"),c:"#F48FB1"}].map(({v,l,c})=>(
+                    <button key={v} onClick={()=>{setCsex(v);setResult(null);}} style={{flex:1,padding:"16px 0",borderRadius:16,border:`2.5px solid ${cSex===v?c:"rgba(255,255,255,0.12)"}`,background:cSex===v?`${c}22`:"rgba(255,255,255,0.05)",color:cSex===v?c:T.t2,fontSize:15,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",transition:"all 0.18s",boxShadow:cSex===v?`0 4px 0 ${c}55`:"0 3px 0 rgba(0,0,0,0.4)"}}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </Card>
+              {/* Estatura */}
+              <Card style={{marginBottom:12}}>
+                <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:12}}>{t("calcHeight")}</div>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <input type="number" value={cHeight} onChange={e=>{setCheight(e.target.value);setResult(null);}} placeholder={t("calcHeightPH")} min={100} max={250} style={{flex:1,background:"rgba(255,255,255,0.07)",border:`2px solid ${T.bW}`,borderRadius:14,padding:"15px 16px",color:T.cr,fontSize:24,fontWeight:900,fontFamily:"'DM Sans',sans-serif",textAlign:"center",outline:"none"}}/>
+                  <span style={{fontSize:17,color:T.t2,fontWeight:700,flexShrink:0}}>cm</span>
+                </div>
+              </Card>
+              {/* Edad */}
+              <Card style={{marginBottom:12}}>
+                <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:12}}>{t("calcAge")}</div>
+                <select className="gbh-select" value={cAge} onChange={e=>{setCage(e.target.value);setResult(null);}}>
+                  {ageOpts.map((o,i)=><option key={i} value={String(i)}>{o}</option>)}
+                </select>
+              </Card>
+              {/* Actividad */}
+              <Card style={{marginBottom:20}}>
+                <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:12}}>{t("calcActivity")}</div>
+                <select className="gbh-select" value={cAct} onChange={e=>{setCact(e.target.value);setResult(null);}}>
+                  {actOpts.map((o,i)=><option key={i} value={String(i)}>{o}</option>)}
+                </select>
+              </Card>
+              {/* Botón */}
+              <button onClick={compute} disabled={!canCompute} style={{width:"100%",padding:"18px 0",borderRadius:20,border:`3px solid ${canCompute?T.g3:"rgba(255,255,255,0.08)"}`,background:canCompute?`linear-gradient(135deg,${T.g1},${T.g2})`:"rgba(255,255,255,0.08)",color:canCompute?"white":T.t3,fontSize:17,fontWeight:900,cursor:canCompute?"pointer":"not-allowed",fontFamily:"'Nunito',sans-serif",boxShadow:canCompute?`0 6px 0 ${T.g3}`:"none",transition:"all 0.18s",marginBottom:20,letterSpacing:"0.02em"}}>
+                {t("calcBtn")}
+              </button>
+              {/* Resultado */}
+              {result&&(
+                <div>
+                  <div style={{background:`linear-gradient(135deg,#1A3A10,#0F2408)`,border:`2.5px solid ${T.g3}`,borderRadius:24,padding:"24px 20px",marginBottom:12,textAlign:"center",boxShadow:`0 8px 0 ${T.g3}`}}>
+                    <div style={{fontSize:11,color:T.g2,textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:900,marginBottom:4}}>{t("calcResultTitle")}</div>
+                    {goalW&&<div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:12}}>{lang==="en"?`to reach ${goalW} kg in 3 months`:`para llegar a ${goalW} kg en 3 meses`}</div>}
+                    <div style={{display:"flex",alignItems:"baseline",justifyContent:"center",gap:6}}>
+                      <span style={{fontSize:64,fontWeight:900,color:T.g2,lineHeight:1,textShadow:`0 0 30px ${T.g1}80`}}>{result.target.toLocaleString()}</span>
+                      <span style={{fontSize:18,color:T.t2,fontWeight:700}}>{t("calcKcal")}</span>
+                    </div>
+                    {goalW&&result.loseGain&&(
+                      <div style={{marginTop:12,display:"inline-flex",alignItems:"center",gap:6,background:result.loseGain==="deficit"?"rgba(255,75,75,0.12)":"rgba(88,204,2,0.12)",border:`1.5px solid ${result.loseGain==="deficit"?"rgba(255,75,75,0.35)":T.g3}`,borderRadius:10,padding:"6px 14px"}}>
+                        <span style={{fontSize:13,fontWeight:900,color:result.loseGain==="deficit"?"#FF8080":T.g2}}>
+                          {result.loseGain==="deficit"?"▼":"▲"} {Math.abs(result.adj)} kcal {t(`calc${result.loseGain.charAt(0).toUpperCase()+result.loseGain.slice(1)}`)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <Card style={{marginBottom:12}}>
+                    {[{l:t("calcBMR"),v:result.bmr,c:T.t2},{l:t("calcTDEE"),v:result.tdee,c:T.xp},goalW?{l:t("calcAdj"),v:`${result.adj>0?"−":"+"}${Math.abs(result.adj)}`,c:T.au1}:null].filter(Boolean).map(({l,v,c})=>(
+                      <div key={l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
+                        <span style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>{l}</span>
+                        <span style={{fontSize:15,fontWeight:900,color:c}}>{typeof v==="number"?v.toLocaleString():v} kcal</span>
+                      </div>
+                    ))}
+                  </Card>
+                  <div style={{background:"rgba(255,200,0,0.07)",border:`1.5px solid ${T.au3}`,borderRadius:14,padding:"12px 16px",fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6}}>
+                    {t("calcNote")}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
                 {tab==="achievements"&&<>
           <Card style={{display:"flex",justifyContent:"space-around",alignItems:"center",padding:"16px"}}>
             <div style={{textAlign:"center"}}><div style={{fontSize:26,fontWeight:900,color:T.au1}}>{badges.length}/{BADGES.length}</div><div style={{color:T.t2,fontSize:11,fontFamily:"'DM Sans',sans-serif"}}>{t("achievementsLabel")}</div></div>
@@ -5146,7 +5285,7 @@ function GBHApp(){
       {/* ── BOTTOM NAV ────────────────────────────────────────────────────── */}
       <div className="nav-scroll" style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:420,background:"rgba(8,18,8,0.97)",backdropFilter:"blur(30px)",borderTop:`3px solid ${T.bW}`,zIndex:100,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
         <div style={{display:"flex",padding:"10px 4px 10px",minWidth:"min-content",width:"100%"}}>
-          {[{id:"home",icon:"🏠",l:t("tabHome")},{id:"receta",icon:"🍰",l:t("tabRecipe")},{id:"weight",icon:"⚖️",l:t("tabWeight")},{id:"ranking",icon:"👑",l:t("tabRanking")},{id:"achievements",icon:"🏅",l:t("tabAchievements")}].map(({id,icon,l})=>(
+          {[{id:"home",icon:"🏠",l:t("tabHome")},{id:"receta",icon:"🍰",l:t("tabRecipe")},{id:"weight",icon:"⚖️",l:t("tabWeight")},{id:"calculadora",icon:"🔢",l:t("tabCalc")},{id:"ranking",icon:"👑",l:t("tabRanking")},{id:"achievements",icon:"🏅",l:t("tabAchievements")}].map(({id,icon,l})=>(
             <button key={id} onClick={()=>{ sfx("tap"); setTab(id); }} style={{...tabSt(tab===id),flex:"1 0 60px",minWidth:60,padding:"8px 6px"}}>
               <span style={{fontSize:24,filter:tab===id?"none":"grayscale(0.6)",transition:"all 0.2s"}}>{icon}</span>
               <span style={{fontSize:9,whiteSpace:"nowrap"}}>{l}</span>
