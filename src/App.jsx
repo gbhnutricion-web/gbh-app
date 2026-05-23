@@ -62,6 +62,10 @@ const TRANS = {
     calcNote:"📌 Consulta siempre a tu nutricionista antes de hacer cambios en tu dieta.",
     calcNoGoal:"⚠️ Añade un peso objetivo en tu perfil para ver el ajuste de calorías.",
     calcNoWeight:"⚠️ Registra tu peso actual primero.",
+    calcSaved:"📊 Tu cálculo guardado",
+    calcEditBtn:"✏️ Editar cálculo",
+    calcResetBtn:"🔄 Recalcular",
+    backToHome:"← Volver a inicio",
     calcAgeRanges:["18 – 25 años","26 – 35 años","36 – 45 años","46 – 55 años","56 – 65 años","Más de 65 años"],
     calcActivityLevels:["Sedentario (sin ejercicio)","Ligero (1-3 días/semana)","Moderado (3-5 días/semana)","Activo (6-7 días/semana)","Muy activo (trabajo físico + ejercicio)"],
     // Bubbles
@@ -247,6 +251,10 @@ const TRANS = {
     calcNote:"📌 Always consult your nutritionist before changing your diet.",
     calcNoGoal:"⚠️ Add a goal weight in your profile to see the calorie adjustment.",
     calcNoWeight:"⚠️ Log your current weight first.",
+    calcSaved:"📊 Your saved calculation",
+    calcEditBtn:"✏️ Edit calculation",
+    calcResetBtn:"🔄 Recalculate",
+    backToHome:"← Back to home",
     calcAgeRanges:["18 – 25 years","26 – 35 years","36 – 45 years","46 – 55 years","56 – 65 years","Over 65 years"],
     calcActivityLevels:["Sedentary (no exercise)","Light (1-3 days/week)","Moderate (3-5 days/week)","Active (6-7 days/week)","Very active (physical job + exercise)"],
     // Bubbles
@@ -1856,20 +1864,27 @@ function HydrationWidget({done,onToggle}){
   );
 }
 
-// ─── CalcTab — Calculadora calórica (componente propio para respetar Rules of Hooks) ─
+// ─── CalcTab — Calculadora calórica con resultado persistido ─────────────────
+const CALC_LS_KEY = "gbh:calc:saved";
 function CalcTab({weights,profile,lang}){
   const t=useLang();
   const currentW=weights.filter(w=>!w.isInitial).slice(-1)[0]?.weight??weights.find(w=>w.isInitial)?.weight??null;
   const goalW=profile?.goal_weight??null;
-  const [cSex,    setCsex]   = useState("M");
-  const [cHeight, setCheight]= useState("");
-  const [cAge,    setCage]   = useState("0");
-  const [cAct,    setCact]   = useState("0");
-  const [result,  setResult] = useState(null);
+
+  // Cargar resultado guardado desde localStorage al montar
+  const [saved,   setSaved]   = useState(()=>lsGet(CALC_LS_KEY, null));
+  const [editing, setEditing] = useState(!lsGet(CALC_LS_KEY, null));
+
+  const [cSex,    setCsex]   = useState(saved?.inputs?.sex    || "M");
+  const [cHeight, setCheight]= useState(saved?.inputs?.height || "");
+  const [cAge,    setCage]   = useState(saved?.inputs?.age    || "0");
+  const [cAct,    setCact]   = useState(saved?.inputs?.act    || "0");
+
   const ageMids =[22,30,40,50,60,70];
   const actMults=[1.2,1.375,1.55,1.725,1.9];
   const ageOpts =t("calcAgeRanges");
   const actOpts =t("calcActivityLevels");
+
   const compute=()=>{
     const h=parseFloat(cHeight);
     if(!currentW||isNaN(h)||h<100||h>250)return;
@@ -1880,9 +1895,88 @@ function CalcTab({weights,profile,lang}){
     const adjRaw=Math.min(Math.max(diff,-1000),1000);
     const target=Math.round(tdee-adjRaw);
     const safe=cSex==="M"?Math.max(target,1500):Math.max(target,1200);
-    setResult({bmr:Math.round(bmr),tdee,adj:Math.round(adjRaw),target:safe,loseGain:goalW?(w>goalW?"deficit":"surplus"):null});
+    const res={
+      bmr:Math.round(bmr),tdee,adj:Math.round(adjRaw),target:safe,
+      loseGain:goalW?(w>goalW?"deficit":"surplus"):null,
+      inputs:{sex:cSex,height:cHeight,age:cAge,act:cAct},
+      goalW, currentW, date:new Date().toLocaleDateString(lang==="en"?"en-GB":"es-ES",{day:"2-digit",month:"short",year:"numeric"})
+    };
+    lsSet(CALC_LS_KEY, res);
+    setSaved(res);
+    setEditing(false);
   };
   const canCompute=!!currentW&&parseFloat(cHeight)>=100&&parseFloat(cHeight)<=250;
+  const startEdit=()=>{
+    if(saved?.inputs){
+      setCsex(saved.inputs.sex||"M");
+      setCheight(saved.inputs.height||"");
+      setCage(saved.inputs.age||"0");
+      setCact(saved.inputs.act||"0");
+    }
+    setEditing(true);
+  };
+
+  // ── Vista resultado guardado ─────────────────────────────────────────────
+  if(saved && !editing) return(
+    <div style={{paddingBottom:8}}>
+      <div style={{textAlign:"center",padding:"8px 0 14px"}}>
+        <div style={{fontSize:22,fontWeight:900,color:T.wh}}>{t("calcTitle")}</div>
+        <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginTop:2}}>{t("calcSaved")} · {saved.date}</div>
+      </div>
+
+      {/* Número grande */}
+      <div style={{background:"linear-gradient(135deg,#1A3A10,#0F2408)",border:`2.5px solid ${T.g3}`,borderRadius:24,padding:"24px 20px",marginBottom:12,textAlign:"center",boxShadow:`0 8px 0 ${T.g3}`}}>
+        <div style={{fontSize:11,color:T.g2,textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:900,marginBottom:4}}>{t("calcResultTitle")}</div>
+        {saved.goalW&&<div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:12}}>{lang==="en"?`to reach ${saved.goalW} kg in 3 months`:`para llegar a ${saved.goalW} kg en 3 meses`}</div>}
+        <div style={{display:"flex",alignItems:"baseline",justifyContent:"center",gap:6}}>
+          <span style={{fontSize:64,fontWeight:900,color:T.g2,lineHeight:1,textShadow:`0 0 30px ${T.g1}80`}}>{saved.target.toLocaleString()}</span>
+          <span style={{fontSize:18,color:T.t2,fontWeight:700}}>{t("calcKcal")}</span>
+        </div>
+        {saved.goalW&&saved.loseGain&&(
+          <div style={{marginTop:12,display:"inline-flex",alignItems:"center",gap:6,background:saved.loseGain==="deficit"?"rgba(255,75,75,0.12)":"rgba(88,204,2,0.12)",border:`1.5px solid ${saved.loseGain==="deficit"?"rgba(255,75,75,0.35)":T.g3}`,borderRadius:10,padding:"6px 14px"}}>
+            <span style={{fontSize:13,fontWeight:900,color:saved.loseGain==="deficit"?"#FF8080":T.g2}}>
+              {saved.loseGain==="deficit"?"▼":"▲"} {Math.abs(saved.adj)} kcal {t(`calc${saved.loseGain.charAt(0).toUpperCase()+saved.loseGain.slice(1)}`)}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Desglose */}
+      <Card style={{marginBottom:12}}>
+        {[{l:t("calcBMR"),v:saved.bmr,c:T.t2},{l:t("calcTDEE"),v:saved.tdee,c:T.xp},saved.goalW?{l:t("calcAdj"),v:`${saved.adj>0?"−":"+"}${Math.abs(saved.adj)}`,c:T.au1}:null].filter(Boolean).map(({l,v,c})=>(
+          <div key={l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
+            <span style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>{l}</span>
+            <span style={{fontSize:15,fontWeight:900,color:c}}>{typeof v==="number"?v.toLocaleString():v} kcal</span>
+          </div>
+        ))}
+        {/* Resumen de datos de entrada */}
+        <div style={{paddingTop:10,display:"flex",flexWrap:"wrap",gap:6}}>
+          {[
+            {icon:"📏", val:`${saved.inputs?.height} cm`},
+            {icon:saved.inputs?.sex==="M"?"♂":"♀", val:saved.inputs?.sex==="M"?(lang==="en"?"Male":"Hombre"):(lang==="en"?"Female":"Mujer")},
+            {icon:"🎂", val:ageOpts[parseInt(saved.inputs?.age||0,10)]},
+            {icon:"🏃", val:actOpts[parseInt(saved.inputs?.act||0,10)]?.split(" ")[0]},
+          ].map(({icon,val})=>(
+            <div key={icon} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,padding:"4px 10px",fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>
+              {icon} {val}
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* Nota */}
+      <div style={{background:"rgba(255,200,0,0.07)",border:`1.5px solid ${T.au3}`,borderRadius:14,padding:"12px 16px",fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6,marginBottom:16}}>
+        {t("calcNote")}
+      </div>
+
+      {/* Botón editar */}
+      <button onClick={startEdit} style={{width:"100%",padding:"16px 0",borderRadius:18,border:`2px solid ${T.au2}`,background:"rgba(255,200,0,0.08)",color:T.au1,fontSize:15,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",letterSpacing:"0.02em"}}>
+        {t("calcEditBtn")}
+      </button>
+    </div>
+  );
+
+  // ── Vista formulario (edición / primera vez) ─────────────────────────────
   return(
     <div style={{paddingBottom:8}}>
       <div style={{textAlign:"center",padding:"8px 0 18px"}}>
@@ -1895,7 +1989,7 @@ function CalcTab({weights,profile,lang}){
         <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:12}}>{t("calcSex")}</div>
         <div style={{display:"flex",gap:10}}>
           {[{v:"M",l:t("calcMan"),c:"#64B5F6"},{v:"F",l:t("calcWoman"),c:"#F48FB1"}].map(({v,l,c})=>(
-            <button key={v} onClick={()=>{setCsex(v);setResult(null);}} style={{flex:1,padding:"16px 0",borderRadius:16,border:`2.5px solid ${cSex===v?c:"rgba(255,255,255,0.12)"}`,background:cSex===v?`${c}22`:"rgba(255,255,255,0.05)",color:cSex===v?c:T.t2,fontSize:15,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",transition:"all 0.18s",boxShadow:cSex===v?`0 4px 0 ${c}55`:"0 3px 0 rgba(0,0,0,0.4)"}}>
+            <button key={v} onClick={()=>setCsex(v)} style={{flex:1,padding:"16px 0",borderRadius:16,border:`2.5px solid ${cSex===v?c:"rgba(255,255,255,0.12)"}`,background:cSex===v?`${c}22`:"rgba(255,255,255,0.05)",color:cSex===v?c:T.t2,fontSize:15,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",transition:"all 0.18s",boxShadow:cSex===v?`0 4px 0 ${c}55`:"0 3px 0 rgba(0,0,0,0.4)"}}>
               {l}
             </button>
           ))}
@@ -1904,54 +1998,29 @@ function CalcTab({weights,profile,lang}){
       <Card style={{marginBottom:12}}>
         <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:12}}>{t("calcHeight")}</div>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <input type="number" value={cHeight} onChange={e=>{setCheight(e.target.value);setResult(null);}} placeholder={t("calcHeightPH")} min={100} max={250} style={{flex:1,background:"rgba(255,255,255,0.07)",border:`2px solid ${T.bW}`,borderRadius:14,padding:"15px 16px",color:T.cr,fontSize:24,fontWeight:900,fontFamily:"'DM Sans',sans-serif",textAlign:"center",outline:"none"}}/>
+          <input type="number" value={cHeight} onChange={e=>setCheight(e.target.value)} placeholder={t("calcHeightPH")} min={100} max={250} style={{flex:1,background:"rgba(255,255,255,0.07)",border:`2px solid ${T.bW}`,borderRadius:14,padding:"15px 16px",color:T.cr,fontSize:24,fontWeight:900,fontFamily:"'DM Sans',sans-serif",textAlign:"center",outline:"none"}}/>
           <span style={{fontSize:17,color:T.t2,fontWeight:700,flexShrink:0}}>cm</span>
         </div>
       </Card>
       <Card style={{marginBottom:12}}>
         <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:12}}>{t("calcAge")}</div>
-        <select className="gbh-select" value={cAge} onChange={e=>{setCage(e.target.value);setResult(null);}}>
+        <select className="gbh-select" value={cAge} onChange={e=>setCage(e.target.value)}>
           {ageOpts.map((o,i)=><option key={i} value={String(i)}>{o}</option>)}
         </select>
       </Card>
       <Card style={{marginBottom:20}}>
         <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:12}}>{t("calcActivity")}</div>
-        <select className="gbh-select" value={cAct} onChange={e=>{setCact(e.target.value);setResult(null);}}>
+        <select className="gbh-select" value={cAct} onChange={e=>setCact(e.target.value)}>
           {actOpts.map((o,i)=><option key={i} value={String(i)}>{o}</option>)}
         </select>
       </Card>
-      <button onClick={compute} disabled={!canCompute} style={{width:"100%",padding:"18px 0",borderRadius:20,border:`3px solid ${canCompute?T.g3:"rgba(255,255,255,0.08)"}`,background:canCompute?`linear-gradient(135deg,${T.g1},${T.g2})`:"rgba(255,255,255,0.08)",color:canCompute?"white":T.t3,fontSize:17,fontWeight:900,cursor:canCompute?"pointer":"not-allowed",fontFamily:"'Nunito',sans-serif",boxShadow:canCompute?`0 6px 0 ${T.g3}`:"none",transition:"all 0.18s",marginBottom:20}}>
+      <button onClick={compute} disabled={!canCompute} style={{width:"100%",padding:"18px 0",borderRadius:20,border:`3px solid ${canCompute?T.g3:"rgba(255,255,255,0.08)"}`,background:canCompute?`linear-gradient(135deg,${T.g1},${T.g2})`:"rgba(255,255,255,0.08)",color:canCompute?"white":T.t3,fontSize:17,fontWeight:900,cursor:canCompute?"pointer":"not-allowed",fontFamily:"'Nunito',sans-serif",boxShadow:canCompute?`0 6px 0 ${T.g3}`:"none",transition:"all 0.18s",marginBottom:saved?12:0}}>
         {t("calcBtn")}
       </button>
-      {result&&(
-        <div>
-          <div style={{background:"linear-gradient(135deg,#1A3A10,#0F2408)",border:`2.5px solid ${T.g3}`,borderRadius:24,padding:"24px 20px",marginBottom:12,textAlign:"center",boxShadow:`0 8px 0 ${T.g3}`}}>
-            <div style={{fontSize:11,color:T.g2,textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:900,marginBottom:4}}>{t("calcResultTitle")}</div>
-            {goalW&&<div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:12}}>{lang==="en"?`to reach ${goalW} kg in 3 months`:`para llegar a ${goalW} kg en 3 meses`}</div>}
-            <div style={{display:"flex",alignItems:"baseline",justifyContent:"center",gap:6}}>
-              <span style={{fontSize:64,fontWeight:900,color:T.g2,lineHeight:1,textShadow:`0 0 30px ${T.g1}80`}}>{result.target.toLocaleString()}</span>
-              <span style={{fontSize:18,color:T.t2,fontWeight:700}}>{t("calcKcal")}</span>
-            </div>
-            {goalW&&result.loseGain&&(
-              <div style={{marginTop:12,display:"inline-flex",alignItems:"center",gap:6,background:result.loseGain==="deficit"?"rgba(255,75,75,0.12)":"rgba(88,204,2,0.12)",border:`1.5px solid ${result.loseGain==="deficit"?"rgba(255,75,75,0.35)":T.g3}`,borderRadius:10,padding:"6px 14px"}}>
-                <span style={{fontSize:13,fontWeight:900,color:result.loseGain==="deficit"?"#FF8080":T.g2}}>
-                  {result.loseGain==="deficit"?"▼":"▲"} {Math.abs(result.adj)} kcal {t(`calc${result.loseGain.charAt(0).toUpperCase()+result.loseGain.slice(1)}`)}
-                </span>
-              </div>
-            )}
-          </div>
-          <Card style={{marginBottom:12}}>
-            {[{l:t("calcBMR"),v:result.bmr,c:T.t2},{l:t("calcTDEE"),v:result.tdee,c:T.xp},goalW?{l:t("calcAdj"),v:`${result.adj>0?"−":"+"}${Math.abs(result.adj)}`,c:T.au1}:null].filter(Boolean).map(({l,v,c})=>(
-              <div key={l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
-                <span style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>{l}</span>
-                <span style={{fontSize:15,fontWeight:900,color:c}}>{typeof v==="number"?v.toLocaleString():v} kcal</span>
-              </div>
-            ))}
-          </Card>
-          <div style={{background:"rgba(255,200,0,0.07)",border:`1.5px solid ${T.au3}`,borderRadius:14,padding:"12px 16px",fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6}}>
-            {t("calcNote")}
-          </div>
-        </div>
+      {saved&&(
+        <button onClick={()=>setEditing(false)} style={{width:"100%",padding:"14px 0",borderRadius:16,border:`1px solid rgba(255,255,255,0.12)`,background:"rgba(255,255,255,0.05)",color:T.t2,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"'Nunito',sans-serif",marginTop:10}}>
+          ← {lang==="en"?"Back to saved result":"Volver al resultado guardado"}
+        </button>
       )}
     </div>
   );
@@ -2110,7 +2179,7 @@ function pickPrize(seed){
   return 0;
 }
 
-function RuletaModal({onClose, onCollect}){
+function RuletaModal({onClose, onCollect, onGoHome}){
   const [phase, setPhase]   = useState("ready");
   const [angle, setAngle]   = useState(0);
   const [prizeIdx, setPrizeIdx] = useState(null);
@@ -2296,6 +2365,13 @@ function RuletaModal({onClose, onCollect}){
                 fontFamily:"'Nunito',sans-serif",marginTop:8}}>
                 ¡Recoger!
               </button>
+              <button onClick={()=>{onCollect(prize.xp,prize.gems);onGoHome();}} style={{
+                width:"100%",padding:"12px",borderRadius:14,
+                border:"1.5px solid rgba(255,255,255,0.12)",cursor:"pointer",fontSize:13,fontWeight:700,
+                background:"rgba(255,255,255,0.04)",color:"rgba(255,255,255,0.4)",
+                fontFamily:"'Nunito',sans-serif",marginTop:8}}>
+                ← Inicio
+              </button>
             </div>
           )}
         </div>
@@ -2316,7 +2392,7 @@ function RuletaModal({onClose, onCollect}){
 }
 
 // ─── QuizModal ────────────────────────────────────────────────────────────────
-function QuizModal({onClose, onComplete, todayKey, lang}){
+function QuizModal({onClose, onComplete, todayKey, lang, onGoHome}){
   const dayIdx = (()=>{const d=new Date();return(d.getFullYear()*366+Math.floor((d-new Date(d.getFullYear(),0,0))/(1000*60*60*24)))%QUIZ_ALL.length;})();
   const q = QUIZ_ALL[dayIdx];
   const [selected, setSelected] = useState(null);
@@ -2417,8 +2493,12 @@ function QuizModal({onClose, onComplete, todayKey, lang}){
                 </div>
               ))}
             </div>
-            <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>
+            <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:16}}>
               {lang==="en"?"Tap anywhere to continue":"Toca en cualquier lugar para continuar"}
+            </div>
+            {/* Volver a inicio */}
+            <div onClick={e=>{e.stopPropagation();onComplete(xpGain,gemGain);onGoHome();}} style={{display:"inline-block",padding:"10px 28px",borderRadius:14,border:"1.5px solid rgba(255,255,255,0.15)",color:"rgba(255,255,255,0.45)",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
+              {lang==="en"?"← Home":"← Inicio"}
             </div>
           </div>
         )}
@@ -2484,7 +2564,7 @@ function StreakChest({streak, onOpen, alreadyOpened}){
 }
 
 // ─── ChestOpenModal — animación de apertura del cofre ────────────────────────
-function ChestOpenModal({streak, onClose, onCollect}){
+function ChestOpenModal({streak, onClose, onCollect, onGoHome}){
   const [phase, setPhase] = useState("shake"); // shake | open | reward
   // Recompensa aleatoria basada en racha
   const rewards = (()=>{
@@ -2532,8 +2612,11 @@ function ChestOpenModal({streak, onClose, onCollect}){
               <div style={{fontSize:14,color:"rgba(255,255,255,0.5)",fontFamily:"'DM Sans',sans-serif"}}>Gemas 💎</div>
             </div>
           </div>
-          <button onClick={()=>{onCollect(rewards.xp,rewards.gems);onClose();}} style={{background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:`3px solid ${T.g3}`,borderRadius:20,padding:"18px 48px",color:"white",fontWeight:900,fontSize:18,cursor:"pointer",boxShadow:`0 6px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif"}}>
+          <button onClick={()=>{onCollect(rewards.xp,rewards.gems);onClose();}} style={{background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:`3px solid ${T.g3}`,borderRadius:20,padding:"18px 48px",color:"white",fontWeight:900,fontSize:18,cursor:"pointer",boxShadow:`0 6px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif",display:"block",width:"100%",marginBottom:12}}>
             ¡Recoger!
+          </button>
+          <button onClick={()=>{onCollect(rewards.xp,rewards.gems);onGoHome();}} style={{background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.12)",borderRadius:16,padding:"13px 48px",color:"rgba(255,255,255,0.4)",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif",width:"100%"}}>
+            ← Inicio
           </button>
         </div>
       )}
@@ -2688,7 +2771,7 @@ function UserAvatar({size=52, photoB64, initials, borderColor, onClick, frame=nu
 }
 
 // ─── ProfileCardModal — tarjeta de perfil del paciente ──────────────────────
-function ProfileCardModal({onClose, profile, userPhoto, onSavePhoto, onSaveProfile, weights, lv, xp, streak, badges, onSubscribeNotifications, lang, setLang, onDeleteAccount}){
+function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, onSaveProfile, weights, lv, xp, streak, badges, onSubscribeNotifications, lang, setLang, onDeleteAccount}){
   const t=useLang();
   const [photo,       setPhoto]      = useState(userPhoto||null);
   const [editField,   setEditField]  = useState(null);
@@ -2748,6 +2831,7 @@ function ProfileCardModal({onClose, profile, userPhoto, onSavePhoto, onSaveProfi
         {/* ── Cabecera ── */}
         <div style={{padding:"28px 24px 18px",textAlign:"center",position:"relative"}}>
           <button onClick={onClose} style={{position:"absolute",top:14,right:14,width:32,height:32,borderRadius:"50%",background:"rgba(0,0,0,0.3)",border:"none",color:"rgba(255,255,255,0.6)",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+          <button onClick={onGoHome} style={{position:"absolute",top:14,left:14,height:32,borderRadius:12,background:"rgba(0,0,0,0.25)",border:"1px solid rgba(255,255,255,0.12)",color:"rgba(255,255,255,0.5)",fontSize:12,fontWeight:700,cursor:"pointer",padding:"0 10px",fontFamily:"'Nunito',sans-serif"}}>← {lang==="en"?"Home":"Inicio"}</button>
 
           {/* Foto + botón 📷 */}
           <div style={{position:"relative",display:"inline-block",marginBottom:14}}>
@@ -4383,6 +4467,12 @@ function GBHApp(){
                   borderRadius:"50%",width:32,height:32,color:T.t2,
                   fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
               </div>
+              {/* Botón volver a inicio */}
+              <div style={{padding:"0 16px 4px",textAlign:"right"}}>
+                <button onClick={()=>{setShowChallenges(false);setTab("home");}} style={{background:"none",border:"none",color:T.t3,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'Nunito',sans-serif",padding:"4px 8px"}}>
+                  ← {lang==="en"?"Home":"Inicio"}
+                </button>
+              </div>
 
               {/* Lista desafíos */}
               <div style={{padding:"0 16px 20px",display:"flex",flexDirection:"column",gap:10}}>
@@ -4442,9 +4532,9 @@ function GBHApp(){
         );
       })()}
 
-      {showQuiz&&<QuizModal onClose={()=>setShowQuiz(false)} onComplete={onQuizComplete} todayKey={new Date().toISOString().slice(0,10)} lang={lang}/>}
-      {showChest&&<ChestOpenModal streak={streak} onClose={()=>setShowChest(false)} onCollect={onChestCollect}/>}
-      {showWeekChest&&<ChestOpenModal streak={7} onClose={()=>setShowWeekChest(false)} onCollect={onWeekChestCollect}/>}
+      {showQuiz&&<QuizModal onClose={()=>setShowQuiz(false)} onComplete={onQuizComplete} todayKey={new Date().toISOString().slice(0,10)} lang={lang} onGoHome={()=>{setShowQuiz(false);setTab("home");}}/>}
+      {showChest&&<ChestOpenModal streak={streak} onClose={()=>setShowChest(false)} onCollect={onChestCollect} onGoHome={()=>{setShowChest(false);setTab("home");}}/>}
+      {showWeekChest&&<ChestOpenModal streak={7} onClose={()=>setShowWeekChest(false)} onCollect={onWeekChestCollect} onGoHome={()=>{setShowWeekChest(false);setTab("home");}}/>}
       {showRuleta&&<RuletaModal
         onClose={()=>{
           const todayKey=new Date().toISOString().slice(0,10);
@@ -4453,10 +4543,12 @@ function GBHApp(){
           setShowRuleta(false);
         }}
         onCollect={onRuletaCollect}
+        onGoHome={()=>{const todayKey=new Date().toISOString().slice(0,10);lsSet("gbh:ruletaSeen:"+todayKey,true);setRuletaAutoShown(true);setShowRuleta(false);setTab("home");}}
       />}
       {showPhotoPicker&&(
         <ProfileCardModal
           onClose={()=>setShowPhotoPicker(false)}
+          onGoHome={()=>{setShowPhotoPicker(false);setTab("home");}}
           profile={profile}
           userPhoto={userPhoto}
           onSavePhoto={saveUserPhoto}
@@ -4845,6 +4937,10 @@ function GBHApp(){
                   {t("seeChart")}
                 </button>
               )}
+              {/* Volver a inicio */}
+              <button onClick={()=>setTab("home")} style={{marginTop:6,background:"none",border:`1.5px solid rgba(255,255,255,0.12)`,borderRadius:14,color:T.t3,fontSize:13,fontWeight:700,cursor:"pointer",padding:"10px 28px",fontFamily:"'Nunito',sans-serif",letterSpacing:"0.01em"}}>
+                {t("backToHome")}
+              </button>
             </div>
           );
 
