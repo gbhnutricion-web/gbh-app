@@ -3655,6 +3655,10 @@ function GBHApp(){
     if(idx>=0)l[idx]=e;else l.push(e);
     setLogs(l);lsSet(`gbh:logs:${profile.id}`,l);
     await sbReq("POST","daily_logs",{profile_id:profile.id,log_date:today,diet_followed:nl.diet,steps_done:nl.steps,hydration_done:nl.hydration,sleep_done:nl.sleep,sc:sc||0});
+    // ── Sincronizar racha actual a Supabase para que el ranking sea global ──
+    let _s=0;const _d=new Date();
+    while(true){if(l.find(x=>x.date===toKey(_d)&&x.diet)){_s++;_d.setDate(_d.getDate()-1);}else break;}
+    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{streak:_s}); // fire & forget
     setPendingSync(lsGet(QUEUE_KEY,[]).length);
   },[profile,logs]);
 
@@ -3808,26 +3812,21 @@ function GBHApp(){
 
   const loadRanking = async () => {
     setRankLoading(true);
-    // Intentar Supabase primero
-    const data = await sbReq("GET","profiles?select=id,name,xp,gems&order=xp.desc&limit=50");
+    // Intentar Supabase primero — streak e initial_weight vienen del perfil global
+    const data = await sbReq("GET","profiles?select=id,name,xp,gems,streak,initial_weight&order=xp.desc&limit=50");
     if(data?.length){
-      // Calcular racha local de cada perfil (desde localStorage si existe)
+      // Pesos desde Supabase: weight_logs de todos los perfiles del ranking
+      const ids=data.map(p=>p.id).join(",");
+      const wLogs=await sbReq("GET",`weight_logs?profile_id=in.(${ids})&select=profile_id,weight_kg,log_date&order=log_date.asc`)||[];
       const enriched = data.map(p=>{
-        const logs = lsGet(`gbh:logs:${p.id}`,[]);
-        let streak = 0;
-        const d = new Date();
-        while(true){
-          if(logs.find(l=>l.date===toKey(d)&&l.diet)){streak++;d.setDate(d.getDate()-1);}
-          else break;
-        }
-        // Peso inicial y último peso registrado
-        const wLogs = lsGet(`gbh:weights:${p.id}`,[]);
-        const initEntry = wLogs.find(w=>w.isInitial);
-        const lastEntry = wLogs.filter(w=>!w.isInitial).slice(-1)[0];
-        const initW2 = initEntry?.weight ?? p.initial_weight ?? null;
-        const lastW2 = lastEntry?.weight ?? null;
-        const weightDiff = (initW2!==null&&lastW2!==null) ? parseFloat((lastW2-initW2).toFixed(1)) : null;
-        const weightAbs  = weightDiff!==null ? Math.abs(weightDiff) : 0; // para ranking
+        // Racha: viene del campo streak guardado en Supabase (no localStorage)
+        const streak = p.streak||0;
+        // Peso: initial_weight del perfil + último registro en weight_logs
+        const pW=wLogs.filter(w=>w.profile_id===p.id);
+        const initW=p.initial_weight??null;
+        const lastW=pW.length>0?pW[pW.length-1].weight_kg:null;
+        const weightDiff=(initW!==null&&lastW!==null)?parseFloat((lastW-initW).toFixed(1)):null;
+        const weightAbs=weightDiff!==null?Math.abs(weightDiff):0;
         return {...p, streak, weightDiff, weightAbs};
       });
       enriched.sort((a,b)=>b.weightAbs-a.weightAbs||(b.xp||0)-(a.xp||0));
