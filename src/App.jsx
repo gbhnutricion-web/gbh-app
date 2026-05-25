@@ -3512,9 +3512,18 @@ function GBHApp(){
     setProfile(p);
     const localLogs = lsGet(`gbh:logs:${p.id}`,[]);
     const localWeights = lsGet(`gbh:weights:${p.id}`,[]);
-    // Restaurar desde Supabase solo si NO hay logs locales (primera instalación real)
-    if(navigator.onLine && localLogs.length===0){
-      await restoreFromServer(p.id);
+    // Restaurar logs/pesos desde Supabase solo en primera instalación.
+    // Logros se re-sincronizan siempre para que aparezcan en cualquier dispositivo.
+    if(navigator.onLine){
+      if(localLogs.length===0){
+        await restoreFromServer(p.id);
+      } else {
+        const remoteAch2 = await sbReq("GET",`achievements?profile_id=eq.${p.id}&select=badge_id`);
+        if(remoteAch2?.length){
+          const ids2=remoteAch2.map(r=>r.badge_id);
+          lsSet(`gbh:badges:${p.id}`,ids2);
+        }
+      }
     }
     const l=lsGet(`gbh:logs:${p.id}`,[]);setLogs(l);
     // tLog: prioridad a la clave del día en localStorage (nunca se pierde)
@@ -3536,7 +3545,7 @@ function GBHApp(){
       }
     }
     setWeights(lsGet(`gbh:weights:${p.id}`,[]).sort((a,b)=>a.date>b.date?1:-1));
-    setBadges(lsGet(`gbh:badges:${p.id}`,[]) );
+    setBadges(lsGet(`gbh:badges:${p.id}`,[]));
     // Exponer UID globalmente para widgets sin acceso a profile (HydrationWidget)
     window.__gbhUID = p.id;
     // Sobreescribir estados de día con claves scoped al usuario
@@ -3656,14 +3665,9 @@ function GBHApp(){
     setLogs(l);lsSet(`gbh:logs:${profile.id}`,l);
     await sbReq("POST","daily_logs",{profile_id:profile.id,log_date:today,diet_followed:nl.diet,steps_done:nl.steps,hydration_done:nl.hydration,sleep_done:nl.sleep,sc:sc||0});
     // ── Sincronizar racha actual a Supabase para que el ranking sea global ──
-    // Solo sincronizar racha cuando se registra la dieta.
-    // Si se dispara con otras misiones (agua, pasos, sueño) sin dieta marcada,
-    // el calculo devolveria 0 y borraria la racha real del ranking.
-    if(nl.diet){
-      let _s=0;const _d=new Date();
-      while(true){if(l.find(x=>x.date===toKey(_d)&&x.diet)){_s++;_d.setDate(_d.getDate()-1);}else break;}
-      sbReq("PATCH",`profiles?id=eq.${profile.id}`,{streak:_s}); // fire & forget
-    }
+    let _s=0;const _d=new Date();
+    while(true){if(l.find(x=>x.date===toKey(_d)&&x.diet)){_s++;_d.setDate(_d.getDate()-1);}else break;}
+    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{streak:_s}); // fire & forget
     setPendingSync(lsGet(QUEUE_KEY,[]).length);
   },[profile,logs]);
 
