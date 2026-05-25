@@ -3656,9 +3656,14 @@ function GBHApp(){
     setLogs(l);lsSet(`gbh:logs:${profile.id}`,l);
     await sbReq("POST","daily_logs",{profile_id:profile.id,log_date:today,diet_followed:nl.diet,steps_done:nl.steps,hydration_done:nl.hydration,sleep_done:nl.sleep,sc:sc||0});
     // ── Sincronizar racha actual a Supabase para que el ranking sea global ──
-    let _s=0;const _d=new Date();
-    while(true){if(l.find(x=>x.date===toKey(_d)&&x.diet)){_s++;_d.setDate(_d.getDate()-1);}else break;}
-    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{streak:_s}); // fire & forget
+    // Solo sincronizar racha cuando se registra la dieta.
+    // Si se dispara con otras misiones (agua, pasos, sueño) sin dieta marcada,
+    // el calculo devolveria 0 y borraria la racha real del ranking.
+    if(nl.diet){
+      let _s=0;const _d=new Date();
+      while(true){if(l.find(x=>x.date===toKey(_d)&&x.diet)){_s++;_d.setDate(_d.getDate()-1);}else break;}
+      sbReq("PATCH",`profiles?id=eq.${profile.id}`,{streak:_s}); // fire & forget
+    }
     setPendingSync(lsGet(QUEUE_KEY,[]).length);
   },[profile,logs]);
 
