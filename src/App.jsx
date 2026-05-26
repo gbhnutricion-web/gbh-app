@@ -3301,7 +3301,15 @@ function GBHApp(){
     for(const [k,v] of Object.entries(vars)) str = str.split(`{${k}}`).join(String(v));
     return str;
   };
-  const streak=useMemo(()=>{let s=0;const d=new Date();while(true){if(logs.find(l=>l.date===toKey(d)&&l.diet)){s++;d.setDate(d.getDate()-1);}else break;}return s;},[logs,tLog]);
+  // Racha: si hoy no está completada aún, contamos desde ayer para no resetear a 0
+  // hasta que realmente falle (el día pase sin completar la dieta)
+  const streak=useMemo(()=>{
+    let s=0;
+    const d=new Date();
+    if(!tLog.diet) d.setDate(d.getDate()-1); // hoy pendiente → preservar racha anterior
+    while(true){if(logs.find(l=>l.date===toKey(d)&&l.diet)){s++;d.setDate(d.getDate()-1);}else break;}
+    return s;
+  },[logs,tLog]);
   const xp=profile?.xp??0,gems=profile?.gems??0;
   const lv=getLevel(xp),nextLv=getNextLevel(lv);
   const xpPct=Math.min(((xp-lv.min)/((nextLv?.min||lv.min+1)-lv.min))*100,100);
@@ -3512,18 +3520,9 @@ function GBHApp(){
     setProfile(p);
     const localLogs = lsGet(`gbh:logs:${p.id}`,[]);
     const localWeights = lsGet(`gbh:weights:${p.id}`,[]);
-    // Restaurar logs/pesos desde Supabase solo en primera instalación.
-    // Logros se re-sincronizan siempre para que aparezcan en cualquier dispositivo.
-    if(navigator.onLine){
-      if(localLogs.length===0){
-        await restoreFromServer(p.id);
-      } else {
-        const remoteAch2 = await sbReq("GET",`achievements?profile_id=eq.${p.id}&select=badge_id`);
-        if(remoteAch2?.length){
-          const ids2=remoteAch2.map(r=>r.badge_id);
-          lsSet(`gbh:badges:${p.id}`,ids2);
-        }
-      }
+    // Restaurar desde Supabase solo si NO hay logs locales (primera instalación real)
+    if(navigator.onLine && localLogs.length===0){
+      await restoreFromServer(p.id);
     }
     const l=lsGet(`gbh:logs:${p.id}`,[]);setLogs(l);
     // tLog: prioridad a la clave del día en localStorage (nunca se pierde)
@@ -3545,7 +3544,7 @@ function GBHApp(){
       }
     }
     setWeights(lsGet(`gbh:weights:${p.id}`,[]).sort((a,b)=>a.date>b.date?1:-1));
-    setBadges(lsGet(`gbh:badges:${p.id}`,[]));
+    setBadges(lsGet(`gbh:badges:${p.id}`,[]) );
     // Exponer UID globalmente para widgets sin acceso a profile (HydrationWidget)
     window.__gbhUID = p.id;
     // Sobreescribir estados de día con claves scoped al usuario
@@ -3665,7 +3664,9 @@ function GBHApp(){
     setLogs(l);lsSet(`gbh:logs:${profile.id}`,l);
     await sbReq("POST","daily_logs",{profile_id:profile.id,log_date:today,diet_followed:nl.diet,steps_done:nl.steps,hydration_done:nl.hydration,sleep_done:nl.sleep,sc:sc||0});
     // ── Sincronizar racha actual a Supabase para que el ranking sea global ──
+    // Si hoy no está completada la dieta, empezamos desde ayer para no mandar streak=0
     let _s=0;const _d=new Date();
+    if(!nl.diet) _d.setDate(_d.getDate()-1);
     while(true){if(l.find(x=>x.date===toKey(_d)&&x.diet)){_s++;_d.setDate(_d.getDate()-1);}else break;}
     sbReq("PATCH",`profiles?id=eq.${profile.id}`,{streak:_s}); // fire & forget
     setPendingSync(lsGet(QUEUE_KEY,[]).length);
@@ -3849,6 +3850,8 @@ function GBHApp(){
       const enriched = local.map(p=>{
         const logs = lsGet(`gbh:logs:${p.id}`,[]);
         let streak=0;const d=new Date();
+        // Si hoy no está completada la dieta, contar desde ayer (no resetear a 0)
+        if(!logs.find(l=>l.date===toKey(d)&&l.diet)) d.setDate(d.getDate()-1);
         while(true){if(logs.find(l=>l.date===toKey(d)&&l.diet)){streak++;d.setDate(d.getDate()-1);}else break;}
         const wLogs2 = lsGet(`gbh:weights:${p.id}`,[]);
         const initE = wLogs2.find(w=>w.isInitial);
