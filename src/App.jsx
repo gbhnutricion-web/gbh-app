@@ -90,6 +90,11 @@ const TRANS = {
     saveWeight:"✅ Guardar peso",
     seeChart:"← Ver gráfica",
     registerWeightToday:"⚖️ Registrar peso de hoy",
+    weightBannerTitle:"¡Registra tu peso esta semana!",
+    weightBannerCta:"Pulsa para ir al pesaje →",
+    weekendWeighLabel:"✅ Pesaje del fin de semana",
+    firstWeighLine1:"Registra tu primer pesaje",
+    firstWeighLine2:"para ver tu evolución",
     // Recipe tab
     recipeOfDay:"🍰 Receta del día",
     calories:"Calorías", protein:"Proteína", carbs:"Hidratos", fat:"Grasas",
@@ -279,6 +284,11 @@ const TRANS = {
     saveWeight:"✅ Save weight",
     seeChart:"← See chart",
     registerWeightToday:"⚖️ Log today's weight",
+    weightBannerTitle:"Log your weight this week!",
+    weightBannerCta:"Tap to go to weigh-in →",
+    weekendWeighLabel:"✅ Weekend weigh-in",
+    firstWeighLine1:"Log your first weigh-in",
+    firstWeighLine2:"to see your progress",
     // Recipe tab
     recipeOfDay:"🍰 Recipe of the day",
     calories:"Calories", protein:"Protein", carbs:"Carbs", fat:"Fat",
@@ -725,7 +735,21 @@ function getQuizFact(q, lang){
   return out;
 }
 const isWeekend=()=>{const d=new Date().getDay();return d===0||d===6;};
-const toKey=(d=new Date())=>d.toISOString().slice(0,10);
+// Clave de día en hora LOCAL (no UTC) → evita que a partir de medianoche en España
+// el día se adelante. Formato YYYY-MM-DD, idéntico al anterior.
+const toKey=(d=new Date())=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+// Claves (YYYY-MM-DD) del sábado y domingo de la semana ACTUAL (ancladas al lunes,
+// igual que weekDates en getChallengeProgress) → el pesaje es semanal, no diario.
+const weekendKeys=()=>{
+  const today=new Date(), dow=today.getDay();      // 0=Dom … 6=Sáb
+  const monOffset=dow===0?6:dow-1;                 // días transcurridos desde el lunes
+  const monday=new Date(); monday.setDate(today.getDate()-monOffset);
+  const sat=new Date(monday); sat.setDate(monday.getDate()+5);
+  const sun=new Date(monday); sun.setDate(monday.getDate()+6);
+  return [toKey(sat), toKey(sun)];
+};
+// Pesaje ya registrado este fin de semana (sábado o domingo), excluyendo el punto inicial.
+const weekendWeighIn=(ws)=>{const ks=weekendKeys();return (ws||[]).find(w=>!w.isInitial&&ks.includes(w.date))||null;};
 const WLABELS=["L","M","X","J","V","S","D"];
 
 
@@ -1791,7 +1815,7 @@ function TomorrowCard({name,streak}){
 // ─── Hydration tracker (vasos de agua) ───────────────────────────────────────
 function HydrationWidget({done,onToggle}){
   const t=useLang();
-  const todayStr = new Date().toISOString().slice(0,10);
+  const todayStr = toKey();
   const [glasses,setGlasses]=useState(()=>{
     try{
       // Solo recuperar vasos del día actual
@@ -3301,15 +3325,7 @@ function GBHApp(){
     for(const [k,v] of Object.entries(vars)) str = str.split(`{${k}}`).join(String(v));
     return str;
   };
-  // Racha: si hoy no está completada aún, contamos desde ayer para no resetear a 0
-  // hasta que realmente falle (el día pase sin completar la dieta)
-  const streak=useMemo(()=>{
-    let s=0;
-    const d=new Date();
-    if(!tLog.diet) d.setDate(d.getDate()-1); // hoy pendiente → preservar racha anterior
-    while(true){if(logs.find(l=>l.date===toKey(d)&&l.diet)){s++;d.setDate(d.getDate()-1);}else break;}
-    return s;
-  },[logs,tLog]);
+  const streak=useMemo(()=>{let s=0;const d=new Date();while(true){if(logs.find(l=>l.date===toKey(d)&&l.diet)){s++;d.setDate(d.getDate()-1);}else break;}return s;},[logs,tLog]);
   const xp=profile?.xp??0,gems=profile?.gems??0;
   const lv=getLevel(xp),nextLv=getNextLevel(lv);
   const xpPct=Math.min(((xp-lv.min)/((nextLv?.min||lv.min+1)-lv.min))*100,100);
@@ -3567,13 +3583,13 @@ function GBHApp(){
     fetchDailyRecipe(); // cargar receta del día
     // Mostrar banner de notificaciones si llevan ≥1 días y no han respondido
     if(!lsGet("gbh:notifAsked",false)){
-      const firstOpen = lsGet("gbh:firstOpen", new Date().toISOString().slice(0,10));
-      if(!lsGet("gbh:firstOpen",null)) lsSet("gbh:firstOpen", new Date().toISOString().slice(0,10));
+      const firstOpen = lsGet("gbh:firstOpen", toKey());
+      if(!lsGet("gbh:firstOpen",null)) lsSet("gbh:firstOpen", toKey());
       const days = Math.floor((Date.now()-new Date(firstOpen))/(1000*60*60*24));
       if(days>=1) setTimeout(()=>setShowNotifBanner(true), 3000);
     }
     // Auto-popup ruleta: mostrar si no se ha visto hoy (scoped a usuario)
-    const todayKey = new Date().toISOString().slice(0,10);
+    const todayKey = toKey();
     const alreadySeen  = lsGet("gbh:ruletaSeen:"+p.id+":"+todayKey, false);
     const alreadyDone  = lsGet("gbh:ruleta:"+p.id+":"+todayKey, false);
     if(!alreadySeen && !alreadyDone){
@@ -3647,7 +3663,7 @@ function GBHApp(){
       const initDate=toKey();
       const initEntry={date:initDate,weight:initW,isInitial:true};
       lsSet(`gbh:weights:${fp.id}`,[initEntry]);
-      await sbReq("POST","weight_logs",{profile_id:fp.id,log_date:initDate,weight_kg:initW});
+      await sbReq("POST","weight_logs?on_conflict=profile_id,log_date",{profile_id:fp.id,log_date:initDate,weight_kg:initW});
     }
     await loadP(fp); setLoading(false);
   };
@@ -3664,9 +3680,7 @@ function GBHApp(){
     setLogs(l);lsSet(`gbh:logs:${profile.id}`,l);
     await sbReq("POST","daily_logs",{profile_id:profile.id,log_date:today,diet_followed:nl.diet,steps_done:nl.steps,hydration_done:nl.hydration,sleep_done:nl.sleep,sc:sc||0});
     // ── Sincronizar racha actual a Supabase para que el ranking sea global ──
-    // Si hoy no está completada la dieta, empezamos desde ayer para no mandar streak=0
     let _s=0;const _d=new Date();
-    if(!nl.diet) _d.setDate(_d.getDate()-1);
     while(true){if(l.find(x=>x.date===toKey(_d)&&x.diet)){_s++;_d.setDate(_d.getDate()-1);}else break;}
     sbReq("PATCH",`profiles?id=eq.${profile.id}`,{streak:_s}); // fire & forget
     setPendingSync(lsGet(QUEUE_KEY,[]).length);
@@ -3753,13 +3767,16 @@ function GBHApp(){
 
   const saveW=async(isEdit=false)=>{
     const val=parseFloat(wInput);if(!isWeekend()||isNaN(val)||val<20||val>300)return;
-    const today=toKey();
-    // Detectar si ya existía registro HOY (edición) o es nuevo
-    const alreadyLogged=!!weights.find(w=>w.date===today);
-    const nw=weights.filter(w=>w.date!==today);
-    nw.push({date:today,weight:val});nw.sort((a,b)=>a.date>b.date?1:-1);
+    // El pesaje es SEMANAL: si ya hay uno este finde (p.ej. el sábado), editamos
+    // esa misma fila —no creamos una nueva el domingo— y reescribimos su fecha real.
+    const existing=weekendWeighIn(weights);
+    const targetDate=existing?existing.date:toKey();
+    const alreadyLogged=!!existing;
+    const nw=weights.filter(w=>w.date!==targetDate);
+    nw.push({date:targetDate,weight:val});nw.sort((a,b)=>a.date>b.date?1:-1);
     setWeights(nw);lsSet(`gbh:weights:${profile.id}`,nw);setWInput("");
-    await sbReq("POST","weight_logs",{profile_id:profile.id,log_date:today,weight_kg:val});
+    // on_conflict → editar sobrescribe la fila (profile_id+log_date) en vez de duplicarla.
+    await sbReq("POST","weight_logs?on_conflict=profile_id,log_date",{profile_id:profile.id,log_date:targetDate,weight_kg:val});
     // Solo dar XP/gemas la primera vez, no en ediciones
     if(!alreadyLogged&&!isEdit){
       sfx("coin");
@@ -3812,7 +3829,7 @@ function GBHApp(){
         nw.unshift({date:existingInitDate,weight:w,isInitial:true});
         setWeights(nw);
         lsSet(`gbh:weights:${profile.id}`, nw);
-        await sbReq("POST","weight_logs",{profile_id:profile.id,log_date:existingInitDate,weight_kg:w});
+        await sbReq("POST","weight_logs?on_conflict=profile_id,log_date",{profile_id:profile.id,log_date:existingInitDate,weight_kg:w});
       }
     }
     setProfile(updated);
@@ -3834,7 +3851,11 @@ function GBHApp(){
         // Peso: initial_weight del perfil + último registro en weight_logs
         const pW=wLogs.filter(w=>w.profile_id===p.id);
         const initW=p.initial_weight??null;
-        const lastW=pW.length>0?pW[pW.length-1].weight_kg:null;
+        // Colapsar por fecha (1 valor por día) y tomar el peso del día MÁS RECIENTE.
+        // Robusto si quedaran filas duplicadas del mismo día por ediciones antiguas.
+        const byDate={}; pW.forEach(w=>{ byDate[w.log_date]=w.weight_kg; });
+        const dKeys=Object.keys(byDate).sort();
+        const lastW=dKeys.length?byDate[dKeys[dKeys.length-1]]:null;
         const weightDiff=(initW!==null&&lastW!==null)?parseFloat((lastW-initW).toFixed(1)):null;
         const weightAbs=weightDiff!==null?Math.abs(weightDiff):0;
         return {...p, streak, weightDiff, weightAbs};
@@ -3850,8 +3871,6 @@ function GBHApp(){
       const enriched = local.map(p=>{
         const logs = lsGet(`gbh:logs:${p.id}`,[]);
         let streak=0;const d=new Date();
-        // Si hoy no está completada la dieta, contar desde ayer (no resetear a 0)
-        if(!logs.find(l=>l.date===toKey(d)&&l.diet)) d.setDate(d.getDate()-1);
         while(true){if(logs.find(l=>l.date===toKey(d)&&l.diet)){streak++;d.setDate(d.getDate()-1);}else break;}
         const wLogs2 = lsGet(`gbh:weights:${p.id}`,[]);
         const initE = wLogs2.find(w=>w.isInitial);
@@ -3868,7 +3887,7 @@ function GBHApp(){
   };
 
   const onQuizComplete = async (xpG, gemG) => {
-    const today = new Date().toISOString().slice(0,10);
+    const today = toKey();
     lsSet("gbh:quiz:"+profile.id+":"+today, true);
     setQuizDone(true);
     await addXG(xpG, gemG);
@@ -3916,7 +3935,7 @@ function GBHApp(){
 
   const onRuletaCollect = async (xpG, gemG) => {
     sfx("ruletteWin");
-    const today = new Date().toISOString().slice(0,10);
+    const today = toKey();
     lsSet("gbh:ruleta:"+profile.id+":"+today, true);
     setRuletaDone(true);
     await addXG(xpG, gemG);
@@ -4587,18 +4606,18 @@ function GBHApp(){
         );
       })()}
 
-      {showQuiz&&<QuizModal onClose={()=>setShowQuiz(false)} onComplete={onQuizComplete} todayKey={new Date().toISOString().slice(0,10)} lang={lang} onGoHome={()=>{setShowQuiz(false);setTab("home");}}/>}
+      {showQuiz&&<QuizModal onClose={()=>setShowQuiz(false)} onComplete={onQuizComplete} todayKey={toKey()} lang={lang} onGoHome={()=>{setShowQuiz(false);setTab("home");}}/>}
       {showChest&&<ChestOpenModal streak={streak} onClose={()=>setShowChest(false)} onCollect={onChestCollect} onGoHome={()=>{setShowChest(false);setTab("home");}}/>}
       {showWeekChest&&<ChestOpenModal streak={7} onClose={()=>setShowWeekChest(false)} onCollect={onWeekChestCollect} onGoHome={()=>{setShowWeekChest(false);setTab("home");}}/>}
       {showRuleta&&<RuletaModal
         onClose={()=>{
-          const todayKey=new Date().toISOString().slice(0,10);
+          const todayKey=toKey();
           lsSet("gbh:ruletaSeen:"+(profile?.id||"")+":"+todayKey,true);
           setRuletaAutoShown(true);
           setShowRuleta(false);
         }}
         onCollect={onRuletaCollect}
-        onGoHome={()=>{const todayKey=new Date().toISOString().slice(0,10);lsSet("gbh:ruletaSeen:"+(profile?.id||"")+":"+todayKey,true);setRuletaAutoShown(true);setShowRuleta(false);setTab("home");}}
+        onGoHome={()=>{const todayKey=toKey();lsSet("gbh:ruletaSeen:"+(profile?.id||"")+":"+todayKey,true);setRuletaAutoShown(true);setShowRuleta(false);setTab("home");}}
       />}
       {showPhotoPicker&&(
         <ProfileCardModal
@@ -4734,7 +4753,7 @@ function GBHApp(){
       })()}
 
       {/* Banner peso fin de semana — con X para cerrar */}
-      {isWeekend()&&!weights.find(w=>w.date===toKey())&&!weightBannerDismissed&&(
+      {isWeekend()&&!weekendWeighIn(weights)&&!weightBannerDismissed&&(
         <div style={{
           background:"linear-gradient(135deg,rgba(255,150,0,0.97),rgba(220,100,0,0.97))",
           padding:"11px 14px 11px 18px",
@@ -4748,10 +4767,10 @@ function GBHApp(){
             <span style={{fontSize:24}}>⚖️</span>
             <div>
               <div style={{fontSize:13,fontWeight:900,color:"white",fontFamily:"'Nunito',sans-serif",lineHeight:1.2}}>
-                ¡Registra tu peso esta semana!
+                {t("weightBannerTitle")}
               </div>
               <div style={{fontSize:11,color:"rgba(255,255,255,0.82)",fontFamily:"'DM Sans',sans-serif",marginTop:2}}>
-                Pulsa para ir al pesaje →
+                {t("weightBannerCta")}
               </div>
             </div>
           </div>
@@ -4926,7 +4945,7 @@ function GBHApp(){
 
         {/* ── WEIGHT ────────────────────────────────────────────────────────── */}
         {tab==="weight"&&(()=>{
-          const todayW=weights.find(w=>w.date===toKey());
+          const todayW=weekendWeighIn(weights);
           const isWE=isWeekend();
 
           // ── No es fin de semana ──────────────────────────────────────────
@@ -5006,7 +5025,7 @@ function GBHApp(){
               {todayW&&(
                 <div style={{background:`linear-gradient(135deg,rgba(43,122,0,0.4),rgba(88,204,2,0.18))`,border:`2px solid ${T.g1}`,borderRadius:22,padding:"16px 20px",marginBottom:14,boxShadow:`0 6px 0 ${T.g3}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                   <div>
-                    <div style={{fontSize:11,color:T.g2,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4}}>✅ Pesaje registrado hoy</div>
+                    <div style={{fontSize:11,color:T.g2,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4}}>{t("weekendWeighLabel")}</div>
                     <div style={{fontSize:38,fontWeight:900,color:T.wh,lineHeight:1}}>{todayW.weight} <span style={{fontSize:18,color:T.t2}}>kg</span></div>
                     <div style={{fontSize:11,color:T.t2,marginTop:4,fontFamily:"'DM Sans',sans-serif"}}>{todayW.date}</div>
                   </div>
@@ -5029,7 +5048,7 @@ function GBHApp(){
                 <Card style={{textAlign:"center",padding:"28px"}}>
                   <div style={{display:"flex",justifyContent:"center",marginBottom:12}}><Mascot expr="idle" size={110}/></div>
                   <div style={{fontSize:16,fontWeight:900,color:T.t1,marginBottom:6}}>Tu gráfica aparecerá aquí</div>
-                  <div style={{color:T.t2,fontSize:13,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6}}>Registra tu primer pesaje<br/>para ver tu evolución</div>
+                  <div style={{color:T.t2,fontSize:13,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6}}>{t("firstWeighLine1")}<br/>{t("firstWeighLine2")}</div>
                 </Card>
               )}
             </>
