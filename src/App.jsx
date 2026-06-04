@@ -750,15 +750,6 @@ const weekendKeys=()=>{
 };
 // Pesaje ya registrado este fin de semana (sábado o domingo), excluyendo el punto inicial.
 const weekendWeighIn=(ws)=>{const ks=weekendKeys();return (ws||[]).find(w=>!w.isInitial&&ks.includes(w.date))||null;};
-// Racha "viva": días consecutivos de dieta. Si HOY aún no se ha registrado, NO baja a 0
-// —sigue contando desde ayer—; la racha solo se pierde tras un día COMPLETO sin dieta.
-// Evita el salto que asustaba: 9 → 0 → 10 al cambiar de día.
-function calcStreak(logs){
-  const L=logs||[]; let s=0; const d=new Date();
-  if(!L.find(l=>l.date===toKey(d)&&l.diet)) d.setDate(d.getDate()-1); // periodo de gracia de hoy
-  while(L.find(l=>l.date===toKey(d)&&l.diet)){ s++; d.setDate(d.getDate()-1); }
-  return s;
-}
 const WLABELS=["L","M","X","J","V","S","D"];
 
 
@@ -3334,7 +3325,7 @@ function GBHApp(){
     for(const [k,v] of Object.entries(vars)) str = str.split(`{${k}}`).join(String(v));
     return str;
   };
-  const streak=useMemo(()=>calcStreak(logs),[logs,tLog]);
+  const streak=useMemo(()=>{let s=0;const d=new Date();while(true){if(logs.find(l=>l.date===toKey(d)&&l.diet)){s++;d.setDate(d.getDate()-1);}else break;}return s;},[logs,tLog]);
   const xp=profile?.xp??0,gems=profile?.gems??0;
   const lv=getLevel(xp),nextLv=getNextLevel(lv);
   const xpPct=Math.min(((xp-lv.min)/((nextLv?.min||lv.min+1)-lv.min))*100,100);
@@ -3689,7 +3680,8 @@ function GBHApp(){
     setLogs(l);lsSet(`gbh:logs:${profile.id}`,l);
     await sbReq("POST","daily_logs",{profile_id:profile.id,log_date:today,diet_followed:nl.diet,steps_done:nl.steps,hydration_done:nl.hydration,sleep_done:nl.sleep,sc:sc||0});
     // ── Sincronizar racha actual a Supabase para que el ranking sea global ──
-    const _s=calcStreak(l);
+    let _s=0;const _d=new Date();
+    while(true){if(l.find(x=>x.date===toKey(_d)&&x.diet)){_s++;_d.setDate(_d.getDate()-1);}else break;}
     sbReq("PATCH",`profiles?id=eq.${profile.id}`,{streak:_s}); // fire & forget
     setPendingSync(lsGet(QUEUE_KEY,[]).length);
   },[profile,logs]);
@@ -3738,17 +3730,43 @@ function GBHApp(){
   const chkBadges=useCallback(async(s,ws,b)=>{
     const wC=ws.length,tD=logs.filter(l=>l.diet).length;
     const pf=(()=>{let c=0;const d=new Date();for(let i=0;i<7;i++){if(logs.find(l=>l.date===toKey(d)&&l.diet))c++;d.setDate(d.getDate()-1);}return c>=7;})();
+    // FIX: recorrer TODOS los badges sin salir al primero
+    let current=[...b];
+    let firstNew=null;
     for(const badge of BADGES){
       const cond={d1:tD>=1,s7:s>=7,s30:s>=30,s100:s>=100,s365:s>=365,w1:wC>=1,w8:wC>=8,w12:wC>=12,pW:pf}[badge.id];
-      if(!b.includes(badge.id)&&cond){
-        const nb=[...b,badge.id];setBadges(nb);lsSet(`gbh:badges:${profile?.id}`,nb);
+      if(!current.includes(badge.id)&&cond){
+        current=[...current,badge.id];
         await sbReq("POST","achievements",{profile_id:profile?.id,badge_id:badge.id});
         await addXG(badge.xp,badge.g);
-        sfx("badge");
-        showT({icon:badge.icon,title:lang==="en"?"Achievement unlocked!":"¡Logro desbloqueado!",sub:lang==="en"?(badge.t_en||badge.t):badge.t,reward:lang==="en"?(badge.r_en||badge.r):badge.r});return nb;
+        if(!firstNew) firstNew=badge; // guardar solo el primero para la notif
       }
-    }return b;
+    }
+    if(current.length>b.length){
+      setBadges(current);
+      lsSet(`gbh:badges:${profile?.id}`,current);
+      if(firstNew){
+        sfx("badge");
+        const extras=current.length-b.length-1;
+        const sub=extras>0
+          ?(lang==="en"?`${firstNew.t_en||firstNew.t} (+${extras} more)`:`${firstNew.t} (+${extras} más)`)
+          :(lang==="en"?(firstNew.t_en||firstNew.t):firstNew.t);
+        showT({icon:firstNew.icon,title:lang==="en"?"Achievement unlocked!":"¡Logro desbloqueado!",sub,reward:lang==="en"?(firstNew.r_en||firstNew.r):firstNew.r});
+      }
+    }
+    return current;
   },[profile,logs,addXG]);
+
+  // FIX: verificación retroactiva al cargar datos del usuario
+  // Detecta logros ya cumplidos que nunca se procesaron (por entrar antes de este fix)
+  const _retroCheckedFor=React.useRef(null);
+  React.useEffect(()=>{
+    if(!profile||logs.length===0) return;
+    if(_retroCheckedFor.current===profile.id) return;
+    _retroCheckedFor.current=profile.id;
+    // Pequeño delay para que el estado (streak, weights) esté listo
+    setTimeout(()=>chkBadges(streak,weights,badges),1200);
+  },[profile?.id,logs.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleM=useCallback(async(key)=>{
     const was=tLog[key];
@@ -3878,7 +3896,8 @@ function GBHApp(){
         .filter(p=>p.id&&p.name);
       const enriched = local.map(p=>{
         const logs = lsGet(`gbh:logs:${p.id}`,[]);
-        const streak=calcStreak(logs);
+        let streak=0;const d=new Date();
+        while(true){if(logs.find(l=>l.date===toKey(d)&&l.diet)){streak++;d.setDate(d.getDate()-1);}else break;}
         const wLogs2 = lsGet(`gbh:weights:${p.id}`,[]);
         const initE = wLogs2.find(w=>w.isInitial);
         const lastE = wLogs2.filter(w=>!w.isInitial).slice(-1)[0];
@@ -4458,7 +4477,7 @@ function GBHApp(){
   // ── ADMIN ────────────────────────────────────────────────────────────────────
   if(screen==="admin"){
     const adh=(id)=>{const l=lsGet(`gbh:logs:${id}`,[]);const d7=Array.from({length:7},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return toKey(d);});return Math.round((d7.filter(k=>l.find(x=>x.date===k&&x.diet)).length/7)*100);};
-    const pSt=(id)=>calcStreak(lsGet(`gbh:logs:${id}`,[]));
+    const pSt=(id)=>{const l=lsGet(`gbh:logs:${id}`,[]);let s=0;const d=new Date();while(true){if(l.find(x=>x.date===toKey(d)&&x.diet)){s++;d.setDate(d.getDate()-1);}else break;}return s;};
     const lW=(id)=>{const w=lsGet(`gbh:weights:${id}`,[]);return w.length?w[w.length-1].weight:null;};
     const st=(a)=>a>=80?{t:"✅ En Objetivo",c:T.g1}:a>=50?{t:"⚠️ Riesgo",c:T.au1}:{t:"🔴 Inactivo",c:T.red};
     return(
