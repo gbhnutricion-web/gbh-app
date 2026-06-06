@@ -3325,7 +3325,17 @@ function GBHApp(){
     for(const [k,v] of Object.entries(vars)) str = str.split(`{${k}}`).join(String(v));
     return str;
   };
-  const streak=useMemo(()=>{let s=0;const d=new Date();while(true){if(logs.find(l=>l.date===toKey(d)&&l.diet)){s++;d.setDate(d.getDate()-1);}else break;}return s;},[logs,tLog]);
+  const streak=useMemo(()=>{
+    // Intento 1: desde hoy (misión ya completada)
+    let s=0;const d=new Date();
+    while(logs.find(l=>l.date===toKey(d)&&l.diet)){s++;d.setDate(d.getDate()-1);}
+    if(s>0) return s;
+    // Intento 2: si hoy no está hecho, empezar desde ayer
+    // (la racha no se rompe hasta que pase la medianoche sin completar)
+    const d2=new Date();d2.setDate(d2.getDate()-1);
+    while(logs.find(l=>l.date===toKey(d2)&&l.diet)){s++;d2.setDate(d2.getDate()-1);}
+    return s;
+  },[logs,tLog]);
   const xp=profile?.xp??0,gems=profile?.gems??0;
   const lv=getLevel(xp),nextLv=getNextLevel(lv);
   const xpPct=Math.min(((xp-lv.min)/((nextLv?.min||lv.min+1)-lv.min))*100,100);
@@ -3757,15 +3767,27 @@ function GBHApp(){
     return current;
   },[profile,logs,addXG]);
 
-  // FIX: verificación retroactiva al cargar datos del usuario
-  // Detecta logros ya cumplidos que nunca se procesaron (por entrar antes de este fix)
+  // Verificación retroactiva: detecta logros cumplidos que nunca se procesaron.
+  // Se ejecuta UNA VEZ al cargar el perfil con datos reales.
   const _retroCheckedFor=React.useRef(null);
   React.useEffect(()=>{
     if(!profile||logs.length===0) return;
     if(_retroCheckedFor.current===profile.id) return;
     _retroCheckedFor.current=profile.id;
-    // Pequeño delay para que el estado (streak, weights) esté listo
-    setTimeout(()=>chkBadges(streak,weights,badges),1200);
+    setTimeout(()=>{
+      // Calcular racha efectiva desde los propios logs, independiente del estado.
+      // Si hoy no está completado, la racha histórica sigue siendo válida para badges.
+      let effStreak=0;
+      // Intentar desde hoy
+      let dd=new Date();
+      while(logs.find(l=>l.date===toKey(dd)&&l.diet)){effStreak++;dd.setDate(dd.getDate()-1);}
+      // Si hoy no hecho, intentar desde ayer
+      if(effStreak===0){
+        dd=new Date();dd.setDate(dd.getDate()-1);
+        while(logs.find(l=>l.date===toKey(dd)&&l.diet)){effStreak++;dd.setDate(dd.getDate()-1);}
+      }
+      chkBadges(effStreak,weights,badges);
+    },1200);
   },[profile?.id,logs.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleM=useCallback(async(key)=>{
