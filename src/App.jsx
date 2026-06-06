@@ -3768,25 +3768,29 @@ function GBHApp(){
   },[profile,logs,addXG]);
 
   // Verificación retroactiva: detecta logros cumplidos que nunca se procesaron.
-  // Se ejecuta UNA VEZ al cargar el perfil con datos reales.
+  // BUG CORREGIDO: useRef se resetea en cada recarga de página → usar localStorage
+  // como flag persistente para que el check ocurra UNA SOLA VEZ POR USUARIO total.
   const _retroCheckedFor=React.useRef(null);
   React.useEffect(()=>{
     if(!profile||logs.length===0) return;
-    if(_retroCheckedFor.current===profile.id) return;
+    // Flag persistente en localStorage — sobrevive recargas y reinicios
+    const retroKey=`gbh:retroCheck:${profile.id}`;
+    if(lsGet(retroKey,false)) return;           // ya hecho → nunca más
+    if(_retroCheckedFor.current===profile.id) return; // ya corriendo en esta sesión
     _retroCheckedFor.current=profile.id;
+    lsSet(retroKey,true); // marcar ANTES de correr — evita ejecuciones dobles
     setTimeout(()=>{
-      // Calcular racha efectiva desde los propios logs, independiente del estado.
-      // Si hoy no está completado, la racha histórica sigue siendo válida para badges.
+      // Leer badges desde localStorage (fuente de verdad, evita closure estale)
+      const storedBadges=lsGet(`gbh:badges:${profile.id}`,[]);
+      // Calcular racha efectiva desde logs (no desde estado, puede ser 0 si hoy no completado)
       let effStreak=0;
-      // Intentar desde hoy
       let dd=new Date();
       while(logs.find(l=>l.date===toKey(dd)&&l.diet)){effStreak++;dd.setDate(dd.getDate()-1);}
-      // Si hoy no hecho, intentar desde ayer
       if(effStreak===0){
         dd=new Date();dd.setDate(dd.getDate()-1);
         while(logs.find(l=>l.date===toKey(dd)&&l.diet)){effStreak++;dd.setDate(dd.getDate()-1);}
       }
-      chkBadges(effStreak,weights,badges);
+      chkBadges(effStreak,weights,storedBadges);
     },1200);
   },[profile?.id,logs.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
