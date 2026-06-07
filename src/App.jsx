@@ -5570,7 +5570,7 @@ function PlanTab({profile,lang}){
     const todas = await sbReq('GET','recipes?select=*&limit=1000');
     const mapa = {};
     (todas||[]).forEach(r=>{
-      const nom = r.nombre_receta||r.Nombre_Receta||'';
+      const nom = r.nombre||r.nombre_receta||r.Nombre_Receta||'';
       if(nom) mapa[normNombre(nom)] = r;
     });
     recetasCacheRef.current = mapa;
@@ -5594,15 +5594,17 @@ function PlanTab({profile,lang}){
     }
 
     if(r){
+      // Columnas reales en Supabase: nombre, tipo, calorias, proteinas_g,
+      // hidratos_g, grasas_g, ingredientes, instrucciones
       setTomaReceta({
-        nombre:       r.nombre_receta||r.Nombre_Receta||meal.Nombre_Receta,
-        tipo:         r.tipo||r.Tipo||meal.Tipo||'',
-        calorias:     Math.round(parseFloat(r.calorias_totales||r.Calorias_Totales||meal.Calorias_Totales)||0),
-        proteinas_g:  Math.round(parseFloat(r.proteinas_g||r.Proteinas_g||meal.Proteinas_g)||0),
-        hidratos_g:   Math.round(parseFloat(r.hidratos_g||r.Hidratos_g||meal.Hidratos_g)||0),
-        grasas_g:     Math.round(parseFloat(r.grasas_g||r.Grasas_g||meal.Grasas_g)||0),
-        ingredientes: r.ingredientes||r.Ingredientes||'',
-        instrucciones:r.instrucciones||r.Instrucciones||(lang==='en'?'No preparation steps available.':'Sin pasos de preparación disponibles.'),
+        nombre:       r.nombre||r.nombre_receta||meal.Nombre_Receta,
+        tipo:         r.tipo||meal.Tipo||'',
+        calorias:     Math.round(parseFloat(r.calorias||r.calorias_totales||meal.Calorias_Totales)||0),
+        proteinas_g:  Math.round(parseFloat(r.proteinas_g||meal.Proteinas_g)||0),
+        hidratos_g:   Math.round(parseFloat(r.hidratos_g||meal.Hidratos_g)||0),
+        grasas_g:     Math.round(parseFloat(r.grasas_g||meal.Grasas_g)||0),
+        ingredientes: r.ingredientes||'',
+        instrucciones:r.instrucciones||(lang==='en'?'No preparation steps available.':'Sin pasos de preparación disponibles.'),
       });
     } else {
       // No se encontró en el recetario: mostrar al menos los macros del plan
