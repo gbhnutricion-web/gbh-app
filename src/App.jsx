@@ -3261,11 +3261,41 @@ function GBHApp(){
     });
   },[]);
 
-  // ── Service Worker — solo para caché offline, sin auto-reload ──────────────
+  // ── Service Worker — caché offline + auto-actualización ────────────────────
   useEffect(()=>{
     if(!("serviceWorker" in navigator)) return;
     navigator.serviceWorker.register("/sw.js")
+      .then(reg=>{
+        const checkUpdate=()=>reg.update().catch(()=>{});
+        document.addEventListener("visibilitychange",()=>{ if(!document.hidden) checkUpdate(); });
+        reg.addEventListener("updatefound",()=>{
+          const nw=reg.installing;
+          if(!nw) return;
+          nw.addEventListener("statechange",()=>{
+            if(nw.state==="installed" && navigator.serviceWorker.controller){
+              nw.postMessage&&nw.postMessage({type:"SKIP_WAITING"});
+            }
+          });
+        });
+      })
       .catch(err=>console.warn("[SW] registro fallido:",err));
+
+    let yaRecargado=false;
+    navigator.serviceWorker.addEventListener("controllerchange",()=>{
+      if(yaRecargado) return;
+      yaRecargado=true;
+      window.location.reload();
+    });
+
+    navigator.serviceWorker.addEventListener("message",(e)=>{
+      if(e.data&&e.data.type==="SW_UPDATED"){
+        const key="gbh:swReloaded:"+e.data.version;
+        if(!sessionStorage.getItem(key)){
+          sessionStorage.setItem(key,"1");
+          window.location.reload();
+        }
+      }
+    });
   },[]);
 
   // ── PWA install prompt ──────────────────────────────────────────────────────
