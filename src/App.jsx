@@ -5642,7 +5642,7 @@ function PlanTab({profile,lang}){
           </div>
         </div>
         <div style={{padding:'0 16px 12px'}}>
-          <div style={{fontSize:13,fontWeight:900,color:T.t2,fontFamily:"'Nunito',sans-serif"}}>{PLAN_DIAS_F[selDay-1]}{selDay===todayPlan?` · ${lang==='en'?'Today':'Hoy'}':''} · {lang==='en'?'Week':'Semana'} {plan.semana}</div>
+          <div style={{fontSize:13,fontWeight:900,color:T.t2,fontFamily:"'Nunito',sans-serif"}}>{PLAN_DIAS_F[selDay-1]}{selDay===todayPlan?` · ${lang==='en'?'Today':'Hoy'}`:''} · {lang==='en'?'Week':'Semana'} {plan.semana}</div>
         </div>
         <div style={{padding:'0 16px',display:'flex',flexDirection:'column',gap:10}}>
           {PLAN_TOMAS.map(toma=>{
