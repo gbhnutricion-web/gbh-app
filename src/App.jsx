@@ -21,7 +21,7 @@ const TRANS = {
     noConnRecover:"Sin conexión. Conéctate a internet para recuperar tu cuenta.",
     // Nav
     tabHome:"Inicio", tabRecipe:"Receta", tabWeight:"Peso",
-    tabRanking:"Ranking", tabAchievements:"Logros", tabCalc:"Progreso",
+    tabRanking:"Ranking", tabAchievements:"Logros", tabCalc:"Objetivo", tabPlan:"Prog.",
     // Tiers / levels
     tiers:["Novato","Aprendiz","Constante","Comprometido","Disciplinado","Atleta","Experto","Élite","Maestro","Leyenda"],
     champion:"Campeón GBH",
@@ -215,7 +215,7 @@ const TRANS = {
     noConnRecover:"No connection. Connect to the internet to recover your account.",
     // Nav
     tabHome:"Home", tabRecipe:"Recipe", tabWeight:"Weight",
-    tabRanking:"Ranking", tabAchievements:"Medals", tabCalc:"Progress",
+    tabRanking:"Ranking", tabAchievements:"Medals", tabCalc:"Goal", tabPlan:"Schedule",
     // Tiers / levels
     tiers:["Beginner","Apprentice","Consistent","Committed","Disciplined","Athlete","Expert","Elite","Master","Legend"],
     champion:"GBH Champion",
@@ -3768,29 +3768,25 @@ function GBHApp(){
   },[profile,logs,addXG]);
 
   // Verificación retroactiva: detecta logros cumplidos que nunca se procesaron.
-  // BUG CORREGIDO: useRef se resetea en cada recarga de página → usar localStorage
-  // como flag persistente para que el check ocurra UNA SOLA VEZ POR USUARIO total.
+  // Se ejecuta UNA VEZ al cargar el perfil con datos reales.
   const _retroCheckedFor=React.useRef(null);
   React.useEffect(()=>{
     if(!profile||logs.length===0) return;
-    // Flag persistente en localStorage — sobrevive recargas y reinicios
-    const retroKey=`gbh:retroCheck:${profile.id}`;
-    if(lsGet(retroKey,false)) return;           // ya hecho → nunca más
-    if(_retroCheckedFor.current===profile.id) return; // ya corriendo en esta sesión
+    if(_retroCheckedFor.current===profile.id) return;
     _retroCheckedFor.current=profile.id;
-    lsSet(retroKey,true); // marcar ANTES de correr — evita ejecuciones dobles
     setTimeout(()=>{
-      // Leer badges desde localStorage (fuente de verdad, evita closure estale)
-      const storedBadges=lsGet(`gbh:badges:${profile.id}`,[]);
-      // Calcular racha efectiva desde logs (no desde estado, puede ser 0 si hoy no completado)
+      // Calcular racha efectiva desde los propios logs, independiente del estado.
+      // Si hoy no está completado, la racha histórica sigue siendo válida para badges.
       let effStreak=0;
+      // Intentar desde hoy
       let dd=new Date();
       while(logs.find(l=>l.date===toKey(dd)&&l.diet)){effStreak++;dd.setDate(dd.getDate()-1);}
+      // Si hoy no hecho, intentar desde ayer
       if(effStreak===0){
         dd=new Date();dd.setDate(dd.getDate()-1);
         while(logs.find(l=>l.date===toKey(dd)&&l.diet)){effStreak++;dd.setDate(dd.getDate()-1);}
       }
-      chkBadges(effStreak,weights,storedBadges);
+      chkBadges(effStreak,weights,badges);
     },1200);
   },[profile?.id,logs.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -5472,7 +5468,9 @@ function GBHApp(){
 
         {tab==="progreso"&&<CalcTab weights={weights} profile={profile} lang={lang}/>}
 
-                {tab==="achievements"&&<>
+        {tab==="plan"&&<PlanTab profile={profile} lang={lang}/>}
+
+
           <Card style={{display:"flex",justifyContent:"space-around",alignItems:"center",padding:"16px"}}>
             <div style={{textAlign:"center"}}><div style={{fontSize:26,fontWeight:900,color:T.au1}}>{badges.length}/{BADGES.length}</div><div style={{color:T.t2,fontSize:11,fontFamily:"'DM Sans',sans-serif"}}>{t("achievementsLabel")}</div></div>
             <div style={{textAlign:"center"}}><div style={{fontSize:26,fontWeight:900,color:T.xp}}>{xp}</div><div style={{color:T.t2,fontSize:11,fontFamily:"'DM Sans',sans-serif"}}>{t("xpTotalLabel")}</div></div>
@@ -5511,7 +5509,7 @@ function GBHApp(){
       {/* ── BOTTOM NAV ────────────────────────────────────────────────────── */}
       <div className="nav-scroll" style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:420,background:"rgba(8,18,8,0.97)",backdropFilter:"blur(30px)",borderTop:`3px solid ${T.bW}`,zIndex:100,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
         <div style={{display:"flex",padding:"10px 4px 10px",minWidth:"min-content",width:"100%"}}>
-          {[{id:"home",icon:"🏠",l:t("tabHome")},{id:"receta",icon:"🍰",l:t("tabRecipe")},{id:"weight",icon:"⚖️",l:t("tabWeight")},{id:"progreso",icon:"🚀",l:t("tabCalc")},{id:"ranking",icon:"👑",l:t("tabRanking")},{id:"achievements",icon:"🏅",l:t("tabAchievements")}].map(({id,icon,l})=>(
+          {[{id:"home",icon:"🏠",l:t("tabHome")},{id:"receta",icon:"🍰",l:t("tabRecipe")},{id:"weight",icon:"⚖️",l:t("tabWeight")},{id:"progreso",icon:"🚀",l:t("tabCalc")},{id:"ranking",icon:"👑",l:t("tabRanking")},{id:"achievements",icon:"🏅",l:t("tabAchievements")},{id:"plan",icon:"📆",l:t("tabPlan")}].map(({id,icon,l})=>(
             <button key={id} onClick={()=>{ sfx("tap"); setTab(id); }} style={{...tabSt(tab===id),flex:"1 0 60px",minWidth:60,padding:"8px 6px"}}>
               <span style={{fontSize:24,filter:tab===id?"none":"grayscale(0.6)",transition:"all 0.2s"}}>{icon}</span>
               <span style={{fontSize:9,whiteSpace:"nowrap"}}>{l}</span>
@@ -5525,8 +5523,477 @@ function GBHApp(){
   );
 }
 
-// ─── RewardsModal — tabla de recompensas por nivel ───────────────────────────
-function RewardsModal({onClose, currentLevel}){
+// ─── PlanTab — programación semanal del paciente ────────────────────────────
+const PLAN_DIAS    = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+const PLAN_DIAS_F  = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+const PLAN_TOMAS   = ['Desayuno','Almuerzo','Comida','Merienda','Cena'];
+const PLAN_TOMA_IC = {Desayuno:'☀️',Almuerzo:'🍎',Comida:'🍽️',Merienda:'🥤',Cena:'🌙'};
+const PLAN_TIPO_IC = {Carne:'🥩',Pescado:'🐟',Vegetariana:'🥗',Vegana:'🌱',
+                      Ensalada:'🥬','Sopa/Crema':'🍲',Postre:'🍰',Directo:'🍃'};
+const PLAN_TIPO_BG = {
+  Carne:'rgba(192,57,43,0.22)',    Pescado:'rgba(41,128,185,0.22)',
+  Vegetariana:'rgba(39,174,96,0.18)', Vegana:'rgba(22,160,133,0.18)',
+  Ensalada:'rgba(139,195,74,0.18)', 'Sopa/Crema':'rgba(230,126,34,0.22)',
+  Postre:'rgba(214,70,158,0.22)',  Directo:'rgba(212,175,55,0.22)',
+};
+const PLAN_TIPO_COLOR={Carne:'#E57373',Pescado:'#64B5F6',Vegetariana:'#81C784',
+  Vegana:'#A5D6A7',Postre:'#F06292',Ensalada:'#AED581','Sopa/Crema':'#FFB74D'};
+
+function PlanTab({profile,lang}){
+  const isPremium = profile?.plan==='premium';
+
+  // ── Estado principal ──────────────────────────────────────────────────────
+  const [planes,      setPlanes]      = React.useState([]);
+  const [idx,         setIdx]         = React.useState(0);
+  const [loading,     setLoading]     = React.useState(true);
+  const [view,        setView]        = React.useState(null); // null|'plan'|'pdf'|'daily'
+  // Estado de la vista diaria
+  const todayJS   = new Date().getDay(); // 0=Dom
+  const todayPlan = todayJS===0?7:todayJS; // 1=Lun…7=Dom
+  const [selDay,      setSelDay]      = React.useState(todayPlan);
+  const [openToma,    setOpenToma]    = React.useState(null);
+  const [tomaReceta,  setTomaReceta]  = React.useState(null);
+  const [loadingToma, setLoadingToma] = React.useState(false);
+
+  // Resetear vista diaria al cambiar semana
+  React.useEffect(()=>{ setView(null); setOpenToma(null); setTomaReceta(null); },[idx]);
+  React.useEffect(()=>{ setOpenToma(null); setTomaReceta(null); },[selDay]);
+
+  React.useEffect(()=>{
+    if(!profile) return;
+    if(!isPremium){ setLoading(false); return; }
+    sbReq('GET',`weekly_plans?profile_id=eq.${profile.id}&select=semana,plan_json,fecha_gen,pdf_url&order=semana.desc&limit=12`)
+      .then(r=>{ setPlanes(r||[]); setLoading(false); });
+  },[profile?.id]);
+
+  const plan  = planes[idx];
+  const planJ = plan?.plan_json;
+
+  // ── Cargar receta completa desde Supabase ─────────────────────────────────
+  async function abrirToma(toma){
+    const meal = planJ?.[toma]?.[String(selDay)];
+    if(!meal?.Nombre_Receta) return;
+    setOpenToma(toma);
+    setTomaReceta(null);
+    setLoadingToma(true);
+    const n = encodeURIComponent(meal.Nombre_Receta);
+    let rs = await sbReq('GET',`recipes?nombre_receta=eq.${n}&limit=1`);
+    if(!rs?.length) rs = await sbReq('GET',`recipes?Nombre_Receta=eq.${n}&limit=1`);
+    if(rs?.length){
+      const r=rs[0];
+      setTomaReceta({
+        nombre:       r.nombre_receta||r.Nombre_Receta||meal.Nombre_Receta,
+        tipo:         r.tipo||r.Tipo||meal.Tipo||'',
+        calorias:     Math.round(parseFloat(r.calorias_totales||r.Calorias_Totales||meal.Calorias_Totales)||0),
+        proteinas_g:  Math.round(parseFloat(r.proteinas_g||r.Proteinas_g||meal.Proteinas_g)||0),
+        hidratos_g:   Math.round(parseFloat(r.hidratos_g||r.Hidratos_g||meal.Hidratos_g)||0),
+        grasas_g:     Math.round(parseFloat(r.grasas_g||r.Grasas_g||meal.Grasas_g)||0),
+        ingredientes: r.ingredientes||r.Ingredientes||'',
+        instrucciones:r.instrucciones||r.Instrucciones||'',
+      });
+    } else {
+      // Fallback: solo datos del plan_json (sin ingredientes/pasos)
+      setTomaReceta({
+        nombre:       meal.Nombre_Receta,
+        tipo:         meal.Tipo||'',
+        calorias:     Math.round(parseFloat(meal.Calorias_Totales)||0),
+        proteinas_g:  Math.round(parseFloat(meal.Proteinas_g)||0),
+        hidratos_g:   Math.round(parseFloat(meal.Hidratos_g)||0),
+        grasas_g:     Math.round(parseFloat(meal.Grasas_g)||0),
+        ingredientes: '',
+        instrucciones: lang==='en'?'No recipe details found in the database.':'No se encontraron detalles de la receta en la base de datos.',
+      });
+    }
+    setLoadingToma(false);
+  }
+
+  // ── Pantalla "en desarrollo" ──────────────────────────────────────────────
+  if(!isPremium) return(
+    <div style={{padding:'48px 24px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:16}}>
+      <div style={{fontSize:56}}>🚀</div>
+      <div style={{fontSize:18,fontWeight:900,color:T.t1,lineHeight:1.3}}>{lang==='en'?'Coming soon!':'¡Próximamente!'}</div>
+      <div style={{fontSize:14,color:T.t2,lineHeight:1.7,maxWidth:280,fontFamily:"'DM Sans',sans-serif"}}>
+        {lang==='en'?'Application under development.\nWe\'ll be with you very soon!':'Aplicación en desarrollo,\nte esperamos muy pronto! 🌱'}
+      </div>
+      <div style={{marginTop:8,background:'rgba(88,204,2,0.08)',border:`1.5px solid ${T.bG}`,borderRadius:16,padding:'14px 24px'}}>
+        <div style={{fontSize:12,color:T.g1,fontWeight:700}}>@gbhnutricion</div>
+        <div style={{fontSize:11,color:T.t3,marginTop:3,fontFamily:"'DM Sans',sans-serif"}}>{lang==='en'?'Follow us for updates':'Síguenos para novedades'}</div>
+      </div>
+    </div>
+  );
+
+  if(loading) return <div style={{padding:32,textAlign:'center',fontSize:13,color:T.t2}}>{lang==='en'?'Loading…':'Cargando…'}</div>;
+  if(!planes.length) return(
+    <div style={{padding:'32px 16px',textAlign:'center'}}>
+      <div style={{fontSize:44,marginBottom:12}}>📭</div>
+      <div style={{fontSize:15,fontWeight:900,color:T.t1,marginBottom:8}}>{lang==='en'?'No plan yet':'Aún no tienes programación'}</div>
+      <div style={{fontSize:13,color:T.t2,lineHeight:1.6,fontFamily:"'DM Sans',sans-serif"}}>{lang==='en'?'Your nutritionist will upload it soon.':'Tu nutricionista la generará pronto.'}</div>
+    </div>
+  );
+
+  const fechaStr = plan.fecha_gen?new Date(plan.fecha_gen).toLocaleDateString(lang==='en'?'en-GB':'es-ES',{day:'numeric',month:'short'}):'';
+
+  // ── Navegador de semanas (compartido entre vistas) ────────────────────────
+  const WeekNav=()=>(
+    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 16px 10px',gap:8}}>
+      <button onClick={()=>setIdx(i=>Math.min(i+1,planes.length-1))} disabled={idx>=planes.length-1}
+        style={{background:'none',border:`1.5px solid ${idx>=planes.length-1?'rgba(255,255,255,0.1)':T.bG}`,
+                borderRadius:10,color:idx>=planes.length-1?T.t3:T.g1,fontSize:18,width:36,height:36,
+                cursor:idx>=planes.length-1?'default':'pointer',flexShrink:0}}>‹</button>
+      <div style={{textAlign:'center',flex:1}}>
+        <div style={{fontWeight:900,fontSize:15,color:T.t1}}>{lang==='en'?'Week':'Semana'} {plan.semana}</div>
+        {fechaStr&&<div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:2}}>{lang==='en'?'Generated':'Generado'} {fechaStr}</div>}
+      </div>
+      <button onClick={()=>setIdx(i=>Math.max(i-1,0))} disabled={idx<=0}
+        style={{background:'none',border:`1.5px solid ${idx<=0?'rgba(255,255,255,0.1)':T.bG}`,
+                borderRadius:10,color:idx<=0?T.t3:T.g1,fontSize:18,width:36,height:36,
+                cursor:idx<=0?'default':'pointer',flexShrink:0}}>›</button>
+    </div>
+  );
+
+  const BtnVolver=({onClick})=>(
+    <button onClick={onClick} style={{background:'none',border:'none',color:T.g1,fontSize:13,fontWeight:700,
+      cursor:'pointer',padding:'0 16px 10px',fontFamily:"'Nunito',sans-serif",display:'flex',alignItems:'center',gap:4}}>
+      ← {lang==='en'?'Back':'Volver'}
+    </button>
+  );
+
+  const DotsNav=()=>planes.length>1?(
+    <div style={{display:'flex',justifyContent:'center',gap:6,padding:'8px 0 4px'}}>
+      {planes.map((_,i)=>(
+        <div key={i} onClick={()=>setIdx(i)}
+          style={{width:i===idx?20:7,height:7,borderRadius:4,
+                  background:i===idx?T.g1:'rgba(255,255,255,0.15)',cursor:'pointer',transition:'all 0.3s'}}/>
+      ))}
+    </div>
+  ):null;
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // VISTA: botones principales
+  // ══════════════════════════════════════════════════════════════════════════
+  if(view===null) return(
+    <div style={{paddingBottom:16}}>
+      <WeekNav/>
+      <div style={{padding:'12px 16px',display:'flex',flexDirection:'column',gap:12}}>
+
+        <button onClick={()=>setView('plan')}
+          style={{background:'rgba(46,125,82,0.18)',border:`2px solid rgba(46,125,82,0.4)`,
+                  borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',
+                  display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
+          <div style={{fontSize:40,flexShrink:0}}>📅</div>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>
+              {lang==='en'?'Weekly Plan':'Planificación semanal'}
+            </div>
+            <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>
+              {lang==='en'?'Full meal plan for the week':'Menú completo de la semana con todas las tomas'}
+            </div>
+          </div>
+          <div style={{color:T.g1,fontSize:20,flexShrink:0}}>›</div>
+        </button>
+
+        <button onClick={()=>setView('pdf')}
+          style={{background:'rgba(255,200,0,0.10)',border:`2px solid rgba(255,200,0,0.3)`,
+                  borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',
+                  display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
+          <div style={{fontSize:40,flexShrink:0}}>📒</div>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>
+              {lang==='en'?'Recipes & Shopping List':'Recetas y lista de la compra'}
+            </div>
+            <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>
+              {lang==='en'?'Download the PDF with your weekly recipes':'Descarga el PDF con recetas y lista del súper'}
+            </div>
+          </div>
+          <div style={{color:T.au1,fontSize:20,flexShrink:0}}>›</div>
+        </button>
+
+        <button onClick={()=>setView('daily')}
+          style={{background:'rgba(100,181,246,0.12)',border:`2px solid rgba(100,181,246,0.3)`,
+                  borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',
+                  display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
+          <div style={{fontSize:40,flexShrink:0}}>🍽️</div>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>
+              {lang==='en'?'Daily Schedule':'Programación diaria'}
+            </div>
+            <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>
+              {lang==='en'?'Your meals for today with full recipe details':'Tus platos de hoy con receta e ingredientes'}
+            </div>
+          </div>
+          <div style={{color:'#64B5F6',fontSize:20,flexShrink:0}}>›</div>
+        </button>
+
+      </div>
+      <DotsNav/>
+    </div>
+  );
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // VISTA: planificación semanal (tabla)
+  // ══════════════════════════════════════════════════════════════════════════
+  if(view==='plan') return(
+    <div style={{paddingBottom:8}}>
+      <WeekNav/>
+      <BtnVolver onClick={()=>setView(null)}/>
+      <div style={{overflowX:'auto',WebkitOverflowScrolling:'touch',paddingBottom:8}}>
+        <div style={{minWidth:560,padding:'0 10px'}}>
+          <div style={{display:'grid',gridTemplateColumns:'72px repeat(7,1fr)',gap:3,marginBottom:3}}>
+            <div style={{background:'rgba(255,255,255,0.04)',borderRadius:10,padding:'6px 4px',textAlign:'center',fontSize:10,color:T.t3,fontWeight:700}}>{lang==='en'?'Meal':'Toma'}</div>
+            {PLAN_DIAS.map((d,i)=>(
+              <div key={d} style={{background:i>=5?'rgba(74,158,110,0.25)':'rgba(46,125,82,0.25)',borderRadius:10,padding:'6px 2px',textAlign:'center',fontSize:10,color:i>=5?'#7fe89c':T.g1,fontWeight:900}}>{d}</div>
+            ))}
+          </div>
+          {PLAN_TOMAS.map(toma=>{
+            if(!planJ?.[toma]) return null;
+            const celdas=planJ[toma];
+            const colores=['rgba(61,100,200,0.18)','rgba(180,90,20,0.18)','rgba(110,40,160,0.18)','rgba(20,140,80,0.18)','rgba(160,30,80,0.18)'];
+            let ci=0;const visto={};const colorIdx={};
+            for(let c=1;c<=7;c++){const nom=celdas[String(c)]?.Nombre_Receta||'';if(!nom)continue;if(!(nom in visto)){visto[nom]=ci%colores.length;ci++;}colorIdx[c]=visto[nom];}
+            return(
+              <div key={toma} style={{display:'grid',gridTemplateColumns:'72px repeat(7,1fr)',gap:3,marginBottom:3}}>
+                <div style={{background:'rgba(46,125,82,0.2)',border:'1px solid rgba(46,125,82,0.35)',borderRadius:10,padding:'8px 3px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2}}>
+                  <span style={{fontSize:14}}>{PLAN_TOMA_IC[toma]||'🍴'}</span>
+                  <span style={{fontSize:8,color:'#7fe89c',fontWeight:900,textAlign:'center',lineHeight:1.2}}>{toma.toUpperCase()}</span>
+                </div>
+                {[1,2,3,4,5,6,7].map(col=>{
+                  const r=celdas[String(col)];
+                  if(!r?.Nombre_Receta) return <div key={col} style={{borderRadius:10,background:'rgba(255,255,255,0.03)',minHeight:64,border:'1px solid rgba(255,255,255,0.05)'}}/>;
+                  const tipoBg=PLAN_TIPO_BG[r.Tipo]||colores[colorIdx[col]||0];
+                  const tipoIc=PLAN_TIPO_IC[r.Tipo]||'🍴';
+                  const raction=r.racion_factor!=null?(Math.abs(r.racion_factor-1)<0.08?'':(r.racion_factor>1?'↑':'↓')):'';
+                  return(
+                    <div key={col} style={{background:tipoBg,border:'1px solid rgba(255,255,255,0.09)',borderRadius:10,padding:'6px 4px',minHeight:64,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:3}}>
+                      <span style={{fontSize:13}}>{tipoIc}</span>
+                      <span style={{fontSize:8.5,color:T.t1,fontWeight:700,textAlign:'center',lineHeight:1.3,wordBreak:'break-word',fontFamily:"'Nunito',sans-serif"}}>{r.Nombre_Receta}</span>
+                      {raction&&<span style={{fontSize:9,color:T.t3}}>{raction}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+          <div style={{display:'grid',gridTemplateColumns:'72px repeat(7,1fr)',gap:3,marginTop:3}}>
+            <div style={{background:'rgba(255,100,80,0.12)',border:'1px solid rgba(255,100,80,0.2)',borderRadius:10,padding:'6px 3px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2}}>
+              <span style={{fontSize:14}}>💡</span><span style={{fontSize:8,color:'#ff9080',fontWeight:900,textAlign:'center'}}>TIPS</span>
+            </div>
+            {[['🏋️','Ejercicio\n1h/día'],['','Paseo /\nMovilidad'],['📅','5 veces\nsemana'],['💧','Agua'],['🥛','1 – 1.5 L'],['⏰','Entre\ncomidas'],['✨','Hidra-\ntación']].map(([ic,tx],i)=>(
+              <div key={i} style={{background:i<3?'rgba(255,100,80,0.10)':'rgba(30,130,200,0.12)',border:`1px solid ${i<3?'rgba(255,100,80,0.2)':'rgba(30,130,200,0.25)'}`,borderRadius:10,padding:'6px 3px',minHeight:52,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2}}>
+                {ic&&<span style={{fontSize:11}}>{ic}</span>}
+                <span style={{fontSize:8,color:T.t2,textAlign:'center',lineHeight:1.3,whiteSpace:'pre-wrap',fontFamily:"'DM Sans',sans-serif"}}>{tx}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // VISTA: recetas y lista de la compra (PDF)
+  // ══════════════════════════════════════════════════════════════════════════
+  if(view==='pdf') return(
+    <div style={{padding:'0 0 16px'}}>
+      <WeekNav/>
+      <BtnVolver onClick={()=>setView(null)}/>
+      <div style={{padding:'8px 16px'}}>
+        {plan.pdf_url
+          ?<>
+            <div style={{textAlign:'center',marginBottom:20}}>
+              <div style={{fontSize:44,marginBottom:8}}>📒</div>
+              <div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:6}}>{lang==='en'?'Recipes & Shopping List':'Recetas y lista de la compra'}</div>
+              <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6,marginBottom:20}}>
+                {lang==='en'?`Week ${plan.semana} — tap to open`:`Semana ${plan.semana} — toca para abrir el PDF`}
+              </div>
+            </div>
+            <a href={plan.pdf_url} target='_blank' rel='noreferrer'
+              style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,background:`linear-gradient(135deg,${T.au1},${T.au2})`,color:'#000',fontWeight:900,fontSize:15,borderRadius:18,padding:'16px 24px',textDecoration:'none',boxShadow:`0 5px 0 ${T.au3}`}}>
+              <span style={{fontSize:20}}>📥</span>{lang==='en'?'Open PDF':'Abrir PDF'}
+            </a>
+          </>
+          :<div style={{textAlign:'center',padding:'16px 0'}}>
+            <div style={{fontSize:44,marginBottom:12}}>📭</div>
+            <div style={{fontWeight:900,fontSize:15,color:T.t1,marginBottom:8}}>{lang==='en'?'PDF not available yet':'PDF no disponible aún'}</div>
+            <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.7,marginBottom:20}}>
+              {lang==='en'?'Your nutritionist will share it via WhatsApp or Instagram.':'Tu nutricionista te lo enviará por WhatsApp o Instagram.'}
+            </div>
+            <a href='https://instagram.com/gbhnutricion' target='_blank' rel='noreferrer'
+              style={{display:'inline-flex',alignItems:'center',gap:8,background:'rgba(88,204,2,0.12)',border:`1.5px solid ${T.bG}`,color:T.g1,fontWeight:800,fontSize:13,borderRadius:14,padding:'12px 24px',textDecoration:'none'}}>
+              <span>💬</span> @gbhnutricion
+            </a>
+          </div>
+        }
+      </div>
+    </div>
+  );
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // VISTA: programación diaria
+  // ══════════════════════════════════════════════════════════════════════════
+  if(view==='daily'){
+    const tc  = tomaReceta?.(PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1)||T.g1;
+    const ti  = tomaReceta?.(PLAN_TIPO_IC[tomaReceta.tipo]||'🍽️')||'🍽️';
+    const ingList = tomaReceta?.ingredientes?.split(/,(?![^(]*\))/).map(s=>s.trim()).filter(Boolean)||[];
+
+    return(
+      <div style={{paddingBottom:16}}>
+        <WeekNav/>
+        <BtnVolver onClick={()=>{ if(openToma){setOpenToma(null);setTomaReceta(null);}else setView(null); }}/>
+
+        {/* ── Selector de día ── */}
+        {!openToma&&(
+          <div style={{overflowX:'auto',WebkitOverflowScrolling:'touch',padding:'0 16px 16px'}}>
+            <div style={{display:'flex',gap:8,minWidth:'min-content'}}>
+              {PLAN_DIAS.map((d,i)=>{
+                const dayNum=i+1;
+                const isToday=dayNum===todayPlan;
+                const isSel=dayNum===selDay;
+                return(
+                  <button key={d} onClick={()=>setSelDay(dayNum)}
+                    style={{flexShrink:0,padding:'10px 14px',borderRadius:14,border:'none',cursor:'pointer',
+                            background:isSel?`linear-gradient(135deg,${T.g1},${T.g2})`
+                                      :isToday?'rgba(88,204,2,0.15)':'rgba(255,255,255,0.06)',
+                            color:isSel?'#fff':isToday?T.g1:T.t2,
+                            fontWeight:isSel||isToday?900:600,fontSize:12,
+                            fontFamily:"'Nunito',sans-serif",
+                            boxShadow:isSel?`0 3px 0 ${T.g3}`:isToday?`0 0 0 1.5px ${T.bG}`:'none',
+                            transition:'all 0.2s',display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
+                    <span>{d}</span>
+                    {isToday&&!isSel&&<div style={{width:5,height:5,borderRadius:'50%',background:T.g1}}/>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── Cabecera del día seleccionado ── */}
+        {!openToma&&(
+          <div style={{padding:'0 16px 12px'}}>
+            <div style={{fontSize:13,fontWeight:900,color:T.t2,fontFamily:"'Nunito',sans-serif"}}>
+              {PLAN_DIAS_F[selDay-1]}{selDay===todayPlan?` · ${lang==='en'?'Today':'Hoy'}`:''} · {lang==='en'?'Week':'Semana'} {plan.semana}
+            </div>
+          </div>
+        )}
+
+        {/* ── Botones de toma (o receta expandida) ── */}
+        {!openToma
+          ? <div style={{padding:'0 16px',display:'flex',flexDirection:'column',gap:10}}>
+              {PLAN_TOMAS.map(toma=>{
+                const meal=planJ?.[toma]?.[String(selDay)];
+                const nombre=meal?.Nombre_Receta||'—';
+                const tipo=meal?.Tipo||'';
+                const hasMeal=!!meal?.Nombre_Receta;
+                const bg=hasMeal?(PLAN_TIPO_BG[tipo]||'rgba(255,255,255,0.06)'):'rgba(255,255,255,0.04)';
+                const ic=PLAN_TOMA_IC[toma]||'🍴';
+                const tipoIc=hasMeal?(PLAN_TIPO_IC[tipo]||''):'';
+                return(
+                  <button key={toma} onClick={()=>hasMeal&&abrirToma(toma)}
+                    disabled={!hasMeal}
+                    style={{background:bg,border:`1.5px solid ${hasMeal?'rgba(255,255,255,0.12)':'rgba(255,255,255,0.05)'}`,
+                            borderRadius:16,padding:'14px 16px',textAlign:'left',cursor:hasMeal?'pointer':'default',
+                            display:'flex',alignItems:'center',gap:12,transition:'all 0.2s'}}>
+                    <div style={{fontSize:26,width:44,height:44,display:'flex',alignItems:'center',justifyContent:'center',
+                                 borderRadius:14,background:'rgba(255,255,255,0.06)',flexShrink:0}}>
+                      {ic}
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:10,color:T.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:3,fontFamily:"'DM Sans',sans-serif"}}>{toma}</div>
+                      <div style={{fontSize:14,fontWeight:hasMeal?800:400,color:hasMeal?T.t1:T.t3,fontFamily:"'Nunito',sans-serif",
+                                   whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                        {tipoIc&&<span style={{marginRight:4}}>{tipoIc}</span>}{nombre}
+                      </div>
+                    </div>
+                    {hasMeal&&<div style={{color:T.t3,fontSize:18,flexShrink:0}}>›</div>}
+                  </button>
+                );
+              })}
+            </div>
+
+          /* ── Receta expandida ── */
+          : <div style={{padding:'0 16px 16px'}}>
+              {loadingToma&&(
+                <div style={{textAlign:'center',padding:40,fontSize:13,color:T.t2}}>
+                  {lang==='en'?'Loading recipe…':'Cargando receta…'}
+                </div>
+              )}
+              {!loadingToma&&tomaReceta&&(<>
+                {/* Cabecera toma */}
+                <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
+                  <span style={{fontSize:22}}>{PLAN_TOMA_IC[openToma]||'🍴'}</span>
+                  <div style={{fontSize:11,color:T.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',fontFamily:"'DM Sans',sans-serif"}}>{openToma}</div>
+                </div>
+
+                {/* Card nombre + tipo + macros */}
+                <div style={{background:T.bgCard,borderRadius:20,padding:'20px 18px',marginBottom:12,border:`1px solid rgba(255,255,255,0.07)`}}>
+                  <div style={{display:'flex',alignItems:'flex-start',gap:14,marginBottom:16}}>
+                    <div style={{fontSize:48,lineHeight:1,flexShrink:0}}>{PLAN_TIPO_IC[tomaReceta.tipo]||'🍽️'}</div>
+                    <div style={{flex:1}}>
+                      <div style={{display:'inline-block',background:`${PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1}22`,
+                                   border:`1.5px solid ${PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1}55`,
+                                   borderRadius:20,padding:'3px 12px',fontSize:10,fontWeight:900,
+                                   color:PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1,textTransform:'uppercase',
+                                   letterSpacing:'0.1em',marginBottom:8}}>
+                        {tomaReceta.tipo||'—'}
+                      </div>
+                      <div style={{fontSize:19,fontWeight:900,color:T.wh,lineHeight:1.25}}>{tomaReceta.nombre}</div>
+                    </div>
+                  </div>
+                  {/* Macros */}
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:8}}>
+                    {[
+                      {l:lang==='en'?'Calories':'Calorías', v:`${tomaReceta.calorias}`, u:'kcal', c:T.au1},
+                      {l:lang==='en'?'Protein':'Proteína',  v:`${tomaReceta.proteinas_g}`, u:'g', c:'#64B5F6'},
+                      {l:lang==='en'?'Carbs':'Carbos',      v:`${tomaReceta.hidratos_g}`, u:'g', c:T.g1},
+                      {l:lang==='en'?'Fat':'Grasas',        v:`${tomaReceta.grasas_g}`, u:'g', c:'#FFB74D'},
+                    ].map(({l,v,u,c})=>(
+                      <div key={l} style={{background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'10px 6px',textAlign:'center',border:'1px solid rgba(255,255,255,0.08)'}}>
+                        <div style={{fontSize:16,fontWeight:900,color:c}}>{v}</div>
+                        <div style={{fontSize:9,color:c,fontWeight:700,opacity:0.8}}>{u}</div>
+                        <div style={{fontSize:9,color:T.t3,marginTop:2,fontFamily:"'DM Sans',sans-serif"}}>{l}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Ingredientes */}
+                {ingList.length>0&&(
+                  <div style={{background:T.bgCard,borderRadius:20,padding:'18px 18px',marginBottom:12,border:'1px solid rgba(255,255,255,0.07)'}}>
+                    <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:12}}>
+                      {lang==='en'?'Ingredients':'Ingredientes'}
+                    </div>
+                    <div style={{display:'flex',flexDirection:'column',gap:7}}>
+                      {ingList.map((ing,i)=>(
+                        <div key={i} style={{display:'flex',alignItems:'flex-start',gap:10}}>
+                          <div style={{width:6,height:6,borderRadius:'50%',background:PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1,flexShrink:0,marginTop:6}}/>
+                          <div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>{ing}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Preparación */}
+                <div style={{background:T.bgCard,borderRadius:20,padding:'18px 18px',border:'1px solid rgba(255,255,255,0.07)'}}>
+                  <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:12}}>
+                    {lang==='en'?'Preparation':'Preparación'}
+                  </div>
+                  <div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.7,whiteSpace:'pre-wrap'}}>
+                    {tomaReceta.instrucciones}
+                  </div>
+                </div>
+              </>)}
+            </div>
+        }
+      </div>
+    );
+  }
+
+  return null;
+}
+
+
+({onClose, currentLevel}){
   const t=useLang();
   const [filter, setFilter] = React.useState("all");
   const rows = [];
