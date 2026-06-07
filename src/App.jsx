@@ -3573,6 +3573,13 @@ function GBHApp(){
         const badgeIds = remoteAch.map(r => r.badge_id);
         lsSet(`gbh:badges:${profileId}`, badgeIds);
       }
+      // 4. Restaurar estado de quiz y ruleta del día actual desde daily_logs
+      const hoy = toKey();
+      const logHoy = remoteLogs?.find(r => (r.log_date||r.date) === hoy);
+      if (logHoy) {
+        if (logHoy.quiz_done)   lsSet("gbh:quiz:"+profileId+":"+hoy, true);
+        if (logHoy.ruleta_done) lsSet("gbh:ruleta:"+profileId+":"+hoy, true);
+      }
     } catch(e) {
       console.warn("restoreFromServer error:", e);
     }
@@ -3580,6 +3587,11 @@ function GBHApp(){
 
   const loadP=useCallback(async(p)=>{
     setProfile(p);
+    // Restaurar foto de perfil desde Supabase si existe y no hay una local
+    if(p.avatar_b64 && !lsGet("gbh:userPhoto",null)){
+      setUserPhoto(p.avatar_b64);
+      lsSet("gbh:userPhoto", p.avatar_b64);
+    }
     const localLogs = lsGet(`gbh:logs:${p.id}`,[]);
     const localWeights = lsGet(`gbh:weights:${p.id}`,[]);
     // Restaurar desde Supabase solo si NO hay logs locales (primera instalación real)
@@ -3724,7 +3736,7 @@ function GBHApp(){
     const e={profile_id:profile.id,date:today,...nl,sc};
     if(idx>=0)l[idx]=e;else l.push(e);
     setLogs(l);lsSet(`gbh:logs:${profile.id}`,l);
-    await sbReq("POST","daily_logs",{profile_id:profile.id,log_date:today,diet_followed:nl.diet,steps_done:nl.steps,hydration_done:nl.hydration,sleep_done:nl.sleep,sc:sc||0});
+    await sbReq("POST","daily_logs?on_conflict=profile_id,log_date",{profile_id:profile.id,log_date:today,diet_followed:nl.diet,steps_done:nl.steps,hydration_done:nl.hydration,sleep_done:nl.sleep,sc:sc||0});
     // ── Sincronizar racha actual a Supabase para que el ranking sea global ──
     let _s=0;const _d=new Date();
     while(true){if(l.find(x=>x.date===toKey(_d)&&x.diet)){_s++;_d.setDate(_d.getDate()-1);}else break;}
@@ -3876,6 +3888,8 @@ function GBHApp(){
       const compressed = canvas.toDataURL("image/jpeg", 0.72);
       setUserPhoto(compressed);
       lsSet("gbh:userPhoto", compressed);
+      // Guardar también en Supabase para que sobreviva a borrados de caché
+      if(profile?.id) sbReq("PATCH",`profiles?id=eq.${profile.id}`,{avatar_b64:compressed});
     };
     img.src = b64;
   };
@@ -3964,6 +3978,8 @@ function GBHApp(){
     const today = toKey();
     lsSet("gbh:quiz:"+profile.id+":"+today, true);
     setQuizDone(true);
+    // Persistir en Supabase para que sobreviva a borrados de caché
+    sbReq("POST","daily_logs?on_conflict=profile_id,log_date",{profile_id:profile.id,log_date:today,quiz_done:true});
     await addXG(xpG, gemG);
   };
 
@@ -4012,6 +4028,8 @@ function GBHApp(){
     const today = toKey();
     lsSet("gbh:ruleta:"+profile.id+":"+today, true);
     setRuletaDone(true);
+    // Persistir en Supabase para que sobreviva a borrados de caché
+    sbReq("POST","daily_logs?on_conflict=profile_id,log_date",{profile_id:profile.id,log_date:today,ruleta_done:true});
     await addXG(xpG, gemG);
   };
 
