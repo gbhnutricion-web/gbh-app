@@ -3778,28 +3778,7 @@ function GBHApp(){
     },1200);
   },[profile?.id,logs.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Verificación retroactiva: detecta logros cumplidos que nunca se procesaron.
-  // Se ejecuta UNA VEZ al cargar el perfil con datos reales.
-  const _retroCheckedFor=React.useRef(null);
-  React.useEffect(()=>{
-    if(!profile||logs.length===0) return;
-    if(_retroCheckedFor.current===profile.id) return;
-    _retroCheckedFor.current=profile.id;
-    setTimeout(()=>{
-      // Calcular racha efectiva desde los propios logs, independiente del estado.
-      // Si hoy no está completado, la racha histórica sigue siendo válida para badges.
-      let effStreak=0;
-      // Intentar desde hoy
-      let dd=new Date();
-      while(logs.find(l=>l.date===toKey(dd)&&l.diet)){effStreak++;dd.setDate(dd.getDate()-1);}
-      // Si hoy no hecho, intentar desde ayer
-      if(effStreak===0){
-        dd=new Date();dd.setDate(dd.getDate()-1);
-        while(logs.find(l=>l.date===toKey(dd)&&l.diet)){effStreak++;dd.setDate(dd.getDate()-1);}
-      }
-      chkBadges(effStreak,weights,badges);
-    },1200);
-  },[profile?.id,logs.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
 
   const toggleM=useCallback(async(key)=>{
     const was=tLog[key];
@@ -5669,7 +5648,7 @@ function PlanTab({profile,lang}){
           {PLAN_TOMAS.map(toma=>{
             const meal=planJ?.[toma]?.[String(selDay)];
             const hasMeal=!!meal?.Nombre_Receta;
-            return(<button key={toma} onClick={()=>hasMeal&&abrirToma(toma)} disabled={!hasMeal} style={{background:hasMeal?(PLAN_TIPO_BG[meal?.Tipo]||'rgba(255,255,255,0.06)'):'rgba(255,255,255,0.04)',border:`1.5px solid ${hasMeal?'rgba(255,255,255,0.12)':'rgba(255,255,255,0.05)'}`,borderRadius:16,padding:'14px 16px',textAlign:'left',cursor:hasMeal?'pointer':'default',display:'flex',alignItems:'center',gap:12,transition:'all 0.2s'}}>
+            return(<button key={toma} onClick={()=>hasMeal&&abrirToma(toma)} disabled={!hasMeal} style={{background:hasMeal?(PLAN_TIPO_BG[meal?.Tipo]||'rgba(255,255,255,0.06)'):'rgba(255,255,255,0.04)',border:hasMeal?'1.5px solid rgba(255,255,255,0.12)':'1.5px solid rgba(255,255,255,0.05)',borderRadius:16,padding:'14px 16px',textAlign:'left',cursor:hasMeal?'pointer':'default',display:'flex',alignItems:'center',gap:12,transition:'all 0.2s'}}>
               <div style={{fontSize:26,width:44,height:44,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:14,background:'rgba(255,255,255,0.06)',flexShrink:0}}>{PLAN_TOMA_IC[toma]||'🍴'}</div>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:10,color:T.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:3,fontFamily:"'DM Sans',sans-serif"}}>{toma}</div>
