@@ -5533,10 +5533,34 @@ function PlanTab({profile,lang}){
   );
   if(loading) return <div style={{padding:32,textAlign:'center',fontSize:13,color:T.t2}}>{lang==='en'?'Loading…':'Cargando…'}</div>;
   if(!planes.length) return(
-    <div style={{padding:'32px 16px',textAlign:'center'}}>
-      <div style={{fontSize:44,marginBottom:12}}>📭</div>
-      <div style={{fontSize:15,fontWeight:900,color:T.t1,marginBottom:8}}>{lang==='en'?'No plan yet':'Aún no tienes programación'}</div>
-      <div style={{fontSize:13,color:T.t2,lineHeight:1.6,fontFamily:"'DM Sans',sans-serif"}}>{lang==='en'?'Your nutritionist will upload it soon.':'Tu nutricionista la generará pronto.'}</div>
+    <div style={{paddingBottom:16}}>
+      <div style={{padding:'24px 16px 8px',textAlign:'center'}}>
+        <div style={{fontSize:40,marginBottom:10}}>📆</div>
+        <div style={{fontSize:16,fontWeight:900,color:T.t1,marginBottom:8}}>
+          {lang==='en'?'Your plan isn\'t ready yet':'Tu programación todavía no está lista'}
+        </div>
+        <div style={{fontSize:13,color:T.t2,lineHeight:1.7,fontFamily:"'DM Sans',sans-serif",marginBottom:24}}>
+          {lang==='en'?'Check back soon for updates!':'¡Espera para nuevas actualizaciones!'}
+        </div>
+      </div>
+      {/* Botones visibles pero bloqueados */}
+      <div style={{padding:'0 16px',display:'flex',flexDirection:'column',gap:12}}>
+        {[
+          {icon:'📅',label:lang==='en'?'Weekly Plan':'Planificación semanal',sub:lang==='en'?'Full meal plan for the week':'Menú completo de la semana'},
+          {icon:'📒',label:lang==='en'?'Recipes & Shopping List':'Recetas y lista de la compra',sub:lang==='en'?'PDF with your weekly recipes':'PDF con recetas y lista del súper'},
+          {icon:'🍽️',label:lang==='en'?'Daily Schedule':'Programación diaria',sub:lang==='en'?'Today\'s meals with recipe details':'Tus platos de hoy con receta e ingredientes'},
+        ].map(({icon,label,sub})=>(
+          <div key={label} style={{background:'rgba(255,255,255,0.04)',border:'2px solid rgba(255,255,255,0.08)',
+                  borderRadius:20,padding:'20px 20px',display:'flex',alignItems:'center',gap:16,opacity:0.45}}>
+            <div style={{fontSize:40,flexShrink:0}}>{icon}</div>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{label}</div>
+              <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{sub}</div>
+            </div>
+            <div style={{color:'rgba(255,255,255,0.2)',fontSize:20,flexShrink:0}}>🔒</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
   const fechaStr=plan.fecha_gen?new Date(plan.fecha_gen).toLocaleDateString(lang==='en'?'en-GB':'es-ES',{day:'numeric',month:'short'}):'';
