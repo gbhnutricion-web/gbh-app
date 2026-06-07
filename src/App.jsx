@@ -3261,13 +3261,18 @@ function GBHApp(){
     });
   },[]);
 
-  // ── Service Worker — caché offline + auto-actualización ────────────────────
+  // ── Service Worker — caché offline + auto-actualización (sin bucles) ───────
   useEffect(()=>{
     if(!("serviceWorker" in navigator)) return;
+    // Marca de versión ya cargada en ESTA pestaña (clave: persiste tras el reload)
+    const VKEY="gbh:swActiveVersion";
     navigator.serviceWorker.register("/sw.js")
       .then(reg=>{
-        const checkUpdate=()=>reg.update().catch(()=>{});
-        document.addEventListener("visibilitychange",()=>{ if(!document.hidden) checkUpdate(); });
+        // Comprobar actualización al recuperar foco (no al cargar, para no recargar nada más entrar)
+        document.addEventListener("visibilitychange",()=>{
+          if(!document.hidden) reg.update().catch(()=>{});
+        });
+        // Cuando hay un SW nuevo instalado y esperando, activarlo
         reg.addEventListener("updatefound",()=>{
           const nw=reg.installing;
           if(!nw) return;
@@ -3280,20 +3285,21 @@ function GBHApp(){
       })
       .catch(err=>console.warn("[SW] registro fallido:",err));
 
-    let yaRecargado=false;
-    navigator.serviceWorker.addEventListener("controllerchange",()=>{
-      if(yaRecargado) return;
-      yaRecargado=true;
-      window.location.reload();
-    });
-
+    // ÚNICA vía de recarga: cuando el SW anuncia su versión activa.
+    // Solo recarga si la versión cambió respecto a la que ya teníamos cargada.
     navigator.serviceWorker.addEventListener("message",(e)=>{
-      if(e.data&&e.data.type==="SW_UPDATED"){
-        const key="gbh:swReloaded:"+e.data.version;
-        if(!sessionStorage.getItem(key)){
-          sessionStorage.setItem(key,"1");
-          window.location.reload();
-        }
+      if(!e.data||e.data.type!=="SW_UPDATED") return;
+      const nueva=e.data.version;
+      const previa=sessionStorage.getItem(VKEY);
+      if(!previa){
+        // Primera vez en esta sesión: guardar versión sin recargar
+        sessionStorage.setItem(VKEY,nueva);
+        return;
+      }
+      if(previa!==nueva){
+        // Versión realmente distinta → recargar UNA vez y guardar la nueva
+        sessionStorage.setItem(VKEY,nueva);
+        window.location.reload();
       }
     });
   },[]);
