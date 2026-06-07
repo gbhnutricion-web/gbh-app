@@ -5564,12 +5564,23 @@ function PlanTab({profile,lang}){
     const meal=planJ?.[toma]?.[String(selDay)];
     if(!meal?.Nombre_Receta) return;
     setOpenToma(toma);setTomaReceta(null);setLoadingToma(true);
-    const n=encodeURIComponent(meal.Nombre_Receta);
-    let rs=await sbReq('GET',`recipes?nombre_receta=eq.${n}&limit=1`);
-    if(!rs?.length) rs=await sbReq('GET',`recipes?Nombre_Receta=eq.${n}&limit=1`);
+    const nombreRaw=meal.Nombre_Receta;
+    const n=encodeURIComponent(nombreRaw);
+    // 1º intento: igualdad exacta (lowercase y capitalizado)
+    let rs=await sbReq('GET',`recipes?nombre_receta=eq.${n}&select=*&limit=1`);
+    if(!rs?.length) rs=await sbReq('GET',`recipes?Nombre_Receta=eq.${n}&select=*&limit=1`);
+    // 2º intento: ilike (tolerante a mayúsculas/acentos parciales)
+    if(!rs?.length) rs=await sbReq('GET',`recipes?nombre_receta=ilike.${n}&select=*&limit=1`);
+    if(!rs?.length) rs=await sbReq('GET',`recipes?Nombre_Receta=ilike.${n}&select=*&limit=1`);
+    // 3º intento: búsqueda parcial por las primeras palabras del nombre
+    if(!rs?.length){
+      const fragmento=encodeURIComponent('%'+nombreRaw.trim().split(/\s+/).slice(0,3).join(' ')+'%');
+      rs=await sbReq('GET',`recipes?nombre_receta=ilike.${fragmento}&select=*&limit=1`);
+      if(!rs?.length) rs=await sbReq('GET',`recipes?Nombre_Receta=ilike.${fragmento}&select=*&limit=1`);
+    }
     if(rs?.length){
       const r=rs[0];
-      setTomaReceta({nombre:r.nombre_receta||r.Nombre_Receta||meal.Nombre_Receta,tipo:r.tipo||r.Tipo||meal.Tipo||'',calorias:Math.round(parseFloat(r.calorias_totales||r.Calorias_Totales||meal.Calorias_Totales)||0),proteinas_g:Math.round(parseFloat(r.proteinas_g||r.Proteinas_g||meal.Proteinas_g)||0),hidratos_g:Math.round(parseFloat(r.hidratos_g||r.Hidratos_g||meal.Hidratos_g)||0),grasas_g:Math.round(parseFloat(r.grasas_g||r.Grasas_g||meal.Grasas_g)||0),ingredientes:r.ingredientes||r.Ingredientes||'',instrucciones:r.instrucciones||r.Instrucciones||''});
+      setTomaReceta({nombre:r.nombre_receta||r.Nombre_Receta||meal.Nombre_Receta,tipo:r.tipo||r.Tipo||meal.Tipo||'',calorias:Math.round(parseFloat(r.calorias_totales||r.Calorias_Totales||meal.Calorias_Totales)||0),proteinas_g:Math.round(parseFloat(r.proteinas_g||r.Proteinas_g||meal.Proteinas_g)||0),hidratos_g:Math.round(parseFloat(r.hidratos_g||r.Hidratos_g||meal.Hidratos_g)||0),grasas_g:Math.round(parseFloat(r.grasas_g||r.Grasas_g||meal.Grasas_g)||0),ingredientes:r.ingredientes||r.Ingredientes||'',instrucciones:r.instrucciones||r.Instrucciones||(lang==='en'?'No preparation steps available.':'Sin pasos de preparación disponibles.')});
     } else {
       setTomaReceta({nombre:meal.Nombre_Receta,tipo:meal.Tipo||'',calorias:Math.round(parseFloat(meal.Calorias_Totales)||0),proteinas_g:Math.round(parseFloat(meal.Proteinas_g)||0),hidratos_g:Math.round(parseFloat(meal.Hidratos_g)||0),grasas_g:Math.round(parseFloat(meal.Grasas_g)||0),ingredientes:'',instrucciones:lang==='en'?'No recipe details found.':'Detalle de receta no disponible.'});
     }
