@@ -1948,6 +1948,23 @@ function CalcTab({weights,profile,lang}){
       sex:cSex,height_cm:Math.round(h),age_range:ageLabel,
       activity:actLabel,target_kcal:safe,calc_updated_at:now,
     });
+    // 4 Supabase: escribir/actualizar patient_config para habilitar generación automática del plan
+    //   Usa valores por defecto para plan estándar: dieta Simple, todo igual cada día.
+    //   Si el nutricionista ya configuró valores personalizados, el on_conflict los respeta
+    //   porque solo hace upsert con los campos básicos.
+    sbReq("POST","patient_config?on_conflict=profile_id",{
+      profile_id:   profile.id,
+      tipo_dieta:   "Simple",
+      kcal_objetivo: safe,
+      patron_dias:  "Todo igual (LMXJVSD)",
+      tomas_comp:   "Comida, Cena",
+      semana_actual: 1,
+      auto_generado: true,
+      altura_cm:    Math.round(h),
+      sexo:         cSex,
+      actividad:    actLabel,
+      notas:        "",
+    });
   };
   const canCompute=!!currentW&&parseFloat(cHeight)>=100&&parseFloat(cHeight)<=250;
   const startEdit=()=>{
@@ -5511,7 +5528,7 @@ function GBHApp(){
 
 
         {tab==="progreso"&&<CalcTab weights={weights} profile={profile} lang={lang}/>}
-        {tab==="plan"&&<PlanTab profile={profile} lang={lang}/>}
+        {tab==="plan"&&<PlanTab profile={profile} lang={lang} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} showT={showT} sfx={sfx} t={t}/>}
       </div>
 
       {/* ── BOTTOM NAV ────────────────────────────────────────────────────── */}
@@ -5540,12 +5557,17 @@ const PLAN_TIPO_IC = {Carne:'🥩',Pescado:'🐟',Vegetariana:'🥗',Vegana:'�
 const PLAN_TIPO_BG = {Carne:'rgba(192,57,43,0.22)',Pescado:'rgba(41,128,185,0.22)',Vegetariana:'rgba(39,174,96,0.18)',Vegana:'rgba(22,160,133,0.18)',Ensalada:'rgba(139,195,74,0.18)','Sopa/Crema':'rgba(230,126,34,0.22)',Postre:'rgba(214,70,158,0.22)',Directo:'rgba(212,175,55,0.22)'};
 const PLAN_TIPO_COLOR={Carne:'#E57373',Pescado:'#64B5F6',Vegetariana:'#81C784',Vegana:'#A5D6A7',Postre:'#F06292',Ensalada:'#AED581','Sopa/Crema':'#FFB74D'};
 
-function PlanTab({profile,lang}){
+function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx,t}){
   const isPremium=profile?.plan==='premium';
+  const isStandard=profile?.plan==='standard';
+  const tieneAcceso=isPremium||isStandard;
+  const gems=profile?.gems??0;
   const [planes,setPlanes]=React.useState([]);
   const [idx,setIdx]=React.useState(0);
   const [loading,setLoading]=React.useState(true);
   const [view,setView]=React.useState(null);
+  const [config,setConfig]=React.useState(null);       // fila patient_config
+  const [configView,setConfigView]=React.useState(false); // pantalla de edición de plan
   const todayJS=new Date().getDay();
   const todayPlan=todayJS===0?7:todayJS;
   const [selDay,setSelDay]=React.useState(todayPlan);
@@ -5556,10 +5578,19 @@ function PlanTab({profile,lang}){
   React.useEffect(()=>{setOpenToma(null);setTomaReceta(null);},[selDay]);
   React.useEffect(()=>{
     if(!profile) return;
-    if(!isPremium){setLoading(false);return;}
-    sbReq('GET',`weekly_plans?profile_id=eq.${profile.id}&select=semana,plan_json,fecha_gen,pdf_url&order=semana.desc&limit=12`).then(r=>{setPlanes(r||[]);setLoading(false);});
+    if(!tieneAcceso){setLoading(false);return;}
+    Promise.all([
+      sbReq('GET',`weekly_plans?profile_id=eq.${profile.id}&select=semana,plan_json,fecha_gen,pdf_url&order=semana.desc&limit=12`),
+      sbReq('GET',`patient_config?profile_id=eq.${profile.id}&select=*&limit=1`),
+    ]).then(([wp,pc])=>{
+      setPlanes(wp||[]);
+      setConfig(pc&&pc.length?pc[0]:null);
+      setLoading(false);
+    });
   },[profile?.id]);
   const plan=planes[idx];const planJ=plan?.plan_json;
+  // ¿El paciente estándar ya configuró su plan?
+  const configCompleta = config?.config_completa === true;
   // Caché de todas las recetas (se carga una vez) para buscar por nombre sin
   // depender de acentos/codificación en la URL de PostgREST.
   const recetasCacheRef = React.useRef(null);
@@ -5620,7 +5651,92 @@ function PlanTab({profile,lang}){
     }
     setLoadingToma(false);
   }
-  if(!isPremium) return(
+
+  // ── Cambiar la receta por otra de composición similar (10 💎) ──────────────
+  async function cambiarRecetaToma(){
+    if(!tomaReceta||!profile) return;
+    if(gems < 10){
+      sfx&&sfx("error");
+      showT&&showT({icon:"💎",title:lang==='en'?'Not enough gems':'Sin gemas suficientes',sub:lang==='en'?'You need 10 💎 to change the recipe':'Necesitas 10 💎 para cambiar la receta'});
+      return;
+    }
+    const mapa = await cargarRecetasCache();
+    const tipoActual = tomaReceta.tipo;
+    const kcalActual = tomaReceta.calorias||0;
+    const nombreActual = normNombre(tomaReceta.nombre);
+    // Candidatas: mismo tipo, kcal parecidas (±20%), distinta a la actual
+    const candidatas = Object.values(mapa).filter(r=>{
+      const t2=(r.tipo||'');
+      const k2=parseFloat(r.calorias||r.calorias_totales)||0;
+      const n2=normNombre(r.nombre||r.nombre_receta||'');
+      const kcalOk = kcalActual===0 || (k2>=kcalActual*0.8 && k2<=kcalActual*1.2);
+      return t2===tipoActual && kcalOk && n2!==nombreActual;
+    });
+    let pool = candidatas;
+    // Si no hay del mismo tipo con kcal parecidas, relajar a solo mismo tipo
+    if(!pool.length){
+      pool = Object.values(mapa).filter(r=>(r.tipo||'')===tipoActual && normNombre(r.nombre||r.nombre_receta||'')!==nombreActual);
+    }
+    if(!pool.length){
+      showT&&showT({icon:"🚫",title:lang==='en'?'No alternative':'Sin alternativa',sub:lang==='en'?'No similar recipe available':'No hay receta similar disponible'});
+      return;
+    }
+    const elegida = pool[Math.floor(Math.random()*pool.length)];
+    // Descontar gemas
+    const newGems = gems - 10;
+    const updP = {...profile, gems:newGems};
+    setProfile(updP); lsSet(`gbh:p:${profile.id}`, updP);
+    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:newGems});
+    sfx&&sfx("recipe");
+    setTomaReceta({
+      nombre:       elegida.nombre||elegida.nombre_receta||'',
+      tipo:         elegida.tipo||tipoActual,
+      calorias:     Math.round(parseFloat(elegida.calorias||elegida.calorias_totales)||0),
+      proteinas_g:  Math.round(parseFloat(elegida.proteinas_g)||0),
+      hidratos_g:   Math.round(parseFloat(elegida.hidratos_g)||0),
+      grasas_g:     Math.round(parseFloat(elegida.grasas_g)||0),
+      ingredientes: elegida.ingredientes||'',
+      instrucciones:elegida.instrucciones||(lang==='en'?'No preparation steps available.':'Sin pasos de preparación disponibles.'),
+    });
+    showT&&showT({icon:"🍽️",title:lang==='en'?'New recipe!':'¡Nueva receta!',sub:'-10 💎'});
+  }
+
+  // ── Guardar la receta en el recetario personal (20 💎) ─────────────────────
+  const recetaYaGuardada = tomaReceta && (savedRecipes||[]).some(r=>normNombre(r.nombre)===normNombre(tomaReceta?.nombre));
+  async function guardarRecetaToma(){
+    if(!tomaReceta||!profile) return;
+    if(recetaYaGuardada) return;
+    if(gems < 20){
+      sfx&&sfx("error");
+      showT&&showT({icon:"💎",title:lang==='en'?'Not enough gems':'Sin gemas suficientes',sub:lang==='en'?'You need 20 💎 to save a recipe':'Necesitas 20 💎 para guardar una receta'});
+      return;
+    }
+    const newGems = gems - 20;
+    const updP = {...profile, gems:newGems};
+    setProfile(updP); lsSet(`gbh:p:${profile.id}`, updP);
+    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:newGems});
+    const entry = {
+      profile_id: profile.id,
+      recipe_id:  'plan_'+normNombre(tomaReceta.nombre).replace(/\s+/g,'_'),
+      nombre:        tomaReceta.nombre,
+      tipo:          tomaReceta.tipo,
+      calorias:      tomaReceta.calorias,
+      proteinas_g:   tomaReceta.proteinas_g,
+      hidratos_g:    tomaReceta.hidratos_g,
+      grasas_g:      tomaReceta.grasas_g,
+      ingredientes:  tomaReceta.ingredientes,
+      instrucciones: tomaReceta.instrucciones,
+      saved_at: new Date().toISOString(),
+    };
+    const newSaved = [entry, ...(savedRecipes||[])];
+    setSavedRecipes&&setSavedRecipes(newSaved);
+    lsSet(`gbh:saved_recipes:${profile.id}`, newSaved);
+    sbReq("POST","saved_recipes",entry);
+    sfx&&sfx("recipe");
+    showT&&showT({icon:"📖",title:lang==='en'?'Saved to your book!':'¡Guardada en tu recetario!',sub:tomaReceta.nombre});
+  }
+
+  if(!tieneAcceso) return(
     <div style={{padding:'48px 24px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:16}}>
       <div style={{fontSize:56}}>🚀</div>
       <div style={{fontSize:18,fontWeight:900,color:T.t1,lineHeight:1.3}}>{lang==='en'?'Coming soon!':'¡Próximamente!'}</div>
@@ -5631,6 +5747,15 @@ function PlanTab({profile,lang}){
     </div>
   );
   if(loading) return <div style={{padding:32,textAlign:'center',fontSize:13,color:T.t2}}>{lang==='en'?'Loading…':'Cargando…'}</div>;
+
+  // ── Pantalla de configuración del plan (paciente estándar) ──────────────────
+  if(configView || (isStandard && !configCompleta)) {
+    return <PlanConfig profile={profile} lang={lang} config={config} setConfig={setConfig}
+             sfx={sfx} showT={showT}
+             onClose={()=>setConfigView(false)}
+             primeraVez={isStandard && !configCompleta}/>;
+  }
+
   if(!planes.length) return(
     <div style={{paddingBottom:16}}>
       <div style={{padding:'24px 16px 8px',textAlign:'center'}}>
@@ -5659,6 +5784,13 @@ function PlanTab({profile,lang}){
             <div style={{color:'rgba(255,255,255,0.2)',fontSize:20,flexShrink:0}}>🔒</div>
           </div>
         ))}
+        {isStandard&&(
+          <button onClick={()=>setConfigView(true)} style={{background:'rgba(255,255,255,0.04)',border:'1.5px solid rgba(255,255,255,0.1)',borderRadius:16,padding:'14px 16px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:14,marginTop:4}}>
+            <div style={{fontSize:26,flexShrink:0}}>⚙️</div>
+            <div style={{flex:1}}><div style={{fontWeight:800,fontSize:14,color:T.t2,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Edit my plan':'Editar mi plan'}</div><div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>{lang==='en'?'Diet type and calorie distribution':'Tipo de alimentación y distribución calórica'}</div></div>
+            <div style={{color:T.t3,fontSize:16,flexShrink:0}}>›</div>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -5692,6 +5824,14 @@ function PlanTab({profile,lang}){
           <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Daily Schedule':'Programación diaria'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Your meals for today with full recipe details':'Tus platos de hoy con receta e ingredientes'}</div></div>
           <div style={{color:'#64B5F6',fontSize:20,flexShrink:0}}>›</div>
         </button>
+        {/* Botón editar plan (solo pacientes estándar) */}
+        {isStandard&&(
+          <button onClick={()=>setConfigView(true)} style={{background:'rgba(255,255,255,0.04)',border:'1.5px solid rgba(255,255,255,0.1)',borderRadius:16,padding:'14px 16px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:14,marginTop:4}}>
+            <div style={{fontSize:26,flexShrink:0}}>⚙️</div>
+            <div style={{flex:1}}><div style={{fontWeight:800,fontSize:14,color:T.t2,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Edit my plan':'Editar mi plan'}</div><div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>{lang==='en'?'Diet type and calorie distribution':'Tipo de alimentación y distribución calórica'}</div></div>
+            <div style={{color:T.t3,fontSize:16,flexShrink:0}}>›</div>
+          </button>
+        )}
       </div>
       <DotsNav/>
     </div>
@@ -5735,8 +5875,8 @@ function PlanTab({profile,lang}){
       <WeekNav/><BtnVolver onClick={()=>setView(null)}/>
       <div style={{padding:'8px 16px'}}>
         {plan.pdf_url
-          ?<a href={plan.pdf_url} target='_blank' rel='noreferrer' style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,background:'linear-gradient(135deg,'+T.au1+','+T.au2+')',color:'#000',fontWeight:900,fontSize:15,borderRadius:18,padding:'16px 24px',textDecoration:'none',boxShadow:'0 5px 0 '+T.au3,marginTop:16}}>
-            <span style={{fontSize:20}}>📥</span>{lang==='en'?'Open PDF':'Abrir PDF'}
+          ?<a href={plan.pdf_url} target='_blank' rel='noreferrer' download={`GBH_Recetas_S${plan.semana}.pdf`} style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,background:'linear-gradient(135deg,'+T.au1+','+T.au2+')',color:'#000',fontWeight:900,fontSize:15,borderRadius:18,padding:'16px 24px',textDecoration:'none',boxShadow:'0 5px 0 '+T.au3,marginTop:16}}>
+            <span style={{fontSize:20}}>📥</span>{lang==='en'?'Download PDF':'Descargar PDF'}
           </a>
           :<div style={{textAlign:'center',padding:'24px 0'}}>
             <div style={{fontSize:44,marginBottom:12}}>📭</div>
@@ -5819,6 +5959,32 @@ function PlanTab({profile,lang}){
             <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:12}}>{lang==='en'?'Preparation':'Preparación'}</div>
             <div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.7,whiteSpace:'pre-wrap'}}>{tomaReceta.instrucciones}</div>
           </div>
+
+          {/* Botones: cambiar receta (10💎) y guardar (20💎) */}
+          <div style={{display:'flex',gap:10,marginTop:12}}>
+            <button onClick={cambiarRecetaToma}
+              style={{flex:1,background:gems<10?'rgba(255,255,255,0.05)':'rgba(100,181,246,0.15)',
+                      border:gems<10?'1.5px solid rgba(255,255,255,0.08)':'1.5px solid rgba(100,181,246,0.4)',
+                      borderRadius:16,padding:'14px 10px',cursor:gems<10?'default':'pointer',
+                      display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
+              <span style={{fontSize:20}}>🔄</span>
+              <span style={{fontSize:12,fontWeight:900,color:gems<10?T.t3:'#64B5F6',fontFamily:"'Nunito',sans-serif"}}>
+                {lang==='en'?'Change':'Cambiar'}
+              </span>
+              <span style={{fontSize:10,color:T.t3}}>10 💎</span>
+            </button>
+            <button onClick={recetaYaGuardada?undefined:guardarRecetaToma}
+              style={{flex:1,background:recetaYaGuardada?'rgba(88,204,2,0.15)':(gems<20?'rgba(255,255,255,0.05)':'rgba(255,200,0,0.12)'),
+                      border:recetaYaGuardada?'1.5px solid '+T.bG:(gems<20?'1.5px solid rgba(255,255,255,0.08)':'1.5px solid rgba(255,200,0,0.35)'),
+                      borderRadius:16,padding:'14px 10px',cursor:recetaYaGuardada?'default':(gems<20?'default':'pointer'),
+                      display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
+              <span style={{fontSize:20}}>{recetaYaGuardada?'✅':'📖'}</span>
+              <span style={{fontSize:12,fontWeight:900,color:recetaYaGuardada?T.g1:(gems<20?T.t3:T.au1),fontFamily:"'Nunito',sans-serif"}}>
+                {recetaYaGuardada?(lang==='en'?'Saved':'Guardada'):(lang==='en'?'Save':'Guardar')}
+              </span>
+              <span style={{fontSize:10,color:T.t3}}>{recetaYaGuardada?'✓':'20 💎'}</span>
+            </button>
+          </div>
         </>)}
       </div>)}
     </div>);
@@ -5826,6 +5992,155 @@ function PlanTab({profile,lang}){
   return null;
 }
 
+
+// ─── PlanConfig — el paciente estándar configura su plan (dieta + distribución) ──
+function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,primeraVez}){
+  const TOMAS=[
+    {k:'dist_desayuno',label:lang==='en'?'Breakfast':'Desayuno',ic:'☀️'},
+    {k:'dist_almuerzo',label:lang==='en'?'Snack AM':'Almuerzo',ic:'🍎'},
+    {k:'dist_comida',  label:lang==='en'?'Lunch':'Comida',ic:'🍽️'},
+    {k:'dist_merienda',label:lang==='en'?'Snack PM':'Merienda',ic:'🥤'},
+    {k:'dist_cena',    label:lang==='en'?'Dinner':'Cena',ic:'🌙'},
+  ];
+  const DIETAS=[
+    {v:'Simple',     ic:'🍽️',label:lang==='en'?'Normal':'Normal',     sub:lang==='en'?'Everything':'De todo'},
+    {v:'Vegetariana',ic:'🥗',label:lang==='en'?'Vegetarian':'Vegetariano',sub:lang==='en'?'No meat/fish':'Sin carne ni pescado'},
+    {v:'Vegana',     ic:'🌱',label:lang==='en'?'Vegan':'Vegano',     sub:lang==='en'?'Plant-based':'100% vegetal'},
+  ];
+  const [dieta,setDieta]=React.useState(config?.tipo_dieta&&['Simple','Vegetariana','Vegana'].includes(config.tipo_dieta)?config.tipo_dieta:'Simple');
+  const [dist,setDist]=React.useState({
+    dist_desayuno: config?.dist_desayuno ?? 20,
+    dist_almuerzo: config?.dist_almuerzo ?? 10,
+    dist_comida:   config?.dist_comida   ?? 30,
+    dist_merienda: config?.dist_merienda ?? 10,
+    dist_cena:     config?.dist_cena     ?? 30,
+  });
+  const [guardando,setGuardando]=React.useState(false);
+
+  const total=Object.values(dist).reduce((a,b)=>a+b,0);
+
+  // Al mover una barra: el resto se reparte proporcionalmente para sumar 100
+  function cambiarToma(key,nuevo){
+    nuevo=Math.max(0,Math.min(100,Math.round(nuevo)));
+    const otras=TOMAS.map(t=>t.k).filter(k=>k!==key);
+    const sumaOtras=otras.reduce((a,k)=>a+dist[k],0);
+    const restante=100-nuevo;
+    const nuevoDist={...dist,[key]:nuevo};
+    if(sumaOtras<=0){
+      // repartir equitativamente
+      otras.forEach((k,i)=>{ nuevoDist[k]=Math.floor(restante/otras.length)+(i===0?restante%otras.length:0); });
+    } else {
+      let acum=0;
+      otras.forEach((k,i)=>{
+        if(i===otras.length-1){ nuevoDist[k]=restante-acum; }
+        else { const v=Math.round(dist[k]/sumaOtras*restante); nuevoDist[k]=v; acum+=v; }
+      });
+    }
+    setDist(nuevoDist);
+  }
+
+  async function guardar(){
+    if(guardando) return;
+    setGuardando(true);
+    const payload={
+      profile_id: profile.id,
+      tipo_dieta: dieta,
+      ...dist,
+      config_completa: true,
+      auto_generado: true,
+    };
+    await sbReq("POST","patient_config?on_conflict=profile_id",payload);
+    setConfig&&setConfig(prev=>({...(prev||{}),...payload}));
+    sfx&&sfx("recipe");
+    showT&&showT({icon:"✅",title:lang==='en'?'Plan saved!':'¡Plan guardado!',sub:lang==='en'?'Your nutritionist will prepare it':'Tu nutricionista lo preparará pronto'});
+    setGuardando(false);
+    onClose&&onClose();
+  }
+
+  return(
+    <div style={{paddingBottom:24}}>
+      <div style={{padding:'18px 16px 8px',textAlign:'center'}}>
+        <div style={{fontSize:34,marginBottom:6}}>🥗</div>
+        <div style={{fontSize:18,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif"}}>
+          {primeraVez?(lang==='en'?'Set up your plan':'Define tu plan'):(lang==='en'?'Edit your plan':'Editar tu plan')}
+        </div>
+        <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:4,lineHeight:1.5}}>
+          {lang==='en'?'Tell us your preferences so we can build your weekly plan':'Cuéntanos tus preferencias para crear tu programación semanal'}
+        </div>
+      </div>
+
+      {/* ── Tipo de alimentación ── */}
+      <div style={{padding:'12px 16px'}}>
+        <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:10}}>
+          {lang==='en'?'1 · Diet type':'1 · Tipo de alimentación'}
+        </div>
+        <div style={{display:'flex',gap:8}}>
+          {DIETAS.map(d=>{
+            const sel=dieta===d.v;
+            return(
+              <button key={d.v} onClick={()=>setDieta(d.v)}
+                style={{flex:1,background:sel?'rgba(88,204,2,0.15)':'rgba(255,255,255,0.04)',
+                        border:sel?'2px solid '+T.bG:'1.5px solid rgba(255,255,255,0.1)',
+                        borderRadius:16,padding:'14px 6px',cursor:'pointer',textAlign:'center',
+                        transition:'all 0.2s'}}>
+                <div style={{fontSize:26,marginBottom:4}}>{d.ic}</div>
+                <div style={{fontSize:12,fontWeight:900,color:sel?T.g1:T.t1,fontFamily:"'Nunito',sans-serif"}}>{d.label}</div>
+                <div style={{fontSize:9,color:T.t3,marginTop:2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.2}}>{d.sub}</div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Distribución calórica ── */}
+      <div style={{padding:'12px 16px'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+          <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em'}}>
+            {lang==='en'?'2 · Calorie split':'2 · Distribución de calorías'}
+          </div>
+          <div style={{fontSize:12,fontWeight:900,color:total===100?T.g1:'#FF8080'}}>
+            {total}%
+          </div>
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:16}}>
+          {TOMAS.map(toma=>(
+            <div key={toma.k}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                <span style={{fontSize:13,color:T.t1,fontWeight:700,fontFamily:"'Nunito',sans-serif"}}>
+                  {toma.ic} {toma.label}
+                </span>
+                <span style={{fontSize:13,fontWeight:900,color:T.g1}}>{dist[toma.k]}%</span>
+              </div>
+              <input type="range" min="0" max="100" step="5" value={dist[toma.k]}
+                onChange={e=>cambiarToma(toma.k,parseInt(e.target.value))}
+                style={{width:'100%',accentColor:T.g1,height:6,cursor:'pointer'}}/>
+            </div>
+          ))}
+        </div>
+        <button onClick={()=>setDist({dist_desayuno:20,dist_almuerzo:10,dist_comida:30,dist_merienda:10,dist_cena:30})}
+          style={{marginTop:14,background:'none',border:'none',color:T.t3,fontSize:12,fontWeight:700,cursor:'pointer',textDecoration:'underline',fontFamily:"'DM Sans',sans-serif"}}>
+          {lang==='en'?'Reset to recommended (20/10/30/10/30)':'Restablecer recomendado (20/10/30/10/30)'}
+        </button>
+      </div>
+
+      {/* ── Guardar ── */}
+      <div style={{padding:'16px 16px 0',display:'flex',flexDirection:'column',gap:10}}>
+        <button onClick={guardar} disabled={guardando||total!==100}
+          style={{background:total===100?'linear-gradient(135deg,'+T.g1+','+T.g2+')':'rgba(255,255,255,0.08)',
+                  color:total===100?'#fff':T.t3,fontWeight:900,fontSize:15,borderRadius:18,
+                  padding:'16px 24px',border:'none',cursor:total===100?'pointer':'default',
+                  boxShadow:total===100?'0 4px 0 '+T.g3:'none',fontFamily:"'Nunito',sans-serif"}}>
+          {guardando?(lang==='en'?'Saving…':'Guardando…'):total!==100?(lang==='en'?'Must total 100%':'Debe sumar 100%'):(lang==='en'?'Save my plan':'Guardar mi plan')}
+        </button>
+        {!primeraVez&&(
+          <button onClick={onClose} style={{background:'none',border:'none',color:T.t3,fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:"'Nunito',sans-serif"}}>
+            {lang==='en'?'Cancel':'Cancelar'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // ─── RewardsModal — tabla de recompensas por nivel ───────────────────────────
 function RewardsModal({onClose, currentLevel}){
