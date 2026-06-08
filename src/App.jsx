@@ -4272,6 +4272,126 @@ function GBHApp(){
   const tabSt=(a)=>({flex:1,padding:"10px 0 8px",background:"none",border:"none",color:a?T.au1:T.t2,fontSize:9,fontWeight:a?900:700,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,textTransform:"uppercase",letterSpacing:"0.07em",transition:"all 0.18s",fontFamily:"'Nunito',sans-serif"});
   const inp={width:"100%",background:"rgba(255,255,255,0.07)",border:`2px solid ${T.bW}`,borderRadius:16,padding:"15px 18px",color:T.cr,fontSize:16,fontWeight:700,fontFamily:"'DM Sans',sans-serif"};
 
+  // ── INSTAGRAM IN-APP BROWSER DETECTION ───────────────────────────────────────
+  // Instagram (y Facebook) abren los enlaces en su propio webview, que tiene un
+  // localStorage aislado del navegador real. Esto causa que los datos del usuario
+  // no estén disponibles y la sesión parezca vacía.
+  // Solución: detectar el IAB y mostrar una pantalla que invite a abrir en Safari/Chrome.
+  const isInstagramIAB = useMemo(() => {
+    const ua = navigator.userAgent || "";
+    return /Instagram|FBAN|FBAV|FB_IAB|FB4A|FBIOS/.test(ua);
+  }, []);
+
+  if (isInstagramIAB) {
+    const currentUrl = window.location.href;
+    const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    const isAndroid = /Android/.test(navigator.userAgent);
+
+    // En iOS: el esquema x-safari-https:// fuerza abrir en Safari
+    // En Android: el intent:// es más fiable pero no universal; usamos el link directo
+    const openInBrowser = () => {
+      if (isIOS) {
+        // Intento 1: esquema propietario de Safari
+        window.location.href = currentUrl.replace(/^https?:\/\//, "x-safari-https://");
+        // Fallback: copiar al portapapeles
+        setTimeout(() => {
+          try { navigator.clipboard.writeText(currentUrl); } catch {}
+        }, 800);
+      } else if (isAndroid) {
+        // En Android intentamos abrir Chrome directamente
+        window.location.href =
+          "intent://" +
+          currentUrl.replace(/^https?:\/\//, "") +
+          "#Intent;scheme=https;package=com.android.chrome;end";
+      } else {
+        try { navigator.clipboard.writeText(currentUrl); } catch {}
+      }
+    };
+
+    return (
+      <LangCtx.Provider value={lang}>
+        <div style={{
+          fontFamily: "'Nunito',sans-serif",
+          background: `radial-gradient(ellipse at top, #1A3A10, ${T.bg})`,
+          minHeight: "100vh", maxWidth: 420, margin: "0 auto",
+          display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          padding: "32px 24px", color: T.t1, textAlign: "center",
+        }}>
+          <style>{CSS}</style>
+
+          {/* Mascota con expresión triste */}
+          <Mascot expr="sad" size={140} />
+
+          <div style={{ marginTop: 24, marginBottom: 8, fontSize: 26, fontWeight: 900, color: T.wh, lineHeight: 1.3 }}>
+            {lang === "en" ? "Open in your browser" : "Ábreme en tu navegador"}
+          </div>
+
+          <div style={{
+            fontSize: 14, color: T.t2,
+            fontFamily: "'DM Sans',sans-serif",
+            lineHeight: 1.6, marginBottom: 32, maxWidth: 300,
+          }}>
+            {lang === "en"
+              ? "Instagram's internal browser stores data separately. Your account and progress are in your real browser (Safari or Chrome)."
+              : "El navegador de Instagram guarda los datos por separado. Tu cuenta y progreso están en tu navegador real (Safari o Chrome)."}
+          </div>
+
+          {/* Botón principal */}
+          <button
+            onClick={openInBrowser}
+            style={{
+              width: "100%", maxWidth: 320,
+              padding: "18px 24px", borderRadius: 20,
+              border: `3px solid ${T.g3}`,
+              background: `linear-gradient(135deg,${T.g1},${T.g2})`,
+              color: "white", fontSize: 17, fontWeight: 900,
+              cursor: "pointer",
+              boxShadow: `0 8px 0 ${T.g3}`,
+              fontFamily: "'Nunito',sans-serif",
+              marginBottom: 16,
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+            }}
+          >
+            <span style={{ fontSize: 22 }}>{isIOS ? "🧭" : "🌐"}</span>
+            {lang === "en"
+              ? (isIOS ? "Open in Safari" : "Open in Chrome")
+              : (isIOS ? "Abrir en Safari" : "Abrir en Chrome")}
+          </button>
+
+          {/* Instrucción manual como fallback */}
+          <div style={{
+            background: "rgba(255,255,255,0.06)",
+            border: `1.5px solid rgba(255,255,255,0.12)`,
+            borderRadius: 16, padding: "14px 18px",
+            maxWidth: 320, width: "100%",
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 900, color: T.au1, marginBottom: 8 }}>
+              {lang === "en" ? "Or do it manually:" : "O hazlo manualmente:"}
+            </div>
+            {isIOS ? (
+              <div style={{ fontSize: 12, color: T.t2, fontFamily: "'DM Sans',sans-serif", lineHeight: 1.7 }}>
+                {lang === "en"
+                  ? <>1. Tap the <b style={{ color: T.wh }}>···</b> menu (top right)<br />2. Select <b style={{ color: T.wh }}>"Open in Safari"</b></>
+                  : <>1. Pulsa el menú <b style={{ color: T.wh }}>···</b> (arriba a la derecha)<br />2. Selecciona <b style={{ color: T.wh }}>"Abrir en Safari"</b></>}
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, color: T.t2, fontFamily: "'DM Sans',sans-serif", lineHeight: 1.7 }}>
+                {lang === "en"
+                  ? <>1. Tap the <b style={{ color: T.wh }}>⋮</b> menu (top right)<br />2. Select <b style={{ color: T.wh }}>"Open in Chrome"</b></>
+                  : <>1. Pulsa el menú <b style={{ color: T.wh }}>⋮</b> (arriba a la derecha)<br />2. Selecciona <b style={{ color: T.wh }}>"Abrir en Chrome"</b></>}
+              </div>
+            )}
+          </div>
+
+          <div style={{ marginTop: 24, fontSize: 11, color: "rgba(255,255,255,0.25)", fontFamily: "'DM Sans',sans-serif" }}>
+            GBH Nutrición · {currentUrl.replace(/^https?:\/\//, "")}
+          </div>
+        </div>
+      </LangCtx.Provider>
+    );
+  }
+
   // ── LANG SWITCHING overlay ────────────────────────────────────────────────────
   if(langSwitching)return(
     <LangCtx.Provider value={lang}>
