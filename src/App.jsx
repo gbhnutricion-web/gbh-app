@@ -422,7 +422,7 @@ function translateLvName(name, lang){
 
 // ─── Datos de contacto GBH — editar aquí ─────────────────────────────────────
 const GBH_WHATSAPP = "34697848500";
-const GBH_CALENDLY = "https://calendly.com/tu-usuario";   // ⚠️ pon aquí tu enlace real de Calendly
+const GBH_CALENDLY = "https://calendly.com/gbh-nutricion/30min";   // ⚠️ pon aquí tu enlace real de Calendly
 
 // ─── Sistema de sonido GBH — Web Audio API (sin archivos externos) ────────────
 const AudioCtx = (() => {
