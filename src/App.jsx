@@ -3327,6 +3327,38 @@ function GBHApp(){
     });
   },[]);
 
+  // ── Refrescar plan/gems/xp al volver a primer plano ────────────────────────
+  //    Si el nutricionista cambia el plan de un paciente mientras tiene la app
+  //    abierta, al volver a la app (o cada pocos minutos) se actualiza solo.
+  useEffect(()=>{
+    if(!profile?.id) return;
+    let cancelado=false;
+    const refrescar=async()=>{
+      if(!navigator.onLine||document.hidden) return;
+      try{
+        const fresh=await sbReq("GET",`profiles?id=eq.${profile.id}&select=plan,gems,xp,shields,target_kcal&limit=1`);
+        if(cancelado||!fresh||!fresh.length) return;
+        const f=fresh[0];
+        setProfile(prev=>{
+          if(!prev) return prev;
+          // Solo actualizar si algo cambió, para no re-renderizar de más
+          if(prev.plan===f.plan && prev.gems===f.gems && prev.xp===f.xp) return prev;
+          const merged={...prev,
+            plan:f.plan??prev.plan, gems:f.gems??prev.gems,
+            xp:f.xp??prev.xp, shields:f.shields??prev.shields,
+            target_kcal:f.target_kcal??prev.target_kcal};
+          lsSet(`gbh:p:${prev.id}`, merged);
+          return merged;
+        });
+      }catch(e){ /* sin conexión */ }
+    };
+    const onVis=()=>{ if(!document.hidden) refrescar(); };
+    document.addEventListener("visibilitychange",onVis);
+    // También cada 3 minutos mientras está abierta
+    const intervalo=setInterval(refrescar,180000);
+    return ()=>{ cancelado=true; document.removeEventListener("visibilitychange",onVis); clearInterval(intervalo); };
+  },[profile?.id]);
+
   // ── PWA install prompt ──────────────────────────────────────────────────────
   useEffect(()=>{
     const handler = (e) => { e.preventDefault(); setPwaPrompt(e); };
@@ -3610,6 +3642,30 @@ function GBHApp(){
 
   const loadP=useCallback(async(p)=>{
     setProfile(p);
+    // ── Refrescar SIEMPRE desde Supabase los campos que controla el nutricionista
+    //    (plan, gems, xp, shields…) sin tocar datos locales como racha/logs/peso.
+    //    Esto hace que un cambio de plan (premium→standard→free) se refleje al
+    //    instante al abrir la app, sin necesidad de borrar caché.
+    if(navigator.onLine){
+      try{
+        const fresh=await sbReq("GET",`profiles?id=eq.${p.id}&select=plan,gems,xp,shields,name,target_kcal,avatar_b64&limit=1`);
+        if(fresh&&fresh.length){
+          const f=fresh[0];
+          const merged={
+            ...p,
+            plan:       f.plan ?? p.plan,
+            gems:       (f.gems ?? p.gems),
+            xp:         (f.xp ?? p.xp),
+            shields:    (f.shields ?? p.shields),
+            name:       f.name || p.name,
+            target_kcal:f.target_kcal ?? p.target_kcal,
+          };
+          setProfile(merged);
+          lsSet(`gbh:p:${p.id}`, merged);
+          p=merged;
+        }
+      }catch(e){ /* sin conexión: seguimos con el perfil local */ }
+    }
     // Restaurar foto de perfil desde Supabase si existe y no hay una local
     if(p.avatar_b64 && !lsGet("gbh:userPhoto",null)){
       setUserPhoto(p.avatar_b64);
