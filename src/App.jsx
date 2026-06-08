@@ -4308,6 +4308,20 @@ function GBHApp(){
       }
     };
 
+    // Frases de broma para salir del IAB, rotando según el segundo actual
+    const jokes = lang === "en" ? [
+      { title: "Instagram, not today 🐑", sub: "My sheep refuses to live inside a social network." },
+      { title: "Wrong door! 🚪", sub: "Your data is waiting for you in a real browser. Let's go." },
+      { title: "Houston, we have a browser 🚀", sub: "Instagram is cool but your progress lives elsewhere." },
+      { title: "Escape from Instagram! 🏃", sub: "One tap and your sheep is free." },
+    ] : [
+      { title: "Instagram, hoy no 🐑", sub: "Mi oveja se niega a vivir dentro de una red social." },
+      { title: "¡Puerta equivocada! 🚪", sub: "Tus datos te esperan en un navegador de verdad. Vamos." },
+      { title: "Houston, tenemos un navegador 🚀", sub: "Instagram mola, pero tu progreso vive en otro sitio." },
+      { title: "¡Escapa de Instagram! 🏃", sub: "Un toque y tu oveja es libre." },
+    ];
+    const joke = jokes[new Date().getSeconds() % jokes.length];
+
     return (
       <LangCtx.Provider value={lang}>
         <div style={{
@@ -4320,24 +4334,20 @@ function GBHApp(){
         }}>
           <style>{CSS}</style>
 
-          {/* Mascota con expresión triste */}
           <Mascot expr="sad" size={140} />
 
-          <div style={{ marginTop: 24, marginBottom: 8, fontSize: 26, fontWeight: 900, color: T.wh, lineHeight: 1.3 }}>
-            {lang === "en" ? "Open in your browser" : "Ábreme en tu navegador"}
+          <div style={{ marginTop: 24, marginBottom: 10, fontSize: 26, fontWeight: 900, color: T.wh, lineHeight: 1.3 }}>
+            {joke.title}
           </div>
 
           <div style={{
             fontSize: 14, color: T.t2,
             fontFamily: "'DM Sans',sans-serif",
-            lineHeight: 1.6, marginBottom: 32, maxWidth: 300,
+            lineHeight: 1.6, marginBottom: 36, maxWidth: 280,
           }}>
-            {lang === "en"
-              ? "Instagram's internal browser stores data separately. Your account and progress are in your real browser (Safari or Chrome)."
-              : "El navegador de Instagram guarda los datos por separado. Tu cuenta y progreso están en tu navegador real (Safari o Chrome)."}
+            {joke.sub}
           </div>
 
-          {/* Botón principal */}
           <button
             onClick={openInBrowser}
             style={{
@@ -4349,8 +4359,8 @@ function GBHApp(){
               cursor: "pointer",
               boxShadow: `0 8px 0 ${T.g3}`,
               fontFamily: "'Nunito',sans-serif",
-              marginBottom: 16,
               display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+              animation: "glow 2.5s ease-in-out infinite",
             }}
           >
             <span style={{ fontSize: 22 }}>{isIOS ? "🧭" : "🌐"}</span>
@@ -4358,35 +4368,6 @@ function GBHApp(){
               ? (isIOS ? "Open in Safari" : "Open in Chrome")
               : (isIOS ? "Abrir en Safari" : "Abrir en Chrome")}
           </button>
-
-          {/* Instrucción manual como fallback */}
-          <div style={{
-            background: "rgba(255,255,255,0.06)",
-            border: `1.5px solid rgba(255,255,255,0.12)`,
-            borderRadius: 16, padding: "14px 18px",
-            maxWidth: 320, width: "100%",
-          }}>
-            <div style={{ fontSize: 12, fontWeight: 900, color: T.au1, marginBottom: 8 }}>
-              {lang === "en" ? "Or do it manually:" : "O hazlo manualmente:"}
-            </div>
-            {isIOS ? (
-              <div style={{ fontSize: 12, color: T.t2, fontFamily: "'DM Sans',sans-serif", lineHeight: 1.7 }}>
-                {lang === "en"
-                  ? <>1. Tap the <b style={{ color: T.wh }}>···</b> menu (top right)<br />2. Select <b style={{ color: T.wh }}>"Open in Safari"</b></>
-                  : <>1. Pulsa el menú <b style={{ color: T.wh }}>···</b> (arriba a la derecha)<br />2. Selecciona <b style={{ color: T.wh }}>"Abrir en Safari"</b></>}
-              </div>
-            ) : (
-              <div style={{ fontSize: 12, color: T.t2, fontFamily: "'DM Sans',sans-serif", lineHeight: 1.7 }}>
-                {lang === "en"
-                  ? <>1. Tap the <b style={{ color: T.wh }}>⋮</b> menu (top right)<br />2. Select <b style={{ color: T.wh }}>"Open in Chrome"</b></>
-                  : <>1. Pulsa el menú <b style={{ color: T.wh }}>⋮</b> (arriba a la derecha)<br />2. Selecciona <b style={{ color: T.wh }}>"Abrir en Chrome"</b></>}
-              </div>
-            )}
-          </div>
-
-          <div style={{ marginTop: 24, fontSize: 11, color: "rgba(255,255,255,0.25)", fontFamily: "'DM Sans',sans-serif" }}>
-            GBH Nutrición · {currentUrl.replace(/^https?:\/\//, "")}
-          </div>
         </div>
       </LangCtx.Provider>
     );
