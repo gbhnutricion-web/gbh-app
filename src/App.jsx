@@ -1,5 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 
+// ─── Servidor de generación de programaciones (Railway) ─────────────────────
+// Rellena estos dos valores tras desplegar el servidor (ver GUIA_DESPLIEGUE_RAILWAY.md)
+const GBH_SERVER_URL = "web-production-98efe.up.railway.app";   // ej: "https://gbh-server-production-xxxx.up.railway.app"
+const GBH_GEN_TOKEN  = "gbh_nutricion_2026";   // el mismo valor que pusiste en la variable GBH_GEN_TOKEN de Railway
+
 // ─── Internacionalización (ES / EN) ─────────────────────────────────────────
 const LangCtx = React.createContext("es");
 
@@ -417,6 +422,7 @@ function translateLvName(name, lang){
 
 // ─── Datos de contacto GBH — editar aquí ─────────────────────────────────────
 const GBH_WHATSAPP = "34697848500";
+const GBH_CALENDLY = "https://calendly.com/tu-usuario";   // ⚠️ pon aquí tu enlace real de Calendly
 
 // ─── Sistema de sonido GBH — Web Audio API (sin archivos externos) ────────────
 const AudioCtx = (() => {
@@ -5529,12 +5535,13 @@ function GBHApp(){
 
         {tab==="progreso"&&<CalcTab weights={weights} profile={profile} lang={lang}/>}
         {tab==="plan"&&<PlanTab profile={profile} lang={lang} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} showT={showT} sfx={sfx} t={t}/>}
+        {tab==="consulta"&&<ConsultaTab profile={profile} lang={lang} sfx={sfx}/>}
       </div>
 
       {/* ── BOTTOM NAV ────────────────────────────────────────────────────── */}
       <div className="nav-scroll" style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:420,background:"rgba(8,18,8,0.97)",backdropFilter:"blur(30px)",borderTop:`3px solid ${T.bW}`,zIndex:100,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
         <div style={{display:"flex",padding:"10px 4px 10px",minWidth:"min-content",width:"100%"}}>
-          {[{id:"home",icon:"🏠",l:t("tabHome")},{id:"progreso",icon:"🚀",l:t("tabCalc")},{id:"plan",icon:"📆",l:"Plan"},{id:"weight",icon:"⚖️",l:t("tabWeight")},{id:"receta",icon:"🍰",l:t("tabRecipe")},{id:"ranking",icon:"👑",l:t("tabRanking")}].map(({id,icon,l})=>(
+          {[{id:"home",icon:"🏠",l:t("tabHome")},{id:"progreso",icon:"🚀",l:t("tabCalc")},{id:"plan",icon:"📆",l:"Plan"},{id:"weight",icon:"⚖️",l:t("tabWeight")},{id:"receta",icon:"🍰",l:t("tabRecipe")},{id:"consulta",icon:"📩",l:lang==="en"?"Consult":"Consulta"},{id:"ranking",icon:"👑",l:t("tabRanking")}].map(({id,icon,l})=>(
             <button key={id} onClick={()=>{ sfx("tap"); setTab(id); }} style={{...tabSt(tab===id),flex:"1 0 60px",minWidth:60,padding:"8px 6px"}}>
               <span style={{fontSize:24,filter:tab===id?"none":"grayscale(0.6)",transition:"all 0.2s"}}>{icon}</span>
               <span style={{fontSize:9,whiteSpace:"nowrap"}}>{l}</span>
@@ -5545,6 +5552,94 @@ function GBHApp(){
       </div>
     </div>
     </LangCtx.Provider>
+  );
+}
+
+// ─── ConsultaTab — contacto con el nutricionista (exclusivo premium) ────────
+function ConsultaTab({profile,lang,sfx}){
+  const isPremium=profile?.plan==='premium';
+
+  if(!isPremium) return(
+    <div style={{padding:'48px 24px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:18}}>
+      <div style={{fontSize:56}}>📩</div>
+      <div style={{fontSize:18,fontWeight:900,color:T.t1,lineHeight:1.3,fontFamily:"'Nunito',sans-serif"}}>
+        {lang==='en'?'Premium service':'Servicio premium'}
+      </div>
+      <div style={{fontSize:14,color:T.t2,lineHeight:1.7,maxWidth:300,fontFamily:"'DM Sans',sans-serif"}}>
+        {lang==='en'
+          ? 'Direct consultation with your nutritionist is exclusive to Premium members. Upgrade your plan to chat directly and book appointments.'
+          : 'La consulta directa con tu nutricionista es exclusiva para clientes Premium. Eleva tu suscripción para escribir directamente y agendar citas.'}
+      </div>
+      <div style={{marginTop:8,background:'linear-gradient(135deg,rgba(255,200,0,0.12),rgba(255,160,0,0.08))',border:'1.5px solid '+T.au1,borderRadius:18,padding:'18px 22px',maxWidth:300}}>
+        <div style={{fontSize:30,marginBottom:6}}>👑</div>
+        <div style={{fontSize:14,fontWeight:900,color:T.au1,fontFamily:"'Nunito',sans-serif",marginBottom:4}}>
+          {lang==='en'?'Go Premium':'Hazte Premium'}
+        </div>
+        <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>
+          {lang==='en'?'Personalized follow-up and direct support':'Seguimiento personalizado y soporte directo'}
+        </div>
+      </div>
+    </div>
+  );
+
+  const abrirWhatsApp=()=>{
+    sfx&&sfx("tap");
+    const msg=encodeURIComponent(lang==='en'?'Hi! I have a question about my plan:':'¡Hola! Tengo una consulta sobre mi plan:');
+    window.open(`https://wa.me/${GBH_WHATSAPP}?text=${msg}`,'_blank','noopener');
+  };
+  const abrirCalendly=()=>{
+    sfx&&sfx("tap");
+    window.open(GBH_CALENDLY,'_blank','noopener');
+  };
+
+  return(
+    <div style={{paddingBottom:24}}>
+      <div style={{padding:'22px 16px 10px',textAlign:'center'}}>
+        <div style={{fontSize:40,marginBottom:8}}>📩</div>
+        <div style={{fontSize:19,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif"}}>
+          {lang==='en'?'Consultation':'Consulta'}
+        </div>
+        <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:4,lineHeight:1.5,maxWidth:300,margin:'4px auto 0'}}>
+          {lang==='en'?'Get in touch with your nutritionist whenever you need':'Ponte en contacto con tu nutricionista cuando lo necesites'}
+        </div>
+      </div>
+
+      <div style={{padding:'12px 16px',display:'flex',flexDirection:'column',gap:14}}>
+        {/* WhatsApp */}
+        <button onClick={abrirWhatsApp}
+          style={{background:'rgba(37,211,102,0.12)',border:'2px solid rgba(37,211,102,0.4)',borderRadius:20,
+                  padding:'22px 20px',cursor:'pointer',display:'flex',alignItems:'center',gap:16,
+                  boxShadow:'0 4px 0 rgba(0,0,0,0.3)',textAlign:'left'}}>
+          <div style={{fontSize:40,flexShrink:0}}>💬</div>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>
+              {lang==='en'?'Direct message':'Mensaje directo'}
+            </div>
+            <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>
+              {lang==='en'?'Chat with me on WhatsApp':'Escríbeme directamente por WhatsApp'}
+            </div>
+          </div>
+          <div style={{color:'#25D366',fontSize:22,flexShrink:0}}>›</div>
+        </button>
+
+        {/* Calendly */}
+        <button onClick={abrirCalendly}
+          style={{background:'rgba(100,181,246,0.12)',border:'2px solid rgba(100,181,246,0.4)',borderRadius:20,
+                  padding:'22px 20px',cursor:'pointer',display:'flex',alignItems:'center',gap:16,
+                  boxShadow:'0 4px 0 rgba(0,0,0,0.3)',textAlign:'left'}}>
+          <div style={{fontSize:40,flexShrink:0}}>📅</div>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>
+              {lang==='en'?'Book a consultation':'Programar consulta'}
+            </div>
+            <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>
+              {lang==='en'?'Schedule a weekend appointment':'Agenda una cita para el fin de semana'}
+            </div>
+          </div>
+          <div style={{color:'#64B5F6',fontSize:22,flexShrink:0}}>›</div>
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -5574,6 +5669,44 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
   const [openToma,setOpenToma]=React.useState(null);
   const [tomaReceta,setTomaReceta]=React.useState(null);
   const [loadingToma,setLoadingToma]=React.useState(false);
+  const [generando,setGenerando]=React.useState(false);
+  // Recarga los planes desde Supabase (tras generar)
+  const recargarPlanes=React.useCallback(()=>{
+    if(!profile) return Promise.resolve();
+    return sbReq('GET',`weekly_plans?profile_id=eq.${profile.id}&select=semana,plan_json,fecha_gen,pdf_url&order=semana.desc&limit=12`)
+      .then(wp=>{setPlanes(wp||[]);return wp;});
+  },[profile?.id]);
+  // Llama al servidor Railway para generar la programación al instante
+  async function generarProgramacion(){
+    if(generando) return;
+    if(!GBH_SERVER_URL){
+      showT&&showT({icon:"⚙️",title:lang==='en'?'Not configured yet':'Aún no configurado',sub:lang==='en'?'The generation server is not set up.':'El servidor de generación no está configurado todavía.'});
+      return;
+    }
+    setGenerando(true);
+    showT&&showT({icon:"⏳",title:lang==='en'?'Generating…':'Generando…',sub:lang==='en'?'This takes a few seconds':'Esto tarda unos segundos'});
+    try{
+      const resp=await fetch(GBH_SERVER_URL.replace(/\/$/,'')+'/generar',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','X-GBH-Token':GBH_GEN_TOKEN},
+        body:JSON.stringify({profile_id:profile.id}),
+      });
+      if(!resp.ok){
+        const err=await resp.json().catch(()=>({}));
+        throw new Error(err.detail||('HTTP '+resp.status));
+      }
+      // Esperar un momento a que Supabase refleje los datos y recargar
+      await new Promise(r=>setTimeout(r,1500));
+      await recargarPlanes();
+      setIdx(0);
+      sfx&&sfx("recipe");
+      showT&&showT({icon:"🎉",title:lang==='en'?'Plan ready!':'¡Programación lista!',sub:lang==='en'?'Your weekly plan is here':'Tu plan semanal ya está disponible'});
+    }catch(e){
+      showT&&showT({icon:"⚠️",title:lang==='en'?'Could not generate':'No se pudo generar',sub:String(e.message||e).slice(0,80)});
+    }finally{
+      setGenerando(false);
+    }
+  }
   React.useEffect(()=>{setView(null);setOpenToma(null);setTomaReceta(null);},[idx]);
   React.useEffect(()=>{setOpenToma(null);setTomaReceta(null);},[selDay]);
   React.useEffect(()=>{
@@ -5784,6 +5917,18 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
             <div style={{color:'rgba(255,255,255,0.2)',fontSize:20,flexShrink:0}}>🔒</div>
           </div>
         ))}
+        {/* Botón GENERAR (solo estándar que ya configuró su plan) */}
+        {isStandard&&configCompleta&&(
+          <button onClick={generarProgramacion} disabled={generando}
+            style={{background:generando?'rgba(255,255,255,0.08)':'linear-gradient(135deg,'+T.g1+','+T.g2+')',
+                    color:generando?T.t3:'#fff',fontWeight:900,fontSize:16,borderRadius:20,
+                    padding:'18px 24px',border:'none',cursor:generando?'default':'pointer',
+                    boxShadow:generando?'none':'0 5px 0 '+T.g3,fontFamily:"'Nunito',sans-serif",
+                    display:'flex',alignItems:'center',justifyContent:'center',gap:10,marginTop:4}}>
+            <span style={{fontSize:22}}>{generando?'⏳':'✨'}</span>
+            {generando?(lang==='en'?'Generating…':'Generando…'):(lang==='en'?'Generate my plan':'Generar mi programación')}
+          </button>
+        )}
         {isStandard&&(
           <button onClick={()=>setConfigView(true)} style={{background:'rgba(255,255,255,0.04)',border:'1.5px solid rgba(255,255,255,0.1)',borderRadius:16,padding:'14px 16px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:14,marginTop:4}}>
             <div style={{fontSize:26,flexShrink:0}}>⚙️</div>
