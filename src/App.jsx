@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 
 // ─── Servidor de generación de programaciones (Railway) ─────────────────────
 // Rellena estos dos valores tras desplegar el servidor (ver GUIA_DESPLIEGUE_RAILWAY.md)
-const GBH_SERVER_URL = "web-production-98efe.up.railway.app";   // ej: "https://gbh-server-production-xxxx.up.railway.app"
-const GBH_GEN_TOKEN  = "gbh_nutricion_2026";   // el mismo valor que pusiste en la variable GBH_GEN_TOKEN de Railway
+const GBH_SERVER_URL = "https://web-production-98efe.up.railway.app";
+const GBH_GEN_TOKEN  = "gbh_nutricion_2026";
 
 // ─── Internacionalización (ES / EN) ─────────────────────────────────────────
 const LangCtx = React.createContext("es");
@@ -422,7 +422,7 @@ function translateLvName(name, lang){
 
 // ─── Datos de contacto GBH — editar aquí ─────────────────────────────────────
 const GBH_WHATSAPP = "34697848500";
-const GBH_CALENDLY = "https://calendly.com/gbh-nutricion/20min";   // ⚠️ pon aquí tu enlace real de Calendly
+const GBH_CALENDLY = "https://calendly.com/gbh-nutricion/20min";
 
 // ─── Sistema de sonido GBH — Web Audio API (sin archivos externos) ────────────
 const AudioCtx = (() => {
@@ -5942,6 +5942,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
     return <PlanConfig profile={profile} lang={lang} config={config} setConfig={setConfig}
              sfx={sfx} showT={showT}
              onClose={()=>setConfigView(false)}
+             onGenerar={generarProgramacion}
              primeraVez={isStandard && !configCompleta}/>;
   }
 
@@ -6195,7 +6196,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
 
 
 // ─── PlanConfig — el paciente estándar configura su plan (dieta + distribución) ──
-function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,primeraVez}){
+function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,primeraVez}){
   const TOMAS=[
     {k:'dist_desayuno',label:lang==='en'?'Breakfast':'Desayuno',ic:'☀️'},
     {k:'dist_almuerzo',label:lang==='en'?'Snack AM':'Almuerzo',ic:'🍎'},
@@ -6250,10 +6251,16 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,primeraVez}
       config_completa: true,
       auto_generado: true,
     };
-    await sbReq("POST","patient_config?on_conflict=profile_id",payload);
+    const res = await sbReq("POST","patient_config?on_conflict=profile_id",payload);
     setConfig&&setConfig(prev=>({...(prev||{}),...payload}));
     sfx&&sfx("recipe");
-    showT&&showT({icon:"✅",title:lang==='en'?'Plan saved!':'¡Plan guardado!',sub:lang==='en'?'Your nutritionist will prepare it':'Tu nutricionista lo preparará pronto'});
+    // Generar la programación al instante (si el servidor está configurado)
+    if(onGenerar){
+      // La config ya está en Supabase; ahora el servidor puede leerla y generar
+      await onGenerar();
+    } else {
+      showT&&showT({icon:"✅",title:lang==='en'?'Plan saved!':'¡Plan guardado!',sub:lang==='en'?'Generate it from the Plan screen':'Genérala desde la pantalla de Plan'});
+    }
     setGuardando(false);
     onClose&&onClose();
   }
@@ -6331,7 +6338,7 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,primeraVez}
                   color:total===100?'#fff':T.t3,fontWeight:900,fontSize:15,borderRadius:18,
                   padding:'16px 24px',border:'none',cursor:total===100?'pointer':'default',
                   boxShadow:total===100?'0 4px 0 '+T.g3:'none',fontFamily:"'Nunito',sans-serif"}}>
-          {guardando?(lang==='en'?'Saving…':'Guardando…'):total!==100?(lang==='en'?'Must total 100%':'Debe sumar 100%'):(lang==='en'?'Save my plan':'Guardar mi plan')}
+          {guardando?(lang==='en'?'Generating…':'Generando…'):total!==100?(lang==='en'?'Must total 100%':'Debe sumar 100%'):(onGenerar?(lang==='en'?'Save & generate plan':'Guardar y generar plan'):(lang==='en'?'Save my plan':'Guardar mi plan'))}
         </button>
         {!primeraVez&&(
           <button onClick={onClose} style={{background:'none',border:'none',color:T.t3,fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:"'Nunito',sans-serif"}}>
