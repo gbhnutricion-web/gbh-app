@@ -3887,22 +3887,35 @@ function GBHApp(){
     const name  = aName.trim();
     dbg(`MODE: ${authMode} | email: ${email} | passLen: ${aPassword.length}`);
 
-    // Helper: carga el perfil en localStorage y entra en la app
+    // Helper: entra en la app directamente sin pasar por loadP
     const enterApp = async (ep, authUserId) => {
       const merged = { ...ep, auth_id: authUserId };
-      const ach = await sbReq("GET", `achievements?profile_id=eq.${ep.id}&select=badge_id`);
-      if(ach?.length) lsSet(`gbh:badges:${ep.id}`, ach.map(a=>a.badge_id));
       lsSet(`gbh:p:${ep.id}`, merged);
       lsSet(`gbh:em:${email}`, ep.id);
       lsSet("gbh:lastEmail", email);
-      dbg(`enterApp: calling loadP for profile ${ep.id}`);
-      try {
-        await loadP(merged);
-        dbg("enterApp: loadP done");
-      } catch(e) {
-        dbg(`enterApp: loadP ERROR: ${e?.message}`);
+      dbg("enterApp: setting state and going to main...");
+      // Restaurar datos locales
+      const localLogs = lsGet(`gbh:logs:${ep.id}`, []);
+      const localWeights = lsGet(`gbh:weights:${ep.id}`, []);
+      const localBadges = lsGet(`gbh:badges:${ep.id}`, []);
+      setProfile(merged);
+      setLogs(localLogs);
+      setWeights(localWeights.sort((a,b)=>a.date>b.date?1:-1));
+      setBadges(localBadges);
+      window.__gbhUID = ep.id;
+      const today = toKey();
+      const savedTLog = lsGet(`gbh:tlog:${ep.id}:${today}`, null);
+      if(savedTLog){ setTLog(savedTLog); setSteps(localLogs.find(x=>x.date===today)?.sc||0); }
+      else {
+        const t = localLogs.find(x=>x.date===today);
+        if(t){ setTLog({diet:!!t.diet,steps:!!t.steps,hydration:!!t.hydration,sleep:!!t.sleep}); setSteps(t.sc||0); }
       }
+      setWeightBannerDismissed(false);
+      setScreen("main");
       setLoading(false);
+      dbg("enterApp: done ✅");
+      // Sincronizar desde Supabase en segundo plano (sin bloquear entrada)
+      setTimeout(()=>{ restoreFromServer(ep.id).catch(()=>{}); }, 1500);
     };
 
     // ── FLUJO A: Usuario ya migrado → signIn con contraseña ───────────────────
