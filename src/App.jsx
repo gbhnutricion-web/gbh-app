@@ -3350,6 +3350,7 @@ function GBHApp(){
   const [aPrivacy, setAPrivacy] = useState(false);
   const [authMode,setAuthMode]= useState("new"); // "new" | "returning" | "migrate" | "checking"
   const [authErr, setAuthErr] = useState("");
+  const [authDbg, setAuthDbg] = useState([]); // debug visible en pantalla
   const [aPassword,   setAPassword]   = useState("");
   const [aPasswordC,  setAPasswordC]  = useState(""); // confirm (solo registro nuevo)
   const [showPass,    setShowPass]    = useState(false);
@@ -3870,9 +3871,11 @@ function GBHApp(){
     const isReturningOrMigrate = authMode==="returning" || authMode==="migrate";
     if(!isReturningOrMigrate && (!aName.trim()||!aEmail.trim())) return;
     if(!aEmail.trim()) return;
-    setLoading(true); setAuthErr("");
+    setLoading(true); setAuthErr(""); setAuthDbg([]);
+    const dbg = (msg) => setAuthDbg(p=>[...p, msg]);
     const email = aEmail.trim().toLowerCase();
     const name  = aName.trim();
+    dbg(`MODE: ${authMode} | email: ${email} | passLen: ${aPassword.length}`);
 
     // Helper: carga el perfil en localStorage y entra en la app
     const enterApp = async (ep, authUserId) => {
@@ -3889,13 +3892,17 @@ function GBHApp(){
     // ── FLUJO A: Usuario ya migrado → signIn con contraseña ───────────────────
     if(authMode==="returning"){
       if(!aPassword){ setAuthErr(t("passwordTooShort")); setLoading(false); return; }
+      dbg("A: calling signIn...");
       const res = await sbAuth.signIn(email, aPassword);
+      dbg(`A: signIn → user:${res.user?.id?.slice(0,8)} err:${res.error} token:${!!res.access_token}`);
       if(res.error){ setAuthErr(t("passwordWrong")); setLoading(false); return; }
       sbAuth.saveSession(res.session);
-      // Buscar perfil primero por auth_id, fallback por email
+      dbg("A: fetching profile by auth_id...");
       const byId = await sbReq("GET", `profiles?auth_id=eq.${res.user.id}&select=*`);
+      dbg(`A: byId → ${JSON.stringify(byId?.length)}`);
       if(byId?.length){ await enterApp(byId[0], res.user.id); return; }
       const byEmail = await sbReq("GET", `profiles?email=eq.${email}&select=*`);
+      dbg(`A: byEmail → ${JSON.stringify(byEmail?.length)}`);
       if(byEmail?.length){
         await sbReq("PATCH", `profiles?id=eq.${byEmail[0].id}`, { auth_id: res.user.id });
         await enterApp(byEmail[0], res.user.id); return;
@@ -3908,27 +3915,31 @@ function GBHApp(){
       if(aPassword.length < 6){ setAuthErr(t("passwordTooShort")); setLoading(false); return; }
       if(aPassword !== aPasswordC){ setAuthErr(t("passwordMismatch")); setLoading(false); return; }
 
-      // Intentar signUp; si ya existe en Auth, hacer signIn
+      dbg("B: calling signUp...");
       let authUserId = null;
       const su = await sbAuth.signUp(email, aPassword);
+      dbg(`B: signUp → user:${su.user?.id?.slice(0,8)} err:${su.error} session:${!!su.session}`);
       if(su.error){
         const isAlreadyExists = su.error.toLowerCase().includes("already") || su.error.toLowerCase().includes("registered");
         if(!isAlreadyExists){ setAuthErr(su.error); setLoading(false); return; }
-        // Ya existe en Auth — hacer signIn con la contraseña introducida
+        dbg("B: already exists, trying signIn...");
         const si = await sbAuth.signIn(email, aPassword);
+        dbg(`B: signIn fallback → user:${si.user?.id?.slice(0,8)} err:${si.error}`);
         if(si.error){ setAuthErr(t("passwordWrong")); setLoading(false); return; }
         sbAuth.saveSession(si.session);
         authUserId = si.user.id;
       } else {
-        // signUp exitoso — siempre hacer signIn para obtener sesión válida
+        dbg("B: signUp ok, calling signIn for session...");
         const si = await sbAuth.signIn(email, aPassword);
+        dbg(`B: signIn → user:${si.user?.id?.slice(0,8)} err:${si.error} token:${!!si.access_token}`);
         if(si.error){ setAuthErr(t("authErrGeneric")); setLoading(false); return; }
         sbAuth.saveSession(si.session);
         authUserId = si.user.id;
       }
 
-      // Vincular auth_id al perfil existente y entrar
+      dbg(`B: patching profile with auth_id:${authUserId?.slice(0,8)}`);
       const byEmail = await sbReq("GET", `profiles?email=eq.${email}&select=*`);
+      dbg(`B: byEmail → ${byEmail?.length}`);
       if(byEmail?.length){
         await sbReq("PATCH", `profiles?id=eq.${byEmail[0].id}`, { auth_id: authUserId });
         await enterApp(byEmail[0], authUserId); return;
@@ -4968,6 +4979,13 @@ function GBHApp(){
                 </>
               )}
             </div>
+          </div>
+        )}
+
+        {/* ── DEBUG PANEL (quitar tras resolver) ── */}
+        {authDbg.length>0&&(
+          <div style={{background:"#000",border:"1px solid #0f0",borderRadius:10,padding:"10px 12px",marginBottom:12,fontFamily:"monospace",fontSize:10,color:"#0f0",whiteSpace:"pre-wrap",wordBreak:"break-all"}}>
+            {authDbg.map((m,i)=><div key={i}>{m}</div>)}
           </div>
         )}
 
