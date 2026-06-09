@@ -644,8 +644,12 @@ const sbAuth = {
     });
     const d = await r.json();
     if (!r.ok) return { error: d.error_description || d.msg || d.message || "Contraseña incorrecta" };
-    // La respuesta del token incluye access_token, user, etc. directamente
-    return { user: d.user, session: d, access_token: d.access_token };
+    // El endpoint /token devuelve access_token, refresh_token, user directamente en d
+    // (no en d.session ni d.data)
+    const user = d.user || null;
+    const access_token = d.access_token || null;
+    if(!user || !access_token) return { error: "Respuesta inesperada de Supabase: " + JSON.stringify(d).substring(0,100) };
+    return { user, session: d, access_token };
   },
 
   resetPassword: async (email) => {
@@ -883,9 +887,18 @@ async function flushQueue(){
 // GET → siempre intenta red, sin encolar si falla
 // POST/PATCH → intenta red; si falla, encola para después
 const sbReq = async(method, path, body=null) => {
+  // Usar el token del usuario autenticado si existe, para que RLS funcione correctamente
+  let bearerToken = KEY; // fallback: anon key
+  try {
+    const raw = localStorage.getItem("sb-kszytoufvqogcitzbzqs-auth-token");
+    if(raw){
+      const parsed = JSON.parse(raw);
+      if(parsed?.access_token) bearerToken = parsed.access_token;
+    }
+  } catch {}
   const headers = {
     "apikey": KEY,
-    "Authorization": `Bearer ${KEY}`,
+    "Authorization": `Bearer ${bearerToken}`,
     "Content-Type": "application/json",
     "Prefer": method==="POST" ? "return=representation, resolution=merge-duplicates" : "",
   };
@@ -3757,9 +3770,6 @@ function GBHApp(){
   const loadP=useCallback(async(p)=>{
     setProfile(p);
     // ── Refrescar SIEMPRE desde Supabase los campos que controla el nutricionista
-    //    (plan, gems, xp, shields…) sin tocar datos locales como racha/logs/peso.
-    //    Esto hace que un cambio de plan (premium→standard→free) se refleje al
-    //    instante al abrir la app, sin necesidad de borrar caché.
     if(navigator.onLine){
       try{
         const fresh=await sbReq("GET",`profiles?id=eq.${p.id}&select=plan,gems,xp,shields,name,target_kcal,avatar_b64&limit=1`);
@@ -3885,7 +3895,13 @@ function GBHApp(){
       lsSet(`gbh:p:${ep.id}`, merged);
       lsSet(`gbh:em:${email}`, ep.id);
       lsSet("gbh:lastEmail", email);
-      await loadP(merged);
+      dbg(`enterApp: calling loadP for profile ${ep.id}`);
+      try {
+        await loadP(merged);
+        dbg("enterApp: loadP done");
+      } catch(e) {
+        dbg(`enterApp: loadP ERROR: ${e?.message}`);
+      }
       setLoading(false);
     };
 
@@ -3924,8 +3940,8 @@ function GBHApp(){
         if(!isAlreadyExists){ setAuthErr(su.error); setLoading(false); return; }
         dbg("B: already exists, trying signIn...");
         const si = await sbAuth.signIn(email, aPassword);
-        dbg(`B: signIn fallback → user:${si.user?.id?.slice(0,8)} err:${si.error}`);
-        if(si.error){ setAuthErr(t("passwordWrong")); setLoading(false); return; }
+        dbg(`B: signIn fallback → user:${si.user?.id?.slice(0,8)} err:${si.error} token:${!!si.access_token}`);
+        if(si.error){ setAuthErr(si.error); setLoading(false); return; }
         sbAuth.saveSession(si.session);
         authUserId = si.user.id;
       } else {
