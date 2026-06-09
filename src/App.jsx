@@ -623,24 +623,19 @@ const SB  = "https://kszytoufvqogcitzbzqs.supabase.co";
 const KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtzenl0b3VmdnFvZ2NpdHpienFzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1OTQzOTgsImV4cCI6MjA5NDE3MDM5OH0.OcOUrgbyAL6aPBSW_hSNapmwSYMV5mNjLrJCmRghg-c";
 
 // ─── Supabase Auth helpers (email + password) ─────────────────────────────────
-// Llama directamente a la API REST de Auth de Supabase sin SDK externo
 const sbAuth = {
-  // Registro nuevo usuario en Supabase Auth
   signUp: async (email, password) => {
-    const redirectTo = window.location.origin; // dominio real de la app (no localhost)
     const r = await fetch(`${SB}/auth/v1/signup`, {
       method: "POST",
       headers: { "apikey": KEY, "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, options: { emailRedirectTo: redirectTo } }),
+      body: JSON.stringify({ email, password }),
     });
     const d = await r.json();
-    if (!r.ok) return { error: d.error_description || d.msg || "Error en registro" };
-    // Supabase devuelve sesión inmediatamente si "Confirm email" está desactivado
-    // Si está activado, user existe pero session es null hasta confirmar
-    return { user: d.user, session: d.session || d };
+    if (!r.ok) return { error: d.error_description || d.msg || d.message || "Error en registro" };
+    // d.user = el usuario creado, d.session = sesión (null si confirm email está ON)
+    return { user: d.user, session: d.session };
   },
 
-  // Login usuario existente
   signIn: async (email, password) => {
     const r = await fetch(`${SB}/auth/v1/token?grant_type=password`, {
       method: "POST",
@@ -648,11 +643,11 @@ const sbAuth = {
       body: JSON.stringify({ email, password }),
     });
     const d = await r.json();
-    if (!r.ok) return { error: d.error_description || d.msg || "Contraseña incorrecta" };
-    return { user: d.user, session: d };
+    if (!r.ok) return { error: d.error_description || d.msg || d.message || "Contraseña incorrecta" };
+    // La respuesta del token incluye access_token, user, etc. directamente
+    return { user: d.user, session: d, access_token: d.access_token };
   },
 
-  // Recuperación de contraseña por email
   resetPassword: async (email) => {
     const r = await fetch(`${SB}/auth/v1/recover`, {
       method: "POST",
@@ -662,31 +657,15 @@ const sbAuth = {
     return r.ok;
   },
 
-  // Obtener sesión activa desde localStorage
-  getSession: () => {
-    try {
-      // Supabase guarda la sesión con esta clave estándar
-      const raw = localStorage.getItem(`sb-kszytoufvqogcitzbzqs-auth-token`);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      // Verificar que el token no ha expirado
-      if (parsed?.expires_at && parsed.expires_at * 1000 < Date.now()) return null;
-      return parsed;
-    } catch { return null; }
-  },
-
-  // Guardar sesión en localStorage (formato estándar de Supabase)
   saveSession: (session) => {
     try {
-      localStorage.setItem(`sb-kszytoufvqogcitzbzqs-auth-token`, JSON.stringify(session));
+      if(session?.access_token)
+        localStorage.setItem(`sb-kszytoufvqogcitzbzqs-auth-token`, JSON.stringify(session));
     } catch {}
   },
 
-  // Borrar sesión
   clearSession: () => {
-    try {
-      localStorage.removeItem(`sb-kszytoufvqogcitzbzqs-auth-token`);
-    } catch {}
+    try { localStorage.removeItem(`sb-kszytoufvqogcitzbzqs-auth-token`); } catch {}
   },
 };
 
@@ -3892,104 +3871,72 @@ function GBHApp(){
     if(!isReturningOrMigrate && (!aName.trim()||!aEmail.trim())) return;
     if(!aEmail.trim()) return;
     setLoading(true); setAuthErr("");
-    const email=aEmail.trim().toLowerCase(), name=aName.trim();
-    console.log("🔐 doAuth START — mode:", authMode, "email:", email, "passLen:", aPassword.length);
+    const email = aEmail.trim().toLowerCase();
+    const name  = aName.trim();
 
-    // ── FLUJO A: Usuario existente ya migrado → login con contraseña ──────────
+    // Helper: carga el perfil en localStorage y entra en la app
+    const enterApp = async (ep, authUserId) => {
+      const merged = { ...ep, auth_id: authUserId };
+      const ach = await sbReq("GET", `achievements?profile_id=eq.${ep.id}&select=badge_id`);
+      if(ach?.length) lsSet(`gbh:badges:${ep.id}`, ach.map(a=>a.badge_id));
+      lsSet(`gbh:p:${ep.id}`, merged);
+      lsSet(`gbh:em:${email}`, ep.id);
+      lsSet("gbh:lastEmail", email);
+      await loadP(merged);
+      setLoading(false);
+    };
+
+    // ── FLUJO A: Usuario ya migrado → signIn con contraseña ───────────────────
     if(authMode==="returning"){
       if(!aPassword){ setAuthErr(t("passwordTooShort")); setLoading(false); return; }
-      console.log("🔐 FLUJO A — calling signIn...");
-      const {user, session, error} = await sbAuth.signIn(email, aPassword);
-      console.log("🔐 FLUJO A signIn result — user:", user?.id, "error:", error, "session keys:", session ? Object.keys(session) : null);
-      if(error){
-        setAuthErr(t("passwordWrong"));
-        setLoading(false); return;
-      }
-      sbAuth.saveSession(session);
-      // Cargar perfil vinculado al auth_id
-      console.log("🔐 FLUJO A — fetching profile by auth_id:", user.id);
-      const r = await sbReq("GET", `profiles?auth_id=eq.${user.id}&select=*`);
-      console.log("🔐 FLUJO A — profile result:", r);
-      if(r?.length){
-        const ep = r[0];
-        const ach = await sbReq("GET", `achievements?profile_id=eq.${ep.id}&select=badge_id`);
-        if(ach?.length) lsSet(`gbh:badges:${ep.id}`, ach.map(a=>a.badge_id));
-        lsSet(`gbh:p:${ep.id}`, ep);
-        lsSet(`gbh:em:${email}`, ep.id);
-        lsSet("gbh:lastEmail", email);
-        await loadP(ep);
-        setLoading(false); return;
-      }
-      // Fallback: buscar por email si auth_id no coincide aún
-      const r2 = await sbReq("GET", `profiles?email=eq.${email}&select=*`);
-      if(r2?.length){
-        const ep = r2[0];
-        // Actualizar auth_id si no estaba bien guardado
-        if(!ep.auth_id) await sbReq("PATCH", `profiles?id=eq.${ep.id}`, { auth_id: user.id });
-        const merged = { ...ep, auth_id: user.id };
-        lsSet(`gbh:p:${ep.id}`, merged);
-        lsSet(`gbh:em:${email}`, ep.id);
-        lsSet("gbh:lastEmail", email);
-        await loadP(merged);
-        setLoading(false); return;
+      const res = await sbAuth.signIn(email, aPassword);
+      if(res.error){ setAuthErr(t("passwordWrong")); setLoading(false); return; }
+      sbAuth.saveSession(res.session);
+      // Buscar perfil primero por auth_id, fallback por email
+      const byId = await sbReq("GET", `profiles?auth_id=eq.${res.user.id}&select=*`);
+      if(byId?.length){ await enterApp(byId[0], res.user.id); return; }
+      const byEmail = await sbReq("GET", `profiles?email=eq.${email}&select=*`);
+      if(byEmail?.length){
+        await sbReq("PATCH", `profiles?id=eq.${byEmail[0].id}`, { auth_id: res.user.id });
+        await enterApp(byEmail[0], res.user.id); return;
       }
       setAuthErr(t("authErrGeneric")); setLoading(false); return;
     }
 
-    // ── FLUJO B: Usuario existente SIN contraseña (pre-migración) ─────────────
+    // ── FLUJO B: Pre-migración → crear contraseña y vincular cuenta ──────────
     if(authMode==="migrate"){
       if(aPassword.length < 6){ setAuthErr(t("passwordTooShort")); setLoading(false); return; }
       if(aPassword !== aPasswordC){ setAuthErr(t("passwordMismatch")); setLoading(false); return; }
 
-      // Intentar signUp en Supabase Auth
-      console.log("🔐 FLUJO B — calling signUp...");
-      let authUser = null, authSession = null;
-      const {user, session, error} = await sbAuth.signUp(email, aPassword);
-      console.log("🔐 FLUJO B signUp — user:", user?.id, "error:", error, "session:", session ? JSON.stringify(session).substring(0,100) : null);
-
-      if(error){
-        // Si el error es "User already registered" → ya hizo signUp antes pero falló el PATCH
-        // Intentar signIn directamente
-        if(error.toLowerCase().includes("already registered") || error.toLowerCase().includes("already exists")){
-          const si = await sbAuth.signIn(email, aPassword);
-          if(si.error){ setAuthErr(t("passwordWrong")); setLoading(false); return; }
-          authUser = si.user; authSession = si.session;
-        } else {
-          setAuthErr(error); setLoading(false); return;
-        }
+      // Intentar signUp; si ya existe en Auth, hacer signIn
+      let authUserId = null;
+      const su = await sbAuth.signUp(email, aPassword);
+      if(su.error){
+        const isAlreadyExists = su.error.toLowerCase().includes("already") || su.error.toLowerCase().includes("registered");
+        if(!isAlreadyExists){ setAuthErr(su.error); setLoading(false); return; }
+        // Ya existe en Auth — hacer signIn con la contraseña introducida
+        const si = await sbAuth.signIn(email, aPassword);
+        if(si.error){ setAuthErr(t("passwordWrong")); setLoading(false); return; }
+        sbAuth.saveSession(si.session);
+        authUserId = si.user.id;
       } else {
-        authUser = user;
-        // Si signUp devuelve sesión null (email no confirmado aún), hacer signIn para obtenerla
-        if(session && session.access_token){
-          authSession = session;
-        } else {
-          const si = await sbAuth.signIn(email, aPassword);
-          if(si.error){ setAuthErr(t("authErrGeneric")); setLoading(false); return; }
-          authUser = si.user; authSession = si.session;
-        }
+        // signUp exitoso — siempre hacer signIn para obtener sesión válida
+        const si = await sbAuth.signIn(email, aPassword);
+        if(si.error){ setAuthErr(t("authErrGeneric")); setLoading(false); return; }
+        sbAuth.saveSession(si.session);
+        authUserId = si.user.id;
       }
 
-      // Guardar sesión si existe (puede ser null si Supabase pide confirmar email)
-      if(authSession) sbAuth.saveSession(authSession);
-
-      // Obtener perfil existente y vincular auth_id sin tocar ningún otro dato
-      const r = await sbReq("GET", `profiles?email=eq.${email}&select=*`);
-      if(r?.length){
-        const ep = r[0];
-        await sbReq("PATCH", `profiles?id=eq.${ep.id}`, { auth_id: authUser.id });
-        const merged = { ...ep, auth_id: authUser.id };
-        const ach = await sbReq("GET", `achievements?profile_id=eq.${ep.id}&select=badge_id`);
-        if(ach?.length) lsSet(`gbh:badges:${ep.id}`, ach.map(a=>a.badge_id));
-        lsSet(`gbh:p:${ep.id}`, merged);
-        lsSet(`gbh:em:${email}`, ep.id);
-        lsSet("gbh:lastEmail", email);
-        await loadP(merged);
-        setLoading(false); return;
+      // Vincular auth_id al perfil existente y entrar
+      const byEmail = await sbReq("GET", `profiles?email=eq.${email}&select=*`);
+      if(byEmail?.length){
+        await sbReq("PATCH", `profiles?id=eq.${byEmail[0].id}`, { auth_id: authUserId });
+        await enterApp(byEmail[0], authUserId); return;
       }
       setAuthErr(t("authErrGeneric")); setLoading(false); return;
     }
 
-    // ── FLUJO C: Usuario genuinamente nuevo → registro completo ───────────────
+    // ── FLUJO C: Usuario nuevo → registro completo ────────────────────────────
     if(!aWeight || isNaN(parseFloat(aWeight))){
       setAuthErr("Introduce tu peso actual para comenzar.");
       setLoading(false); return;
@@ -3997,31 +3944,32 @@ function GBHApp(){
     if(aPassword.length < 6){ setAuthErr(t("passwordTooShort")); setLoading(false); return; }
     if(aPassword !== aPasswordC){ setAuthErr(t("passwordMismatch")); setLoading(false); return; }
 
-    // 1. Crear cuenta en Supabase Auth
-    const {user, session, error} = await sbAuth.signUp(email, aPassword);
-    if(error){ setAuthErr(error); setLoading(false); return; }
-    sbAuth.saveSession(session);
+    const su = await sbAuth.signUp(email, aPassword);
+    if(su.error){ setAuthErr(su.error); setLoading(false); return; }
+    // Siempre hacer signIn tras signUp para garantizar sesión válida
+    const si = await sbAuth.signIn(email, aPassword);
+    if(si.error){ setAuthErr(t("authErrGeneric")); setLoading(false); return; }
+    sbAuth.saveSession(si.session);
+    const authUserId = si.user.id;
 
-    // 2. Crear perfil vinculado al auth_id
-    const np={
+    const np = {
       id: crypto.randomUUID(), name, email,
-      auth_id: user.id,
+      auth_id: authUserId,
       xp:0, gems:0, shields:0,
       height_cm: Math.round(aHeight)||null,
       sex: aSex||null,
       initial_weight: parseFloat(aWeight)||null,
       goal_weight: (aGoal && !isNaN(parseFloat(aGoal)) && parseFloat(aGoal)>20) ? parseFloat(aGoal) : null,
     };
-    const cr=await sbReq("POST","profiles",np); const fp=cr?.[0]||np;
-    lsSet(`gbh:p:${fp.id}`,fp); lsSet(`gbh:em:${email}`,fp.id); lsSet("gbh:lastEmail",email);
-    const initW=parseFloat(aWeight);
+    const cr = await sbReq("POST","profiles",np);
+    const fp = cr?.[0] || np;
+    const initW = parseFloat(aWeight);
     if(!isNaN(initW)&&initW>20&&initW<300){
-      const initDate=toKey();
-      const initEntry={date:initDate,weight:initW,isInitial:true};
-      lsSet(`gbh:weights:${fp.id}`,[initEntry]);
+      const initDate = toKey();
+      lsSet(`gbh:weights:${fp.id}`,[{date:initDate,weight:initW,isInitial:true}]);
       await sbReq("POST","weight_logs?on_conflict=profile_id,log_date",{profile_id:fp.id,log_date:initDate,weight_kg:initW});
     }
-    await loadP(fp); setLoading(false);
+    await enterApp(fp, authUserId);
   };
 
   // Recuperación de contraseña por email
@@ -4793,7 +4741,13 @@ function GBHApp(){
 
         <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>{t("email")}</div>
         <input type="email" value={aEmail}
-          onChange={e=>{setAEmail(e.target.value);setAuthMode("new");setAuthErr("");setAPassword("");setAPasswordC("");setForgotSent(false);}}
+          onChange={e=>{
+            setAEmail(e.target.value);
+            // Solo resetear si el usuario está escribiendo activamente (no en auto-login)
+            if(document.activeElement?.type==="email"){
+              setAuthMode("new");setAuthErr("");setAPassword("");setAPasswordC("");setForgotSent(false);
+            }
+          }}
           onBlur={e=>checkEmail(e.target.value)}
           placeholder={t("emailPH")} style={{...inp,marginBottom:(authMode==="returning"||authMode==="migrate")?0:16}}/>
 
