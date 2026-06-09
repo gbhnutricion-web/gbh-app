@@ -3515,24 +3515,44 @@ function GBHApp(){
   },[]);
 
   // Auto-login: si ya existe sesión guardada, cargar directamente
-  // Si el perfil no tiene auth_id (pre-migración), redirigir a pantalla de creación de contraseña
   useEffect(()=>{
-    const lastEmail=lsGet("gbh:lastEmail",null);
-    if(!lastEmail)return;
-    const lid=lsGet(`gbh:em:${lastEmail}`,null);
-    if(!lid)return;
-    const lp=lsGet(`gbh:p:${lid}`,null);
-    if(!lp?.id)return;
+    const lastEmail = lsGet("gbh:lastEmail", null);
+    if(!lastEmail) return;
+    const lid = lsGet(`gbh:em:${lastEmail}`, null);
+    if(!lid) return;
+    const lp = lsGet(`gbh:p:${lid}`, null);
+    if(!lp?.id) return;
+
     // Si no tiene auth_id → mandar a crear contraseña antes de entrar
     if(!lp.auth_id){
       setAEmail(lastEmail);
-      setAName(lp.name||"");
+      setAName(lp.name || "");
       setAuthMode("migrate");
       setScreen("auth");
       setLoading(false);
       return;
     }
-    loadP(lp);
+
+    // Tiene auth_id → entrar directamente con datos locales
+    const today = toKey();
+    const localLogs    = lsGet(`gbh:logs:${lp.id}`, []);
+    const localWeights = lsGet(`gbh:weights:${lp.id}`, []);
+    const localBadges  = lsGet(`gbh:badges:${lp.id}`, []);
+    setProfile(lp);
+    setLogs(localLogs);
+    setWeights(localWeights.sort((a,b)=>a.date>b.date?1:-1));
+    setBadges(localBadges);
+    window.__gbhUID = lp.id;
+    const savedTLog = lsGet(`gbh:tlog:${lp.id}:${today}`, null);
+    if(savedTLog){ setTLog(savedTLog); setSteps(localLogs.find(x=>x.date===today)?.sc||0); }
+    else {
+      const t = localLogs.find(x=>x.date===today);
+      if(t){ setTLog({diet:!!t.diet,steps:!!t.steps,hydration:!!t.hydration,sleep:!!t.sleep}); setSteps(t.sc||0); }
+    }
+    setWeightBannerDismissed(false);
+    setScreen("main");
+    // Sincronizar en segundo plano
+    setTimeout(()=>{ restoreFromServer(lp.id).catch(()=>{}); }, 2000);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
@@ -3860,16 +3880,31 @@ function GBHApp(){
     if(navigator.onLine) flushQueue().then(()=>setPendingSync(lsGet(QUEUE_KEY,[]).length));
   },[]);
 
-  // Detecta si el email ya existe en Supabase al salir del campo
+  // Detecta si el email ya existe al salir del campo
+  // Primero busca en localStorage (sin RLS), luego en Supabase
   const checkEmail = async (email) => {
     if(!email.includes("@")) return;
+    const em = email.trim().toLowerCase();
     setAuthMode("checking");
-    setAuthErr(""); setForgotSent(false);
-    const r = await sbReq("GET", `profiles?email=eq.${email.trim().toLowerCase()}&select=id,name,auth_id`);
+    setAuthErr(""); setForgotSent(false); setAPassword(""); setAPasswordC("");
+
+    // 1. Buscar en localStorage primero (siempre disponible, sin RLS)
+    const localId = lsGet(`gbh:em:${em}`, null);
+    const localP  = localId ? lsGet(`gbh:p:${localId}`, null) : null;
+    if(localP?.id){
+      setAName(localP.name || "");
+      setAuthMode(localP.auth_id ? "returning" : "migrate");
+      return;
+    }
+
+    // 2. Si no hay datos locales, consultar Supabase
+    // Usar la anon key — la política gbh_profiles (qual:true) permite SELECT a todos
+    const r = await sbReq("GET", `profiles?email=eq.${em}&select=id,name,auth_id`);
     if(r?.length){
-      setAName(r[0].name || aName);
-      // Si ya tiene auth_id → ya migrado → pedir contraseña normal
-      // Si no tiene auth_id → usuario pre-migración → flujo de creación de contraseña
+      setAName(r[0].name || "");
+      // Guardar en localStorage para próximas veces
+      lsSet(`gbh:em:${em}`, r[0].id);
+      lsSet(`gbh:p:${r[0].id}`, r[0]);
       setAuthMode(r[0].auth_id ? "returning" : "migrate");
     } else {
       setAuthMode("new");
@@ -3882,10 +3917,8 @@ function GBHApp(){
     if(!isReturningOrMigrate && (!aName.trim()||!aEmail.trim())) return;
     if(!aEmail.trim()) return;
     setLoading(true); setAuthErr(""); setAuthDbg([]);
-    const dbg = (msg) => setAuthDbg(p=>[...p, msg]);
     const email = aEmail.trim().toLowerCase();
     const name  = aName.trim();
-    dbg(`MODE: ${authMode} | email: ${email} | passLen: ${aPassword.length}`);
 
     // Helper: entra en la app directamente sin pasar por loadP
     const enterApp = async (ep, authUserId) => {
@@ -3893,7 +3926,6 @@ function GBHApp(){
       lsSet(`gbh:p:${ep.id}`, merged);
       lsSet(`gbh:em:${email}`, ep.id);
       lsSet("gbh:lastEmail", email);
-      dbg("enterApp: setting state and going to main...");
       // Restaurar datos locales
       const localLogs = lsGet(`gbh:logs:${ep.id}`, []);
       const localWeights = lsGet(`gbh:weights:${ep.id}`, []);
@@ -3913,7 +3945,6 @@ function GBHApp(){
       setWeightBannerDismissed(false);
       setScreen("main");
       setLoading(false);
-      dbg("enterApp: done ✅");
       // Sincronizar desde Supabase en segundo plano (sin bloquear entrada)
       setTimeout(()=>{ restoreFromServer(ep.id).catch(()=>{}); }, 1500);
     };
@@ -3921,25 +3952,19 @@ function GBHApp(){
     // ── FLUJO A: Usuario ya migrado → signIn con contraseña ───────────────────
     if(authMode==="returning"){
       if(!aPassword){ setAuthErr(t("passwordTooShort")); setLoading(false); return; }
-      dbg("A: calling signIn...");
       const res = await sbAuth.signIn(email, aPassword);
-      dbg(`A: signIn → user:${res.user?.id?.slice(0,8)} err:${res.error} token:${!!res.access_token}`);
       if(res.error){ setAuthErr(t("passwordWrong")); setLoading(false); return; }
       sbAuth.saveSession(res.session);
-      dbg("A: fetching profile by auth_id...");
       const byId = await sbReq("GET", `profiles?auth_id=eq.${res.user.id}&select=*`);
-      dbg(`A: byId → ${byId?.length}`);
       if(byId?.length){ await enterApp(byId[0], res.user.id); return; }
       // Fallback: localStorage (no depende de RLS)
       const localId = lsGet(`gbh:em:${email}`, null);
       const localP  = localId ? lsGet(`gbh:p:${localId}`, null) : null;
-      dbg(`A: localProfile → found:${!!localP} id:${localId?.slice(0,8)}`);
       if(localP){
         await sbReq("PATCH", `profiles?id=eq.${localP.id}`, { auth_id: res.user.id });
         await enterApp(localP, res.user.id); return;
       }
       const byEmail = await sbReq("GET", `profiles?email=eq.${email}&select=*`);
-      dbg(`A: byEmail → ${byEmail?.length}`);
       if(byEmail?.length){
         await sbReq("PATCH", `profiles?id=eq.${byEmail[0].id}`, { auth_id: res.user.id });
         await enterApp(byEmail[0], res.user.id); return;
@@ -3952,39 +3977,30 @@ function GBHApp(){
       if(aPassword.length < 6){ setAuthErr(t("passwordTooShort")); setLoading(false); return; }
       if(aPassword !== aPasswordC){ setAuthErr(t("passwordMismatch")); setLoading(false); return; }
 
-      dbg("B: calling signUp...");
       let authUserId = null;
       const su = await sbAuth.signUp(email, aPassword);
-      dbg(`B: signUp → user:${su.user?.id?.slice(0,8)} err:${su.error} session:${!!su.session}`);
       if(su.error){
         const isAlreadyExists = su.error.toLowerCase().includes("already") || su.error.toLowerCase().includes("registered");
         if(!isAlreadyExists){ setAuthErr(su.error); setLoading(false); return; }
-        dbg("B: already exists, trying signIn...");
         const si = await sbAuth.signIn(email, aPassword);
-        dbg(`B: signIn fallback → user:${si.user?.id?.slice(0,8)} err:${si.error} token:${!!si.access_token}`);
         if(si.error){ setAuthErr(si.error); setLoading(false); return; }
         sbAuth.saveSession(si.session);
         authUserId = si.user.id;
       } else {
-        dbg("B: signUp ok, calling signIn for session...");
         const si = await sbAuth.signIn(email, aPassword);
-        dbg(`B: signIn → user:${si.user?.id?.slice(0,8)} err:${si.error} token:${!!si.access_token}`);
         if(si.error){ setAuthErr(t("authErrGeneric")); setLoading(false); return; }
         sbAuth.saveSession(si.session);
         authUserId = si.user.id;
       }
 
-      dbg(`B: patching profile with auth_id:${authUserId?.slice(0,8)}`);
       // Buscar perfil: primero en localStorage (evita RLS), luego Supabase por email
       const lastEmail = email;
       const localId = lsGet(`gbh:em:${lastEmail}`, null);
       let profileData = localId ? lsGet(`gbh:p:${localId}`, null) : null;
-      dbg(`B: localProfile → ${localId?.slice(0,8)} found:${!!profileData}`);
 
       if(!profileData){
         // Fallback: buscar en Supabase (necesita RLS permisivo)
         const byEmail = await sbReq("GET", `profiles?email=eq.${email}&select=*`);
-        dbg(`B: byEmail → ${byEmail?.length}`);
         profileData = byEmail?.[0] || null;
       }
 
@@ -5031,12 +5047,7 @@ function GBHApp(){
           </div>
         )}
 
-        {/* ── DEBUG PANEL (quitar tras resolver) ── */}
-        {authDbg.length>0&&(
-          <div style={{background:"#000",border:"1px solid #0f0",borderRadius:10,padding:"10px 12px",marginBottom:12,fontFamily:"monospace",fontSize:10,color:"#0f0",whiteSpace:"pre-wrap",wordBreak:"break-all"}}>
-            {authDbg.map((m,i)=><div key={i}>{m}</div>)}
-          </div>
-        )}
+        {/* ── DEBUG PANEL eliminado ── */}
 
         {(()=>{
           const isReturning = authMode==="returning";
