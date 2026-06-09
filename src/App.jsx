@@ -3235,6 +3235,21 @@ function GBHApp(){
   const [pwaPrompt,    setPwaPrompt]    = useState(null);
   const [pwaDismissed, setPwaDismissed] = useState(()=>lsGet("gbh:pwaDismissed",false));
   const [pwaInstalled, setPwaInstalled] = useState(()=>{try{return window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone===true;}catch{return false;}});
+  // Flag: viene de Instagram via redirect → mostrar modal PWA prominente al cargar
+  const [showInstallModal, setShowInstallModal] = useState(()=>{
+    try{
+      const params = new URLSearchParams(window.location.search);
+      if(params.get("install")==="1"){
+        // Limpiar el parámetro de la URL sin recargar
+        const clean = window.location.pathname + window.location.hash;
+        window.history.replaceState(null,"",clean);
+        // Solo si no está ya instalada
+        if(window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone===true) return false;
+        return true;
+      }
+    }catch{}
+    return false;
+  });
   const [showOfflineBanner,  setShowOfflineBanner]  = useState(false);
   const [showSyncBanner,     setShowSyncBanner]     = useState(false);
   const offlineTimerRef = useRef(null);
@@ -4218,6 +4233,7 @@ function GBHApp(){
     @keyframes glow{0%,100%{box-shadow:0 6px 0 ${T.g3},0 0 18px rgba(88,204,2,0.35)}50%{box-shadow:0 6px 0 ${T.g3},0 0 38px rgba(88,204,2,0.8)}}
     @keyframes wobble{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(8deg)}}
     @keyframes fadeInOut{0%{opacity:0}10%{opacity:1}75%{opacity:1}100%{opacity:0}}
+    @keyframes fadeIn{from{opacity:0}to{opacity:1}}
     @keyframes scaleIn{0%{transform:scale(0.5);opacity:0}100%{transform:scale(1);opacity:1}}
     @keyframes zFloat{0%{transform:translateY(0);opacity:1}100%{transform:translateY(-24px);opacity:0}}
     @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}} @keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.025)}} @keyframes breatheSlow{0%,100%{transform:scale(1) rotate(-1deg)}50%{transform:scale(0.98) rotate(1deg)}} @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
@@ -4289,22 +4305,27 @@ function GBHApp(){
 
     // En iOS: el esquema x-safari-https:// fuerza abrir en Safari
     // En Android: el intent:// es más fiable pero no universal; usamos el link directo
+    // Añadimos ?install=1 para que al llegar al navegador real se muestre el modal PWA
     const openInBrowser = () => {
+      const installUrl = (() => {
+        try {
+          const u = new URL(currentUrl);
+          u.searchParams.set("install", "1");
+          return u.toString();
+        } catch { return currentUrl + (currentUrl.includes("?") ? "&" : "?") + "install=1"; }
+      })();
       if (isIOS) {
-        // Intento 1: esquema propietario de Safari
-        window.location.href = currentUrl.replace(/^https?:\/\//, "x-safari-https://");
-        // Fallback: copiar al portapapeles
+        window.location.href = installUrl.replace(/^https?:\/\//, "x-safari-https://");
         setTimeout(() => {
-          try { navigator.clipboard.writeText(currentUrl); } catch {}
+          try { navigator.clipboard.writeText(installUrl); } catch {}
         }, 800);
       } else if (isAndroid) {
-        // En Android intentamos abrir Chrome directamente
         window.location.href =
           "intent://" +
-          currentUrl.replace(/^https?:\/\//, "") +
+          installUrl.replace(/^https?:\/\//, "") +
           "#Intent;scheme=https;package=com.android.chrome;end";
       } else {
-        try { navigator.clipboard.writeText(currentUrl); } catch {}
+        try { navigator.clipboard.writeText(installUrl); } catch {}
       }
     };
 
@@ -4922,6 +4943,126 @@ function GBHApp(){
           </div>
         </div>
       )}
+
+      {/* ── MODAL INSTALACIÓN PWA — aparece al llegar desde Instagram ──────────── */}
+      {showInstallModal&&!pwaInstalled&&(()=>{
+        const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        // En iOS solo funciona desde Safari; si no es Safari, no mostramos el modal
+        if(isIOS && !isSafari) { setTimeout(()=>setShowInstallModal(false), 0); return null; }
+        return(
+          <div style={{
+            position:"fixed",inset:0,zIndex:12000,
+            background:"rgba(0,0,0,0.88)",backdropFilter:"blur(8px)",
+            display:"flex",alignItems:"flex-end",justifyContent:"center",
+            animation:"fadeIn 0.3s ease",
+          }} onClick={()=>setShowInstallModal(false)}>
+            <div style={{
+              width:"100%",maxWidth:420,
+              background:`linear-gradient(180deg,#1E4A20,${T.bgWood} 55%)`,
+              borderRadius:"28px 28px 0 0",
+              border:`2px solid ${T.g1}`,borderBottom:"none",
+              boxShadow:`0 -8px 40px rgba(88,204,2,0.25)`,
+              padding:"28px 24px 44px",
+              animation:"slideUp 0.4s cubic-bezier(0.34,1.12,0.64,1)",
+            }} onClick={e=>e.stopPropagation()}>
+
+              {/* Drag handle */}
+              <div style={{display:"flex",justifyContent:"center",marginBottom:20}}>
+                <div style={{width:36,height:4,borderRadius:2,background:"rgba(255,255,255,0.2)"}}/>
+              </div>
+
+              {/* Cabecera con mascota */}
+              <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:20}}>
+                <Mascot expr="excited" size={72}/>
+                <div>
+                  <div style={{fontSize:20,fontWeight:900,color:T.wh,lineHeight:1.2,marginBottom:4}}>
+                    {lang==="en" ? "Install GBH on your phone! 🚀" : "¡Instala GBH en tu móvil! 🚀"}
+                  </div>
+                  <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>
+                    {lang==="en"
+                      ? "Add it to your home screen and open it like a real app — no browser needed."
+                      : "Añádela a tu pantalla de inicio y ábrela como una app de verdad, sin navegador."}
+                  </div>
+                </div>
+              </div>
+
+              {/* Ventajas */}
+              <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:24}}>
+                {(lang==="en"
+                  ? ["⚡ Opens instantly, like a native app","🔔 Reminders so you never miss a day","📵 Works offline too","🏠 Always on your home screen"]
+                  : ["⚡ Se abre al instante, como una app nativa","🔔 Recordatorios para no perderte un día","📵 Funciona sin conexión también","🏠 Siempre en tu pantalla de inicio"]
+                ).map((item,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:10,
+                    background:"rgba(88,204,2,0.08)",border:`1px solid rgba(88,204,2,0.2)`,
+                    borderRadius:12,padding:"9px 14px"}}>
+                    <span style={{fontSize:16,flexShrink:0}}>{item.split(" ")[0]}</span>
+                    <span style={{fontSize:13,color:T.wh,fontFamily:"'DM Sans',sans-serif",fontWeight:600}}>
+                      {item.split(" ").slice(1).join(" ")}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Botón instalar (Android con pwaPrompt) o instrucción iOS */}
+              {!isIOS && pwaPrompt ? (
+                <button onClick={async()=>{
+                  pwaPrompt.prompt();
+                  const {outcome}=await pwaPrompt.userChoice;
+                  if(outcome==="accepted") setPwaInstalled(true);
+                  setPwaPrompt(null);
+                  setShowInstallModal(false);
+                }} style={{
+                  width:"100%",padding:"18px 0",borderRadius:20,
+                  border:`3px solid ${T.g3}`,
+                  background:`linear-gradient(135deg,${T.g1},${T.g2})`,
+                  color:"white",fontSize:18,fontWeight:900,
+                  cursor:"pointer",
+                  boxShadow:`0 8px 0 ${T.g3}`,
+                  fontFamily:"'Nunito',sans-serif",
+                  marginBottom:12,
+                  animation:"glow 2s ease-in-out infinite",
+                }}>
+                  📲 {lang==="en" ? "Install GBH" : "Instalar GBH"}
+                </button>
+              ) : (
+                <div style={{
+                  background:"rgba(255,200,0,0.10)",
+                  border:`1.5px solid ${T.au2}`,
+                  borderRadius:16,padding:"14px 18px",marginBottom:12,
+                }}>
+                  <div style={{fontSize:12,fontWeight:900,color:T.au1,marginBottom:8}}>
+                    {isIOS
+                      ? (lang==="en" ? "📲 How to install on iPhone:" : "📲 Cómo instalar en iPhone:")
+                      : (lang==="en" ? "📲 How to install:" : "📲 Cómo instalar:")}
+                  </div>
+                  <div style={{fontSize:13,color:T.wh,fontFamily:"'DM Sans',sans-serif",lineHeight:1.8}}>
+                    {isIOS ? (
+                      lang==="en"
+                        ? <><b>1.</b> Tap the <b>Share</b> button <b>□↑</b> at the bottom<br/><b>2.</b> Select <b>"Add to Home Screen"</b><br/><b>3.</b> Tap <b>"Add"</b> — done! 🎉</>
+                        : <><b>1.</b> Pulsa el botón <b>Compartir</b> <b>□↑</b> abajo<br/><b>2.</b> Selecciona <b>"Añadir a inicio"</b><br/><b>3.</b> Pulsa <b>"Añadir"</b> — ¡listo! 🎉</>
+                    ) : (
+                      lang==="en"
+                        ? <><b>1.</b> Tap menu <b>⋮</b> (top right)<br/><b>2.</b> Select <b>"Add to Home Screen"</b><br/><b>3.</b> Tap <b>"Add"</b> — done! 🎉</>
+                        : <><b>1.</b> Pulsa el menú <b>⋮</b> (arriba a la derecha)<br/><b>2.</b> Selecciona <b>"Añadir a pantalla de inicio"</b><br/><b>3.</b> Pulsa <b>"Añadir"</b> — ¡listo! 🎉</>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <button onClick={()=>setShowInstallModal(false)} style={{
+                width:"100%",padding:"13px 0",borderRadius:16,
+                background:"rgba(255,255,255,0.06)",
+                border:"1.5px solid rgba(255,255,255,0.12)",
+                color:"rgba(255,255,255,0.45)",fontSize:14,fontWeight:700,
+                cursor:"pointer",fontFamily:"'Nunito',sans-serif",
+              }}>
+                {lang==="en" ? "Maybe later" : "Ahora no"}
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── HEADER ─────────────────────────────────────────────────────────── */}
       {/* Banner notificaciones — aparece una sola vez tras 1 día de uso */}
