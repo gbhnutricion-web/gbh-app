@@ -3893,18 +3893,23 @@ function GBHApp(){
     if(!aEmail.trim()) return;
     setLoading(true); setAuthErr("");
     const email=aEmail.trim().toLowerCase(), name=aName.trim();
+    console.log("🔐 doAuth START — mode:", authMode, "email:", email, "passLen:", aPassword.length);
 
     // ── FLUJO A: Usuario existente ya migrado → login con contraseña ──────────
     if(authMode==="returning"){
       if(!aPassword){ setAuthErr(t("passwordTooShort")); setLoading(false); return; }
+      console.log("🔐 FLUJO A — calling signIn...");
       const {user, session, error} = await sbAuth.signIn(email, aPassword);
+      console.log("🔐 FLUJO A signIn result — user:", user?.id, "error:", error, "session keys:", session ? Object.keys(session) : null);
       if(error){
         setAuthErr(t("passwordWrong"));
         setLoading(false); return;
       }
       sbAuth.saveSession(session);
       // Cargar perfil vinculado al auth_id
+      console.log("🔐 FLUJO A — fetching profile by auth_id:", user.id);
       const r = await sbReq("GET", `profiles?auth_id=eq.${user.id}&select=*`);
+      console.log("🔐 FLUJO A — profile result:", r);
       if(r?.length){
         const ep = r[0];
         const ach = await sbReq("GET", `achievements?profile_id=eq.${ep.id}&select=badge_id`);
@@ -3937,8 +3942,10 @@ function GBHApp(){
       if(aPassword !== aPasswordC){ setAuthErr(t("passwordMismatch")); setLoading(false); return; }
 
       // Intentar signUp en Supabase Auth
+      console.log("🔐 FLUJO B — calling signUp...");
       let authUser = null, authSession = null;
       const {user, session, error} = await sbAuth.signUp(email, aPassword);
+      console.log("🔐 FLUJO B signUp — user:", user?.id, "error:", error, "session:", session ? JSON.stringify(session).substring(0,100) : null);
 
       if(error){
         // Si el error es "User already registered" → ya hizo signUp antes pero falló el PATCH
