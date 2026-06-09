@@ -2959,7 +2959,10 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
   const initW = weights.find(w=>w.isInitial)?.weight ?? profile?.initial_weight ?? "—";
   const lastW = weights.filter(w=>!w.isInitial).slice(-1)[0]?.weight ?? "—";
 
-  const DataRow = ({label, value, field}) => (
+  const DataRow = ({label, value, field}) => {
+    // El email no es editable si la cuenta ya está vinculada a Supabase Auth
+    const isLocked = field==="email" && !!profile?.auth_id;
+    return(
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 0",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontSize:10,color:T.t2,textTransform:"uppercase",letterSpacing:"0.08em",fontFamily:"'DM Sans',sans-serif",marginBottom:3}}>{label}</div>
@@ -2971,20 +2974,23 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
             style={{background:"rgba(255,255,255,0.1)",border:`1.5px solid ${T.g1}`,borderRadius:10,padding:"6px 10px",color:T.wh,fontSize:15,fontWeight:700,fontFamily:"'DM Sans',sans-serif",width:"90%",outline:"none"}}
           />
         ):(
-          <div style={{fontSize:16,fontWeight:800,color:T.wh,fontFamily:"'DM Sans',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+          <div style={{fontSize:16,fontWeight:800,color:isLocked?T.t2:T.wh,fontFamily:"'DM Sans',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
             {value}{(field==="weight"||field==="goal")&&value!=="—"?" kg":""}
           </div>
         )}
       </div>
       <div style={{marginLeft:12,flexShrink:0}}>
-        {editField===field?(
+        {isLocked?(
+          <span style={{fontSize:16,opacity:0.35}} title={lang==="en"?"Email linked to your account":"Email vinculado a tu cuenta"}>🔒</span>
+        ):editField===field?(
           <button onClick={saveEdit} style={{background:T.g1,border:"none",borderRadius:10,padding:"7px 14px",color:"white",fontWeight:900,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>✓</button>
         ):(
           <button onClick={()=>startEdit(field, value)} style={{background:"rgba(255,255,255,0.08)",border:"1.5px solid rgba(255,255,255,0.14)",borderRadius:10,padding:"7px 10px",color:T.t2,fontSize:16,cursor:"pointer",lineHeight:1}}>✏️</button>
         )}
       </div>
     </div>
-  );
+    );
+  };
 
   return(
     <div style={{position:"fixed",inset:0,zIndex:11000,background:"rgba(0,0,0,0.88)",backdropFilter:"blur(8px)",display:"flex",alignItems:"center",justifyContent:"center",padding:20,overflowY:"auto"}} onClick={onClose}>
@@ -3513,13 +3519,24 @@ function GBHApp(){
   },[]);
 
   // Auto-login: si ya existe sesión guardada, cargar directamente
+  // Si el perfil no tiene auth_id (pre-migración), redirigir a pantalla de creación de contraseña
   useEffect(()=>{
     const lastEmail=lsGet("gbh:lastEmail",null);
     if(!lastEmail)return;
     const lid=lsGet(`gbh:em:${lastEmail}`,null);
     if(!lid)return;
     const lp=lsGet(`gbh:p:${lid}`,null);
-    if(lp?.id)loadP(lp);
+    if(!lp?.id)return;
+    // Si no tiene auth_id → mandar a crear contraseña antes de entrar
+    if(!lp.auth_id){
+      setAEmail(lastEmail);
+      setAName(lp.name||"");
+      setAuthMode("migrate");
+      setScreen("auth");
+      setLoading(false);
+      return;
+    }
+    loadP(lp);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
