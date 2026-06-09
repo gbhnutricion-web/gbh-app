@@ -19,11 +19,26 @@ const TRANS = {
     goalHint:"🎯 Opcional — te ayuda a ver cuánto te queda para llegar",
     checkingAccount:"Verificando cuenta...",
     welcomeBack:"¡Bienvenido de nuevo, {n}!",
-    accountExists:"Tu cuenta existe — recuperaremos todos tus datos.",
+    accountExists:"Tu cuenta existe — introduce tu contraseña para entrar.",
     verifying:"Verificando...",
-    recoverAccount:"Recuperar mi cuenta 🔄",
+    recoverAccount:"Entrar 🔓",
     startAdventure:"¡Empezar mi aventura! 🚀",
     noConnRecover:"Sin conexión. Conéctate a internet para recuperar tu cuenta.",
+    // Contraseña
+    password:"Contraseña", passwordPH:"Mínimo 6 caracteres",
+    passwordConfirm:"Confirmar contraseña", passwordConfirmPH:"Repite tu contraseña",
+    passwordShow:"Mostrar", passwordHide:"Ocultar",
+    passwordMismatch:"Las contraseñas no coinciden.",
+    passwordTooShort:"La contraseña debe tener al menos 6 caracteres.",
+    passwordWrong:"Contraseña incorrecta. Inténtalo de nuevo.",
+    forgotPassword:"¿Olvidaste tu contraseña?",
+    forgotPasswordSent:"📧 Te hemos enviado un email para restablecer tu contraseña.",
+    forgotPasswordErr:"No se pudo enviar el email. Inténtalo de nuevo.",
+    // Migración usuarios existentes sin contraseña
+    migrateTitle:"¡Protege tu cuenta! 🔐",
+    migrateDesc:"Para mayor seguridad, crea una contraseña para tu cuenta. Tus datos, racha y progreso no se tocarán.",
+    migrateBtn:"Crear mi contraseña 🔐",
+    authErrGeneric:"Error al iniciar sesión. Inténtalo de nuevo.",
     // Nav
     tabHome:"Inicio", tabRecipe:"Receta", tabWeight:"Peso",
     tabRanking:"Ranking", tabAchievements:"Logros", tabCalc:"Objetivo",
@@ -213,11 +228,26 @@ const TRANS = {
     goalHint:"🎯 Optional — helps you see how far you have to go",
     checkingAccount:"Checking account...",
     welcomeBack:"Welcome back, {n}!",
-    accountExists:"Your account exists — we'll recover all your data.",
+    accountExists:"Your account exists — enter your password to sign in.",
     verifying:"Verifying...",
-    recoverAccount:"Recover my account 🔄",
+    recoverAccount:"Sign in 🔓",
     startAdventure:"Start my adventure! 🚀",
     noConnRecover:"No connection. Connect to the internet to recover your account.",
+    // Password
+    password:"Password", passwordPH:"At least 6 characters",
+    passwordConfirm:"Confirm password", passwordConfirmPH:"Repeat your password",
+    passwordShow:"Show", passwordHide:"Hide",
+    passwordMismatch:"Passwords don't match.",
+    passwordTooShort:"Password must be at least 6 characters.",
+    passwordWrong:"Wrong password. Please try again.",
+    forgotPassword:"Forgot your password?",
+    forgotPasswordSent:"📧 We've sent you a password reset email.",
+    forgotPasswordErr:"Couldn't send the email. Please try again.",
+    // Migration for existing users without password
+    migrateTitle:"Protect your account! 🔐",
+    migrateDesc:"For added security, create a password for your account. Your data, streak and progress won't be touched.",
+    migrateBtn:"Create my password 🔐",
+    authErrGeneric:"Sign in error. Please try again.",
     // Nav
     tabHome:"Home", tabRecipe:"Recipe", tabWeight:"Weight",
     tabRanking:"Ranking", tabAchievements:"Medals", tabCalc:"Goal",
@@ -591,6 +621,71 @@ import { ComposedChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 
 // ─── Supabase ────────────────────────────────────────────────────────────────
 const SB  = "https://kszytoufvqogcitzbzqs.supabase.co";
 const KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtzenl0b3VmdnFvZ2NpdHpienFzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1OTQzOTgsImV4cCI6MjA5NDE3MDM5OH0.OcOUrgbyAL6aPBSW_hSNapmwSYMV5mNjLrJCmRghg-c";
+
+// ─── Supabase Auth helpers (email + password) ─────────────────────────────────
+// Llama directamente a la API REST de Auth de Supabase sin SDK externo
+const sbAuth = {
+  // Registro nuevo usuario en Supabase Auth
+  signUp: async (email, password) => {
+    const r = await fetch(`${SB}/auth/v1/signup`, {
+      method: "POST",
+      headers: { "apikey": KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const d = await r.json();
+    if (!r.ok) return { error: d.error_description || d.msg || "Error en registro" };
+    return { user: d.user, session: d.session };
+  },
+
+  // Login usuario existente
+  signIn: async (email, password) => {
+    const r = await fetch(`${SB}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: { "apikey": KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const d = await r.json();
+    if (!r.ok) return { error: d.error_description || d.msg || "Contraseña incorrecta" };
+    return { user: d.user, session: d };
+  },
+
+  // Recuperación de contraseña por email
+  resetPassword: async (email) => {
+    const r = await fetch(`${SB}/auth/v1/recover`, {
+      method: "POST",
+      headers: { "apikey": KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    return r.ok;
+  },
+
+  // Obtener sesión activa desde localStorage
+  getSession: () => {
+    try {
+      // Supabase guarda la sesión con esta clave estándar
+      const raw = localStorage.getItem(`sb-kszytoufvqogcitzbzqs-auth-token`);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      // Verificar que el token no ha expirado
+      if (parsed?.expires_at && parsed.expires_at * 1000 < Date.now()) return null;
+      return parsed;
+    } catch { return null; }
+  },
+
+  // Guardar sesión en localStorage (formato estándar de Supabase)
+  saveSession: (session) => {
+    try {
+      localStorage.setItem(`sb-kszytoufvqogcitzbzqs-auth-token`, JSON.stringify(session));
+    } catch {}
+  },
+
+  // Borrar sesión
+  clearSession: () => {
+    try {
+      localStorage.removeItem(`sb-kszytoufvqogcitzbzqs-auth-token`);
+    } catch {}
+  },
+};
 
 // ─── Mascot image path (upload avatar.jpg to /public in GitHub) ───────────────
 
@@ -3265,8 +3360,12 @@ function GBHApp(){
   const [aHeight,  setAHeight]  = useState(170);
   const [aSex,     setASex]     = useState("M");
   const [aPrivacy, setAPrivacy] = useState(false);
-  const [authMode,setAuthMode]= useState("new"); // "new" | "returning" | "checking"
+  const [authMode,setAuthMode]= useState("new"); // "new" | "returning" | "migrate" | "checking"
   const [authErr, setAuthErr] = useState("");
+  const [aPassword,   setAPassword]   = useState("");
+  const [aPasswordC,  setAPasswordC]  = useState(""); // confirm (solo registro nuevo)
+  const [showPass,    setShowPass]    = useState(false);
+  const [forgotSent,  setForgotSent]  = useState(false);
   const [dailyRecipe,setDailyRecipe] = useState(null);
   const [savedRecipes,setSavedRecipes] = useState([]);
   const [recipeView, setRecipeView]  = useState("daily"); // "daily" | "book"
@@ -3755,11 +3854,13 @@ function GBHApp(){
   const checkEmail = async (email) => {
     if(!email.includes("@")) return;
     setAuthMode("checking");
-    setAuthErr("");
-    const r = await sbReq("GET", `profiles?email=eq.${email.trim().toLowerCase()}&select=id,name`);
+    setAuthErr(""); setForgotSent(false);
+    const r = await sbReq("GET", `profiles?email=eq.${email.trim().toLowerCase()}&select=id,name,auth_id`);
     if(r?.length){
-      setAuthMode("returning");
-      setAName(r[0].name || aName); // Pre-rellena el nombre si existe
+      setAName(r[0].name || aName);
+      // Si ya tiene auth_id → ya migrado → pedir contraseña normal
+      // Si no tiene auth_id → usuario pre-migración → flujo de creación de contraseña
+      setAuthMode(r[0].auth_id ? "returning" : "migrate");
     } else {
       setAuthMode("new");
     }
@@ -3770,38 +3871,77 @@ function GBHApp(){
     setLoading(true); setAuthErr("");
     const email=aEmail.trim().toLowerCase(), name=aName.trim();
 
-    // 1️⃣ Buscar en Supabase (fuente de verdad)
-    const r = await sbReq("GET", `profiles?email=eq.${email}&select=*`);
-    if(r?.length){
-      // ── Usuario existente encontrado ──
-      const ep = r[0];
-      // Restaurar badges desde achievements al hacer login
-      const ach = await sbReq("GET", `achievements?profile_id=eq.${ep.id}&select=badge_id`);
-      if(ach?.length) lsSet(`gbh:badges:${ep.id}`, ach.map(a=>a.badge_id));
-      lsSet(`gbh:p:${ep.id}`, ep);
-      lsSet(`gbh:em:${email}`, ep.id);
-      lsSet("gbh:lastEmail", email);
-      await loadP(ep);
-      setLoading(false);
-      return;
+    // ── FLUJO A: Usuario existente ya migrado → login con contraseña ──────────
+    if(authMode==="returning"){
+      if(!aPassword){ setAuthErr(t("passwordTooShort")); setLoading(false); return; }
+      const {user, session, error} = await sbAuth.signIn(email, aPassword);
+      if(error){
+        setAuthErr(t("passwordWrong"));
+        setLoading(false); return;
+      }
+      sbAuth.saveSession(session);
+      // Cargar perfil vinculado al auth_id
+      const r = await sbReq("GET", `profiles?auth_id=eq.${user.id}&select=*`);
+      if(r?.length){
+        const ep = r[0];
+        const ach = await sbReq("GET", `achievements?profile_id=eq.${ep.id}&select=badge_id`);
+        if(ach?.length) lsSet(`gbh:badges:${ep.id}`, ach.map(a=>a.badge_id));
+        lsSet(`gbh:p:${ep.id}`, ep);
+        lsSet(`gbh:em:${email}`, ep.id);
+        lsSet("gbh:lastEmail", email);
+        await loadP(ep);
+        setLoading(false); return;
+      }
+      setAuthErr(t("authErrGeneric")); setLoading(false); return;
     }
 
-    // 2️⃣ Sin conexión y el usuario ya existe localmente → no crear cuenta nueva
-    if(!navigator.onLine || r === null) {
-      const lid = lsGet(`gbh:em:${email}`, null);
-      if(lid){ const lp=lsGet(`gbh:p:${lid}`,null); if(lp){ lsSet("gbh:lastEmail",email); await loadP(lp); setLoading(false); return; }}
-      setAuthErr("Sin conexión. Conéctate a internet para recuperar tu cuenta.");
-      setLoading(false);
-      return;
+    // ── FLUJO B: Usuario existente SIN contraseña (pre-migración) ─────────────
+    if(authMode==="migrate"){
+      if(aPassword.length < 6){ setAuthErr(t("passwordTooShort")); setLoading(false); return; }
+      if(aPassword !== aPasswordC){ setAuthErr(t("passwordMismatch")); setLoading(false); return; }
+
+      // Registrar en Supabase Auth (crea la cuenta Auth)
+      const {user, session, error} = await sbAuth.signUp(email, aPassword);
+      if(error){
+        setAuthErr(error);
+        setLoading(false); return;
+      }
+      sbAuth.saveSession(session);
+
+      // Vincular auth_id al profile existente (sin tocar ningún otro dato)
+      const r = await sbReq("GET", `profiles?email=eq.${email}&select=*`);
+      if(r?.length){
+        const ep = r[0];
+        await sbReq("PATCH", `profiles?id=eq.${ep.id}`, { auth_id: user.id });
+        const merged = { ...ep, auth_id: user.id };
+        const ach = await sbReq("GET", `achievements?profile_id=eq.${ep.id}&select=badge_id`);
+        if(ach?.length) lsSet(`gbh:badges:${ep.id}`, ach.map(a=>a.badge_id));
+        lsSet(`gbh:p:${ep.id}`, merged);
+        lsSet(`gbh:em:${email}`, ep.id);
+        lsSet("gbh:lastEmail", email);
+        await loadP(merged);
+        setLoading(false); return;
+      }
+      setAuthErr(t("authErrGeneric")); setLoading(false); return;
     }
 
-    // 3️⃣ Usuario genuinamente nuevo → crear cuenta
+    // ── FLUJO C: Usuario genuinamente nuevo → registro completo ───────────────
     if(!aWeight || isNaN(parseFloat(aWeight))){
       setAuthErr("Introduce tu peso actual para comenzar.");
       setLoading(false); return;
     }
+    if(aPassword.length < 6){ setAuthErr(t("passwordTooShort")); setLoading(false); return; }
+    if(aPassword !== aPasswordC){ setAuthErr(t("passwordMismatch")); setLoading(false); return; }
+
+    // 1. Crear cuenta en Supabase Auth
+    const {user, session, error} = await sbAuth.signUp(email, aPassword);
+    if(error){ setAuthErr(error); setLoading(false); return; }
+    sbAuth.saveSession(session);
+
+    // 2. Crear perfil vinculado al auth_id
     const np={
-      id:crypto.randomUUID(), name, email,
+      id: crypto.randomUUID(), name, email,
+      auth_id: user.id,
       xp:0, gems:0, shields:0,
       height_cm: Math.round(aHeight)||null,
       sex: aSex||null,
@@ -3818,6 +3958,16 @@ function GBHApp(){
       await sbReq("POST","weight_logs?on_conflict=profile_id,log_date",{profile_id:fp.id,log_date:initDate,weight_kg:initW});
     }
     await loadP(fp); setLoading(false);
+  };
+
+  // Recuperación de contraseña por email
+  const doForgotPassword = async () => {
+    if(!aEmail.includes("@")) return;
+    setLoading(true);
+    const ok = await sbAuth.resetPassword(aEmail.trim().toLowerCase());
+    setLoading(false);
+    if(ok){ setForgotSent(true); setAuthErr(""); }
+    else { setAuthErr(t("forgotPasswordErr")); }
   };
 
   const saveLog=useCallback(async(nl,sc)=>{
@@ -4579,11 +4729,12 @@ function GBHApp(){
 
         <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>{t("email")}</div>
         <input type="email" value={aEmail}
-          onChange={e=>{setAEmail(e.target.value);setAuthMode("new");setAuthErr("");}}
+          onChange={e=>{setAEmail(e.target.value);setAuthMode("new");setAuthErr("");setAPassword("");setAPasswordC("");setForgotSent(false);}}
           onBlur={e=>checkEmail(e.target.value)}
-          placeholder={t("emailPH")} style={{...inp,marginBottom:authMode==="returning"?0:16}}/>
+          placeholder={t("emailPH")} style={{...inp,marginBottom:(authMode==="returning"||authMode==="migrate")?0:16}}/>
 
-        {authMode==="returning"&&(
+        {/* ── Usuario ya migrado: bienvenida + campo contraseña ── */}
+        {authMode==="returning"&&(<>
           <div style={{background:"rgba(88,204,2,0.12)",border:`1.5px solid ${T.g3}`,borderRadius:14,
             padding:"12px 16px",margin:"12px 0",display:"flex",alignItems:"center",gap:10}}>
             <span style={{fontSize:22}}>👋</span>
@@ -4594,7 +4745,68 @@ function GBHApp(){
               </div>
             </div>
           </div>
-        )}
+          <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>{t("password")}</div>
+          <div style={{position:"relative",marginBottom:8}}>
+            <input type={showPass?"text":"password"} value={aPassword}
+              onChange={e=>setAPassword(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&doAuth()}
+              placeholder={t("passwordPH")}
+              style={{...inp,marginBottom:0,paddingRight:72}}/>
+            <button onClick={()=>setShowPass(p=>!p)} type="button" style={{
+              position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",
+              background:"none",border:"none",color:T.t2,fontSize:12,cursor:"pointer",
+              fontFamily:"'DM Sans',sans-serif",fontWeight:700,padding:"4px 6px",
+            }}>{showPass?t("passwordHide"):t("passwordShow")}</button>
+          </div>
+          {/* Olvidé mi contraseña */}
+          {!forgotSent?(
+            <div style={{textAlign:"right",marginBottom:16}}>
+              <button onClick={doForgotPassword} type="button" style={{
+                background:"none",border:"none",color:T.t2,fontSize:11,cursor:"pointer",
+                fontFamily:"'DM Sans',sans-serif",textDecoration:"underline",padding:0,
+              }}>{t("forgotPassword")}</button>
+            </div>
+          ):(
+            <div style={{background:"rgba(88,204,2,0.10)",border:`1px solid ${T.g3}`,borderRadius:10,
+              padding:"8px 12px",marginBottom:16,fontSize:11,color:T.g2,fontFamily:"'DM Sans',sans-serif",textAlign:"center"}}>
+              {t("forgotPasswordSent")}
+            </div>
+          )}
+        </>)}
+
+        {/* ── Usuario pre-migración: crear contraseña sin perder datos ── */}
+        {authMode==="migrate"&&(<>
+          <div style={{background:"rgba(255,200,0,0.10)",border:`1.5px solid ${T.au2}`,borderRadius:14,
+            padding:"14px 16px",margin:"12px 0",display:"flex",alignItems:"flex-start",gap:10}}>
+            <span style={{fontSize:22,flexShrink:0}}>🔐</span>
+            <div>
+              <div style={{fontSize:13,fontWeight:900,color:T.au1}}>{t("migrateTitle")}</div>
+              <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:4,lineHeight:1.5}}>
+                {t("migrateDesc")}
+              </div>
+            </div>
+          </div>
+          <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>{t("password")}</div>
+          <div style={{position:"relative",marginBottom:16}}>
+            <input type={showPass?"text":"password"} value={aPassword}
+              onChange={e=>setAPassword(e.target.value)}
+              placeholder={t("passwordPH")}
+              style={{...inp,marginBottom:0,paddingRight:72}}/>
+            <button onClick={()=>setShowPass(p=>!p)} type="button" style={{
+              position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",
+              background:"none",border:"none",color:T.t2,fontSize:12,cursor:"pointer",
+              fontFamily:"'DM Sans',sans-serif",fontWeight:700,padding:"4px 6px",
+            }}>{showPass?t("passwordHide"):t("passwordShow")}</button>
+          </div>
+          <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>{t("passwordConfirm")}</div>
+          <input type={showPass?"text":"password"} value={aPasswordC}
+            onChange={e=>setAPasswordC(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&doAuth()}
+            placeholder={t("passwordConfirmPH")}
+            style={{...inp,marginBottom:16,
+              borderColor: aPasswordC && aPassword !== aPasswordC ? T.red : undefined,
+            }}/>
+        </>)}
 
         {authMode==="checking"&&(
           <div style={{textAlign:"center",padding:"10px 0",fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>
@@ -4665,6 +4877,27 @@ function GBHApp(){
           <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:20}}>
             {t("heightHint")}
           </div>
+          {/* ── Contraseña (usuario nuevo) ── */}
+          <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>{t("password")}</div>
+          <div style={{position:"relative",marginBottom:16}}>
+            <input type={showPass?"text":"password"} value={aPassword}
+              onChange={e=>setAPassword(e.target.value)}
+              placeholder={t("passwordPH")}
+              style={{...inp,marginBottom:0,paddingRight:72}}/>
+            <button onClick={()=>setShowPass(p=>!p)} type="button" style={{
+              position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",
+              background:"none",border:"none",color:T.t2,fontSize:12,cursor:"pointer",
+              fontFamily:"'DM Sans',sans-serif",fontWeight:700,padding:"4px 6px",
+            }}>{showPass?t("passwordHide"):t("passwordShow")}</button>
+          </div>
+          <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>{t("passwordConfirm")}</div>
+          <input type={showPass?"text":"password"} value={aPasswordC}
+            onChange={e=>setAPasswordC(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&doAuth()}
+            placeholder={t("passwordConfirmPH")}
+            style={{...inp,marginBottom:20,
+              borderColor: aPasswordC && aPassword !== aPasswordC ? T.red : undefined,
+            }}/>
         </>)}
 
         {authErr&&(
@@ -4722,9 +4955,16 @@ function GBHApp(){
 
         {(()=>{
           const isReturning = authMode==="returning";
+          const isMigrate   = authMode==="migrate";
           const dis = loading || authMode==="checking" ||
                       !aEmail.trim() ||
-                      (!isReturning && (!aName.trim()||!aWeight||isNaN(parseFloat(aWeight))||!aPrivacy));
+                      (isReturning && !aPassword) ||
+                      (isMigrate && (aPassword.length<6 || aPassword!==aPasswordC)) ||
+                      (!isReturning && !isMigrate && (!aName.trim()||!aWeight||isNaN(parseFloat(aWeight))||!aPrivacy||aPassword.length<6||aPassword!==aPasswordC));
+          const label = loading ? t("verifying")
+                      : isReturning ? t("recoverAccount")
+                      : isMigrate   ? t("migrateBtn")
+                      : t("startAdventure");
           return(
             <button onClick={doAuth} disabled={dis}
               style={{width:"100%",padding:"17px 20px",borderRadius:18,border:`3px solid ${T.g3}`,
@@ -4732,7 +4972,7 @@ function GBHApp(){
                 background:dis?"rgba(255,255,255,0.12)":`linear-gradient(135deg,${T.g1},${T.g2})`,
                 color:dis?T.t2:"white",boxShadow:dis?"none":`0 6px 0 ${T.g3}`,
                 transition:"all 0.15s",fontFamily:"'Nunito',sans-serif"}}>
-              {loading?t("verifying"):isReturning?t("recoverAccount"):t("startAdventure")}
+              {label}
             </button>
           );
         })()}
