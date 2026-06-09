@@ -3915,10 +3915,18 @@ function GBHApp(){
       sbAuth.saveSession(res.session);
       dbg("A: fetching profile by auth_id...");
       const byId = await sbReq("GET", `profiles?auth_id=eq.${res.user.id}&select=*`);
-      dbg(`A: byId → ${JSON.stringify(byId?.length)}`);
+      dbg(`A: byId → ${byId?.length}`);
       if(byId?.length){ await enterApp(byId[0], res.user.id); return; }
+      // Fallback: localStorage (no depende de RLS)
+      const localId = lsGet(`gbh:em:${email}`, null);
+      const localP  = localId ? lsGet(`gbh:p:${localId}`, null) : null;
+      dbg(`A: localProfile → found:${!!localP} id:${localId?.slice(0,8)}`);
+      if(localP){
+        await sbReq("PATCH", `profiles?id=eq.${localP.id}`, { auth_id: res.user.id });
+        await enterApp(localP, res.user.id); return;
+      }
       const byEmail = await sbReq("GET", `profiles?email=eq.${email}&select=*`);
-      dbg(`A: byEmail → ${JSON.stringify(byEmail?.length)}`);
+      dbg(`A: byEmail → ${byEmail?.length}`);
       if(byEmail?.length){
         await sbReq("PATCH", `profiles?id=eq.${byEmail[0].id}`, { auth_id: res.user.id });
         await enterApp(byEmail[0], res.user.id); return;
@@ -3954,11 +3962,23 @@ function GBHApp(){
       }
 
       dbg(`B: patching profile with auth_id:${authUserId?.slice(0,8)}`);
-      const byEmail = await sbReq("GET", `profiles?email=eq.${email}&select=*`);
-      dbg(`B: byEmail → ${byEmail?.length}`);
-      if(byEmail?.length){
-        await sbReq("PATCH", `profiles?id=eq.${byEmail[0].id}`, { auth_id: authUserId });
-        await enterApp(byEmail[0], authUserId); return;
+      // Buscar perfil: primero en localStorage (evita RLS), luego Supabase por email
+      const lastEmail = email;
+      const localId = lsGet(`gbh:em:${lastEmail}`, null);
+      let profileData = localId ? lsGet(`gbh:p:${localId}`, null) : null;
+      dbg(`B: localProfile → ${localId?.slice(0,8)} found:${!!profileData}`);
+
+      if(!profileData){
+        // Fallback: buscar en Supabase (necesita RLS permisivo)
+        const byEmail = await sbReq("GET", `profiles?email=eq.${email}&select=*`);
+        dbg(`B: byEmail → ${byEmail?.length}`);
+        profileData = byEmail?.[0] || null;
+      }
+
+      if(profileData){
+        // PATCH en Supabase para vincular auth_id
+        await sbReq("PATCH", `profiles?id=eq.${profileData.id}`, { auth_id: authUserId });
+        await enterApp(profileData, authUserId); return;
       }
       setAuthErr(t("authErrGeneric")); setLoading(false); return;
     }
