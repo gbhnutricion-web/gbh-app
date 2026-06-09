@@ -4943,6 +4943,8 @@ function GBHApp(){
 
         {/* ── Checkbox política de privacidad (solo para nuevos usuarios) ── */}
         {authMode!=="returning"&&authMode!=="migrate"&&(
+          <div
+            onClick={()=>setAPrivacy(p=>!p)}
             style={{
               display:"flex",alignItems:"flex-start",gap:12,
               marginBottom:18,cursor:"pointer",
