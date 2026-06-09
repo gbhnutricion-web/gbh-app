@@ -3887,7 +3887,10 @@ function GBHApp(){
   };
 
   const doAuth=async()=>{
-    if(!aName.trim()||!aEmail.trim())return;
+    // En modo returning y migrate el nombre ya está guardado — no bloquear por aName vacío
+    const isReturningOrMigrate = authMode==="returning" || authMode==="migrate";
+    if(!isReturningOrMigrate && (!aName.trim()||!aEmail.trim())) return;
+    if(!aEmail.trim()) return;
     setLoading(true); setAuthErr("");
     const email=aEmail.trim().toLowerCase(), name=aName.trim();
 
@@ -3910,6 +3913,19 @@ function GBHApp(){
         lsSet(`gbh:em:${email}`, ep.id);
         lsSet("gbh:lastEmail", email);
         await loadP(ep);
+        setLoading(false); return;
+      }
+      // Fallback: buscar por email si auth_id no coincide aún
+      const r2 = await sbReq("GET", `profiles?email=eq.${email}&select=*`);
+      if(r2?.length){
+        const ep = r2[0];
+        // Actualizar auth_id si no estaba bien guardado
+        if(!ep.auth_id) await sbReq("PATCH", `profiles?id=eq.${ep.id}`, { auth_id: user.id });
+        const merged = { ...ep, auth_id: user.id };
+        lsSet(`gbh:p:${ep.id}`, merged);
+        lsSet(`gbh:em:${email}`, ep.id);
+        lsSet("gbh:lastEmail", email);
+        await loadP(merged);
         setLoading(false); return;
       }
       setAuthErr(t("authErrGeneric")); setLoading(false); return;
@@ -3935,7 +3951,15 @@ function GBHApp(){
           setAuthErr(error); setLoading(false); return;
         }
       } else {
-        authUser = user; authSession = session;
+        authUser = user;
+        // Si signUp devuelve sesión null (email no confirmado aún), hacer signIn para obtenerla
+        if(session && session.access_token){
+          authSession = session;
+        } else {
+          const si = await sbAuth.signIn(email, aPassword);
+          if(si.error){ setAuthErr(t("authErrGeneric")); setLoading(false); return; }
+          authUser = si.user; authSession = si.session;
+        }
       }
 
       // Guardar sesión si existe (puede ser null si Supabase pide confirmar email)
