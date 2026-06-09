@@ -627,14 +627,17 @@ const KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZi
 const sbAuth = {
   // Registro nuevo usuario en Supabase Auth
   signUp: async (email, password) => {
+    const redirectTo = window.location.origin; // dominio real de la app (no localhost)
     const r = await fetch(`${SB}/auth/v1/signup`, {
       method: "POST",
       headers: { "apikey": KEY, "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, options: { emailRedirectTo: redirectTo } }),
     });
     const d = await r.json();
     if (!r.ok) return { error: d.error_description || d.msg || "Error en registro" };
-    return { user: d.user, session: d.session };
+    // Supabase devuelve sesión inmediatamente si "Confirm email" está desactivado
+    // Si está activado, user existe pero session es null hasta confirmar
+    return { user: d.user, session: d.session || d };
   },
 
   // Login usuario existente
@@ -3917,20 +3920,33 @@ function GBHApp(){
       if(aPassword.length < 6){ setAuthErr(t("passwordTooShort")); setLoading(false); return; }
       if(aPassword !== aPasswordC){ setAuthErr(t("passwordMismatch")); setLoading(false); return; }
 
-      // Registrar en Supabase Auth (crea la cuenta Auth)
+      // Intentar signUp en Supabase Auth
+      let authUser = null, authSession = null;
       const {user, session, error} = await sbAuth.signUp(email, aPassword);
-      if(error){
-        setAuthErr(error);
-        setLoading(false); return;
-      }
-      sbAuth.saveSession(session);
 
-      // Vincular auth_id al profile existente (sin tocar ningún otro dato)
+      if(error){
+        // Si el error es "User already registered" → ya hizo signUp antes pero falló el PATCH
+        // Intentar signIn directamente
+        if(error.toLowerCase().includes("already registered") || error.toLowerCase().includes("already exists")){
+          const si = await sbAuth.signIn(email, aPassword);
+          if(si.error){ setAuthErr(t("passwordWrong")); setLoading(false); return; }
+          authUser = si.user; authSession = si.session;
+        } else {
+          setAuthErr(error); setLoading(false); return;
+        }
+      } else {
+        authUser = user; authSession = session;
+      }
+
+      // Guardar sesión si existe (puede ser null si Supabase pide confirmar email)
+      if(authSession) sbAuth.saveSession(authSession);
+
+      // Obtener perfil existente y vincular auth_id sin tocar ningún otro dato
       const r = await sbReq("GET", `profiles?email=eq.${email}&select=*`);
       if(r?.length){
         const ep = r[0];
-        await sbReq("PATCH", `profiles?id=eq.${ep.id}`, { auth_id: user.id });
-        const merged = { ...ep, auth_id: user.id };
+        await sbReq("PATCH", `profiles?id=eq.${ep.id}`, { auth_id: authUser.id });
+        const merged = { ...ep, auth_id: authUser.id };
         const ach = await sbReq("GET", `achievements?profile_id=eq.${ep.id}&select=badge_id`);
         if(ach?.length) lsSet(`gbh:badges:${ep.id}`, ach.map(a=>a.badge_id));
         lsSet(`gbh:p:${ep.id}`, merged);
@@ -4831,7 +4847,7 @@ function GBHApp(){
           </div>
         )}
 
-        {authMode!=="returning"&&(<>
+        {authMode!=="returning"&&authMode!=="migrate"&&(<>
           <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8,marginTop:4}}>{t("fullName")}</div>
           <input type="text" value={aName} onChange={e=>setAName(e.target.value)}
             placeholder={t("namePH")} style={{...inp,marginBottom:16}}/>
@@ -4926,9 +4942,7 @@ function GBHApp(){
         )}
 
         {/* ── Checkbox política de privacidad (solo para nuevos usuarios) ── */}
-        {authMode!=="returning"&&(
-          <div
-            onClick={()=>setAPrivacy(p=>!p)}
+        {authMode!=="returning"&&authMode!=="migrate"&&(
             style={{
               display:"flex",alignItems:"flex-start",gap:12,
               marginBottom:18,cursor:"pointer",
