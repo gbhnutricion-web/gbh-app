@@ -851,7 +851,7 @@ const cookieGet=(k,f=null)=>{try{const m=document.cookie.match(new RegExp('(?:^|
 // Guardar lastEmail siempre en cookie además de localStorage
 const saveLastEmail=(email)=>{lsSet("gbh:lastEmail",email);cookieSet("gbh_lastEmail",email);};
 // Leer lastEmail: primero localStorage, luego cookie
-const getLastEmail=()=>getLastEmail()||cookieGet("gbh_lastEmail",null);
+const getLastEmail=()=>lsGet("gbh:lastEmail",null)||cookieGet("gbh_lastEmail",null);
 
 // ─── Cola de sincronización offline ──────────────────────────────────────────
 // Cada operación que no llega a Supabase se encola en localStorage.
