@@ -4356,6 +4356,7 @@ function GBHApp(){
     setRankLoading(true);
     // Intentar Supabase primero — streak e initial_weight vienen del perfil global
     const data = await sbReq("GET","profiles?select=id,name,xp,gems,streak,initial_weight&order=xp.desc&limit=50");
+    alert("RANKING: " + JSON.stringify(data)?.slice(0,200));
     if(data?.length){
       // Pesos desde Supabase: weight_logs de todos los perfiles del ranking
       const ids=data.map(p=>p.id).join(",");
