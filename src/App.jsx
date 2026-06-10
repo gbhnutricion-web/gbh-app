@@ -3845,12 +3845,26 @@ function GBHApp(){
         lsSet(`gbh:badges:${profileId}`, badgeIds);
         setBadges([...badgeIds]);
       }
-      // 4. Restaurar perfil completo (foto, xp, gems, plan...)
+      // 4. Restaurar perfil completo (foto, xp, gems, plan, streak...)
       const remoteProfile = await sbReq("GET", `profiles?id=eq.${profileId}&select=*&limit=1`);
       if(remoteProfile?.length){
         const rp = remoteProfile[0];
         const localP = lsGet(`gbh:p:${profileId}`, {});
-        const merged = { ...localP, ...rp };
+        // Recalcular racha desde los logs restaurados si Supabase tiene streak=0 o null
+        let streakVal = rp.streak || 0;
+        if(streakVal === 0 && remoteLogs?.length){
+          const mappedForStreak = remoteLogs.map(r=>({date:r.log_date||r.date, diet:r.diet_followed??r.diet??false}));
+          const d=new Date(); let s=0;
+          while(true){
+            const key=toKey(d);
+            if(mappedForStreak.find(x=>x.date===key&&x.diet)){s++;d.setDate(d.getDate()-1);}
+            else break;
+          }
+          streakVal = s;
+          // Actualizar en Supabase si calculamos uno mayor
+          if(s>0) sbReq("PATCH",`profiles?id=eq.${profileId}`,{streak:s});
+        }
+        const merged = { ...localP, ...rp, streak: streakVal };
         lsSet(`gbh:p:${profileId}`, merged);
         setProfile({...merged});
         if(rp.avatar_b64){
@@ -4347,8 +4361,8 @@ function GBHApp(){
       const ids=data.map(p=>p.id).join(",");
       const wLogs=await sbReq("GET",`weight_logs?profile_id=in.(${ids})&select=profile_id,weight_kg,log_date&order=log_date.asc`)||[];
       const enriched = data.map(p=>{
-        // Racha: viene del campo streak guardado en Supabase (no localStorage)
-        const streak = p.streak||0;
+        // Racha: viene del campo streak de Supabase
+        const streak = p.streak || 0;
         // Peso: initial_weight del perfil + último registro en weight_logs
         const pW=wLogs.filter(w=>w.profile_id===p.id);
         const initW=p.initial_weight??null;
