@@ -899,10 +899,13 @@ const sbReq = async(method, path, body=null) => {
   // Usar el token del usuario autenticado si existe, para que RLS funcione correctamente
   let bearerToken = KEY; // fallback: anon key
   try {
-    const raw = localStorage.getItem("sb-kszytoufvqogcitzbzqs-auth-token");
+    // Buscar el token en todas las claves de localStorage que contengan "auth-token"
+    const authKey = Object.keys(localStorage).find(k => k.includes("auth-token") || k.includes("supabase.auth.token"));
+    const raw = authKey ? localStorage.getItem(authKey) : null;
     if(raw){
       const parsed = JSON.parse(raw);
-      if(parsed?.access_token) bearerToken = parsed.access_token;
+      const token = parsed?.access_token || parsed?.currentSession?.access_token;
+      if(token) bearerToken = token;
     }
   } catch {}
   const headers = {
@@ -915,9 +918,9 @@ const sbReq = async(method, path, body=null) => {
     const r = await fetch(`${SB}/rest/v1/${path}`, {
       method, headers, body: body ? JSON.stringify(body) : null,
     });
-    if(!r.ok) throw new Error("not ok");
+    if(!r.ok) throw new Error(`${r.status}`);
     return method==="DELETE" ? true : r.json();
-  } catch {
+  } catch(e) {
     // Sin red o error — encolar si es escritura
     if(method !== "GET" && body){
       enqueue({ id: crypto.randomUUID(), method, path, body, ts: Date.now() });
@@ -4354,13 +4357,22 @@ function GBHApp(){
 
   const loadRanking = async () => {
     setRankLoading(true);
-    // Intentar Supabase primero — streak e initial_weight vienen del perfil global
-    const data = await sbReq("GET","profiles?select=id,name,xp,gems,streak,initial_weight&order=xp.desc&limit=50");
-    alert("RANKING: " + JSON.stringify(data)?.slice(0,200));
+    // Ranking usa anon key directamente — política profiles_select_for_ranking USING(true)
+    const rankFetch = async (path) => {
+      try {
+        const r = await fetch(`${SB}/rest/v1/${path}`, {
+          method: "GET",
+          headers: { "apikey": KEY, "Authorization": `Bearer ${KEY}`, "Content-Type": "application/json" }
+        });
+        if(!r.ok) return null;
+        return r.json();
+      } catch { return null; }
+    };
+    const data = await rankFetch("profiles?select=id,name,xp,gems,streak,initial_weight&order=xp.desc&limit=50");
     if(data?.length){
       // Pesos desde Supabase: weight_logs de todos los perfiles del ranking
       const ids=data.map(p=>p.id).join(",");
-      const wLogs=await sbReq("GET",`weight_logs?profile_id=in.(${ids})&select=profile_id,weight_kg,log_date&order=log_date.asc`)||[];
+      const wLogs=await rankFetch(`weight_logs?profile_id=in.(${ids})&select=profile_id,weight_kg,log_date&order=log_date.asc`)||[];
       const enriched = data.map(p=>{
         // Racha: viene del campo streak de Supabase
         const streak = p.streak || 0;
