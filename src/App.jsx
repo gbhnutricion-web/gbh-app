@@ -3796,6 +3796,14 @@ function GBHApp(){
           sc: r.sc || 0,
         }));
         lsSet(`gbh:logs:${profileId}`, mapped);
+        setLogs(mapped); // ← actualizar estado React
+        // Restaurar tlog del día
+        const hoy = toKey();
+        const logHoy = mapped.find(l => l.date === hoy);
+        if(logHoy) {
+          setTLog({diet:!!logHoy.diet,steps:!!logHoy.steps,hydration:!!logHoy.hydration,sleep:!!logHoy.sleep});
+          setSteps(logHoy.sc||0);
+        }
       }
       // 2. Restaurar historial de peso
       const remoteWeights = await sbReq("GET", `weight_logs?profile_id=eq.${profileId}&select=*&order=log_date.asc`);
@@ -3803,22 +3811,45 @@ function GBHApp(){
         const mappedW = remoteWeights.map((r,i) => ({
           date: r.log_date || r.date,
           weight: r.weight_kg ?? r.weight,
-          isInitial: i === 0, // el primer punto cronológico es siempre el inicial
+          isInitial: i === 0,
         }));
         lsSet(`gbh:weights:${profileId}`, mappedW);
+        setWeights(mappedW); // ← actualizar estado React
       }
-      // 3. Restaurar logros desde achievements
+      // 3. Restaurar logros
       const remoteAch = await sbReq("GET", `achievements?profile_id=eq.${profileId}&select=badge_id`);
       if (remoteAch?.length) {
         const badgeIds = remoteAch.map(r => r.badge_id);
         lsSet(`gbh:badges:${profileId}`, badgeIds);
+        setBadges(badgeIds); // ← actualizar estado React
       }
-      // 4. Restaurar estado de quiz y ruleta del día actual desde daily_logs
+      // 4. Restaurar perfil completo (foto, xp, gems, plan...)
+      const remoteProfile = await sbReq("GET", `profiles?id=eq.${profileId}&select=*&limit=1`);
+      if(remoteProfile?.length){
+        const rp = remoteProfile[0];
+        const localP = lsGet(`gbh:p:${profileId}`, {});
+        const merged = { ...localP, ...rp };
+        lsSet(`gbh:p:${profileId}`, merged);
+        setProfile(merged);
+        // Restaurar foto de perfil
+        if(rp.avatar_b64){
+          setUserPhoto(rp.avatar_b64);
+          lsSet("gbh:userPhoto", rp.avatar_b64);
+        }
+      }
+      // 5. Restaurar quiz y ruleta del día
       const hoy = toKey();
-      const logHoy = remoteLogs?.find(r => (r.log_date||r.date) === hoy);
-      if (logHoy) {
-        if (logHoy.quiz_done)   lsSet("gbh:quiz:"+profileId+":"+hoy, true);
-        if (logHoy.ruleta_done) lsSet("gbh:ruleta:"+profileId+":"+hoy, true);
+      const remoteLogs2 = remoteLogs || [];
+      const logHoy = remoteLogs2.find(r => (r.log_date||r.date) === hoy);
+      if(logHoy){
+        if(logHoy.quiz_done){
+          lsSet(`gbh:quiz:${profileId}:${hoy}`, true);
+          setQuizDone(true);
+        }
+        if(logHoy.ruleta_done){
+          lsSet(`gbh:ruleta:${profileId}:${hoy}`, true);
+          setRuletaDone(true);
+        }
       }
     } catch(e) {
       console.warn("restoreFromServer error:", e);
