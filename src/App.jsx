@@ -844,6 +844,15 @@ const WLABELS=["L","M","X","J","V","S","D"];
 const lsGet=(k,f)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):f;}catch{return f;}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
 
+// Cookie helpers — sobreviven al borrado de caché del navegador
+const cookieSet=(k,v,days=365)=>{try{const d=new Date();d.setTime(d.getTime()+days*864e5);document.cookie=`${k}=${encodeURIComponent(JSON.stringify(v))};expires=${d.toUTCString()};path=/;SameSite=Lax`;}catch{}};
+const cookieGet=(k,f=null)=>{try{const m=document.cookie.match(new RegExp('(?:^|; )'+k+'=([^;]*)'));return m?JSON.parse(decodeURIComponent(m[1])):f;}catch{return f;}};
+
+// Guardar lastEmail siempre en cookie además de localStorage
+const saveLastEmail=(email)=>{lsSet("gbh:lastEmail",email);cookieSet("gbh_lastEmail",email);};
+// Leer lastEmail: primero localStorage, luego cookie
+const getLastEmail=()=>getLastEmail()||cookieGet("gbh_lastEmail",null);
+
 // ─── Cola de sincronización offline ──────────────────────────────────────────
 // Cada operación que no llega a Supabase se encola en localStorage.
 // Cuando vuelve la conexión, se vacía automáticamente.
@@ -3283,7 +3292,7 @@ function GBHApp(){
   // Inicialización síncrona: si hay sesión guardada → "loading" (nunca "auth" en frío)
   const [screen,  setScreen]  = useState(()=>{
     try{
-      const em = lsGet("gbh:lastEmail",null);
+      const em = getLastEmail();
       if(!em) return "landing";
       const lid = lsGet(`gbh:em:${em}`,null);
       if(!lid) return "landing";
@@ -3310,8 +3319,20 @@ function GBHApp(){
   const [rankLoading, setRankLoading] = useState(false);
   const [rankTab,      setRankTab]      = useState(0);
   const [showQuiz,     setShowQuiz]     = useState(false);
-  const [quizDone,     setQuizDone]     = useState(false);
-  const [quizBannerDismissed, setQuizBannerDismissed] = useState(false);
+  const [quizDone,     setQuizDone]     = useState(()=>{
+    try{
+      const em=getLastEmail(); if(!em) return false;
+      const id=lsGet(`gbh:em:${em}`,null); if(!id) return false;
+      return lsGet(`gbh:quiz:${id}:${toKey()}`,false);
+    }catch{return false;}
+  });
+  const [quizBannerDismissed, setQuizBannerDismissed] = useState(()=>{
+    try{
+      const em=getLastEmail(); if(!em) return false;
+      const id=lsGet(`gbh:em:${em}`,null); if(!id) return false;
+      return lsGet(`gbh:quizBanner:${id}:${toKey()}`,false);
+    }catch{return false;}
+  });
   const [showChest,    setShowChest]    = useState(false);
   const [showWeekChest, setShowWeekChest] = useState(false);
   const [showRuleta,    setShowRuleta]    = useState(false);
@@ -3321,8 +3342,20 @@ function GBHApp(){
   const [claimedChallenges, setClaimedChallenges] = useState(()=>{
     const {w,y}=getISOWeek(); return lsGet(`gbh:challenges:${y}:${w}`,[]);
   });
-  const [ruletaDone,    setRuletaDone]    = useState(false);
-  const [ruletaAutoShown,setRuletaAutoShown]=useState(false);
+  const [ruletaDone,    setRuletaDone]    = useState(()=>{
+    try{
+      const em=getLastEmail(); if(!em) return false;
+      const id=lsGet(`gbh:em:${em}`,null); if(!id) return false;
+      return lsGet(`gbh:ruleta:${id}:${toKey()}`,false);
+    }catch{return false;}
+  });
+  const [ruletaAutoShown,setRuletaAutoShown]=useState(()=>{
+    try{
+      const em=getLastEmail(); if(!em) return false;
+      const id=lsGet(`gbh:em:${em}`,null); if(!id) return false;
+      return lsGet(`gbh:ruletaSeen:${id}:${toKey()}`,false);
+    }catch{return false;}
+  });
   const [chestOpened,  setChestOpened]  = useState(()=>{
     // El cofre se abre una vez por cada múltiplo de 7 — guardamos el último streak abierto
     return lsGet("gbh:chestLastOpened",0);
@@ -3516,7 +3549,7 @@ function GBHApp(){
 
   // Auto-login: si ya existe sesión guardada, cargar directamente
   useEffect(()=>{
-    const lastEmail = lsGet("gbh:lastEmail", null);
+    const lastEmail = getLastEmail();
     if(!lastEmail) return;
     const lid = lsGet(`gbh:em:${lastEmail}`, null);
     if(!lid) return;
@@ -3550,6 +3583,11 @@ function GBHApp(){
       if(t){ setTLog({diet:!!t.diet,steps:!!t.steps,hydration:!!t.hydration,sleep:!!t.sleep}); setSteps(t.sc||0); }
     }
     setWeightBannerDismissed(false);
+    // Restaurar estado quiz y ruleta del día
+    setQuizDone(lsGet(`gbh:quiz:${lp.id}:${today}`, false));
+    setQuizBannerDismissed(lsGet(`gbh:quizBanner:${lp.id}:${today}`, false));
+    setRuletaDone(lsGet(`gbh:ruleta:${lp.id}:${today}`, false));
+    setRuletaAutoShown(lsGet(`gbh:ruletaSeen:${lp.id}:${today}`, false));
     setScreen("main");
     // Sincronizar en segundo plano
     setTimeout(()=>{ restoreFromServer(lp.id).catch(()=>{}); }, 2000);
@@ -3925,7 +3963,7 @@ function GBHApp(){
       const merged = { ...ep, auth_id: authUserId };
       lsSet(`gbh:p:${ep.id}`, merged);
       lsSet(`gbh:em:${email}`, ep.id);
-      lsSet("gbh:lastEmail", email);
+      saveLastEmail(email);
       // Restaurar datos locales
       const localLogs = lsGet(`gbh:logs:${ep.id}`, []);
       const localWeights = lsGet(`gbh:weights:${ep.id}`, []);
@@ -3943,6 +3981,11 @@ function GBHApp(){
         if(t){ setTLog({diet:!!t.diet,steps:!!t.steps,hydration:!!t.hydration,sleep:!!t.sleep}); setSteps(t.sc||0); }
       }
       setWeightBannerDismissed(false);
+      // Restaurar estado quiz y ruleta del día
+      setQuizDone(lsGet(`gbh:quiz:${ep.id}:${today}`, false));
+      setQuizBannerDismissed(lsGet(`gbh:quizBanner:${ep.id}:${today}`, false));
+      setRuletaDone(lsGet(`gbh:ruleta:${ep.id}:${today}`, false));
+      setRuletaAutoShown(lsGet(`gbh:ruletaSeen:${ep.id}:${today}`, false));
       setScreen("main");
       setLoading(false);
       // Sincronizar desde Supabase en segundo plano (sin bloquear entrada)
