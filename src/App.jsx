@@ -943,19 +943,29 @@ const getLastEmail=()=>lsGet("gbh:lastEmail",null)||cookieGet("gbh_lastEmail",nu
 // ─── Cola de sincronización offline ──────────────────────────────────────────
 // Cada operación que no llega a Supabase se encola en localStorage.
 // Cuando vuelve la conexión, se vacía automáticamente.
-const QUEUE_KEY = "gbh:sync_queue";
+const QUEUE_KEY_BASE = "gbh:sync_queue";
+// La cola se escopa por profile_id para evitar que operaciones pendientes de
+// un usuario se ejecuten en la sesión de otro (varios usuarios en 1 móvil).
+let _activeProfileId = null;
+const getQueueKey  = () => _activeProfileId ? `${QUEUE_KEY_BASE}:${_activeProfileId}` : QUEUE_KEY_BASE;
+const migrateQueue = (pid) => {
+  try{
+    const old = lsGet(QUEUE_KEY_BASE, []);
+    if(old.length){ lsSet(`${QUEUE_KEY_BASE}:${pid}`, [...lsGet(`${QUEUE_KEY_BASE}:${pid}`,[]), ...old]); lsSet(QUEUE_KEY_BASE, []); }
+  }catch{}
+};
 
 function enqueue(op){
   // op = { id, method, path, body, ts }
-  const q = lsGet(QUEUE_KEY, []);
+  const q = lsGet(getQueueKey(), []);
   // Si ya existe la misma path+method, reemplazar (evita duplicados de PATCH)
   const idx = q.findIndex(x => x.path === op.path && x.method === op.method);
   if(idx >= 0) q[idx] = op; else q.push(op);
-  lsSet(QUEUE_KEY, q);
+  lsSet(getQueueKey(), q);
 }
 
 async function flushQueue(){
-  const q = lsGet(QUEUE_KEY, []);
+  const q = lsGet(getQueueKey(), []);
   if(!q.length) return;
   const failed = [];
   for(const op of q){
@@ -980,7 +990,7 @@ async function flushQueue(){
       failed.push(op); // sin red, volver a encolar
     }
   }
-  lsSet(QUEUE_KEY, failed); // sólo quedan los que fallaron
+  lsSet(getQueueKey(), failed); // sólo quedan los que fallaron
   return failed.length === 0;
 }
 
@@ -3559,7 +3569,7 @@ function GBHApp(){
   const prevLvRef = useRef(null);
   const tapRef=useRef(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [pendingSync, setPendingSync] = useState(()=>lsGet(QUEUE_KEY,[]).length);
+  const [pendingSync, setPendingSync] = useState(()=>lsGet(getQueueKey(),[]).length);
 
   // ── OneSignal Push Notifications ────────────────────────────────────────────
   useEffect(()=>{
@@ -3712,10 +3722,10 @@ function GBHApp(){
       // Ocultar banner offline
       setShowOfflineBanner(false);
       if(offlineTimerRef.current) clearTimeout(offlineTimerRef.current);
-      const q = lsGet(QUEUE_KEY, []);
+      const q = lsGet(getQueueKey(), []);
       if(q.length){
         const ok = await flushQueue();
-        setPendingSync(lsGet(QUEUE_KEY,[]).length);
+        setPendingSync(lsGet(getQueueKey(),[]).length);
         setShowSyncBanner(true);
         if(syncTimerRef.current) clearTimeout(syncTimerRef.current);
         syncTimerRef.current = setTimeout(() => setShowSyncBanner(false), 6000);
@@ -3731,7 +3741,7 @@ function GBHApp(){
     window.addEventListener("online",  onOnline);
     window.addEventListener("offline", onOffline);
     // Flush inmediato al montar si hay cola pendiente
-    if(navigator.onLine) flushQueue().then(()=>setPendingSync(lsGet(QUEUE_KEY,[]).length));
+    if(navigator.onLine) flushQueue().then(()=>setPendingSync(lsGet(getQueueKey(),[]).length));
     return ()=>{ window.removeEventListener("online",onOnline); window.removeEventListener("offline",onOffline); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
@@ -4067,6 +4077,8 @@ function GBHApp(){
         const merged = { ...localP, ...rp, streak: streakVal };
         lsSet(`gbh:p:${profileId}`, merged);
         setProfile({...merged});
+        _activeProfileId = profileId;  // cola de sincronización scoped a este usuario
+        migrateQueue(profileId);       // migrar la cola global antigua (una vez)
         // ── Restaurar estado semanal (desafíos, cofres, XP semanal, calculadora) ──
         // Es lo que evita el farmeo de gemas tras borrar caché.
         try{
@@ -4190,7 +4202,7 @@ function GBHApp(){
       setTimeout(()=>setShowRuleta(true), 600);
     }
     // Vaciar cola pendiente al cargar el perfil
-    if(navigator.onLine) flushQueue().then(()=>setPendingSync(lsGet(QUEUE_KEY,[]).length));
+    if(navigator.onLine) flushQueue().then(()=>setPendingSync(lsGet(getQueueKey(),[]).length));
   },[]);
 
   // Detecta si el email ya existe al salir del campo
@@ -4411,7 +4423,7 @@ function GBHApp(){
     let _s=0;const _d=new Date();
     while(true){if(l.find(x=>x.date===toKey(_d)&&x.diet)){_s++;_d.setDate(_d.getDate()-1);}else break;}
     sbReq("PATCH",`profiles?id=eq.${profile.id}`,{streak:_s}); // fire & forget
-    setPendingSync(lsGet(QUEUE_KEY,[]).length);
+    setPendingSync(lsGet(getQueueKey(),[]).length);
   },[profile,logs]);
 
   const addXG=useCallback(async(ax,ag)=>{
@@ -4428,7 +4440,7 @@ function GBHApp(){
     // aparte y best-effort: si su columna aún no está migrada, no rompe nada.
     await sbReq("PATCH",`profiles?id=eq.${profile.id}`,{xp:u.xp,gems:u.gems});
     patchWeeklyState(profile.id, mergeWeeklyState(profile.id,{weekXP:{[`${yXP}:${wXP}`]:nuevoWeekXP}}));
-    setPendingSync(lsGet(QUEUE_KEY,[]).length);
+    setPendingSync(lsGet(getQueueKey(),[]).length);
     // Float reward chips
     const chips=[];
     if(ax>0)chips.push({id:Date.now()+"xp",label:`+${ax} XP ⚡`,color:"#C8FF40"});
@@ -4805,7 +4817,7 @@ function GBHApp(){
       k.startsWith("gbh:weekXP:") ||
       k.startsWith("gbh:weekChest:") ||
       k.startsWith("gbh:challenges:") ||
-      k === QUEUE_KEY
+      k === getQueueKey() || k === QUEUE_KEY_BASE
     );
     keysToDelete.forEach(k => { try { localStorage.removeItem(k); } catch {} });
     // 3. Resetear estado y volver al registro
@@ -4816,6 +4828,7 @@ function GBHApp(){
     setTLog({diet:false,steps:false,hydration:false,sleep:false});
     window.__gbhUID="";
     setShowPhotoPicker(false);
+    _activeProfileId = null; // desactivar la cola del usuario que sale
     setScreen("landing");
   };
 
@@ -6764,15 +6777,27 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
   const recetasCacheRef = React.useRef(null);
   const normNombre = (s)=>(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
 
+  const RECIPES_CACHE_KEY = 'gbh:recipes_cache_v2';
+  const RECIPES_CACHE_TTL = 24*60*60*1000; // 24 h
   async function cargarRecetasCache(){
     if(recetasCacheRef.current) return recetasCacheRef.current;
+    try{
+      const cached = JSON.parse(localStorage.getItem(RECIPES_CACHE_KEY)||'null');
+      if(cached?.ts && Date.now()-cached.ts < RECIPES_CACHE_TTL && cached.mapa && Object.keys(cached.mapa).length){
+        recetasCacheRef.current = cached.mapa;
+        return cached.mapa;
+      }
+    }catch{}
     const todas = await sbReq('GET','recipes?select=*&limit=1000');
     const mapa = {};
     (todas||[]).forEach(r=>{
       const nom = r.nombre||r.nombre_receta||r.Nombre_Receta||'';
       if(nom) mapa[normNombre(nom)] = r;
     });
-    recetasCacheRef.current = mapa;
+    if(Object.keys(mapa).length){
+      recetasCacheRef.current = mapa;
+      try{ localStorage.setItem(RECIPES_CACHE_KEY, JSON.stringify({ts:Date.now(), mapa})); }catch{}
+    }
     return mapa;
   }
 
@@ -6905,6 +6930,30 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
       kcal_objetivo:kcalObj,
     });
     showT&&showT({icon:"🍽️",title:lang==='en'?'New recipe!':'¡Nueva receta!',sub:'-10 💎'});
+
+    // ── Persistir el cambio en weekly_plans: sin esto, el cambio de 10 💎
+    //    se pierde al cerrar la app (solo vivía en el estado de React) ──
+    if(plan && openToma && selDay){
+      try{
+        const nuevoJson = JSON.parse(JSON.stringify(planJ||{}));
+        if(!nuevoJson[openToma]) nuevoJson[openToma]={};
+        nuevoJson[openToma][String(selDay)] = {
+          Nombre_Receta: elegida.nombre||elegida.nombre_receta||'',
+          Tipo:          elegida.tipo||tipoActual,
+          Calorias_Totales: Math.round(kcalBase*f),
+          Proteinas_g:   Math.round((parseFloat(elegida.proteinas_g)||0)*f),
+          Hidratos_g:    Math.round((parseFloat(elegida.hidratos_g)||0)*f),
+          Grasas_g:      Math.round((parseFloat(elegida.grasas_g)||0)*f),
+          Ingredientes:  escalarIngredientesJS(elegida.ingredientes||'', f),
+          Instrucciones: elegida.instrucciones||'',
+          ...(f!==1?{racion_factor:f, racion_texto:racionTextoJS(f,lang)}:{}),
+        };
+        setPlanes(ps=>ps.map((p,i)=>i===idx?{...p,plan_json:nuevoJson}:p));
+        sbReq("PATCH",
+          `weekly_plans?profile_id=eq.${profile.id}&semana=eq.${plan.semana}`,
+          {plan_json:nuevoJson});
+      }catch(e){ console.warn("[cambiar-receta] no se pudo persistir:", e); }
+    }
   }
 
   // ── Guardar la receta en el recetario personal (20 💎) ─────────────────────
