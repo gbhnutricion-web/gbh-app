@@ -970,7 +970,12 @@ async function flushQueue(){
         },
         body: op.body ? JSON.stringify(op.body) : null,
       });
-      if(!r.ok) failed.push(op);
+      if(!r.ok){
+        op.tries = (op.tries || 0) + 1;
+        // 4xx persistente (columna/índice inexistente…): descartar tras 10 intentos
+        if(op.tries < 10 || r.status >= 500) failed.push(op);
+        else console.warn("[cola] operación descartada tras 10 fallos:", op.method, op.path, r.status);
+      }
     } catch {
       failed.push(op); // sin red, volver a encolar
     }
@@ -978,6 +983,28 @@ async function flushQueue(){
   lsSet(QUEUE_KEY, failed); // sólo quedan los que fallaron
   return failed.length === 0;
 }
+
+// ─── Estado semanal persistente (profiles.weekly_state) ──────────────────────
+// Desafíos reclamados, cofres y XP semanal vivían SOLO en localStorage: al
+// borrar caché se podían volver a reclamar (gemas infinitas). Ahora todo se
+// guarda también en Supabase y se restaura al iniciar sesión.
+const WSTATE_KEY = (id) => `gbh:wstate:${id}`;
+const mergeWeeklyState = (profileId, patch) => {
+  const cur = lsGet(WSTATE_KEY(profileId), {}) || {};
+  const merged = { ...cur };
+  for(const [k, v] of Object.entries(patch || {})){
+    if(v && typeof v === "object" && !Array.isArray(v)) merged[k] = { ...(cur[k] || {}), ...v };
+    else merged[k] = v;
+  }
+  // Poda: conservar solo las 6 semanas más recientes por clave
+  for(const k of ["challenges", "weekChest", "weekXP"]){
+    const o = merged[k]; if(!o) continue;
+    const keys = Object.keys(o).sort();
+    if(keys.length > 6) keys.slice(0, keys.length - 6).forEach(kk => delete o[kk]);
+  }
+  lsSet(WSTATE_KEY(profileId), merged);
+  return merged;
+};
 
 // ─── sbReq: offline-first ────────────────────────────────────────────────────
 // GET → siempre intenta red, sin encolar si falla
@@ -2130,6 +2157,10 @@ function CalcTab({weights,profile,lang}){
     lsSet(calcKey,res);
     setSaved(res);
     setEditing(false);
+    // 1b Supabase: el resultado completo viaja en weekly_state.calc para que
+    //    sobreviva a borrados de caché (si no, había que recalcular el objetivo)
+    const wsCalc = mergeWeeklyState(profile.id, { calc: res });
+    sbReq("PATCH", `profiles?id=eq.${profile.id}`, { weekly_state: wsCalc });
     // 2 Supabase: historial completo en calorie_targets
     sbReq("POST","calorie_targets",{
       profile_id:profile.id,sex:cSex,height_cm:Math.round(h),
@@ -3881,6 +3912,7 @@ function GBHApp(){
     // Guardar conteo y persistir gemas en background
     const newUsed = used + 1;
     lsSet(`gbh:recipe:refreshes:${todayKey}`, newUsed);
+    sbReq("POST","daily_logs?on_conflict=profile_id,log_date",{profile_id:profile.id,log_date:todayKey,recipe_refreshes:newUsed});
     setRecipeRefreshes(newUsed);
     sbReq("PATCH", `profiles?id=eq.${profile.id}`, {gems: newGems}); // fire & forget
 
@@ -3926,6 +3958,7 @@ function GBHApp(){
           sc: r.sc || 0,
           quiz_done: r.quiz_done ?? false,
           ruleta_done: r.ruleta_done ?? false,
+          recipe_refreshes: r.recipe_refreshes ?? null,
         }));
         lsSet(`gbh:logs:${profileId}`, mapped);
         setLogs([...mapped]); // spread para forzar nueva referencia
@@ -3943,6 +3976,10 @@ function GBHApp(){
           if(logHoy.ruleta_done){
             lsSet(`gbh:ruleta:${profileId}:${hoy}`, true);
             setRuletaDone(true);
+          }
+          if(logHoy.recipe_refreshes!=null){
+            lsSet(`gbh:recipe:refreshes:${hoy}`, logHoy.recipe_refreshes);
+            setRecipeRefreshes(logHoy.recipe_refreshes);
           }
         }
       }
@@ -3986,6 +4023,29 @@ function GBHApp(){
         const merged = { ...localP, ...rp, streak: streakVal };
         lsSet(`gbh:p:${profileId}`, merged);
         setProfile({...merged});
+        // ── Restaurar estado semanal (desafíos, cofres, XP semanal, calculadora) ──
+        // Es lo que evita el farmeo de gemas tras borrar caché.
+        try{
+          const ws = rp.weekly_state || {};
+          lsSet(WSTATE_KEY(profileId), ws);
+          const {w:wNow, y:yNow} = getISOWeek();
+          const wk = `${yNow}:${wNow}`;
+          if(Array.isArray(ws.challenges?.[wk])){
+            lsSet(`gbh:challenges:${yNow}:${wNow}`, ws.challenges[wk]);
+            setClaimedChallenges([...ws.challenges[wk]]);
+          }
+          if(ws.weekChest?.[wk]) lsSet(`gbh:weekChest:${yNow}:${wNow}`, true);
+          if(ws.weekXP?.[wk]!=null){
+            const localXP = lsGet(`gbh:weekXP:${yNow}:${wNow}`, 0);
+            lsSet(`gbh:weekXP:${yNow}:${wNow}`, Math.max(localXP, ws.weekXP[wk]));
+          }
+          if(ws.chestStreakLast!=null){
+            const localChest = lsGet("gbh:chestLastOpened", 0);
+            lsSet("gbh:chestLastOpened", Math.max(localChest||0, ws.chestStreakLast));
+            setChestOpened(Math.max(localChest||0, ws.chestStreakLast));
+          }
+          if(ws.calc) lsSet(`gbh:calc:saved:${profileId}`, ws.calc);
+        }catch(e){ console.warn("weekly_state restore:", e); }
         if(rp.avatar_b64){
           setUserPhoto(rp.avatar_b64);
           lsSet("gbh:userPhoto", rp.avatar_b64);
@@ -4295,12 +4355,14 @@ function GBHApp(){
     const prevXP=profile.xp||0;
     const u={...profile,xp:prevXP+ax,gems:(profile.gems||0)+ag};
     setProfile(u);lsSet(`gbh:p:${u.id}`,u);
-    await sbReq("PATCH",`profiles?id=eq.${profile.id}`,{xp:u.xp,gems:u.gems});
-    setPendingSync(lsGet(QUEUE_KEY,[]).length);
-    // Acumular XP semanal para el desafío "xp_week"
+    // Acumular XP semanal para el desafío "xp_week" (local + Supabase en un solo PATCH)
     const {w:wXP,y:yXP}=getISOWeek();
     const wkKey=`gbh:weekXP:${yXP}:${wXP}`;
-    lsSet(wkKey,(lsGet(wkKey,0))+ax);
+    const nuevoWeekXP=(lsGet(wkKey,0))+ax;
+    lsSet(wkKey,nuevoWeekXP);
+    const wsMerged=mergeWeeklyState(profile.id,{weekXP:{[`${yXP}:${wXP}`]:nuevoWeekXP}});
+    await sbReq("PATCH",`profiles?id=eq.${profile.id}`,{xp:u.xp,gems:u.gems,weekly_state:wsMerged});
+    setPendingSync(lsGet(QUEUE_KEY,[]).length);
     // Float reward chips
     const chips=[];
     if(ax>0)chips.push({id:Date.now()+"xp",label:`+${ax} XP ⚡`,color:"#C8FF40"});
@@ -4549,6 +4611,8 @@ function GBHApp(){
   const onChestCollect = async (xpG, gemG) => {
     lsSet("gbh:chestLastOpened", streak);
     setChestOpened(streak);
+    const merged = mergeWeeklyState(profile.id, { chestStreakLast: streak });
+    sbReq("PATCH", `profiles?id=eq.${profile.id}`, { weekly_state: merged });
     await addXG(xpG, gemG);
   };
 
@@ -4580,9 +4644,13 @@ function GBHApp(){
   const claimChallenge = async (ch) => {
     const {w,y}=getISOWeek();
     const key=`gbh:challenges:${y}:${w}`;
+    if(claimedChallenges.includes(ch.id)) return; // anti doble-tap
     const claimed=[...claimedChallenges,ch.id];
     setClaimedChallenges(claimed);
     lsSet(key,claimed);
+    // Persistir en Supabase: sobrevive a borrados de caché (anti-farmeo)
+    const merged = mergeWeeklyState(profile.id, { challenges: { [`${y}:${w}`]: claimed } });
+    sbReq("PATCH", `profiles?id=eq.${profile.id}`, { weekly_state: merged });
     await addXG(ch.xp, ch.gems);
   };
 
@@ -4599,6 +4667,8 @@ function GBHApp(){
   const onWeekChestCollect = async (xpG, gemG) => {
     const {w,y} = getISOWeek();
     lsSet(`gbh:weekChest:${y}:${w}`, true);
+    const merged = mergeWeeklyState(profile.id, { weekChest: { [`${y}:${w}`]: true } });
+    sbReq("PATCH", `profiles?id=eq.${profile.id}`, { weekly_state: merged });
     await addXG(xpG, gemG);
   };
 
