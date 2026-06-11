@@ -6666,9 +6666,12 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
   // weekly_plans.fecha_gen (servidor), así que cambiar el objetivo o borrar
   // caché NO desbloquea nada. Regenerar antes de tiempo cuesta gemas.
   const LOCK_DIAS=7, COSTE_REGEN=200;
-  const ultimaGenMs = (planes&&planes[0]?.fecha_gen) ? Date.parse(planes[0].fecha_gen) : null;
+  const tienePlan = Array.isArray(planes) && planes.length > 0;   // ¿ya tiene un plan generado?
+  const ultimaGenMs = (tienePlan && planes[0]?.fecha_gen) ? Date.parse(planes[0].fecha_gen) : null;
   const msParaDesbloqueo = (ultimaGenMs!==null && !isNaN(ultimaGenMs)) ? (ultimaGenMs + LOCK_DIAS*24*60*60*1000) - Date.now() : null;
-  const planBloqueado = isStandard && msParaDesbloqueo!==null && msParaDesbloqueo > 0;
+  // El candado y el coste de 200 💎 existen EXCLUSIVAMENTE si hay un plan ya
+  // hecho. Sin plan: primera generación siempre gratis, sin candado.
+  const planBloqueado = isStandard && tienePlan && msParaDesbloqueo!==null && msParaDesbloqueo > 0;
   const diasDesbloqueo = planBloqueado ? Math.max(1, Math.ceil(msParaDesbloqueo/(24*60*60*1000))) : 0;
   const todayJS=new Date().getDay();
   const todayPlan=todayJS===0?7:todayJS;
@@ -6690,9 +6693,9 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
       showT&&showT({icon:"⚙️",title:lang==='en'?'Not configured yet':'Aún no configurado',sub:lang==='en'?'The generation server is not set up.':'El servidor de generación no está configurado todavía.'});
       return;
     }
-    // ── Candado semanal (solo estándar) ──
+    // ── Candado semanal (solo estándar Y solo si ya existe un plan) ──
     let gemasCobradas = 0;
-    if(planBloqueado){
+    if(planBloqueado && tienePlan){
       if(!opts.regen){
         showT&&showT({icon:"🔒",title:lang==='en'?'Plan locked':'Plan bloqueado',
           sub:lang==='en'?`New plan in ${diasDesbloqueo} day${diasDesbloqueo!==1?'s':''}, or regenerate for ${COSTE_REGEN} 💎`:`Nueva programación en ${diasDesbloqueo} día${diasDesbloqueo!==1?'s':''}, o regenera por ${COSTE_REGEN} 💎`});
@@ -7006,8 +7009,8 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
     return <PlanConfig profile={profile} lang={lang} config={config} setConfig={setConfig}
              sfx={sfx} showT={showT}
              onClose={()=>setConfigView(false)}
-             onGenerar={()=>generarProgramacion(planBloqueado?{regen:true}:{})}
-             costeRegen={planBloqueado?COSTE_REGEN:0} gems={gems}
+             onGenerar={()=>generarProgramacion((tienePlan&&planBloqueado)?{regen:true}:{})}
+             costeRegen={(tienePlan&&planBloqueado)?COSTE_REGEN:0} gems={gems}
              primeraVez={isStandard && !configCompleta}/>;
   }
 
