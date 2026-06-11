@@ -2174,22 +2174,18 @@ function CalcTab({weights,profile,lang}){
       sex:cSex,height_cm:Math.round(h),age_range:ageLabel,
       activity:actLabel,target_kcal:safe,calc_updated_at:now,
     });
-    // 4 Supabase: escribir/actualizar patient_config para habilitar generación automática del plan
-    //   Usa valores por defecto para plan estándar: dieta Simple, con variedad semanal.
-    //   Si el nutricionista ya configuró valores personalizados, el on_conflict los respeta
-    //   porque solo hace upsert con los campos básicos.
+    // 4 Supabase: actualizar patient_config SOLO con los campos de la calculadora.
+    //   OJO: el upsert con merge-duplicates SOBREESCRIBE lo que envíes, así que
+    //   aquí NO van tipo_dieta / patron_dias / dist_* — esos los elige el
+    //   paciente en la pantalla "Configura tu plan" y recalcular el objetivo
+    //   no debe machacárselos.
     sbReq("POST","patient_config?on_conflict=profile_id",{
       profile_id:   profile.id,
-      tipo_dieta:   "Simple",
       kcal_objetivo: safe,
-      patron_dias:  "Estándar (LJ/MS/XV/D)",
-      tomas_comp:   "Comida, Cena",
-      semana_actual: 1,
       auto_generado: true,
       altura_cm:    Math.round(h),
       sexo:         cSex,
       actividad:    actLabel,
-      notas:        "",
     });
   };
   const canCompute=!!currentW&&parseFloat(cHeight)>=100&&parseFloat(cHeight)<=250;
@@ -3554,6 +3550,25 @@ function GBHApp(){
     });
   },[]);
 
+  // ── Semana de prueba: degradar a 'free' cuando caduca ──────────────────────
+  // Solo afecta a cuentas con trial_ends_at (las de pago lo tienen a NULL).
+  const trialDowngradeRef = useRef(false);
+  useEffect(()=>{
+    if(!profile?.id) return;
+    if(profile.plan!=="standard" || !profile.trial_ends_at) return;
+    const fin = Date.parse(profile.trial_ends_at);
+    if(isNaN(fin) || fin > Date.now()) return;
+    if(trialDowngradeRef.current) return;
+    trialDowngradeRef.current = true;
+    const u = {...profile, plan:"free"};
+    setProfile(u); lsSet(`gbh:p:${u.id}`, u);
+    sbReq("PATCH", `profiles?id=eq.${profile.id}`, { plan:"free" });
+    showT&&showT({icon:"🌱",
+      title: lang==="en" ? "Your free week has ended" : "Tu semana de prueba ha terminado",
+      sub:   lang==="en" ? "Subscribe to keep your weekly plan 💚" : "Suscríbete (7€/mes) para seguir con tu programación 💚"});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.id, profile?.plan, profile?.trial_ends_at]);
+
   // ── Mantener viva la sesión (el token caduca a la hora) ────────────────────
   useEffect(()=>{
     const comprobar = () => {
@@ -3619,7 +3634,7 @@ function GBHApp(){
     const refrescar=async()=>{
       if(!navigator.onLine||document.hidden) return;
       try{
-        const fresh=await sbReq("GET",`profiles?id=eq.${profile.id}&select=plan,gems,xp,shields,target_kcal&limit=1`);
+        const fresh=await sbReq("GET",`profiles?id=eq.${profile.id}&select=plan,gems,xp,shields,target_kcal,trial_ends_at&limit=1`);
         if(cancelado||!fresh||!fresh.length) return;
         const f=fresh[0];
         setProfile(prev=>{
@@ -3629,7 +3644,8 @@ function GBHApp(){
           const merged={...prev,
             plan:f.plan??prev.plan, gems:f.gems??prev.gems,
             xp:f.xp??prev.xp, shields:f.shields??prev.shields,
-            target_kcal:f.target_kcal??prev.target_kcal};
+            target_kcal:f.target_kcal??prev.target_kcal,
+            trial_ends_at:f.trial_ends_at??prev.trial_ends_at};
           lsSet(`gbh:p:${prev.id}`, merged);
           return merged;
         });
@@ -4310,6 +4326,11 @@ function GBHApp(){
       sex: aSex||null,
       initial_weight: parseFloat(aWeight)||null,
       goal_weight: (aGoal && !isNaN(parseFloat(aGoal)) && parseFloat(aGoal)>20) ? parseFloat(aGoal) : null,
+      // ── Semana de PRUEBA estándar: 7 días con acceso completo a la
+      //    programación; al caducar, la cuenta pasa a 'free' automáticamente.
+      //    (Si el paciente paga, poner trial_ends_at=NULL en Supabase.)
+      plan: 'standard',
+      trial_ends_at: new Date(Date.now() + 7*24*60*60*1000).toISOString(),
     };
     const cr = await sbReq("POST","profiles",np);
     const fp = cr?.[0] || np;
@@ -6842,16 +6863,66 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
     showT&&showT({icon:"📖",title:lang==='en'?'Saved to your book!':'¡Guardada en tu recetario!',sub:tomaReceta.nombre});
   }
 
-  if(!tieneAcceso) return(
-    <div style={{padding:'48px 24px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:16}}>
-      <div style={{fontSize:56}}>🚀</div>
-      <div style={{fontSize:18,fontWeight:900,color:T.t1,lineHeight:1.3}}>{lang==='en'?'Coming soon!':'¡Próximamente!'}</div>
-      <div style={{fontSize:14,color:T.t2,lineHeight:1.7,maxWidth:280,fontFamily:"'DM Sans',sans-serif"}}>{lang==='en'?'Application under development.':'Aplicación en desarrollo,\nte esperamos muy pronto! 🌱'}</div>
-      <div style={{marginTop:8,background:'rgba(88,204,2,0.08)',border:'1.5px solid '+T.bG,borderRadius:16,padding:'14px 24px'}}>
-        <div style={{fontSize:12,color:T.g1,fontWeight:700}}>@gbhnutricion</div>
+  if(!tieneAcceso){
+    const waMsgPlan = encodeURIComponent(lang==='en'
+      ? `Hi! I'm ${profile?.name||''} and I'd like to upgrade my GBH plan to get my weekly meal plan 🥗`
+      : `¡Hola! Soy ${profile?.name||''} y me gustaría mejorar mi plan GBH para tener mi programación semanal 🥗`);
+    return(
+    <div style={{padding:'36px 20px 32px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:14}}>
+      <div style={{fontSize:52}}>🥗</div>
+      <div style={{fontSize:19,fontWeight:900,color:T.t1,lineHeight:1.3,fontFamily:"'Nunito',sans-serif"}}>
+        {lang==='en'?'Your weekly meal plan':'Tu programación semanal'}
+      </div>
+      <div style={{fontSize:13.5,color:T.t2,lineHeight:1.65,maxWidth:300,fontFamily:"'DM Sans',sans-serif"}}>
+        {lang==='en'
+          ?'The weekly plan is exclusive to Standard and Premium accounts. Upgrade and get your personalized meal plan, recipes and shopping list.'
+          :'La planificación es exclusiva de las cuentas Estándar y Premium. Mejora tu plan y tendrás tu programación personalizada con recetas y lista de la compra.'}
+      </div>
+
+      {/* Tarifas */}
+      <div style={{display:'flex',flexDirection:'column',gap:10,width:'100%',maxWidth:330,marginTop:4}}>
+        <div style={{background:'rgba(88,204,2,0.08)',border:'2px solid '+T.bG,borderRadius:18,padding:'14px 16px',textAlign:'left',display:'flex',alignItems:'center',gap:12}}>
+          <div style={{fontSize:28,flexShrink:0}}>📅</div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:14,fontWeight:900,color:T.g1,fontFamily:"'Nunito',sans-serif"}}>
+              {lang==='en'?'Standard · 7€/month':'Estándar · 7€/mes'}
+            </div>
+            <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.45,marginTop:2}}>
+              {lang==='en'
+                ?'Weekly plan you configure yourself, full recipe book and app'
+                :'Programación semanal a tu medida, recetario completo y app'}
+            </div>
+          </div>
+        </div>
+        <div style={{background:'rgba(255,200,0,0.07)',border:'2px solid rgba(255,200,0,0.35)',borderRadius:18,padding:'14px 16px',textAlign:'left',display:'flex',alignItems:'center',gap:12}}>
+          <div style={{fontSize:28,flexShrink:0}}>👑</div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:14,fontWeight:900,color:T.au1,fontFamily:"'Nunito',sans-serif"}}>
+              Premium
+            </div>
+            <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.45,marginTop:2}}>
+              {lang==='en'
+                ?'Personal follow-up with your nutritionist, plan made for you and direct contact'
+                :'Seguimiento personal con tu nutricionista, plan hecho para ti y contacto directo'}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* CTA WhatsApp */}
+      <a href={`https://wa.me/${GBH_WHATSAPP}?text=${waMsgPlan}`} target="_blank" rel="noopener noreferrer"
+        style={{marginTop:6,width:'100%',maxWidth:330,background:'linear-gradient(135deg,#25D366,#1DA851)',
+          color:'#fff',fontWeight:900,fontSize:15,borderRadius:18,padding:'16px 20px',
+          textDecoration:'none',boxShadow:'0 4px 0 #128C4B',fontFamily:"'Nunito',sans-serif",
+          display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
+        <span style={{fontSize:20}}>💬</span>
+        {lang==='en'?'Write us on WhatsApp':'Escríbenos por WhatsApp'}
+      </a>
+      <div style={{fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>
+        {lang==='en'?'We reply the same day · @gbhnutricion':'Te respondemos en el día · @gbhnutricion'}
       </div>
     </div>
-  );
+  );}
   if(loading) return <div style={{padding:32,textAlign:'center',fontSize:13,color:T.t2}}>{lang==='en'?'Loading…':'Cargando…'}</div>;
 
   // ── Pantalla de configuración del plan (paciente estándar) ──────────────────
@@ -6924,8 +6995,30 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
   </div>);
   const BtnVolver=({onClick})=>(<button onClick={onClick} style={{background:'none',border:'none',color:T.g1,fontSize:13,fontWeight:700,cursor:'pointer',padding:'0 16px 10px',fontFamily:"'Nunito',sans-serif",display:'flex',alignItems:'center',gap:4}}>← {lang==='en'?'Back':'Volver'}</button>);
   const DotsNav=()=>planes.length>1?(<div style={{display:'flex',justifyContent:'center',gap:6,padding:'8px 0 4px'}}>{planes.map((_,i)=>(<div key={i} onClick={()=>setIdx(i)} style={{width:i===idx?20:7,height:7,borderRadius:4,background:i===idx?T.g1:'rgba(255,255,255,0.15)',cursor:'pointer',transition:'all 0.3s'}}/>))}</div>):null;
+  // Chip de semana de prueba (solo cuentas estándar con trial activo)
+  const trialMs = profile?.trial_ends_at ? Date.parse(profile.trial_ends_at) - Date.now() : null;
+  const trialDias = (isStandard && trialMs!==null && trialMs>0) ? Math.max(1, Math.ceil(trialMs/(24*60*60*1000))) : null;
+  const TrialChip=()=>trialDias?(
+    <div style={{margin:'10px 16px 0',display:'flex',alignItems:'center',gap:10,
+      background:'rgba(255,200,0,0.10)',border:'1.5px solid rgba(255,200,0,0.45)',
+      borderRadius:14,padding:'10px 14px'}}>
+      <span style={{fontSize:20,lineHeight:1}}>🎁</span>
+      <div style={{flex:1}}>
+        <div style={{fontSize:12.5,fontWeight:900,color:T.au1}}>
+          {lang==='en'
+            ? `Free trial week · ${trialDias} day${trialDias!==1?'s':''} left`
+            : `Semana de prueba gratis · ${trialDias===1?'queda 1 día':`quedan ${trialDias} días`}`}
+        </div>
+        <div style={{fontSize:10.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>
+          {lang==='en'?'Enjoy your full weekly plan. Then 7€/month.':'Disfruta tu programación completa. Después, 7€/mes.'}
+        </div>
+      </div>
+    </div>
+  ):null;
+
   if(view===null) return(
     <div style={{paddingBottom:16}}>
+      <TrialChip/>
       <WeekNav/>
       <div style={{padding:'12px 16px',display:'flex',flexDirection:'column',gap:12}}>
         <button onClick={()=>setView('plan')} style={{background:'rgba(46,125,82,0.18)',border:'2px solid rgba(46,125,82,0.4)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
@@ -7142,7 +7235,20 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
     {v:'Vegetariana',ic:'🥗',label:lang==='en'?'Vegetarian':'Vegetariano',sub:lang==='en'?'No meat/fish':'Sin carne ni pescado'},
     {v:'Vegana',     ic:'🌱',label:lang==='en'?'Vegan':'Vegano',     sub:lang==='en'?'Plant-based':'100% vegetal'},
   ];
+  // Patrones de repetición de menús — claves EXACTAS del generador (PATRONES)
+  const PATRONES_OPC=[
+    {v:'Todo igual (LMXJVSD)',      ic:'🍲', n:1, label:lang==='en'?'1 menu':'1 menú',
+     sub:lang==='en'?'Cook once, eat all week':'Cocinas 1 vez · misma comida toda la semana'},
+    {v:'3+2+2 (LXV/MJ/SD)',         ic:'🍱', n:3, label:lang==='en'?'3 menus':'3 menús',
+     sub:lang==='en'?'L-W-F / T-Th / Sa-Su':'LXV · MJ · SD (cocinas 3 veces)'},
+    {v:'Estándar (LJ/MS/XV/D)',     ic:'⭐', n:4, label:lang==='en'?'4 menus':'4 menús',
+     sub:(lang==='en'?'Recommended · ':'Recomendado · ')+'LJ · MS · XV · D'},
+    {v:'Alta repetición (LM/XJ/VS/D)',ic:'📦', n:4, label:lang==='en'?'4 in a row':'4 seguidos',
+     sub:lang==='en'?'Mon-Tue / Wed-Thu / Fri-Sat / Sun':'LM · XJ · VS · D (2 días seguidos)'},
+  ];
   const [dieta,setDieta]=React.useState(config?.tipo_dieta&&['Simple','Vegetariana','Vegana'].includes(config.tipo_dieta)?config.tipo_dieta:'Simple');
+  const [patron,setPatron]=React.useState(
+    PATRONES_OPC.some(p=>p.v===config?.patron_dias) ? config.patron_dias : 'Estándar (LJ/MS/XV/D)');
   const [dist,setDist]=React.useState({
     dist_desayuno: config?.dist_desayuno ?? 20,
     dist_almuerzo: config?.dist_almuerzo ?? 10,
@@ -7154,24 +7260,10 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
 
   const total=Object.values(dist).reduce((a,b)=>a+b,0);
 
-  // Al mover una barra: el resto se reparte proporcionalmente para sumar 100
-  function cambiarToma(key,nuevo){
-    nuevo=Math.max(0,Math.min(100,Math.round(nuevo)));
-    const otras=TOMAS.map(t=>t.k).filter(k=>k!==key);
-    const sumaOtras=otras.reduce((a,k)=>a+dist[k],0);
-    const restante=100-nuevo;
-    const nuevoDist={...dist,[key]:nuevo};
-    if(sumaOtras<=0){
-      // repartir equitativamente
-      otras.forEach((k,i)=>{ nuevoDist[k]=Math.floor(restante/otras.length)+(i===0?restante%otras.length:0); });
-    } else {
-      let acum=0;
-      otras.forEach((k,i)=>{
-        if(i===otras.length-1){ nuevoDist[k]=restante-acum; }
-        else { const v=Math.round(dist[k]/sumaOtras*restante); nuevoDist[k]=v; acum+=v; }
-      });
-    }
-    setDist(nuevoDist);
+  // Flechitas ▲▼: pasos de 5, SIN auto-reparto (nada se mueve solo).
+  // El total se valida aparte: el botón solo se activa cuando suma 100.
+  function ajustarToma(key,delta){
+    setDist(d=>({...d,[key]:Math.max(0,Math.min(60,(d[key]||0)+delta))}));
   }
 
   async function guardar(){
@@ -7180,6 +7272,7 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
     const payload={
       profile_id: profile.id,
       tipo_dieta: dieta,
+      patron_dias: patron,
       ...dist,
       config_completa: true,
       auto_generado: true,
@@ -7233,35 +7326,90 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
         </div>
       </div>
 
-      {/* ── Distribución calórica ── */}
+      {/* ── Distribución calórica — tabla con flechas (sin deslizadores que se
+            muevan solos al hacer scroll) ── */}
       <div style={{padding:'12px 16px'}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
           <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em'}}>
             {lang==='en'?'2 · Calorie split':'2 · Distribución de calorías'}
           </div>
-          <div style={{fontSize:12,fontWeight:900,color:total===100?T.g1:'#FF8080'}}>
-            {total}%
+          <div style={{fontSize:12,fontWeight:900,
+            color:total===100?T.g1:'#FFB74D',
+            background:total===100?'rgba(88,204,2,0.12)':'rgba(255,183,77,0.12)',
+            border:`1.5px solid ${total===100?'rgba(88,204,2,0.4)':'rgba(255,183,77,0.4)'}`,
+            borderRadius:10,padding:'4px 10px'}}>
+            {total===100
+              ? `✓ 100%`
+              : (lang==='en'
+                  ? `${total}% · ${total>100?`remove ${total-100}`:`add ${100-total}`}`
+                  : `${total}% · ${total>100?`sobran ${total-100}`:`faltan ${100-total}`}`)}
           </div>
         </div>
-        <div style={{display:'flex',flexDirection:'column',gap:16}}>
-          {TOMAS.map(toma=>(
-            <div key={toma.k}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-                <span style={{fontSize:13,color:T.t1,fontWeight:700,fontFamily:"'Nunito',sans-serif"}}>
-                  {toma.ic} {toma.label}
-                </span>
-                <span style={{fontSize:13,fontWeight:900,color:T.g1}}>{dist[toma.k]}%</span>
+        <div style={{background:'rgba(255,255,255,0.04)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:16,overflow:'hidden'}}>
+          {TOMAS.map((toma,i)=>{
+            const v=dist[toma.k]||0;
+            const kcalTxt=(profile?.target_kcal>0)?` · ${Math.round(profile.target_kcal*v/100)} kcal`:'';
+            const Btn=({delta,dis,children})=>(
+              <button onClick={()=>{!dis&&ajustarToma(toma.k,delta);}} disabled={dis}
+                style={{width:40,height:40,borderRadius:12,border:`1.5px solid ${dis?'rgba(255,255,255,0.08)':T.bG}`,
+                  background:dis?'rgba(255,255,255,0.03)':'rgba(88,204,2,0.12)',
+                  color:dis?T.t3:T.g1,fontSize:18,fontWeight:900,cursor:dis?'default':'pointer',
+                  display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,
+                  fontFamily:"'Nunito',sans-serif",touchAction:'manipulation'}}>
+                {children}
+              </button>
+            );
+            return(
+              <div key={toma.k} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',
+                borderTop:i>0?'1px solid rgba(255,255,255,0.07)':'none',
+                background:v===0?'rgba(255,255,255,0.02)':'transparent'}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13.5,color:v===0?T.t3:T.t1,fontWeight:800,fontFamily:"'Nunito',sans-serif"}}>
+                    {toma.ic} {toma.label}
+                  </div>
+                  <div style={{fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginTop:1}}>
+                    {v===0?(lang==='en'?'Skipped':'No haces esta toma'):kcalTxt.replace(' · ','')}
+                  </div>
+                </div>
+                <Btn delta={-5} dis={v<=0}>−</Btn>
+                <div style={{width:52,textAlign:'center',fontSize:16,fontWeight:900,
+                  color:v===0?T.t3:T.g1,fontFamily:"'Nunito',sans-serif"}}>{v}%</div>
+                <Btn delta={5} dis={v>=60}>+</Btn>
               </div>
-              <input type="range" min="0" max="100" step="5" value={dist[toma.k]}
-                onChange={e=>cambiarToma(toma.k,parseInt(e.target.value))}
-                style={{width:'100%',accentColor:T.g1,height:6,cursor:'pointer'}}/>
-            </div>
-          ))}
+            );
+          })}
         </div>
         <button onClick={()=>setDist({dist_desayuno:20,dist_almuerzo:10,dist_comida:30,dist_merienda:10,dist_cena:30})}
-          style={{marginTop:14,background:'none',border:'none',color:T.t3,fontSize:12,fontWeight:700,cursor:'pointer',textDecoration:'underline',fontFamily:"'DM Sans',sans-serif"}}>
+          style={{marginTop:12,background:'none',border:'none',color:T.t3,fontSize:12,fontWeight:700,cursor:'pointer',textDecoration:'underline',fontFamily:"'DM Sans',sans-serif"}}>
           {lang==='en'?'Reset to recommended (20/10/30/10/30)':'Restablecer recomendado (20/10/30/10/30)'}
         </button>
+      </div>
+
+      {/* ── Patrón de repetición — ¿cuántos menús distintos a la semana? ── */}
+      <div style={{padding:'12px 16px'}}>
+        <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:4}}>
+          {lang==='en'?'3 · How often do you cook?':'3 · ¿Cuántas veces cocinas a la semana?'}
+        </div>
+        <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginBottom:10,lineHeight:1.4}}>
+          {lang==='en'
+            ?'Repeating meals on several days = less cooking and a cheaper shopping list.'
+            :'Repetir comidas varios días = cocinar menos y lista de la compra más barata.'}
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+          {PATRONES_OPC.map(p=>{
+            const sel=patron===p.v;
+            return(
+              <button key={p.v} onClick={()=>setPatron(p.v)}
+                style={{background:sel?'rgba(88,204,2,0.12)':'rgba(255,255,255,0.04)',
+                  border:`2px solid ${sel?T.g1:'rgba(255,255,255,0.10)'}`,
+                  borderRadius:16,padding:'12px 10px',cursor:'pointer',textAlign:'center'}}>
+                <div style={{fontSize:24,marginBottom:4}}>{p.ic}</div>
+                <div style={{fontSize:12.5,fontWeight:900,color:sel?T.g1:T.t1,fontFamily:"'Nunito',sans-serif"}}>{p.label}</div>
+                <div style={{fontSize:9.5,color:T.t3,marginTop:3,fontFamily:"'DM Sans',sans-serif",lineHeight:1.3}}>{p.sub}</div>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* ── Guardar ── */}
