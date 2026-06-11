@@ -673,6 +673,93 @@ const sbAuth = {
   },
 };
 
+// ─── Sesión: validez y refresco automático del token ─────────────────────────
+// El access_token de Supabase caduca (~1 h). Si se usa caducado, TODAS las
+// peticiones devuelven 401 y la app se queda "muda" (sin plan, sin ranking,
+// sin sincronizar peso). Estos helpers comprueban la caducidad y renuevan la
+// sesión con el refresh_token sin molestar al usuario.
+const getStoredSession = () => {
+  try {
+    const k = Object.keys(localStorage).find(x => x.includes("auth-token") || x.includes("supabase.auth.token"));
+    if(!k) return null;
+    return JSON.parse(localStorage.getItem(k) || "null");
+  } catch { return null; }
+};
+const sesionValida = (s) => {
+  const tk = s?.access_token || s?.currentSession?.access_token;
+  if(!tk) return false;
+  let exp = s?.expires_at || s?.currentSession?.expires_at; // epoch en segundos
+  if(!exp){
+    try { exp = JSON.parse(atob(tk.split(".")[1])).exp; } catch { return true; }
+  }
+  return (exp * 1000 - Date.now()) > 60000; // margen de 1 min
+};
+let __refreshPromise = null;
+const refreshSession = () => {
+  if(__refreshPromise) return __refreshPromise;
+  __refreshPromise = (async () => {
+    try {
+      const s = getStoredSession();
+      const rt = s?.refresh_token || s?.currentSession?.refresh_token;
+      if(!rt) return null;
+      const r = await fetch(`${SB}/auth/v1/token?grant_type=refresh_token`, {
+        method: "POST",
+        headers: { "apikey": KEY, "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: rt }),
+      });
+      const d = await r.json().catch(() => null);
+      if(r.ok && d?.access_token){ sbAuth.saveSession(d); return d; }
+      // refresh_token inválido/caducado: limpiar para que sbReq use la anon key
+      if(r.status === 400 || r.status === 401) sbAuth.clearSession();
+      return null;
+    } catch { return null; }
+    finally { setTimeout(() => { __refreshPromise = null; }, 0); }
+  })();
+  return __refreshPromise;
+};
+
+// ─── Raciones: escalado de recetas en cliente ─────────────────────────────────
+// El generador ya entrega cada receta escalada (kcal, macros e ingredientes son
+// los de LA RACIÓN del paciente). Estos helpers replican ese escalado para la
+// función "Cambiar receta", que coge recetas base del recetario.
+const RACION_FRACCIONES = [[0.25,"¼"],[0.33,"⅓"],[0.5,"½"],[0.67,"⅔"],[0.75,"¾"]];
+const racionFmtCantidad = (v, esPeso) => {
+  if(esPeso){ return String(Math.max(5, Math.round(v/5)*5)); }
+  v = Math.round(v*4)/4; // unidades sueltas: a cuartos (2.1 → 2, 1.3 → 1 ¼)
+  const ent = Math.floor(v); const resto = v - ent;
+  for(const [f,s] of RACION_FRACCIONES){ if(Math.abs(resto-f)<=0.06) return ent? `${ent} ${s}` : s; }
+  if(resto<=0.06) return String(v>=0.5?Math.max(ent,1):"¼");
+  if(resto>=0.94) return String(ent+1);
+  return String(Math.round(v*10)/10);
+};
+const escalarIngredientesJS = (texto, factor) => {
+  if(!texto || Math.abs(factor-1)<0.02) return texto;
+  const NO_ESCALAR = ["pizca","al gusto","opcional","para decorar"];
+  return String(texto).split(",").map(tr=>{
+    const trNorm = tr.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+    if(NO_ESCALAR.some(k=>trNorm.includes(k))) return tr;
+    let t = tr.replace(/½/g,"0.5").replace(/¼/g,"0.25").replace(/¾/g,"0.75").replace(/⅓/g,"0.33").replace(/⅔/g,"0.67");
+    t = t.replace(/\b(\d+)\s*\/\s*(\d+)\b/g,(m,a,b)=>String(Math.round(a/b*100)/100));
+    t = t.replace(/(\d+(?:[.,]\d+)?)(\s*)(g|gr|ml|kg|l)?\b/g,(m,num,sep,un)=>{
+      const v = parseFloat(num.replace(",","."))*factor;
+      if(un==="kg"||un==="l") return (Math.round(v*100)/100)+sep+un;
+      const esPeso = un==="g"||un==="gr"||un==="ml";
+      let cant = racionFmtCantidad(v, esPeso);
+      if(!un && !sep && !/\d$/.test(cant)) sep=" ";
+      return cant + sep + (un||"");
+    });
+    return t;
+  }).join(",");
+};
+const racionTextoJS = (factor, lang) => {
+  const es = [[0.5,"media ración"],[0.67,"2/3 de la receta"],[0.75,"3/4 de la receta"],
+              [1.25,"ración y cuarto"],[1.5,"ración y media"],[1.75,"casi ración doble"],[2,"ración doble"]];
+  const en = [[0.5,"half portion"],[0.67,"2/3 of the recipe"],[0.75,"3/4 of the recipe"],
+              [1.25,"1¼ portion"],[1.5,"1½ portion"],[1.75,"almost double portion"],[2,"double portion"]];
+  for(const [v,txt] of (lang==="en"?en:es)){ if(Math.abs(factor-v)<=0.06) return txt; }
+  return (lang==="en"?"x":"x")+factor.toFixed(2).replace(".",",")+(lang==="en"?" of the recipe":" de la receta");
+};
+
 // ─── Mascot image path (upload avatar.jpg to /public in GitHub) ───────────────
 
 // ─── Design tokens ───────────────────────────────────────────────────────────
@@ -896,16 +983,16 @@ async function flushQueue(){
 // GET → siempre intenta red, sin encolar si falla
 // POST/PATCH → intenta red; si falla, encola para después
 const sbReq = async(method, path, body=null) => {
-  // Usar el token del usuario autenticado si existe, para que RLS funcione correctamente
+  // Usar el token del usuario autenticado SOLO si sigue siendo válido.
+  // Un token caducado provoca 401 en todo; en ese caso se usa la anon key
+  // (las políticas RLS de la app son USING(true)) y se renueva en segundo plano.
   let bearerToken = KEY; // fallback: anon key
   try {
-    // Buscar el token en todas las claves de localStorage que contengan "auth-token"
-    const authKey = Object.keys(localStorage).find(k => k.includes("auth-token") || k.includes("supabase.auth.token"));
-    const raw = authKey ? localStorage.getItem(authKey) : null;
-    if(raw){
-      const parsed = JSON.parse(raw);
-      const token = parsed?.access_token || parsed?.currentSession?.access_token;
-      if(token) bearerToken = token;
+    const sesion = getStoredSession();
+    const token = sesion?.access_token || sesion?.currentSession?.access_token;
+    if(token){
+      if(sesionValida(sesion)) bearerToken = token;
+      else refreshSession();   // renovar sin bloquear; esta petición va con anon
     }
   } catch {}
   const headers = {
@@ -3436,6 +3523,19 @@ function GBHApp(){
     });
   },[]);
 
+  // ── Mantener viva la sesión (el token caduca a la hora) ────────────────────
+  useEffect(()=>{
+    const comprobar = () => {
+      const s = getStoredSession();
+      if(s && !sesionValida(s)) refreshSession();
+    };
+    comprobar(); // al montar
+    const onVis = () => { if(!document.hidden) comprobar(); };
+    document.addEventListener("visibilitychange", onVis);
+    const intervalo = setInterval(comprobar, 20*60*1000);
+    return ()=>{ document.removeEventListener("visibilitychange", onVis); clearInterval(intervalo); };
+  },[]);
+
   // ── Service Worker — caché offline + auto-actualización (sin bucles) ───────
   useEffect(()=>{
     if(!("serviceWorker" in navigator)) return;
@@ -3561,14 +3661,17 @@ function GBHApp(){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
-  // Auto-login: si ya existe sesión guardada, cargar directamente
+  // Auto-login: si ya existe sesión guardada, cargar directamente.
+  // BLINDADO: si cualquier paso falla (datos locales corruptos, etc.) se va a
+  // la landing en lugar de dejar la app colgada en la pantalla de carga.
   useEffect(()=>{
+    try{
     const lastEmail = getLastEmail();
-    if(!lastEmail) return;
+    if(!lastEmail){ setScreen(s=>s==="loading"?"landing":s); return; }
     const lid = lsGet(`gbh:em:${lastEmail}`, null);
-    if(!lid) return;
+    if(!lid){ setScreen(s=>s==="loading"?"landing":s); return; }
     const lp = lsGet(`gbh:p:${lid}`, null);
-    if(!lp?.id) return;
+    if(!lp?.id){ setScreen(s=>s==="loading"?"landing":s); return; }
 
     // Si no tiene auth_id → mandar a crear contraseña antes de entrar
     if(!lp.auth_id){
@@ -3605,8 +3708,21 @@ function GBHApp(){
     setScreen("main");
     // Sincronizar en segundo plano
     setTimeout(()=>{ restoreFromServer(lp.id).catch(()=>{}); }, 2000);
+    }catch(err){
+      console.warn("[boot] auto-login falló, volviendo a landing:", err);
+      setScreen("landing");
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
+
+  // Cinturón de seguridad: si por lo que sea seguimos en "loading" tras 6 s
+  // (caché vieja del SW, error silencioso…), salir a la landing para que el
+  // usuario siempre pueda entrar.
+  useEffect(()=>{
+    if(screen!=="loading") return;
+    const t = setTimeout(()=>{ setScreen(s=>s==="loading"?"landing":s); }, 6000);
+    return ()=>clearTimeout(t);
+  },[screen]);
 
   // t() lee directamente del estado lang (no del contexto, que está dentro del return)
   const t = (key, vars={}) => {
@@ -4368,7 +4484,14 @@ function GBHApp(){
         return r.json();
       } catch { return null; }
     };
-    const data = await rankFetch("profiles?select=id,name,xp,gems,streak,initial_weight&order=xp.desc&limit=50");
+    let data = await rankFetch("profiles?select=id,name,xp,gems,streak,initial_weight&order=xp.desc&limit=50");
+    // Si la select falla (p.ej. columna 'streak' inexistente → 400), reintentar sin ella
+    if(data===null){
+      data = await rankFetch("profiles?select=id,name,xp,gems,initial_weight&order=xp.desc&limit=50");
+    }
+    if(data!==null && !data.length){
+      console.warn("[ranking] profiles devolvió 0 filas — revisa la política RLS de SELECT (profiles_select_for_ranking USING(true))");
+    }
     if(data?.length){
       // Pesos desde Supabase: weight_logs de todos los perfiles del ranking
       const ids=data.map(p=>p.id).join(",");
@@ -6488,29 +6611,53 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
     if(!meal?.Nombre_Receta) return;
     setOpenToma(toma);setTomaReceta(null);setLoadingToma(true);
 
-    // Buscar en la caché local por nombre normalizado (ignora acentos/mayúsculas)
-    const mapa = await cargarRecetasCache();
-    const clave = normNombre(meal.Nombre_Receta);
-    let r = mapa[clave];
-    // Fallback: coincidencia parcial por las primeras palabras
-    if(!r){
-      const frag = normNombre(meal.Nombre_Receta).split(' ').slice(0,3).join(' ');
-      const k = Object.keys(mapa).find(key=>key.includes(frag) || frag.includes(key));
-      if(k) r = mapa[k];
+    // El plan generado YA trae la receta escalada a la ración del paciente:
+    // kcal, macros e ingredientes con las cantidades que le corresponden.
+    // El recetario de Supabase solo se usa como apoyo (instrucciones) o como
+    // fallback para planes antiguos sin datos embebidos.
+    const fRac = parseFloat(meal.racion_factor)||1;
+    const racTxt = meal.racion_texto || (Math.abs(fRac-1)>=0.05 ? racionTextoJS(fRac, lang) : '');
+
+    let r = null;
+    const necesitaRecetario = !meal.Ingredientes || !meal.Instrucciones;
+    if(necesitaRecetario){
+      const mapa = await cargarRecetasCache();
+      const clave = normNombre(meal.Nombre_Receta);
+      r = mapa[clave];
+      if(!r){
+        const frag = normNombre(meal.Nombre_Receta).split(' ').slice(0,3).join(' ');
+        const k = Object.keys(mapa).find(key=>key.includes(frag) || frag.includes(key));
+        if(k) r = mapa[k];
+      }
     }
 
-    if(r){
-      // Columnas reales en Supabase: nombre, tipo, calorias, proteinas_g,
-      // hidratos_g, grasas_g, ingredientes, instrucciones
+    if(meal.Ingredientes){
+      // ── Plan nuevo: todo embebido y ya escalado ──
+      setTomaReceta({
+        nombre:       meal.Nombre_Receta,
+        tipo:         meal.Tipo||'',
+        calorias:     Math.round(parseFloat(meal.Calorias_Totales)||0),
+        proteinas_g:  Math.round(parseFloat(meal.Proteinas_g)||0),
+        hidratos_g:   Math.round(parseFloat(meal.Hidratos_g)||0),
+        grasas_g:     Math.round(parseFloat(meal.Grasas_g)||0),
+        ingredientes: meal.Ingredientes,
+        instrucciones:meal.Instrucciones||r?.instrucciones||(lang==='en'?'No preparation steps available.':'Sin pasos de preparación disponibles.'),
+        racion_texto: racTxt,
+        kcal_objetivo:Math.round(parseFloat(meal.Calorias_Totales)||0),
+      });
+    } else if(r){
+      // ── Plan antiguo: receta base del recetario, escalada en cliente ──
       setTomaReceta({
         nombre:       r.nombre||r.nombre_receta||meal.Nombre_Receta,
         tipo:         r.tipo||meal.Tipo||'',
-        calorias:     Math.round(parseFloat(r.calorias||r.calorias_totales||meal.Calorias_Totales)||0),
-        proteinas_g:  Math.round(parseFloat(r.proteinas_g||meal.Proteinas_g)||0),
-        hidratos_g:   Math.round(parseFloat(r.hidratos_g||meal.Hidratos_g)||0),
-        grasas_g:     Math.round(parseFloat(r.grasas_g||meal.Grasas_g)||0),
-        ingredientes: r.ingredientes||'',
+        calorias:     Math.round((parseFloat(r.calorias||r.calorias_totales||meal.Calorias_Totales)||0)*fRac),
+        proteinas_g:  Math.round((parseFloat(r.proteinas_g||meal.Proteinas_g)||0)*fRac),
+        hidratos_g:   Math.round((parseFloat(r.hidratos_g||meal.Hidratos_g)||0)*fRac),
+        grasas_g:     Math.round((parseFloat(r.grasas_g||meal.Grasas_g)||0)*fRac),
+        ingredientes: escalarIngredientesJS(r.ingredientes||'', fRac),
         instrucciones:r.instrucciones||(lang==='en'?'No preparation steps available.':'Sin pasos de preparación disponibles.'),
+        racion_texto: racTxt,
+        kcal_objetivo:Math.round((parseFloat(r.calorias||r.calorias_totales||meal.Calorias_Totales)||0)*fRac),
       });
     } else {
       // No se encontró en el recetario: mostrar al menos los macros del plan
@@ -6522,6 +6669,8 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
         grasas_g:Math.round(parseFloat(meal.Grasas_g)||0),
         ingredientes:'',
         instrucciones:lang==='en'?'No recipe details found.':'Detalle de receta no disponible.',
+        racion_texto: racTxt,
+        kcal_objetivo:Math.round(parseFloat(meal.Calorias_Totales)||0),
       });
     }
     setLoadingToma(false);
@@ -6563,15 +6712,27 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
     setProfile(updP); lsSet(`gbh:p:${profile.id}`, updP);
     sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:newGems});
     sfx&&sfx("recipe");
+    // ── Escalar la nueva receta a las kcal de la toma (objetivo = kcal de la
+    //    receta actual, que ya venía ajustada por el generador) ──
+    const kcalObj = tomaReceta.kcal_objetivo || kcalActual || 0;
+    const kcalBase = parseFloat(elegida.calorias||elegida.calorias_totales)||0;
+    let f = 1;
+    if(kcalObj>0 && kcalBase>0){
+      f = Math.max(0.5, Math.min(2, kcalObj/kcalBase));
+      f = Math.round(f*20)/20; // pasos de 0,05
+      if(Math.abs(f-1)<0.05) f = 1;
+    }
     setTomaReceta({
       nombre:       elegida.nombre||elegida.nombre_receta||'',
       tipo:         elegida.tipo||tipoActual,
-      calorias:     Math.round(parseFloat(elegida.calorias||elegida.calorias_totales)||0),
-      proteinas_g:  Math.round(parseFloat(elegida.proteinas_g)||0),
-      hidratos_g:   Math.round(parseFloat(elegida.hidratos_g)||0),
-      grasas_g:     Math.round(parseFloat(elegida.grasas_g)||0),
-      ingredientes: elegida.ingredientes||'',
+      calorias:     Math.round(kcalBase*f),
+      proteinas_g:  Math.round((parseFloat(elegida.proteinas_g)||0)*f),
+      hidratos_g:   Math.round((parseFloat(elegida.hidratos_g)||0)*f),
+      grasas_g:     Math.round((parseFloat(elegida.grasas_g)||0)*f),
+      ingredientes: escalarIngredientesJS(elegida.ingredientes||'', f),
       instrucciones:elegida.instrucciones||(lang==='en'?'No preparation steps available.':'Sin pasos de preparación disponibles.'),
+      racion_texto: f!==1 ? racionTextoJS(f, lang) : '',
+      kcal_objetivo:kcalObj,
     });
     showT&&showT({icon:"🍽️",title:lang==='en'?'New recipe!':'¡Nueva receta!',sub:'-10 💎'});
   }
@@ -6827,6 +6988,22 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
                 <div style={{fontSize:19,fontWeight:900,color:T.wh,lineHeight:1.25}}>{tomaReceta.nombre}</div>
               </div>
             </div>
+            {!!tomaReceta.racion_texto&&(
+              <div style={{display:'flex',alignItems:'center',gap:8,background:'rgba(255,200,0,0.10)',
+                border:'1.5px solid rgba(255,200,0,0.45)',borderRadius:14,padding:'9px 12px',marginBottom:12}}>
+                <span style={{fontSize:18,lineHeight:1}}>⚖️</span>
+                <div>
+                  <div style={{fontSize:12,fontWeight:900,color:T.au1}}>
+                    {(lang==='en'?'Your portion: ':'Tu ración: ')+tomaReceta.racion_texto}
+                  </div>
+                  <div style={{fontSize:10.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>
+                    {lang==='en'
+                      ?'Quantities and calories already adjusted to your plan'
+                      :'Las cantidades y calorías ya están ajustadas a tu plan'}
+                  </div>
+                </div>
+              </div>
+            )}
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:8}}>
               {[{l:lang==='en'?'Calories':'Calorías',v:String(tomaReceta.calorias),u:'kcal',c:T.au1},{l:lang==='en'?'Protein':'Proteína',v:String(tomaReceta.proteinas_g),u:'g',c:'#64B5F6'},{l:lang==='en'?'Carbs':'Carbos',v:String(tomaReceta.hidratos_g),u:'g',c:T.g1},{l:lang==='en'?'Fat':'Grasas',v:String(tomaReceta.grasas_g),u:'g',c:'#FFB74D'}].map(({l,v,u,c})=>(
                 <div key={l} style={{background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'10px 6px',textAlign:'center',border:'1px solid rgba(255,255,255,0.08)'}}>
