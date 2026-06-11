@@ -1046,17 +1046,16 @@ const patchWeeklyState = (profileId, merged) => {
 // GET → siempre intenta red, sin encolar si falla
 // POST/PATCH → intenta red; si falla, encola para después
 const sbReq = async(method, path, body=null) => {
-  // Usar el token del usuario autenticado SOLO si sigue siendo válido.
-  // Un token caducado provoca 401 en todo; en ese caso se usa la anon key
-  // (las políticas RLS de la app son USING(true)) y se renueva en segundo plano.
-  let bearerToken = KEY; // fallback: anon key
+  // SIEMPRE la anon key para las llamadas de datos.
+  // Lección aprendida: enviar el token del usuario rompía las lecturas de
+  // recipes/saved_recipes (las políticas RLS están definidas para el rol
+  // anon; el rol authenticated no las hereda si se crearon con TO anon).
+  // Las políticas de la app no usan auth.uid() en ningún sitio, así que el
+  // token de usuario no aporta nada aquí: queda SOLO para el login (sbAuth).
+  const bearerToken = KEY;
   try {
     const sesion = getStoredSession();
-    const token = sesion?.access_token || sesion?.currentSession?.access_token;
-    if(token){
-      if(sesionValida(sesion)) bearerToken = token;
-      else refreshSession();   // renovar sin bloquear; esta petición va con anon
-    }
+    if(sesion && !sesionValida(sesion)) refreshSession(); // mantener viva la sesión del login
   } catch {}
   const headers = {
     "apikey": KEY,
