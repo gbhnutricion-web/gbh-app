@@ -4056,6 +4056,46 @@ function GBHApp(){
       }
       // 4. Restaurar perfil completo (foto, xp, gems, plan, streak...)
       const remoteProfile = await sbReq("GET", `profiles?id=eq.${profileId}&select=*&limit=1`);
+      // ── RECONCILIACIÓN: el perfil existe en el móvil pero NO en Supabase ──
+      // (usuarios que se registraron mientras faltaban columnas por migrar y
+      //  cuya alta encolada se descartó). Se re-crea desde la copia local y se
+      //  re-suben el peso y el día de hoy para no perder al paciente.
+      if(Array.isArray(remoteProfile) && remoteProfile.length===0){
+        const localP = lsGet(`gbh:p:${profileId}`, null);
+        if(localP?.id && localP?.email){
+          console.warn("[reconciliación] perfil ausente en Supabase — re-creando:", localP.email);
+          const {plan:_pl, trial_ends_at:_tr, ...sinTrial} = localP;
+          const nucleo = {id:localP.id, name:localP.name, email:localP.email,
+                          auth_id:localP.auth_id||null, xp:localP.xp||0,
+                          gems:localP.gems||0, shields:localP.shields||0};
+          for(const intento of [localP, sinTrial, nucleo]){
+            const r = await sbDirect("POST", "profiles", intento);
+            if(r.ok){
+              // re-subir lo esencial que tenga el dispositivo
+              const pesos = lsGet(`gbh:weights:${profileId}`, []);
+              const ultimo = pesos[pesos.length-1];
+              if(ultimo?.weight_kg && ultimo?.log_date){
+                sbDirect("POST","weight_logs?on_conflict=profile_id,log_date",
+                  {profile_id:profileId, weight_kg:ultimo.weight_kg, log_date:ultimo.log_date});
+              }
+              const logsLoc = lsGet(`gbh:logs:${profileId}`, []);
+              const hoyR = toKey();
+              const logHoyR = logsLoc.find(l=>l.date===hoyR);
+              if(logHoyR){
+                sbDirect("POST","daily_logs?on_conflict=profile_id,log_date",
+                  {profile_id:profileId, log_date:hoyR,
+                   diet_followed:!!logHoyR.diet, steps_done:!!logHoyR.steps,
+                   hydration_done:!!logHoyR.hydration, sleep_done:!!logHoyR.sleep,
+                   sc:logHoyR.sc||0});
+              }
+              const ws = lsGet(WSTATE_KEY(profileId), null);
+              if(ws) sbDirect("PATCH", `profiles?id=eq.${profileId}`, {weekly_state:ws});
+              break;
+            }
+            if(r.status===0) break; // sin red: lo reintentará el próximo arranque
+          }
+        }
+      }
       if(remoteProfile?.length){
         const rp = remoteProfile[0];
         const localP = lsGet(`gbh:p:${profileId}`, {});
@@ -4101,6 +4141,16 @@ function GBHApp(){
           }
           if(ws.calc) lsSet(`gbh:calc:saved:${profileId}`, ws.calc);
         }catch(e){ console.warn("weekly_state restore:", e); }
+        // ── Recetario personal: restaurarlo TAMBIÉN en el auto-login ──
+        // (antes solo se sincronizaba en el login manual, así que tras borrar
+        //  caché el recetario aparecía vacío aunque las recetas estuvieran
+        //  guardadas en Supabase)
+        sbReq("GET",`saved_recipes?profile_id=eq.${profileId}&select=*&order=saved_at.desc`).then(remote=>{
+          if(remote?.length){
+            lsSet(`gbh:saved_recipes:${profileId}`, remote);
+            setSavedRecipes(remote);
+          }
+        });
         if(rp.avatar_b64){
           setUserPhoto(rp.avatar_b64);
           lsSet("gbh:userPhoto", rp.avatar_b64);
