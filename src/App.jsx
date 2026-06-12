@@ -3393,7 +3393,7 @@ function SavedRecipeCard({rec, t, T, removeFromBook}){
     Dessert:"🍰",Salad:"🥗","Soup/Cream":"🍲",
   };
   const tc  = tipoColor[rec.tipo] || T.g1;
-  const ti  = tipoIcon[rec.tipo]  || "🍽️";
+  const ti  = emojiPlato(rec.nombre, rec.tipo);
   const ing = rec.ingredientes?.split(/,(?![^(]*\))/).map(s=>s.trim()).filter(Boolean) || [];
 
   return(
@@ -6413,7 +6413,7 @@ function GBHApp(){
             Vegan:"🌱",Dessert:"🍰",Salad:"🥗","Soup/Cream":"🍲"
           };
           const tc = r ? (tipoColor[r.tipo]||T.g1) : T.g1;
-          const ti = r ? (tipoIcon[r.tipo]||"🍽️") : "🍽️";
+          const ti = r ? emojiPlato(r.nombre, r.tipo) : "🍽️";
           const ingList = r?.ingredientes?.split(/,(?![^(]*\))/).map(s=>s.trim()).filter(Boolean) || [];
           const alreadySaved = r && savedRecipes.some(s => s.recipe_id === r.id_receta);
 
@@ -6708,7 +6708,41 @@ const PLAN_DIAS    = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 const PLAN_DIAS_F  = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
 const PLAN_TOMAS   = ['Desayuno','Almuerzo','Comida','Merienda','Cena'];
 const PLAN_TOMA_IC = {Desayuno:'☀️',Almuerzo:'🍎',Comida:'🍽️',Merienda:'🥤',Cena:'🌙'};
-const PLAN_TIPO_IC = {Carne:'🥩',Pescado:'🐟',Vegetariana:'🥗',Vegana:'🌱',Ensalada:'🥬','Sopa/Crema':'🍲',Postre:'🍰',Directo:'🍃'};
+const PLAN_TIPO_IC = {Carne:'🥩',Pescado:'🐟',Vegetariana:'🥗',Vegana:'🌱',Ensalada:'🥬','Sopa/Crema':'🍲',Postre:'🍰',Directo:'🍃',
+  Meat:'🥩',Fish:'🐟',Vegetarian:'🥗',Vegan:'🌱',Dessert:'🍰',Salad:'🥬','Soup/Cream':'🍲'};
+// ── Emoji por FORMATO del plato (espejo de emoji_plato del script Python) ──
+// El formato MANDA sobre el tipo: pasta con atún → 🍝 (no 🐟); postre → 🍰 siempre.
+const REGLAS_EMOJI_PLATO = [
+  [/pasta|espagueti|spaghetti|macarron|tallarin|noodle|lasan|fideu|fideo|carbonara|bolones|raviol|noqui|gnocchi|canelon/, '🍝'],
+  [/pizza/, '🍕'],
+  [/arroz|paella|risotto|quinoa|cuscus|couscous/, '🍚'],
+  [/sopa|crema de|pure|gazpacho|salmorejo|caldo/, '🍲'],
+  [/ensalada|tabule/, '🥗'],
+  [/lenteja|garbanzo|alubia|frijol|potaje|cocido|guiso/, '🥘'],
+  [/hamburguesa/, '🍔'],
+  [/bocadillo|sandwich|wrap|burrito|quesadilla|taco|fajita/, '🥪'],
+  [/tortilla|revuelto|huevo/, '🍳'],
+  [/tortita|pancake|crep|gofre|waffle/, '🥞'],
+  [/gachas|porridge|avena|bol de|smoothie bowl/, '🥣'],
+  [/batido|smoothie|zumo/, '🥤'],
+  [/pollo|pavo|pechuga/, '🍗'],
+  [/salmon|atun|merluza|bacalao|dorada|lubina|pescado|sepia|calamar|gamba|marisco|pulpo|boqueron|sardina|rape|emperador|trucha|mejillon|almeja/, '🐟'],
+  [/ternera|cerdo|lomo|solomillo|filete|albondiga|estofado|carrillera|costilla|entrecot|chuleta|carne/, '🥩'],
+  [/tofu|tempeh|seitan|soja|heura/, '🌱'],
+  [/yogur|requeson|queso fresco|kefir/, '🥛'],
+  [/tostada|pan /, '🍞'],
+  [/fruta|manzana|pera|platano|fresa|macedonia|melon|sandia|naranja|mandarina|kiwi|uva|melocoton|cereza|arandano|mango|pina/, '🍎'],
+  [/frutos secos|almendra|nuez|nueces|anacardo|pistacho|avellana|cacahuete/, '🥜'],
+  [/queso/, '🧀'],
+  [/leche|cacao|cafe/, '🥛'],
+  [/aguacate/, '🥑'],
+];
+const emojiPlato = (nombre, tipo) => {
+  if(tipo==='Postre'||tipo==='Dessert') return '🍰';
+  const n = String(nombre||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  for(const [re,em] of REGLAS_EMOJI_PLATO) if(re.test(n)) return em;
+  return PLAN_TIPO_IC[tipo] || '🍴';
+};
 const PLAN_TIPO_BG = {Carne:'rgba(192,57,43,0.22)',Pescado:'rgba(41,128,185,0.22)',Vegetariana:'rgba(39,174,96,0.18)',Vegana:'rgba(22,160,133,0.18)',Ensalada:'rgba(139,195,74,0.18)','Sopa/Crema':'rgba(230,126,34,0.22)',Postre:'rgba(214,70,158,0.22)',Directo:'rgba(212,175,55,0.22)'};
 const PLAN_TIPO_COLOR={Carne:'#E57373',Pescado:'#64B5F6',Vegetariana:'#81C784',Vegana:'#A5D6A7',Postre:'#F06292',Ensalada:'#AED581','Sopa/Crema':'#FFB74D'};
 
@@ -7273,7 +7307,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
                 const r=celdas[String(col)];
                 if(!r?.Nombre_Receta) return <div key={col} style={{borderRadius:10,background:'rgba(255,255,255,0.03)',minHeight:64,border:'1px solid rgba(255,255,255,0.05)'}}/>;
                 return(<div key={col} style={{background:PLAN_TIPO_BG[r.Tipo]||colores[colorIdx[col]||0],border:'1px solid rgba(255,255,255,0.09)',borderRadius:10,padding:'6px 4px',minHeight:64,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:3}}>
-                  <span style={{fontSize:13}}>{PLAN_TIPO_IC[r.Tipo]||'🍴'}</span>
+                  <span style={{fontSize:13}}>{emojiPlato(r.Nombre_Receta, r.Tipo)}</span>
                   <span style={{fontSize:8.5,color:T.t1,fontWeight:700,textAlign:'center',lineHeight:1.3,wordBreak:'break-word',fontFamily:"'Nunito',sans-serif"}}>{r.Nombre_Receta}</span>
                 </div>);
               })}
@@ -7329,7 +7363,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:10,color:T.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:3,fontFamily:"'DM Sans',sans-serif"}}>{toma}</div>
                 <div style={{fontSize:14,fontWeight:hasMeal?800:400,color:hasMeal?T.t1:T.t3,fontFamily:"'Nunito',sans-serif",whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
-                  {hasMeal&&<span style={{marginRight:4}}>{PLAN_TIPO_IC[meal.Tipo]||''}</span>}{hasMeal?meal.Nombre_Receta:'—'}
+                  {hasMeal&&<span style={{marginRight:4}}>{emojiPlato(meal.Nombre_Receta, meal.Tipo)}</span>}{hasMeal?meal.Nombre_Receta:'—'}
                 </div>
               </div>
               {hasMeal&&<div style={{color:T.t3,fontSize:18,flexShrink:0}}>›</div>}
@@ -7346,7 +7380,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
           </div>
           <div style={{background:T.bgCard,borderRadius:20,padding:'20px 18px',marginBottom:12,border:'1px solid rgba(255,255,255,0.07)'}}>
             <div style={{display:'flex',alignItems:'flex-start',gap:14,marginBottom:16}}>
-              <div style={{fontSize:48,lineHeight:1,flexShrink:0}}>{PLAN_TIPO_IC[tomaReceta.tipo]||'🍽️'}</div>
+              <div style={{fontSize:48,lineHeight:1,flexShrink:0}}>{emojiPlato(tomaReceta.nombre, tomaReceta.tipo)}</div>
               <div style={{flex:1}}>
                 <div style={{display:'inline-block',background:(PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1)+'22',border:'1.5px solid '+(PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1)+'55',borderRadius:20,padding:'3px 12px',fontSize:10,fontWeight:900,color:PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1,textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:8}}>{tomaReceta.tipo||'—'}</div>
                 <div style={{fontSize:19,fontWeight:900,color:T.wh,lineHeight:1.25}}>{tomaReceta.nombre}</div>
