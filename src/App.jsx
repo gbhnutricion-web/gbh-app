@@ -3757,17 +3757,7 @@ function GBHApp(){
     const lp = lsGet(`gbh:p:${lid}`, null);
     if(!lp?.id){ setScreen(s=>s==="loading"?"landing":s); return; }
 
-    // Si no tiene auth_id → mandar a crear contraseña antes de entrar
-    if(!lp.auth_id){
-      setAEmail(lastEmail);
-      setAName(lp.name || "");
-      setAuthMode("migrate");
-      setScreen("auth");
-      setLoading(false);
-      return;
-    }
-
-    // Tiene auth_id → entrar directamente con datos locales
+    // Sistema sin contraseñas: si hay perfil local, entrar directo.
     const today = toKey();
     const localLogs    = lsGet(`gbh:logs:${lp.id}`, []);
     const localWeights = lsGet(`gbh:weights:${lp.id}`, []);
@@ -4259,55 +4249,45 @@ function GBHApp(){
   const checkEmail = async (email) => {
     if(!email.includes("@")) return;
     const em = email.trim().toLowerCase();
-    setAuthMode("checking");
-    setAuthErr(""); setForgotSent(false); setAPassword(""); setAPasswordC("");
-
-    // 1. Buscar en localStorage primero (siempre disponible, sin RLS)
+    setAuthErr("");
+    // Sistema SIN contraseñas: solo miramos si el email ya tiene cuenta para
+    // recuperarla (modo "returning" = entra directo) o es nuevo (pide datos).
     const localId = lsGet(`gbh:em:${em}`, null);
     const localP  = localId ? lsGet(`gbh:p:${localId}`, null) : null;
     if(localP?.id){
       setAName(localP.name || "");
-      setAuthMode(localP.auth_id ? "returning" : "migrate");
+      setAuthMode("returning");
       return;
     }
-
-    // 2. Si no hay datos locales, consultar Supabase
-    // Usar la anon key — la política gbh_profiles (qual:true) permite SELECT a todos
-    const r = await sbReq("GET", `profiles?email=eq.${em}&select=id,name,auth_id`);
+    setAuthMode("checking");
+    const r = await sbReq("GET", `profiles?email=eq.${em}&select=id,name`);
     if(r?.length){
       setAName(r[0].name || "");
       lsSet(`gbh:em:${em}`, r[0].id);
-      // NO sobrescribir el perfil local completo con la versión recortada
-      // (id,name,auth_id): perdería plan, gemas, xp… Solo fusionar lo nuevo.
       const prev = lsGet(`gbh:p:${r[0].id}`, null);
       lsSet(`gbh:p:${r[0].id}`, prev ? {...prev, ...r[0]} : r[0]);
-      setAuthMode(r[0].auth_id ? "returning" : "migrate");
+      setAuthMode("returning");
     } else {
       setAuthMode("new");
     }
   };
 
   const doAuth=async()=>{
-    // En modo returning y migrate el nombre ya está guardado — no bloquear por aName vacío
-    const isReturningOrMigrate = authMode==="returning" || authMode==="migrate";
-    if(!isReturningOrMigrate && (!aName.trim()||!aEmail.trim())) return;
     if(!aEmail.trim()) return;
-    setLoading(true); setAuthErr(""); setAuthDbg([]);
     const email = aEmail.trim().toLowerCase();
     const name  = aName.trim();
+    setLoading(true); setAuthErr("");
     try{
 
-    // Helper: entra en la app directamente sin pasar por loadP
-    const enterApp = async (ep, authUserId) => {
-      const merged = { ...ep, auth_id: authUserId };
-      lsSet(`gbh:p:${ep.id}`, merged);
+    // Helper: entrar en la app con un perfil dado
+    const enterApp = async (ep) => {
+      lsSet(`gbh:p:${ep.id}`, ep);
       lsSet(`gbh:em:${email}`, ep.id);
       saveLastEmail(email);
-      // Restaurar datos locales
       const localLogs = lsGet(`gbh:logs:${ep.id}`, []);
       const localWeights = lsGet(`gbh:weights:${ep.id}`, []);
       const localBadges = lsGet(`gbh:badges:${ep.id}`, []);
-      setProfile(merged);
+      setProfile(ep);
       setLogs(localLogs);
       setWeights(localWeights.sort((a,b)=>a.date>b.date?1:-1));
       setBadges(localBadges);
@@ -4316,152 +4296,73 @@ function GBHApp(){
       const savedTLog = lsGet(`gbh:tlog:${ep.id}:${today}`, null);
       if(savedTLog){ setTLog(savedTLog); setSteps(localLogs.find(x=>x.date===today)?.sc||0); }
       else {
-        const t = localLogs.find(x=>x.date===today);
-        if(t){ setTLog({diet:!!t.diet,steps:!!t.steps,hydration:!!t.hydration,sleep:!!t.sleep}); setSteps(t.sc||0); }
+        const t2 = localLogs.find(x=>x.date===today);
+        if(t2){ setTLog({diet:!!t2.diet,steps:!!t2.steps,hydration:!!t2.hydration,sleep:!!t2.sleep}); setSteps(t2.sc||0); }
       }
       setWeightBannerDismissed(false);
-      // Restaurar estado quiz y ruleta del día
       setQuizDone(lsGet(`gbh:quiz:${ep.id}:${today}`, false));
       setQuizBannerDismissed(lsGet(`gbh:quizBanner:${ep.id}:${today}`, false));
       setRuletaDone(lsGet(`gbh:ruleta:${ep.id}:${today}`, false));
       setRuletaAutoShown(lsGet(`gbh:ruletaSeen:${ep.id}:${today}`, false));
       setScreen("main");
-      setLoading(false);
-      // Sincronizar desde Supabase en segundo plano (sin bloquear entrada)
       setTimeout(()=>{ restoreFromServer(ep.id).catch(()=>{}); }, 1500);
     };
 
-    // ── FLUJO A: Usuario ya migrado → signIn con contraseña ───────────────────
+    // ── USUARIO EXISTENTE → entra directo (sin contraseña) ──
     if(authMode==="returning"){
-      if(!aPassword){ setAuthErr(t("passwordTooShort")); setLoading(false); return; }
-      const res = await sbAuth.signIn(email, aPassword);
-      if(res.error){ setAuthErr(t("passwordWrong")); setLoading(false); return; }
-      sbAuth.saveSession(res.session);
-      // CONTRASEÑA CORRECTA = ENTRA. No dejamos que una consulta lenta o un
-      // GET vacío por RLS bloqueen la entrada. Prioridad: perfil local; si no
-      // hay, intento rápido a Supabase; y si todo falla, perfil mínimo viable.
       const localId = lsGet(`gbh:em:${email}`, null);
-      let perfil = (localId ? lsGet(`gbh:p:${localId}`, null) : null);
+      let perfil = localId ? lsGet(`gbh:p:${localId}`, null) : null;
       if(!perfil?.id){
-        // Intento ÚNICO a Supabase con tope de tiempo; si tarda, seguimos.
-        try{
-          const conTimeout = (p,ms)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error("timeout")),ms))]);
-          let q = await conTimeout(sbReq("GET", `profiles?auth_id=eq.${res.user.id}&select=*`), 6000).catch(()=>null);
-          if(!q?.length) q = await conTimeout(sbReq("GET", `profiles?email=eq.${email}&select=*`), 6000).catch(()=>null);
-          if(q?.length) perfil = q[0];
-        }catch{}
+        const conTimeout = (p,ms)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error("timeout")),ms))]);
+        const byEmail = await conTimeout(sbReq("GET", `profiles?email=eq.${email}&select=*`), 6000).catch(()=>null);
+        perfil = byEmail?.[0] || null;
       }
       if(!perfil?.id){
-        // Perfil mínimo viable: la contraseña es válida, NO bloqueamos la entrada.
-        // restoreFromServer rellenará el resto en cuanto haya conexión.
-        perfil = { id: crypto.randomUUID(), name: aName||email.split("@")[0], email,
-                   xp:0, gems:0, shields:0 };
+        perfil = { id: crypto.randomUUID(), name: aName||email.split("@")[0], email, xp:0, gems:0, shields:0 };
       }
-      // Vincular auth_id en segundo plano (no bloquea la entrada)
-      sbReq("PATCH", `profiles?id=eq.${perfil.id}`, { auth_id: res.user.id });
-      await enterApp(perfil, res.user.id);
+      await enterApp(perfil);
       return;
     }
 
-    // ── FLUJO B: Pre-migración → crear contraseña y vincular cuenta ──────────
-    if(authMode==="migrate"){
-      if(aPassword.length < 6){ setAuthErr(t("passwordTooShort")); setLoading(false); return; }
-      if(aPassword !== aPasswordC){ setAuthErr(t("passwordMismatch")); setLoading(false); return; }
-
-      let authUserId = null;
-      const su = await sbAuth.signUp(email, aPassword);
-      if(su.error){
-        const isAlreadyExists = su.error.toLowerCase().includes("already") || su.error.toLowerCase().includes("registered");
-        if(!isAlreadyExists){ setAuthErr(su.error); setLoading(false); return; }
-        const si = await sbAuth.signIn(email, aPassword);
-        if(si.error){ setAuthErr(si.error); setLoading(false); return; }
-        sbAuth.saveSession(si.session);
-        authUserId = si.user.id;
-      } else {
-        const si = await sbAuth.signIn(email, aPassword);
-        if(si.error){ setAuthErr(t("authErrGeneric")); setLoading(false); return; }
-        sbAuth.saveSession(si.session);
-        authUserId = si.user.id;
-      }
-
-      // Buscar perfil: primero en localStorage (evita RLS), luego Supabase por email
-      const lastEmail = email;
-      const localId = lsGet(`gbh:em:${lastEmail}`, null);
-      let profileData = localId ? lsGet(`gbh:p:${localId}`, null) : null;
-
-      if(!profileData){
-        // Fallback: buscar en Supabase (necesita RLS permisivo)
-        const byEmail = await sbReq("GET", `profiles?email=eq.${email}&select=*`);
-        profileData = byEmail?.[0] || null;
-      }
-
-      if(profileData){
-        // PATCH en Supabase para vincular auth_id
-        await sbReq("PATCH", `profiles?id=eq.${profileData.id}`, { auth_id: authUserId });
-        await enterApp(profileData, authUserId); return;
-      }
-      setAuthErr(t("authErrGeneric")); setLoading(false); return;
-    }
-
-    // ── FLUJO C: Usuario nuevo → registro completo ────────────────────────────
+    // ── USUARIO NUEVO → registro con email (sin contraseña) ──
+    if(!aName.trim()){ setAuthErr(lang==="en"?"Enter your name":"Introduce tu nombre"); setLoading(false); return; }
     if(!aWeight || isNaN(parseFloat(aWeight))){
-      setAuthErr("Introduce tu peso actual para comenzar.");
+      setAuthErr(lang==="en"?"Enter your current weight to start.":"Introduce tu peso actual para comenzar.");
       setLoading(false); return;
     }
-    if(aPassword.length < 6){ setAuthErr(t("passwordTooShort")); setLoading(false); return; }
-    if(aPassword !== aPasswordC){ setAuthErr(t("passwordMismatch")); setLoading(false); return; }
-
-    const su = await sbAuth.signUp(email, aPassword);
-    if(su.error){ setAuthErr(su.error); setLoading(false); return; }
-    // Siempre hacer signIn tras signUp para garantizar sesión válida
-    const si = await sbAuth.signIn(email, aPassword);
-    if(si.error){ setAuthErr(t("authErrGeneric")); setLoading(false); return; }
-    sbAuth.saveSession(si.session);
-    const authUserId = si.user.id;
 
     const np = {
       id: crypto.randomUUID(), name, email,
-      auth_id: authUserId,
       xp:0, gems:0, shields:0,
       height_cm: Math.round(aHeight)||null,
       sex: aSex||null,
       initial_weight: parseFloat(aWeight)||null,
       goal_weight: (aGoal && !isNaN(parseFloat(aGoal)) && parseFloat(aGoal)>20) ? parseFloat(aGoal) : null,
-      // ── Semana de PRUEBA estándar: 7 días con acceso completo a la
-      //    programación; al caducar, la cuenta pasa a 'free' automáticamente.
-      //    (Si el paciente paga, poner trial_ends_at=NULL en Supabase.)
+      // Semana de prueba estándar: 7 días, luego degrada a 'free'
       plan: 'standard',
       trial_ends_at: new Date(Date.now() + 7*24*60*60*1000).toISOString(),
     };
-    // Alta resiliente: probar payload completo → sin campos nuevos → núcleo.
-    // Un 400 por columna pendiente de migración NUNCA debe dejar al usuario
-    // fuera de Supabase (si no, no aparecería en la tabla de pacientes).
+    // Alta resiliente: completo → sin campos nuevos → núcleo mínimo
     const { plan:_pl, trial_ends_at:_tr, ...npSinTrial } = np;
-    const npNucleo = { id:np.id, name:np.name, email:np.email, auth_id:np.auth_id, xp:0, gems:0, shields:0 };
+    const npNucleo = { id:np.id, name:np.name, email:np.email, xp:0, gems:0, shields:0 };
     let fp = null;
     for(const intento of [np, npSinTrial, npNucleo]){
       const r = await sbDirect("POST", "profiles", intento);
       if(r.ok){ fp = (Array.isArray(r.data) && r.data[0]) || intento; break; }
-      if(r.status === 0){ // sin red: encolar el completo y seguir en local
-        await sbReq("POST", "profiles", np);
-        fp = np; break;
-      }
+      if(r.status === 0){ await sbReq("POST", "profiles", np); fp = np; break; }
       console.warn("[alta] payload rechazado (", r.status, ") — reintento reducido");
     }
-    if(!fp) fp = np; // último recurso: continuar en local
-    const cr = [fp];
+    if(!fp) fp = np;
     const initW = parseFloat(aWeight);
     if(!isNaN(initW)&&initW>20&&initW<300){
       const initDate = toKey();
       lsSet(`gbh:weights:${fp.id}`,[{date:initDate,weight:initW,isInitial:true}]);
       await sbReq("POST","weight_logs?on_conflict=profile_id,log_date",{profile_id:fp.id,log_date:initDate,weight_kg:initW});
     }
-    await enterApp(fp, authUserId);
+    await enterApp(fp);
     }catch(err){
-      // Red de seguridad: cualquier cuelgue/excepción inesperada NO debe dejar
-      // el botón en "entrando…". Mostramos un error claro y liberamos.
       console.warn("[doAuth] error inesperado:", err);
-      setAuthErr(t("authErrGeneric"));
+      setAuthErr(lang==="en"?"Something went wrong. Try again.":"Algo salió mal. Inténtalo de nuevo.");
     }finally{
       setLoading(false); // el botón SIEMPRE se libera
     }
@@ -5265,88 +5166,26 @@ function GBHApp(){
         <input type="email" value={aEmail}
           onChange={e=>{
             setAEmail(e.target.value);
-            // Solo resetear si el usuario está escribiendo activamente (no en auto-login)
             if(document.activeElement?.type==="email"){
-              setAuthMode("new");setAuthErr("");setAPassword("");setAPasswordC("");setForgotSent(false);
+              setAuthMode("new");setAuthErr("");
             }
           }}
           onBlur={e=>checkEmail(e.target.value)}
-          placeholder={t("emailPH")} style={{...inp,marginBottom:(authMode==="returning"||authMode==="migrate")?0:16}}/>
+          placeholder={t("emailPH")} style={{...inp,marginBottom:authMode==="returning"?0:16}}/>
 
-        {/* ── Usuario ya migrado: bienvenida + campo contraseña ── */}
-        {authMode==="returning"&&(<>
+        {/* ── Usuario existente: bienvenida, entra directo (sin contraseña) ── */}
+        {authMode==="returning"&&(
           <div style={{background:"rgba(88,204,2,0.12)",border:`1.5px solid ${T.g3}`,borderRadius:14,
             padding:"12px 16px",margin:"12px 0",display:"flex",alignItems:"center",gap:10}}>
             <span style={{fontSize:22}}>👋</span>
             <div>
               <div style={{fontSize:13,fontWeight:900,color:T.g2}}>{t("welcomeBack",{n:aName.split(" ")[0]})}</div>
               <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:2}}>
-                {t("accountExists")}
+                {lang==="en"?"Tap below to enter":"Pulsa abajo para entrar"}
               </div>
             </div>
           </div>
-          <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>{t("password")}</div>
-          <div style={{position:"relative",marginBottom:8}}>
-            <input type={showPass?"text":"password"} value={aPassword}
-              onChange={e=>setAPassword(e.target.value)}
-              onKeyDown={e=>e.key==="Enter"&&doAuth()}
-              placeholder={t("passwordPH")}
-              style={{...inp,marginBottom:0,paddingRight:72}}/>
-            <button onClick={()=>setShowPass(p=>!p)} type="button" style={{
-              position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",
-              background:"none",border:"none",color:T.t2,fontSize:12,cursor:"pointer",
-              fontFamily:"'DM Sans',sans-serif",fontWeight:700,padding:"4px 6px",
-            }}>{showPass?t("passwordHide"):t("passwordShow")}</button>
-          </div>
-          {/* Olvidé mi contraseña */}
-          {!forgotSent?(
-            <div style={{textAlign:"right",marginBottom:16}}>
-              <button onClick={doForgotPassword} type="button" style={{
-                background:"none",border:"none",color:T.t2,fontSize:11,cursor:"pointer",
-                fontFamily:"'DM Sans',sans-serif",textDecoration:"underline",padding:0,
-              }}>{t("forgotPassword")}</button>
-            </div>
-          ):(
-            <div style={{background:"rgba(88,204,2,0.10)",border:`1px solid ${T.g3}`,borderRadius:10,
-              padding:"8px 12px",marginBottom:16,fontSize:11,color:T.g2,fontFamily:"'DM Sans',sans-serif",textAlign:"center"}}>
-              {t("forgotPasswordSent")}
-            </div>
-          )}
-        </>)}
-
-        {/* ── Usuario pre-migración: crear contraseña sin perder datos ── */}
-        {authMode==="migrate"&&(<>
-          <div style={{background:"rgba(255,200,0,0.10)",border:`1.5px solid ${T.au2}`,borderRadius:14,
-            padding:"14px 16px",margin:"12px 0",display:"flex",alignItems:"flex-start",gap:10}}>
-            <span style={{fontSize:22,flexShrink:0}}>🔐</span>
-            <div>
-              <div style={{fontSize:13,fontWeight:900,color:T.au1}}>{t("migrateTitle")}</div>
-              <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:4,lineHeight:1.5}}>
-                {t("migrateDesc")}
-              </div>
-            </div>
-          </div>
-          <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>{t("password")}</div>
-          <div style={{position:"relative",marginBottom:16}}>
-            <input type={showPass?"text":"password"} value={aPassword}
-              onChange={e=>setAPassword(e.target.value)}
-              placeholder={t("passwordPH")}
-              style={{...inp,marginBottom:0,paddingRight:72}}/>
-            <button onClick={()=>setShowPass(p=>!p)} type="button" style={{
-              position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",
-              background:"none",border:"none",color:T.t2,fontSize:12,cursor:"pointer",
-              fontFamily:"'DM Sans',sans-serif",fontWeight:700,padding:"4px 6px",
-            }}>{showPass?t("passwordHide"):t("passwordShow")}</button>
-          </div>
-          <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>{t("passwordConfirm")}</div>
-          <input type={showPass?"text":"password"} value={aPasswordC}
-            onChange={e=>setAPasswordC(e.target.value)}
-            onKeyDown={e=>e.key==="Enter"&&doAuth()}
-            placeholder={t("passwordConfirmPH")}
-            style={{...inp,marginBottom:16,
-              borderColor: aPasswordC && aPassword !== aPasswordC ? T.red : undefined,
-            }}/>
-        </>)}
+        )}
 
         {authMode==="checking"&&(
           <div style={{textAlign:"center",padding:"10px 0",fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>
@@ -5417,27 +5256,6 @@ function GBHApp(){
           <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:20}}>
             {t("heightHint")}
           </div>
-          {/* ── Contraseña (usuario nuevo) ── */}
-          <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>{t("password")}</div>
-          <div style={{position:"relative",marginBottom:16}}>
-            <input type={showPass?"text":"password"} value={aPassword}
-              onChange={e=>setAPassword(e.target.value)}
-              placeholder={t("passwordPH")}
-              style={{...inp,marginBottom:0,paddingRight:72}}/>
-            <button onClick={()=>setShowPass(p=>!p)} type="button" style={{
-              position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",
-              background:"none",border:"none",color:T.t2,fontSize:12,cursor:"pointer",
-              fontFamily:"'DM Sans',sans-serif",fontWeight:700,padding:"4px 6px",
-            }}>{showPass?t("passwordHide"):t("passwordShow")}</button>
-          </div>
-          <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>{t("passwordConfirm")}</div>
-          <input type={showPass?"text":"password"} value={aPasswordC}
-            onChange={e=>setAPasswordC(e.target.value)}
-            onKeyDown={e=>e.key==="Enter"&&doAuth()}
-            placeholder={t("passwordConfirmPH")}
-            style={{...inp,marginBottom:20,
-              borderColor: aPasswordC && aPassword !== aPasswordC ? T.red : undefined,
-            }}/>
         </>)}
 
         {authErr&&(
@@ -5497,15 +5315,11 @@ function GBHApp(){
 
         {(()=>{
           const isReturning = authMode==="returning";
-          const isMigrate   = authMode==="migrate";
           const dis = loading || authMode==="checking" ||
                       !aEmail.trim() ||
-                      (isReturning && !aPassword) ||
-                      (isMigrate && (aPassword.length<6 || aPassword!==aPasswordC)) ||
-                      (!isReturning && !isMigrate && (!aName.trim()||!aWeight||isNaN(parseFloat(aWeight))||!aPrivacy||aPassword.length<6||aPassword!==aPasswordC));
+                      (!isReturning && (!aName.trim()||!aWeight||isNaN(parseFloat(aWeight))||!aPrivacy));
           const label = loading ? t("verifying")
                       : isReturning ? t("recoverAccount")
-                      : isMigrate   ? t("migrateBtn")
                       : t("startAdventure");
           return(
             <button onClick={doAuth} disabled={dis}
