@@ -4276,9 +4276,11 @@ function GBHApp(){
     const r = await sbReq("GET", `profiles?email=eq.${em}&select=id,name,auth_id`);
     if(r?.length){
       setAName(r[0].name || "");
-      // Guardar en localStorage para próximas veces
       lsSet(`gbh:em:${em}`, r[0].id);
-      lsSet(`gbh:p:${r[0].id}`, r[0]);
+      // NO sobrescribir el perfil local completo con la versión recortada
+      // (id,name,auth_id): perdería plan, gemas, xp… Solo fusionar lo nuevo.
+      const prev = lsGet(`gbh:p:${r[0].id}`, null);
+      lsSet(`gbh:p:${r[0].id}`, prev ? {...prev, ...r[0]} : r[0]);
       setAuthMode(r[0].auth_id ? "returning" : "migrate");
     } else {
       setAuthMode("new");
@@ -4293,6 +4295,7 @@ function GBHApp(){
     setLoading(true); setAuthErr(""); setAuthDbg([]);
     const email = aEmail.trim().toLowerCase();
     const name  = aName.trim();
+    try{
 
     // Helper: entra en la app directamente sin pasar por loadP
     const enterApp = async (ep, authUserId) => {
@@ -4334,21 +4337,30 @@ function GBHApp(){
       const res = await sbAuth.signIn(email, aPassword);
       if(res.error){ setAuthErr(t("passwordWrong")); setLoading(false); return; }
       sbAuth.saveSession(res.session);
-      const byId = await sbReq("GET", `profiles?auth_id=eq.${res.user.id}&select=*`);
-      if(byId?.length){ await enterApp(byId[0], res.user.id); return; }
-      // Fallback: localStorage (no depende de RLS)
+      // CONTRASEÑA CORRECTA = ENTRA. No dejamos que una consulta lenta o un
+      // GET vacío por RLS bloqueen la entrada. Prioridad: perfil local; si no
+      // hay, intento rápido a Supabase; y si todo falla, perfil mínimo viable.
       const localId = lsGet(`gbh:em:${email}`, null);
-      const localP  = localId ? lsGet(`gbh:p:${localId}`, null) : null;
-      if(localP){
-        await sbReq("PATCH", `profiles?id=eq.${localP.id}`, { auth_id: res.user.id });
-        await enterApp(localP, res.user.id); return;
+      let perfil = (localId ? lsGet(`gbh:p:${localId}`, null) : null);
+      if(!perfil?.id){
+        // Intento ÚNICO a Supabase con tope de tiempo; si tarda, seguimos.
+        try{
+          const conTimeout = (p,ms)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error("timeout")),ms))]);
+          let q = await conTimeout(sbReq("GET", `profiles?auth_id=eq.${res.user.id}&select=*`), 6000).catch(()=>null);
+          if(!q?.length) q = await conTimeout(sbReq("GET", `profiles?email=eq.${email}&select=*`), 6000).catch(()=>null);
+          if(q?.length) perfil = q[0];
+        }catch{}
       }
-      const byEmail = await sbReq("GET", `profiles?email=eq.${email}&select=*`);
-      if(byEmail?.length){
-        await sbReq("PATCH", `profiles?id=eq.${byEmail[0].id}`, { auth_id: res.user.id });
-        await enterApp(byEmail[0], res.user.id); return;
+      if(!perfil?.id){
+        // Perfil mínimo viable: la contraseña es válida, NO bloqueamos la entrada.
+        // restoreFromServer rellenará el resto en cuanto haya conexión.
+        perfil = { id: crypto.randomUUID(), name: aName||email.split("@")[0], email,
+                   xp:0, gems:0, shields:0 };
       }
-      setAuthErr(t("authErrGeneric")); setLoading(false); return;
+      // Vincular auth_id en segundo plano (no bloquea la entrada)
+      sbReq("PATCH", `profiles?id=eq.${perfil.id}`, { auth_id: res.user.id });
+      await enterApp(perfil, res.user.id);
+      return;
     }
 
     // ── FLUJO B: Pre-migración → crear contraseña y vincular cuenta ──────────
@@ -4445,6 +4457,14 @@ function GBHApp(){
       await sbReq("POST","weight_logs?on_conflict=profile_id,log_date",{profile_id:fp.id,log_date:initDate,weight_kg:initW});
     }
     await enterApp(fp, authUserId);
+    }catch(err){
+      // Red de seguridad: cualquier cuelgue/excepción inesperada NO debe dejar
+      // el botón en "entrando…". Mostramos un error claro y liberamos.
+      console.warn("[doAuth] error inesperado:", err);
+      setAuthErr(t("authErrGeneric"));
+    }finally{
+      setLoading(false); // el botón SIEMPRE se libera
+    }
   };
 
   // Recuperación de contraseña por email
