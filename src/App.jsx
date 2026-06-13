@@ -6592,17 +6592,28 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
   const [config,setConfig]=React.useState(null);       // fila patient_config
   const [configView,setConfigView]=React.useState(false); // pantalla de edición de plan
   // ── Candado del plan estándar ──────────────────────────────────────────────
-  // 1 programación por semana. La fecha de la última generación viene de
-  // weekly_plans.fecha_gen (servidor), así que cambiar el objetivo o borrar
-  // caché NO desbloquea nada. Regenerar antes de tiempo cuesta gemas.
-  const LOCK_DIAS=7, COSTE_REGEN=200;
+  // 1 programación por SEMANA DE CALENDARIO. El paciente estándar (7€/mes)
+  // genera su plan y puede REGENERARLO GRATIS a partir del lunes siguiente.
+  // No hay regeneración con gemas: si quiere variar un plato, cambia esa
+  // receta concreta con gemas desde la comida del día.
   const tienePlan = Array.isArray(planes) && planes.length > 0;   // ¿ya tiene un plan generado?
+  // Lunes (00:00, hora local) de la semana en que se generó el plan actual.
+  const lunesDe = (ts) => {
+    const d = new Date(ts);
+    const dow = d.getDay();                 // 0=domingo … 6=sábado
+    const offset = dow===0 ? 6 : dow-1;     // días desde el lunes
+    const lunes = new Date(d.getFullYear(), d.getMonth(), d.getDate()-offset);
+    return lunes.getTime();
+  };
   const ultimaGenMs = (tienePlan && planes[0]?.fecha_gen) ? Date.parse(planes[0].fecha_gen) : null;
-  const msParaDesbloqueo = (ultimaGenMs!==null && !isNaN(ultimaGenMs)) ? (ultimaGenMs + LOCK_DIAS*24*60*60*1000) - Date.now() : null;
-  // El candado y el coste de 200 💎 existen EXCLUSIVAMENTE si hay un plan ya
-  // hecho. Sin plan: primera generación siempre gratis, sin candado.
-  const planBloqueado = isStandard && tienePlan && msParaDesbloqueo!==null && msParaDesbloqueo > 0;
-  const diasDesbloqueo = planBloqueado ? Math.max(1, Math.ceil(msParaDesbloqueo/(24*60*60*1000))) : 0;
+  // El plan está bloqueado mientras siga siendo la MISMA semana natural en que
+  // se generó. Al llegar el lunes siguiente, se desbloquea gratis.
+  const lunesActual = lunesDe(Date.now());
+  const lunesDelPlan = (ultimaGenMs!==null && !isNaN(ultimaGenMs)) ? lunesDe(ultimaGenMs) : null;
+  const planBloqueado = isStandard && tienePlan && lunesDelPlan!==null && lunesDelPlan >= lunesActual;
+  // Días que faltan hasta el próximo lunes (para el mensaje)
+  const proximoLunes = lunesActual + 7*24*60*60*1000;
+  const diasDesbloqueo = planBloqueado ? Math.max(1, Math.ceil((proximoLunes - Date.now())/(24*60*60*1000))) : 0;
   const todayJS=new Date().getDay();
   const todayPlan=todayJS===0?7:todayJS;
   const [selDay,setSelDay]=React.useState(todayPlan);
@@ -6623,31 +6634,27 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
       showT&&showT({icon:"⚙️",title:lang==='en'?'Not configured yet':'Aún no configurado',sub:lang==='en'?'The generation server is not set up.':'El servidor de generación no está configurado todavía.'});
       return;
     }
-    // ── Candado semanal (solo estándar Y solo si ya existe un plan) ──
-    let gemasCobradas = 0;
+    // ── Candado semanal: 1 plan por semana natural. SIN gemas ──
+    // Si está bloqueado (misma semana en que se generó), no se regenera:
+    // el paciente espera al lunes (gratis) o cambia recetas sueltas con gemas.
     if(planBloqueado && tienePlan){
-      if(!opts.regen){
-        showT&&showT({icon:"🔒",title:lang==='en'?'Plan locked':'Plan bloqueado',
-          sub:lang==='en'?`New plan in ${diasDesbloqueo} day${diasDesbloqueo!==1?'s':''}, or regenerate for ${COSTE_REGEN} 💎`:`Nueva programación en ${diasDesbloqueo} día${diasDesbloqueo!==1?'s':''}, o regenera por ${COSTE_REGEN} 💎`});
-        return;
-      }
-      if(gems < COSTE_REGEN){
-        sfx&&sfx("error");
-        showT&&showT({icon:"💎",title:lang==='en'?'Not enough gems':'Sin gemas suficientes',
-          sub:lang==='en'?`You need ${COSTE_REGEN} 💎 to regenerate now`:`Necesitas ${COSTE_REGEN} 💎 para regenerar ahora`});
-        return;
-      }
-      // Cobrar ANTES de generar (se devuelven si el servidor falla)
-      gemasCobradas = COSTE_REGEN;
-      const uCobro = {...profile, gems: gems - COSTE_REGEN};
-      setProfile(uCobro); lsSet(`gbh:p:${uCobro.id}`, uCobro);
-      await sbReq("PATCH", `profiles?id=eq.${profile.id}`, { gems: uCobro.gems });
+      showT&&showT({icon:"🔒",title:lang==='en'?'One plan per week':'Un plan por semana',
+        sub:lang==='en'
+          ? `Your new plan unlocks Monday (${diasDesbloqueo} day${diasDesbloqueo!==1?'s':''}). To vary a meal, swap that recipe with gems.`
+          : `Tu nueva programación se desbloquea el lunes (${diasDesbloqueo} día${diasDesbloqueo!==1?'s':''}). Para variar una comida, cambia esa receta con gemas.`});
+      return;
     }
     setGenerando(true);
     showT&&showT({icon:"⏳",title:lang==='en'?'Generating…':'Generando…',sub:lang==='en'?'This can take up to a minute':'Esto puede tardar hasta un minuto'});
     // Semana de la que partimos: si tras el intento hay una MÁS NUEVA en
     // Supabase, la generación funcionó aunque el fetch fallara/expirara.
-    const semanaPrevia = (Array.isArray(planes)&&planes[0]?.semana!=null) ? planes[0].semana : -1;
+    // Para detectar éxito tras regenerar: guardamos la fecha_gen previa de la
+    // semana actual. Al regenerar, el servidor REEMPLAZA la misma semana con
+    // una fecha_gen nueva (no crea una semana superior), así que comparar por
+    // número de semana fallaba y reembolsaba un plan que SÍ se había generado.
+    const fechaGenPrevia = (Array.isArray(planes)&&planes[0]?.fecha_gen) ? String(planes[0].fecha_gen) : null;
+    const semanaPrevia   = (Array.isArray(planes)&&planes[0]?.semana!=null) ? planes[0].semana : -1;
+    const planJsonPrevio = (Array.isArray(planes)&&planes[0]?.plan_json) ? JSON.stringify(planes[0].plan_json) : null;
     let exito=false;
     try{
       // Timeout duro: Railway (plan gratuito) puede tardar en "despertar".
@@ -6679,8 +6686,17 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
       // VERIFICACIÓN REAL: ¿hay una semana nueva? Esto manda sobre el fetch:
       // si el servidor respondió pero la app perdió la respuesta, igualmente
       // detectamos el plan y NO cobramos de más ni dejamos colgado el botón.
-      const masNueva = Array.isArray(recargados)&&recargados[0]?.semana!=null && recargados[0].semana>semanaPrevia;
-      if(masNueva || (resp && resp.ok)){
+      // Éxito si: (a) el servidor respondió OK, o (b) detectamos un plan nuevo
+      // en Supabase — ya sea una semana superior (primera generación) o la
+      // misma semana con una fecha_gen distinta (REGENERACIÓN).
+      const top = Array.isArray(recargados) ? recargados[0] : null;
+      const semanaSuperior = top?.semana!=null && top.semana>semanaPrevia;
+      const fechaDistinta  = top?.fecha_gen!=null && String(top.fecha_gen)!==fechaGenPrevia;
+      const planJsonDistinto = top?.plan_json!=null && JSON.stringify(top.plan_json)!==planJsonPrevio;
+      // Cualquiera de las tres señales = se generó un plan nuevo (regeneración
+      // incluida). El plan_json siempre cambia al regenerar (recetas nuevas).
+      const planNuevo = semanaSuperior || fechaDistinta || planJsonDistinto;
+      if((resp && resp.ok) || planNuevo){
         exito=true;
         setIdx(0);
         sfx&&sfx("recipe");
@@ -6692,11 +6708,6 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
       showT&&showT({icon:"⚠️",title:lang==='en'?'Could not generate':'No se pudo generar',
         sub:(String(e.message||e).slice(0,70))+(lang==='en'?' · gems refunded':' · gemas devueltas')});
     }finally{
-      // Reembolso garantizado si NO hubo éxito (cobro previo de la regeneración)
-      if(!exito && gemasCobradas>0){
-        setProfile(p=>{const r={...p,gems:(p?.gems||0)+gemasCobradas};lsSet(`gbh:p:${r.id}`,r);return r;});
-        sbReq("PATCH", `profiles?id=eq.${profile.id}`, { gems });  // gems = saldo previo al cobro
-      }
       setGenerando(false);
     }
   }
@@ -7003,8 +7014,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
     return <PlanConfig profile={profile} lang={lang} config={config} setConfig={setConfig}
              sfx={sfx} showT={showT}
              onClose={()=>setConfigView(false)}
-             onGenerar={()=>generarProgramacion((tienePlan&&planBloqueado)?{regen:true}:{})}
-             costeRegen={(tienePlan&&planBloqueado)?COSTE_REGEN:0} gems={gems}
+             onGenerar={()=>generarProgramacion()}
              primeraVez={isStandard && !configCompleta}/>;
   }
 
@@ -7110,28 +7120,22 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
           <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Daily Schedule':'Programación diaria'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Your meals for today with full recipe details':'Tus platos de hoy con receta e ingredientes'}</div></div>
           <div style={{color:'#64B5F6',fontSize:20,flexShrink:0}}>›</div>
         </button>
-        {/* Plan estándar: candado semanal + regeneración */}
+        {/* Plan estándar: candado semanal (sin gemas, se desbloquea el lunes) */}
         {isStandard&&planBloqueado&&(
           <div style={{background:'rgba(255,255,255,0.04)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:16,padding:'14px 16px',marginTop:4}}>
             <div style={{display:'flex',alignItems:'center',gap:12}}>
               <div style={{fontSize:24,flexShrink:0}}>🔒</div>
               <div style={{flex:1}}>
                 <div style={{fontWeight:800,fontSize:13.5,color:T.t1,fontFamily:"'Nunito',sans-serif"}}>
-                  {lang==='en'?'Plan locked for this week':'Plan bloqueado esta semana'}
+                  {lang==='en'?'One plan per week':'Un plan por semana'}
                 </div>
                 <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4,marginTop:2}}>
                   {lang==='en'
-                    ?`You can generate a new one for free in ${diasDesbloqueo} day${diasDesbloqueo!==1?'s':''}`
-                    :`Podrás generar una nueva gratis ${diasDesbloqueo===1?'en 1 día':`en ${diasDesbloqueo} días`}`}
+                    ?`Your new plan unlocks Monday (${diasDesbloqueo} day${diasDesbloqueo!==1?'s':''}). To vary a meal, swap that recipe with gems.`
+                    :`Tu nueva programación se desbloquea el lunes ${diasDesbloqueo===1?'(en 1 día)':`(en ${diasDesbloqueo} días)`}. Para variar una comida, cambia esa receta con 💎.`}
                 </div>
               </div>
             </div>
-            <button onClick={()=>setConfigView(true)}
-              style={{marginTop:10,width:'100%',background:'rgba(255,200,0,0.10)',border:'1.5px solid rgba(255,200,0,0.45)',
-                borderRadius:14,padding:'12px 14px',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,
-                color:T.au1,fontWeight:900,fontSize:13.5,fontFamily:"'Nunito',sans-serif"}}>
-              🔄 {lang==='en'?`Regenerate now · ${COSTE_REGEN} 💎`:`Regenerar ahora · ${COSTE_REGEN} 💎`}
-            </button>
           </div>
         )}
         {isStandard&&!planBloqueado&&(
@@ -7319,7 +7323,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
 
 
 // ─── PlanConfig — el paciente estándar configura su plan (dieta + distribución) ──
-function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,primeraVez,costeRegen=0,gems=0}){
+function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,primeraVez}){
   const TOMAS=[
     {k:'dist_desayuno',label:lang==='en'?'Breakfast':'Desayuno',ic:'☀️'},
     {k:'dist_almuerzo',label:lang==='en'?'Snack AM':'Almuerzo',ic:'🍎'},
@@ -7365,13 +7369,6 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
 
   async function guardar(){
     if(guardando) return;
-    // Pre-aviso de gemas para la regeneración (el cobro real lo hace onGenerar)
-    if(costeRegen>0 && gems<costeRegen){
-      sfx&&sfx("error");
-      showT&&showT({icon:"💎",title:lang==='en'?'Not enough gems':'Sin gemas suficientes',
-        sub:lang==='en'?`You need ${costeRegen} 💎 to regenerate now`:`Necesitas ${costeRegen} 💎 para regenerar ahora`});
-      return;
-    }
     setGuardando(true);
     const payload={
       profile_id: profile.id,
@@ -7547,7 +7544,7 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
                   color:total===100?'#fff':T.t3,fontWeight:900,fontSize:15,borderRadius:18,
                   padding:'16px 24px',border:'none',cursor:total===100?'pointer':'default',
                   boxShadow:total===100?'0 4px 0 '+T.g3:'none',fontFamily:"'Nunito',sans-serif"}}>
-          {guardando?(lang==='en'?'Generating…':'Generando…'):total!==100?(lang==='en'?'Must total 100%':'Debe sumar 100%'):(onGenerar?(costeRegen>0?(lang==='en'?`Regenerate plan · ${costeRegen} 💎`:`Regenerar plan · ${costeRegen} 💎`):(lang==='en'?'Save & generate plan':'Guardar y generar plan')):(lang==='en'?'Save my plan':'Guardar mi plan'))}
+          {guardando?(lang==='en'?'Generating…':'Generando…'):total!==100?(lang==='en'?'Must total 100%':'Debe sumar 100%'):(onGenerar?(lang==='en'?'Save & generate plan':'Guardar y generar plan'):(lang==='en'?'Save my plan':'Guardar mi plan'))}
         </button>
         {!primeraVez&&(
           <button onClick={onClose} style={{background:'none',border:'none',color:T.t3,fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:"'Nunito',sans-serif"}}>
