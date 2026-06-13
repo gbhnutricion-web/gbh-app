@@ -6428,7 +6428,7 @@ function GBHApp(){
 
 
         {tab==="progreso"&&<CalcTab weights={weights} profile={profile} lang={lang}/>}
-        {tab==="plan"&&<PlanTab profile={profile} lang={lang} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} showT={showT} sfx={sfx} t={t}/>}
+        {tab==="plan"&&<PlanTab profile={profile} lang={lang} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} showT={showT} sfx={sfx} t={t} setTab={setTab}/>}
         {tab==="consulta"&&<ConsultaTab profile={profile} lang={lang} sfx={sfx}/>}
       </div>
 
@@ -6580,7 +6580,7 @@ const emojiPlato = (nombre, tipo) => {
 const PLAN_TIPO_BG = {Carne:'rgba(192,57,43,0.22)',Pescado:'rgba(41,128,185,0.22)',Vegetariana:'rgba(39,174,96,0.18)',Vegana:'rgba(22,160,133,0.18)',Ensalada:'rgba(139,195,74,0.18)','Sopa/Crema':'rgba(230,126,34,0.22)',Postre:'rgba(214,70,158,0.22)',Directo:'rgba(212,175,55,0.22)'};
 const PLAN_TIPO_COLOR={Carne:'#E57373',Pescado:'#64B5F6',Vegetariana:'#81C784',Vegana:'#A5D6A7',Postre:'#F06292',Ensalada:'#AED581','Sopa/Crema':'#FFB74D'};
 
-function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx,t}){
+function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx,t,setTab}){
   const isPremium=profile?.plan==='premium';
   const isStandard=profile?.plan==='standard';
   const tieneAcceso=isPremium||isStandard;
@@ -6597,6 +6597,10 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
   // No hay regeneración con gemas: si quiere variar un plato, cambia esa
   // receta concreta con gemas desde la comida del día.
   const tienePlan = Array.isArray(planes) && planes.length > 0;   // ¿ya tiene un plan generado?
+  // ¿Ha definido su objetivo nutricional? El plan se ajusta a estas kcal, así
+  // que es OBLIGATORIO calcularlo en la pestaña Objetivo antes de generar.
+  const objKcal = Number(profile?.target_kcal);
+  const tieneObjetivo = Number.isFinite(objKcal) && objKcal > 0;
   // Lunes (00:00, hora local) de la semana en que se generó el plan actual.
   const lunesDe = (ts) => {
     const d = new Date(ts);
@@ -6634,6 +6638,14 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
       showT&&showT({icon:"⚙️",title:lang==='en'?'Not configured yet':'Aún no configurado',sub:lang==='en'?'The generation server is not set up.':'El servidor de generación no está configurado todavía.'});
       return;
     }
+    // ── Sin objetivo nutricional no se genera (el plan se ajusta a esas kcal) ──
+    if(isStandard && !tieneObjetivo){
+      showT&&showT({icon:"🎯",title:lang==='en'?'Set your goal first':'Define tu objetivo primero',
+        sub:lang==='en'?'Go to the Goal tab to calculate your daily calories.':'Ve a la pestaña Objetivo para calcular tus calorías diarias.'});
+      setTab&&setTab('calc');
+      return;
+    }
+
     // ── Candado semanal: 1 plan por semana natural. SIN gemas ──
     // Si está bloqueado (misma semana en que se generó), no se regenera:
     // el paciente espera al lunes (gratis) o cambia recetas sueltas con gemas.
@@ -7008,6 +7020,33 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
     </div>
   );}
   if(loading) return <div style={{padding:32,textAlign:'center',fontSize:13,color:T.t2}}>{lang==='en'?'Loading…':'Cargando…'}</div>;
+
+  // ── GATE: sin objetivo nutricional no se puede diseñar el plan ──────────────
+  // El plan se ajusta al objetivo calórico (peso inicial, peso meta, actividad,
+  // altura, edad → kcal/día). Si el paciente estándar aún no lo ha calculado en
+  // la pestaña Objetivo, le pedimos hacerlo primero, con un botón que le lleva.
+  if(isStandard && !tieneObjetivo && !tienePlan) {
+    return (
+      <div style={{padding:'52px 24px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center'}}>
+        <div style={{fontSize:60,marginBottom:18}}>🎯</div>
+        <div style={{fontSize:20,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif",marginBottom:10,lineHeight:1.3}}>
+          {lang==='en'?'Hey, hold on! 🐏':'¡Eh, espera! 🐏'}
+        </div>
+        <div style={{fontSize:14.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6,maxWidth:300,marginBottom:28}}>
+          {lang==='en'
+            ? 'Set your goal first and I\'ll cook up your plan 👨‍🍳'
+            : 'Primero ponte un objetivo y te preparo el plan 👨‍🍳'}
+        </div>
+        <button onClick={()=>setTab&&setTab('calc')}
+          style={{background:'linear-gradient(135deg,'+T.g1+','+T.g2+')',color:'#fff',fontWeight:900,fontSize:16,
+            borderRadius:18,padding:'16px 34px',border:'none',cursor:'pointer',boxShadow:'0 5px 0 '+T.g3,
+            fontFamily:"'Nunito',sans-serif",display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
+          <span style={{fontSize:20}}>🎯</span>
+          {lang==='en'?'Set my goal':'Ir a mi objetivo'}
+        </button>
+      </div>
+    );
+  }
 
   // ── Pantalla de configuración del plan (paciente estándar) ──────────────────
   if(configView || (isStandard && !configCompleta)) {
