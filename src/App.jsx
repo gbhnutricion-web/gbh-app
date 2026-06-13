@@ -6810,31 +6810,59 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
       await sbReq("PATCH", `profiles?id=eq.${profile.id}`, { gems: uCobro.gems });
     }
     setGenerando(true);
-    showT&&showT({icon:"⏳",title:lang==='en'?'Generating…':'Generando…',sub:lang==='en'?'This takes a few seconds':'Esto tarda unos segundos'});
+    showT&&showT({icon:"⏳",title:lang==='en'?'Generating…':'Generando…',sub:lang==='en'?'This can take up to a minute':'Esto puede tardar hasta un minuto'});
+    // Semana de la que partimos: si tras el intento hay una MÁS NUEVA en
+    // Supabase, la generación funcionó aunque el fetch fallara/expirara.
+    const semanaPrevia = (Array.isArray(planes)&&planes[0]?.semana!=null) ? planes[0].semana : -1;
+    let exito=false;
     try{
-      const resp=await fetch(GBH_SERVER_URL.replace(/\/$/,'')+'/generar',{
-        method:'POST',
-        headers:{'Content-Type':'application/json','X-GBH-Token':GBH_GEN_TOKEN},
-        body:JSON.stringify({profile_id:profile.id}),
-      });
-      if(!resp.ok){
+      // Timeout duro: Railway (plan gratuito) puede tardar en "despertar".
+      // Sin esto, si el servidor se cuelga la promesa no resuelve nunca y el
+      // botón se queda en "Generando…" para siempre con las gemas ya cobradas.
+      const ctrl=new AbortController();
+      const tId=setTimeout(()=>ctrl.abort(), 75000); // 75 s
+      let resp=null;
+      try{
+        resp=await fetch(GBH_SERVER_URL.replace(/\/$/,'')+'/generar',{
+          method:'POST',
+          headers:{'Content-Type':'application/json','X-GBH-Token':GBH_GEN_TOKEN},
+          body:JSON.stringify({profile_id:profile.id}),
+          signal:ctrl.signal,
+        });
+      }catch(fetchErr){
+        // Abort o red caída: no lanzamos aún, comprobamos Supabase abajo.
+        console.warn("[generar] fetch falló o expiró:", fetchErr?.name||fetchErr);
+      }finally{ clearTimeout(tId); }
+
+      if(resp && !resp.ok){
         const err=await resp.json().catch(()=>({}));
         throw new Error(err.detail||('HTTP '+resp.status));
       }
-      // Esperar un momento a que Supabase refleje los datos y recargar
+
+      // Dar margen a que Supabase refleje el plan y recargar.
       await new Promise(r=>setTimeout(r,1500));
-      await recargarPlanes();
-      setIdx(0);
-      sfx&&sfx("recipe");
-      showT&&showT({icon:"🎉",title:lang==='en'?'Plan ready!':'¡Programación lista!',sub:lang==='en'?'Your weekly plan is here':'Tu plan semanal ya está disponible'});
-    }catch(e){
-      // Devolver las gemas si la regeneración no llegó a completarse
-      if(gemasCobradas>0){
-        setProfile(p=>{const r={...p,gems:(p?.gems||0)+gemasCobradas};lsSet(`gbh:p:${r.id}`,r);return r;});
-        sbReq("PATCH", `profiles?id=eq.${profile.id}`, { gems });  // gems = valor previo al cobro
+      const recargados = await recargarPlanes();
+      // VERIFICACIÓN REAL: ¿hay una semana nueva? Esto manda sobre el fetch:
+      // si el servidor respondió pero la app perdió la respuesta, igualmente
+      // detectamos el plan y NO cobramos de más ni dejamos colgado el botón.
+      const masNueva = Array.isArray(recargados)&&recargados[0]?.semana!=null && recargados[0].semana>semanaPrevia;
+      if(masNueva || (resp && resp.ok)){
+        exito=true;
+        setIdx(0);
+        sfx&&sfx("recipe");
+        showT&&showT({icon:"🎉",title:lang==='en'?'Plan ready!':'¡Programación lista!',sub:lang==='en'?'Your weekly plan is here':'Tu plan semanal ya está disponible'});
+      }else{
+        throw new Error(lang==='en'?'The server did not respond in time':'El servidor no respondió a tiempo');
       }
-      showT&&showT({icon:"⚠️",title:lang==='en'?'Could not generate':'No se pudo generar',sub:String(e.message||e).slice(0,80)});
+    }catch(e){
+      showT&&showT({icon:"⚠️",title:lang==='en'?'Could not generate':'No se pudo generar',
+        sub:(String(e.message||e).slice(0,70))+(lang==='en'?' · gems refunded':' · gemas devueltas')});
     }finally{
+      // Reembolso garantizado si NO hubo éxito (cobro previo de la regeneración)
+      if(!exito && gemasCobradas>0){
+        setProfile(p=>{const r={...p,gems:(p?.gems||0)+gemasCobradas};lsSet(`gbh:p:${r.id}`,r);return r;});
+        sbReq("PATCH", `profiles?id=eq.${profile.id}`, { gems });  // gems = saldo previo al cobro
+      }
       setGenerando(false);
     }
   }
