@@ -2146,7 +2146,7 @@ function HydrationWidget({done,onToggle}){
 }
 
 // ─── CalcTab — Calculadora calórica con resultado persistido ─────────────────
-function CalcTab({weights,profile,lang}){
+function CalcTab({weights,profile,setProfile,lang}){
   const t=useLang();
   const calcKey = `gbh:calc:saved:${profile?.id||"anon"}`;   // ← clave por usuario
   const currentW=weights.filter(w=>!w.isInitial).slice(-1)[0]?.weight??weights.find(w=>w.isInitial)?.weight??null;
@@ -2208,6 +2208,16 @@ function CalcTab({weights,profile,lang}){
       sex:cSex,height_cm:Math.round(h),age_range:ageLabel,
       activity:actLabel,target_kcal:safe,calc_updated_at:now,
     });
+    // 3b Reflejar el objetivo en el perfil EN MEMORIA (y en localStorage) al
+    //    instante. Sin esto, al ir a la pestaña Plan en la misma sesión saltaba
+    //    el gate "Define tu objetivo" porque profile.target_kcal seguía obsoleto
+    //    (el PATCH de arriba solo toca Supabase, no el estado de React).
+    if(setProfile){
+      const updP = {...profile, sex:cSex, height_cm:Math.round(h),
+        age_range:ageLabel, activity:actLabel, target_kcal:safe, calc_updated_at:now};
+      setProfile(updP);
+      lsSet(`gbh:p:${profile.id}`, updP);
+    }
     // 4 Supabase: actualizar patient_config SOLO con los campos de la calculadora.
     //   OJO: el upsert con merge-duplicates SOBREESCRIBE lo que envíes, así que
     //   aquí NO van tipo_dieta / patron_dias / dist_* — esos los elige el
@@ -6427,7 +6437,7 @@ function GBHApp(){
         })()}
 
 
-        {tab==="progreso"&&<CalcTab weights={weights} profile={profile} lang={lang}/>}
+        {tab==="progreso"&&<CalcTab weights={weights} profile={profile} setProfile={setProfile} lang={lang}/>}
         {tab==="plan"&&<PlanTab profile={profile} lang={lang} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} showT={showT} sfx={sfx} t={t} setTab={setTab}/>}
         {tab==="consulta"&&<ConsultaTab profile={profile} lang={lang} sfx={sfx}/>}
       </div>
@@ -6452,6 +6462,11 @@ function GBHApp(){
 // ─── ConsultaTab — contacto con el nutricionista (exclusivo premium) ────────
 function ConsultaTab({profile,lang,sfx}){
   const isPremium=profile?.plan==='premium';
+  // Mensaje pre-rellenado para que un usuario free/estándar SOLICITE pasar a
+  // Premium directamente por WhatsApp (mismo patrón que el CTA del plan).
+  const waMsgPremium = encodeURIComponent(lang==='en'
+    ? `Hi! I'm ${profile?.name||''} and I'd like to upgrade to the GBH Premium plan for personalized follow-up and direct consultation 👑`
+    : `¡Hola! Soy ${profile?.name||''} y me gustaría pasar al plan Premium de GBH para tener seguimiento personalizado y consulta directa con el nutricionista 👑`);
 
   if(!isPremium) return(
     <div style={{padding:'48px 24px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:18}}>
@@ -6472,6 +6487,19 @@ function ConsultaTab({profile,lang,sfx}){
         <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>
           {lang==='en'?'Personalized follow-up and direct support':'Seguimiento personalizado y soporte directo'}
         </div>
+      </div>
+      {/* CTA: solicitar pasar a Premium por WhatsApp (mismo estilo que el del plan) */}
+      <a href={`https://wa.me/${GBH_WHATSAPP}?text=${waMsgPremium}`} target="_blank" rel="noopener noreferrer"
+        onClick={()=>sfx&&sfx("tap")}
+        style={{marginTop:2,width:'100%',maxWidth:300,background:'linear-gradient(135deg,#25D366,#1DA851)',
+          color:'#fff',fontWeight:900,fontSize:15,borderRadius:18,padding:'16px 20px',
+          textDecoration:'none',boxShadow:'0 4px 0 #128C4B',fontFamily:"'Nunito',sans-serif",
+          display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
+        <span style={{fontSize:20}}>💬</span>
+        {lang==='en'?'Request Premium upgrade':'Solicitar pasar a Premium'}
+      </a>
+      <div style={{fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>
+        {lang==='en'?'We reply the same day · @gbhnutricion':'Te respondemos en el día · @gbhnutricion'}
       </div>
     </div>
   );
@@ -6599,8 +6627,13 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
   const tienePlan = Array.isArray(planes) && planes.length > 0;   // ¿ya tiene un plan generado?
   // ¿Ha definido su objetivo nutricional? El plan se ajusta a estas kcal, así
   // que es OBLIGATORIO calcularlo en la pestaña Objetivo antes de generar.
+  // El objetivo puede estar en el perfil (profile.target_kcal) o, si el perfil
+  // en memoria aún no se ha refrescado, en patient_config.kcal_objetivo (que la
+  // calculadora también guarda). Comprobamos AMBOS para no volver a pedir el
+  // objetivo a quien ya lo tiene fijado.
   const objKcal = Number(profile?.target_kcal);
-  const tieneObjetivo = Number.isFinite(objKcal) && objKcal > 0;
+  const cfgKcal = Number(config?.kcal_objetivo);
+  const tieneObjetivo = (Number.isFinite(objKcal) && objKcal > 0) || (Number.isFinite(cfgKcal) && cfgKcal > 0);
   // Lunes (00:00, hora local) de la semana en que se generó el plan actual.
   const lunesDe = (ts) => {
     const d = new Date(ts);
@@ -6642,7 +6675,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
     if(isStandard && !tieneObjetivo){
       showT&&showT({icon:"🎯",title:lang==='en'?'Set your goal first':'Define tu objetivo primero',
         sub:lang==='en'?'Go to the Goal tab to calculate your daily calories.':'Ve a la pestaña Objetivo para calcular tus calorías diarias.'});
-      setTab&&setTab('calc');
+      setTab&&setTab('progreso');   // la pestaña Objetivo tiene id 'progreso'
       return;
     }
 
@@ -7037,7 +7070,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
             ? 'Set your goal first and I\'ll cook up your plan 👨‍🍳'
             : 'Primero ponte un objetivo y te preparo el plan 👨‍🍳'}
         </div>
-        <button onClick={()=>setTab&&setTab('calc')}
+        <button onClick={()=>setTab&&setTab('progreso')}
           style={{background:'linear-gradient(135deg,'+T.g1+','+T.g2+')',color:'#fff',fontWeight:900,fontSize:16,
             borderRadius:18,padding:'16px 34px',border:'none',cursor:'pointer',boxShadow:'0 5px 0 '+T.g3,
             fontFamily:"'Nunito',sans-serif",display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
