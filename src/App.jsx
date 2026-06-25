@@ -3472,6 +3472,7 @@ function GBHApp(){
   const [badges,  setBadges]  = useState([]);
   const [logs,    setLogs]    = useState([]);
   const [allP,    setAllP]    = useState([]);
+  const [logsAdmin, setLogsAdmin] = useState({});  // {profileId:{hoyMeals, nota, notaFecha}} para el panel
   const [wInput,  setWInput]  = useState("");
   const [weightMode, setWeightMode] = useState("default");
   const [userPhoto,  setUserPhoto]  = useState(()=>lsGet("gbh:userPhoto",null));
@@ -4012,6 +4013,8 @@ function GBHApp(){
           quiz_done: r.quiz_done ?? false,
           ruleta_done: r.ruleta_done ?? false,
           recipe_refreshes: r.recipe_refreshes ?? null,
+          meals: r.meals_log ?? {},
+          note: r.day_note ?? "",
         }));
         lsSet(`gbh:logs:${profileId}`, mapped);
         setLogs([...mapped]); // spread para forzar nueva referencia
@@ -4728,7 +4731,24 @@ function GBHApp(){
   };
 
   const tapSheep=()=>{const n=taps+1;setTaps(n);if(tapRef.current)clearTimeout(tapRef.current);tapRef.current=setTimeout(()=>setTaps(0),2500);if(n>=5){setScreen("admin");loadAdmin();setTaps(0);}};
-  const loadAdmin=async()=>{const d=await sbReq("GET","admin_overview?select=*")||[];if(d.length){setAllP(d);return;}setAllP(Object.keys(localStorage).filter(k=>k.startsWith("gbh:p:")).map(k=>lsGet(k,{})).filter(p=>p.id));};
+  const loadAdmin=async()=>{
+    const d=await sbReq("GET","admin_overview?select=*")||[];
+    if(d.length){ setAllP(d); }
+    else { setAllP(Object.keys(localStorage).filter(k=>k.startsWith("gbh:p:")).map(k=>lsGet(k,{})).filter(p=>p.id)); }
+    // Cumplimiento por comida de hoy + última nota (de los últimos 8 días) por paciente
+    try{
+      const desde=(()=>{const x=new Date();x.setDate(x.getDate()-8);return toKey(x);})();
+      const rows=await sbReq("GET",`daily_logs?log_date=gte.${desde}&select=profile_id,log_date,meals_log,day_note&order=log_date.desc`);
+      if(Array.isArray(rows)){
+        const hoy=toKey(); const m={};
+        rows.forEach(r=>{ const id=r.profile_id; if(!id) return; if(!m[id]) m[id]={hoyMeals:null,nota:null,notaFecha:null};
+          if(r.log_date===hoy && r.meals_log && m[id].hoyMeals===null) m[id].hoyMeals=r.meals_log;
+          if(r.day_note && String(r.day_note).trim() && !m[id].nota){ m[id].nota=String(r.day_note).trim(); m[id].notaFecha=r.log_date; }
+        });
+        setLogsAdmin(m);
+      }
+    }catch{}
+  };
   const buyShield=async()=>{if(gems<200){sfx("error");showT({icon:"💎",title:t("insufficientGems"),sub:t("needGemsShield")});return;}const u={...profile,gems:gems-200,shields:(profile.shields||0)+1};setProfile(u);lsSet(`gbh:p:${u.id}`,u);await sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:u.gems,shields:u.shields});sfx("shield");showT({icon:"🛡️",title:t("shieldActivated"),sub:t("shieldProtected")});};
 
   const saveRecipeToBook = async () => {
@@ -5374,11 +5394,25 @@ function GBHApp(){
           <Card>
             <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:12}}>Listado de pacientes</div>
             {allP.length===0?<div style={{color:T.t2,textAlign:"center",padding:"20px 0",fontSize:13,fontFamily:"'DM Sans',sans-serif"}}>Sin datos aún.</div>
-            :allP.map(p=>{const a=p.adherence_7d??adh(p.id),s=p.total_streak_days??pSt(p.id),w=p.last_weight??lW(p.id);const{t:si,c:sc}=st(a);return(
+            :allP.map(p=>{const a=p.adherence_7d??adh(p.id),s=p.total_streak_days??pSt(p.id),w=p.last_weight??lW(p.id);const{t:si,c:sc}=st(a);const li=logsAdmin[p.id];return(
               <div key={p.id} style={{borderBottom:"1px solid rgba(255,255,255,0.07)",padding:"12px 0"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}><div style={{fontWeight:900,fontSize:14}}>{p.name}</div><div style={{fontSize:12,fontWeight:800,color:sc}}>{si}</div></div>
                 <div style={{display:"flex",gap:14,marginBottom:6}}><span style={{fontSize:12,color:T.t2}}>🔥 <b style={{color:T.t1}}>{s}d</b></span><span style={{fontSize:12,color:T.t2}}>⚖️ <b style={{color:T.t1}}>{w?`${w}kg`:"—"}</b></span><span style={{fontSize:12,color:T.t2}}>7d: <b style={{color:a>=80?T.g1:a>=50?T.au1:T.red}}>{a}%</b></span><span style={{fontSize:12,color:T.t2}}>XP: <b style={{color:T.xp}}>{p.xp||0}</b></span></div>
                 <div style={{background:"rgba(255,255,255,0.06)",borderRadius:6,height:6}}><div style={{height:"100%",width:`${a}%`,background:a>=80?T.g1:a>=50?T.au1:T.red,borderRadius:6,transition:"width 0.8s"}}/></div>
+                {li&&(li.hoyMeals||li.nota)&&(
+                  <div style={{marginTop:8}}>
+                    {li.hoyMeals&&(
+                      <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:li.nota?6:0}}>
+                        {PLAN_TOMAS.map(tm=>{const e=li.hoyMeals[tm];if(!e)return null;const c=PLAN_CUMPL.find(x=>x.k===e);return(
+                          <span key={tm} title={tm} style={{display:"inline-flex",alignItems:"center",gap:3,background:(c?.c||"#888")+"22",border:"1px solid "+(c?.c||"#888")+"55",borderRadius:8,padding:"2px 7px",fontSize:10.5,fontWeight:800,color:c?.c||"#aaa"}}>{c?.ic} {tm.slice(0,3)}</span>
+                        );})}
+                      </div>
+                    )}
+                    {li.nota&&(
+                      <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.45,background:"rgba(255,200,0,0.06)",border:"1px solid rgba(255,200,0,0.18)",borderRadius:10,padding:"7px 10px"}}><span style={{color:T.au1}}>💬</span> "{li.nota}"{li.notaFecha?` · ${li.notaFecha.slice(8,10)}/${li.notaFecha.slice(5,7)}`:""}</div>
+                    )}
+                  </div>
+                )}
               </div>
             );})}
           </Card>
@@ -6570,6 +6604,17 @@ const PLAN_DIAS    = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 const PLAN_DIAS_F  = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
 const PLAN_TOMAS   = ['Desayuno','Almuerzo','Comida','Merienda','Cena'];
 const PLAN_TOMA_IC = {Desayuno:'☀️',Almuerzo:'🍎',Comida:'🍽️',Merienda:'🥤',Cena:'🌙'};
+// ── Estados de cumplimiento por comida (registro del paciente) ──────────────
+// Aditivo: NO afecta a rachas, XP ni a la lógica de calorías. Solo registra y
+// se muestra al nutricionista. Las palabras mapean lo que pide el paciente:
+// "como menos", "cambio el plato", "como fuera", "me salto la comida".
+const PLAN_CUMPL = [
+  {k:'seguida',  es:'Seguida',     en:'Followed', ic:'✅', c:T.g1},
+  {k:'menos',    es:'Menos',       en:'Less',     ic:'➖', c:T.au1},
+  {k:'cambiada', es:'La cambié',   en:'Swapped',  ic:'🔄', c:T.blue},
+  {k:'fuera',    es:'Comí fuera',  en:'Ate out',  ic:'🍽️', c:T.pur},
+  {k:'saltada',  es:'Me la salté', en:'Skipped',  ic:'⏭️', c:T.red},
+];
 const PLAN_TIPO_IC = {Carne:'🥩',Pescado:'🐟',Vegetariana:'🥗',Vegana:'🌱',Ensalada:'🥬','Sopa/Crema':'🍲',Postre:'🍰',Directo:'🍃',
   Meat:'🥩',Fish:'🐟',Vegetarian:'🥗',Vegan:'🌱',Dessert:'🍰',Salad:'🥬','Soup/Cream':'🍲'};
 // ── Emoji por FORMATO del plato (espejo de emoji_plato del script Python) ──
@@ -6658,6 +6703,78 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
   const [tomaReceta,setTomaReceta]=React.useState(null);
   const [loadingToma,setLoadingToma]=React.useState(false);
   const [generando,setGenerando]=React.useState(false);
+
+  // ── Registro de cumplimiento por comida (aditivo) ───────────────────────────
+  // El paciente marca, por toma del día, qué hizo (seguida / menos / cambiada /
+  // comí fuera / saltada) y deja una nota libre del día. Se persiste en
+  // daily_logs (columnas meals_log jsonb, day_note text) por la MISMA vía de
+  // upsert que ya usa el resto de la app. No toca diet/steps/sleep ni la lógica
+  // de rachas, XP o calorías: es una capa de información para el nutricionista.
+  const lunesSemana = React.useMemo(()=>{
+    const d=new Date(); const dow=d.getDay(); const off=dow===0?6:dow-1;
+    return new Date(d.getFullYear(),d.getMonth(),d.getDate()-off);
+  },[]);
+  const fechaDeDia = (n)=>{ const d=new Date(lunesSemana); d.setDate(d.getDate()+(n-1)); return d; };
+  const selDateKey = toKey(fechaDeDia(selDay));
+  const finDeHoy   = (()=>{ const d=new Date(); d.setHours(23,59,59,999); return d; })();
+  const esFuturo   = fechaDeDia(selDay) > finDeHoy;             // no se registran días futuros
+  const puedeRegistrar = (idx===0) && !esFuturo;                // solo la semana en curso
+  const [regDia,setRegDia]   = React.useState({});              // { 'YYYY-MM-DD': {meals:{}, note:''} }
+  const [notaTmp,setNotaTmp] = React.useState('');              // texto en edición de la nota del día
+  const [notaOK,setNotaOK]   = React.useState(false);           // indicador "guardada ✓"
+
+  // Carga inicial: semilla desde caché local + refresco remoto de la semana actual.
+  React.useEffect(()=>{
+    if(!profile?.id) return;
+    const cache = lsGet(`gbh:logs:${profile.id}`, []);
+    const seed={};
+    (Array.isArray(cache)?cache:[]).forEach(l=>{
+      if(l?.date && (l.meals || l.note)) seed[l.date]={meals:l.meals||{}, note:l.note||''};
+    });
+    setRegDia(seed);
+    const lunesKey=toKey(lunesSemana);
+    sbReq('GET',`daily_logs?profile_id=eq.${profile.id}&log_date=gte.${lunesKey}&select=log_date,meals_log,day_note`)
+      .then(rows=>{
+        if(!Array.isArray(rows)) return;
+        setRegDia(prev=>{
+          const next={...prev};
+          rows.forEach(r=>{ const k=r.log_date; if(!k) return;
+            next[k]={meals:r.meals_log||next[k]?.meals||{}, note:(r.day_note??next[k]?.note)||''}; });
+          return next;
+        });
+      });
+  },[profile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Al cambiar de día (o llegar datos remotos), refleja la nota de ese día en el textarea.
+  React.useEffect(()=>{ setNotaTmp(regDia[selDateKey]?.note||''); setNotaOK(false); },[selDateKey, regDia[selDateKey]?.note]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Persiste un cambio del día: actualiza estado, caché local y upsert parcial a Supabase.
+  // El merge se basa en la caché local (que escribimos de forma SÍNCRONA) para que
+  // toques rápidos sobre varias comidas se acumulen sin pisarse.
+  const persistDia = (dateKey,{toma,estado,note}) => {
+    const key=`gbh:logs:${profile.id}`;
+    const arr=lsGet(key,[]); const i=arr.findIndex(l=>l.date===dateKey);
+    const cur = i>=0 ? arr[i] : {date:dateKey,diet:false,steps:false,hydration:false,sleep:false,sc:0,meals:{},note:''};
+    let meals = {...(cur.meals||{})};
+    if(toma){
+      if(meals[toma]===estado) delete meals[toma];   // volver a tocar el mismo estado lo desmarca
+      else meals[toma]=estado;
+    }
+    const nota = note!==undefined ? note : (cur.note||'');
+    const entry={...cur,meals,note:nota};
+    if(i>=0) arr[i]=entry; else arr.push(entry);
+    try{ lsSet(key,arr); }catch{}
+    setRegDia(prev=>({...prev,[dateKey]:{meals,note:nota}}));
+    // upsert parcial: solo envía las columnas que cambian (no toca diet/steps/sleep/…)
+    const body={profile_id:profile.id,log_date:dateKey};
+    if(toma) body.meals_log=meals;
+    if(note!==undefined) body.day_note=nota;
+    sbReq('POST','daily_logs?on_conflict=profile_id,log_date',body);
+  };
+  const setEstadoComida = (toma,estado)=>{ if(!puedeRegistrar) return; persistDia(selDateKey,{toma,estado}); sfx&&sfx('step'); };
+  const guardarNotaDia  = ()=>{ if(!puedeRegistrar) return; if(notaTmp===(regDia[selDateKey]?.note||'')) return;
+    persistDia(selDateKey,{note:notaTmp.trim()}); setNotaOK(true); setTimeout(()=>setNotaOK(false),1800); };
+
   // Recarga los planes desde Supabase (tras generar)
   const recargarPlanes=React.useCallback(()=>{
     if(!profile) return Promise.resolve();
@@ -7296,17 +7413,39 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
           {PLAN_TOMAS.map(toma=>{
             const meal=planJ?.[toma]?.[String(selDay)];
             const hasMeal=!!meal?.Nombre_Receta;
-            return(<button key={toma} onClick={()=>hasMeal&&abrirToma(toma)} disabled={!hasMeal} style={{background:hasMeal?(PLAN_TIPO_BG[meal?.Tipo]||'rgba(255,255,255,0.06)'):'rgba(255,255,255,0.04)',border:hasMeal?'1.5px solid rgba(255,255,255,0.12)':'1.5px solid rgba(255,255,255,0.05)',borderRadius:16,padding:'14px 16px',textAlign:'left',cursor:hasMeal?'pointer':'default',display:'flex',alignItems:'center',gap:12,transition:'all 0.2s'}}>
-              <div style={{fontSize:26,width:44,height:44,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:14,background:'rgba(255,255,255,0.06)',flexShrink:0}}>{PLAN_TOMA_IC[toma]||'🍴'}</div>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:10,color:T.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:3,fontFamily:"'DM Sans',sans-serif"}}>{toma}</div>
-                <div style={{fontSize:14,fontWeight:hasMeal?800:400,color:hasMeal?T.t1:T.t3,fontFamily:"'Nunito',sans-serif",whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
-                  {hasMeal&&<span style={{marginRight:4}}>{emojiPlato(meal.Nombre_Receta, meal.Tipo)}</span>}{hasMeal?meal.Nombre_Receta:'—'}
+            const mostrarChips=hasMeal&&puedeRegistrar;
+            const estado=regDia[selDateKey]?.meals?.[toma];
+            return(<div key={toma}>
+              <button onClick={()=>hasMeal&&abrirToma(toma)} disabled={!hasMeal} style={{width:'100%',boxSizing:'border-box',background:hasMeal?(PLAN_TIPO_BG[meal?.Tipo]||'rgba(255,255,255,0.06)'):'rgba(255,255,255,0.04)',border:hasMeal?'1.5px solid rgba(255,255,255,0.12)':'1.5px solid rgba(255,255,255,0.05)',borderRadius:mostrarChips?'16px 16px 0 0':16,padding:'14px 16px',textAlign:'left',cursor:hasMeal?'pointer':'default',display:'flex',alignItems:'center',gap:12,transition:'all 0.2s'}}>
+                <div style={{fontSize:26,width:44,height:44,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:14,background:'rgba(255,255,255,0.06)',flexShrink:0}}>{PLAN_TOMA_IC[toma]||'🍴'}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:10,color:T.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:3,fontFamily:"'DM Sans',sans-serif"}}>{toma}</div>
+                  <div style={{fontSize:14,fontWeight:hasMeal?800:400,color:hasMeal?T.t1:T.t3,fontFamily:"'Nunito',sans-serif",whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                    {hasMeal&&<span style={{marginRight:4}}>{emojiPlato(meal.Nombre_Receta, meal.Tipo)}</span>}{hasMeal?meal.Nombre_Receta:'—'}
+                  </div>
                 </div>
-              </div>
-              {hasMeal&&<div style={{color:T.t3,fontSize:18,flexShrink:0}}>›</div>}
-            </button>);
+                {hasMeal&&<div style={{color:T.t3,fontSize:18,flexShrink:0}}>›</div>}
+              </button>
+              {mostrarChips&&(
+                <div style={{display:'flex',gap:6,flexWrap:'wrap',background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderTop:'none',borderRadius:'0 0 16px 16px',padding:'8px 10px 10px'}}>
+                  {PLAN_CUMPL.map(c=>{const on=estado===c.k;return(
+                    <button key={c.k} onClick={()=>setEstadoComida(toma,c.k)} style={{flex:'1 1 auto',display:'flex',alignItems:'center',justifyContent:'center',gap:4,padding:'7px 6px',borderRadius:10,cursor:'pointer',background:on?c.c+'26':'rgba(255,255,255,0.05)',border:on?('1.5px solid '+c.c):'1.5px solid transparent',color:on?c.c:T.t3,fontSize:11,fontWeight:on?900:700,fontFamily:"'Nunito',sans-serif",transition:'all 0.15s'}}>
+                      <span style={{fontSize:13,lineHeight:1}}>{c.ic}</span><span>{lang==='en'?c.en:c.es}</span>
+                    </button>);})}
+                </div>
+              )}
+            </div>);
           })}
+          {puedeRegistrar&&(
+            <div style={{background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:16,padding:'12px 14px'}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+                <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.08em',display:'flex',alignItems:'center',gap:6}}><span>💬</span>{lang==='en'?'Note for your nutritionist':'Nota para tu nutricionista'}</div>
+                {notaOK&&<span style={{fontSize:11,color:T.g1,fontWeight:800}}>✓ {lang==='en'?'Saved':'Guardada'}</span>}
+              </div>
+              <textarea value={notaTmp} onChange={e=>{setNotaTmp(e.target.value);setNotaOK(false);}} onBlur={guardarNotaDia} rows={2} placeholder={lang==='en'?'e.g. I ate out on Saturday, pizza with friends…':'p. ej. el sábado comí fuera, pizza con amigos…'} style={{width:'100%',boxSizing:'border-box',resize:'vertical',background:'rgba(0,0,0,0.20)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:12,padding:'10px 12px',color:T.t1,fontSize:13,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,outline:'none'}}/>
+              <div style={{fontSize:10.5,color:T.t3,marginTop:6,fontFamily:"'DM Sans',sans-serif"}}>{lang==='en'?'Optional · only your nutritionist sees this':'Opcional · solo lo ve tu nutricionista'}</div>
+            </div>
+          )}
         </div>
       </>)}
       {openToma&&(<div style={{padding:'0 16px 16px'}}>
