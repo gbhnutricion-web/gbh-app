@@ -5396,7 +5396,7 @@ function GBHApp(){
             {allP.length===0?<div style={{color:T.t2,textAlign:"center",padding:"20px 0",fontSize:13,fontFamily:"'DM Sans',sans-serif"}}>Sin datos aún.</div>
             :allP.map(p=>{const a=p.adherence_7d??adh(p.id),s=p.total_streak_days??pSt(p.id),w=p.last_weight??lW(p.id);const{t:si,c:sc}=st(a);const li=logsAdmin[p.id];return(
               <div key={p.id} style={{borderBottom:"1px solid rgba(255,255,255,0.07)",padding:"12px 0"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}><div style={{fontWeight:900,fontSize:14}}>{p.name}</div><div style={{fontSize:12,fontWeight:800,color:sc}}>{si}</div></div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:8}}><div style={{fontWeight:900,fontSize:14,flex:1,minWidth:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}</div><div style={{fontSize:12,fontWeight:800,color:sc,flexShrink:0}}>{si}</div><button onClick={()=>exportarSeguimientoCSV(p.id,p.name)} title="Descargar seguimiento (CSV)" style={{background:"rgba(206,130,255,0.14)",border:"1px solid rgba(206,130,255,0.35)",borderRadius:8,padding:"3px 9px",fontSize:11,fontWeight:800,color:T.pur,cursor:"pointer",flexShrink:0,fontFamily:"'Nunito',sans-serif"}}>⬇ CSV</button></div>
                 <div style={{display:"flex",gap:14,marginBottom:6}}><span style={{fontSize:12,color:T.t2}}>🔥 <b style={{color:T.t1}}>{s}d</b></span><span style={{fontSize:12,color:T.t2}}>⚖️ <b style={{color:T.t1}}>{w?`${w}kg`:"—"}</b></span><span style={{fontSize:12,color:T.t2}}>7d: <b style={{color:a>=80?T.g1:a>=50?T.au1:T.red}}>{a}%</b></span><span style={{fontSize:12,color:T.t2}}>XP: <b style={{color:T.xp}}>{p.xp||0}</b></span></div>
                 <div style={{background:"rgba(255,255,255,0.06)",borderRadius:6,height:6}}><div style={{height:"100%",width:`${a}%`,background:a>=80?T.g1:a>=50?T.au1:T.red,borderRadius:6,transition:"width 0.8s"}}/></div>
                 {li&&(li.hoyMeals||li.nota)&&(
@@ -6653,6 +6653,218 @@ const emojiPlato = (nombre, tipo) => {
 const PLAN_TIPO_BG = {Carne:'rgba(192,57,43,0.22)',Pescado:'rgba(41,128,185,0.22)',Vegetariana:'rgba(39,174,96,0.18)',Vegana:'rgba(22,160,133,0.18)',Ensalada:'rgba(139,195,74,0.18)','Sopa/Crema':'rgba(230,126,34,0.22)',Postre:'rgba(214,70,158,0.22)',Directo:'rgba(212,175,55,0.22)'};
 const PLAN_TIPO_COLOR={Carne:'#E57373',Pescado:'#64B5F6',Vegetariana:'#81C784',Vegana:'#A5D6A7',Postre:'#F06292',Ensalada:'#AED581','Sopa/Crema':'#FFB74D'};
 
+// ── Exportación CSV del seguimiento de un paciente (para el nutricionista) ────
+async function exportarSeguimientoCSV(profileId, nombre){
+  try{
+    const rows = await sbReq('GET',`daily_logs?profile_id=eq.${profileId}&select=log_date,meals_log,day_note&order=log_date.asc`);
+    const cell = (v)=>{ const s=String(v==null?'':v).replace(/"/g,'""'); return /[",\n;]/.test(s)?`"${s}"`:s; };
+    const lines = [['Fecha','Desayuno','Almuerzo','Comida','Merienda','Cena','Nota'].join(',')];
+    (rows||[]).forEach(r=>{ const m=r.meals_log||{};
+      lines.push([r.log_date, m.Desayuno||'', m.Almuerzo||'', m.Comida||'', m.Merienda||'', m.Cena||'', r.day_note||''].map(cell).join(',')); });
+    const csv = '\ufeff'+lines.join('\n');   // BOM para que Excel respete los acentos
+    const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href=url; a.download=`seguimiento_${String(nombre||'paciente').replace(/\s+/g,'_')}_${toKey()}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }catch(e){ console.warn('[export-csv] error', e); }
+}
+
+// ── Vista de SEGUIMIENTO: calendario de cumplimiento por comida + gráficas ────
+// Se alimenta de los registros que el paciente marca en la Programación diaria
+// (daily_logs.meals_log). El paciente ve su cumplimiento; el nutricionista lo
+// ve en su panel y puede exportarlo a CSV.
+function SeguimientoView({profile, lang}){
+  const EN = lang==='en';
+  const MESES = EN
+    ? ['January','February','March','April','May','June','July','August','September','October','November','December']
+    : ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const DOW = EN ? ['M','T','W','T','F','S','S'] : ['L','M','X','J','V','S','D'];
+  const TOMA_LBL = EN
+    ? {Desayuno:'Breakfast',Almuerzo:'Morning snack',Comida:'Lunch',Merienda:'Afternoon snack',Cena:'Dinner'}
+    : {Desayuno:'Desayuno',Almuerzo:'Almuerzo',Comida:'Comida',Merienda:'Merienda',Cena:'Cena'};
+
+  const hoy = new Date();
+  const [anio,setAnio] = React.useState(hoy.getFullYear());
+  const [mes,setMes]   = React.useState(hoy.getMonth());
+  const [tomaSel,setTomaSel] = React.useState(PLAN_TOMAS[0]);
+  const [logs,setLogs] = React.useState({});
+  const [card,setCard] = React.useState(0);
+  const scRef = React.useRef(null);
+
+  React.useEffect(()=>{
+    if(!profile?.id) return;
+    try{
+      const cache = lsGet(`gbh:logs:${profile.id}`, []);
+      const seed={};
+      (Array.isArray(cache)?cache:[]).forEach(l=>{ if(l?.date && (l.meals||l.note)) seed[l.date]={meals:l.meals||{}, note:l.note||''}; });
+      setLogs(seed);
+    }catch{}
+    sbReq('GET',`daily_logs?profile_id=eq.${profile.id}&select=log_date,meals_log,day_note&order=log_date.desc&limit=370`)
+      .then(rows=>{ if(!Array.isArray(rows)) return;
+        const m={}; rows.forEach(r=>{ const k=r.log_date; if(k) m[k]={meals:r.meals_log||{}, note:r.day_note||''}; });
+        setLogs(prev=>({...prev,...m})); });
+  },[profile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const estadoDe = (k)=>PLAN_CUMPL.find(x=>x.k===k);
+  const keyDe = (d)=>`${anio}-${String(mes+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  const primerDia = new Date(anio,mes,1);
+  const offset = (primerDia.getDay()+6)%7;                 // 0 = lunes
+  const diasEnMes = new Date(anio,mes+1,0).getDate();
+  const celdas = []; for(let i=0;i<offset;i++) celdas.push(null); for(let d=1;d<=diasEnMes;d++) celdas.push(d);
+  const enMesActual = anio===hoy.getFullYear() && mes===hoy.getMonth();
+  const esFutura = (d)=>{ const dt=new Date(anio,mes,d); dt.setHours(0,0,0,0); const h=new Date(); h.setHours(0,0,0,0); return dt>h; };
+  const esHoy = (d)=> enMesActual && d===hoy.getDate();
+
+  const stats = React.useMemo(()=>{
+    const porEstado={seguida:0,menos:0,cambiada:0,fuera:0,saltada:0};
+    const porToma={}; PLAN_TOMAS.forEach(t=>porToma[t]={seguida:0,total:0});
+    const semanas={}; let totalReg=0;
+    for(let d=1; d<=diasEnMes; d++){
+      const meals = logs[keyDe(d)]?.meals||{};
+      const w = Math.floor((offset+d-1)/7);
+      PLAN_TOMAS.forEach(t=>{ const e=meals[t]; if(!e) return;
+        totalReg++;
+        if(porEstado[e]!==undefined) porEstado[e]++;
+        porToma[t].total++; if(e==='seguida') porToma[t].seguida++;
+        if(!semanas[w]) semanas[w]={seguida:0,total:0};
+        semanas[w].total++; if(e==='seguida') semanas[w].seguida++;
+      });
+    }
+    const cumpl = totalReg? Math.round(porEstado.seguida/totalReg*100):0;
+    return {porEstado,porToma,semanas,totalReg,cumpl};
+  },[logs,anio,mes,offset,diasEnMes]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const mesAnt = ()=>{ if(mes===0){setMes(11);setAnio(a=>a-1);} else setMes(m=>m-1); };
+  const mesSig = ()=>{ if(enMesActual) return; if(mes===11){setMes(0);setAnio(a=>a+1);} else setMes(m=>m+1); };
+  const onScroll = ()=>{ const el=scRef.current; if(!el) return; const i=Math.round(el.scrollLeft/el.clientWidth); if(i!==card) setCard(i); };
+
+  const TT = {fontFamily:"'Nunito',sans-serif"};
+  const cardSty = {flex:'0 0 100%',scrollSnapAlign:'center',boxSizing:'border-box',background:'rgba(255,255,255,0.04)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:18,padding:'16px 16px'};
+  const semanasArr = Object.keys(stats.semanas).map(Number).sort((a,b)=>a-b);
+  const hayDatos = stats.totalReg>0;
+  const donutR=46, donutC=2*Math.PI*donutR;
+
+  return(
+    <div style={{paddingBottom:8}}>
+      <div style={{padding:'4px 16px 0'}}>
+        <div style={{fontWeight:900,fontSize:20,color:T.t1,...TT}}>{EN?'Tracking':'Seguimiento'}</div>
+        <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:2,lineHeight:1.45}}>{EN?'Your meal compliance, day by day':'Tu cumplimiento comida a comida, día a día'}</div>
+      </div>
+
+      {/* Navegación de mes */}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 16px 8px'}}>
+        <button onClick={mesAnt} style={{background:'rgba(255,255,255,0.06)',border:'none',borderRadius:10,width:36,height:36,color:T.t1,fontSize:18,cursor:'pointer'}}>‹</button>
+        <div style={{fontWeight:900,fontSize:15,color:T.t1,...TT}}>{MESES[mes]} {anio}</div>
+        <button onClick={mesSig} disabled={enMesActual} style={{background:enMesActual?'rgba(255,255,255,0.02)':'rgba(255,255,255,0.06)',border:'none',borderRadius:10,width:36,height:36,color:enMesActual?T.t3:T.t1,fontSize:18,cursor:enMesActual?'default':'pointer',opacity:enMesActual?0.4:1}}>›</button>
+      </div>
+
+      {/* Selector de comida */}
+      <div style={{display:'flex',gap:6,overflowX:'auto',padding:'0 16px 10px',scrollbarWidth:'none'}}>
+        {PLAN_TOMAS.map(t=>{ const on=t===tomaSel; return(
+          <button key={t} onClick={()=>setTomaSel(t)} style={{flex:'0 0 auto',display:'flex',alignItems:'center',gap:5,padding:'8px 12px',borderRadius:12,cursor:'pointer',background:on?'rgba(206,130,255,0.18)':'rgba(255,255,255,0.05)',border:on?'1.5px solid '+T.pur:'1.5px solid transparent',color:on?T.pur:T.t2,fontSize:12,fontWeight:on?900:700,...TT}}>
+            <span>{PLAN_TOMA_IC[t]}</span><span>{TOMA_LBL[t]}</span>
+          </button>);})}
+      </div>
+
+      {/* Calendario de la comida seleccionada */}
+      <div style={{padding:'0 16px'}}>
+        <div style={{background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:18,padding:'12px 12px 14px'}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:5,marginBottom:6}}>
+            {DOW.map((d,i)=>(<div key={i} style={{textAlign:'center',fontSize:10,color:T.t3,fontWeight:800,...TT}}>{d}</div>))}
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:5}}>
+            {celdas.map((d,i)=>{
+              if(d===null) return <div key={'e'+i}/>;
+              const e = logs[keyDe(d)]?.meals?.[tomaSel];
+              const st = e?estadoDe(e):null;
+              const fut = esFutura(d);
+              return(
+                <div key={d} style={{aspectRatio:'1',borderRadius:9,background:st?st.c+'24':'rgba(255,255,255,0.03)',border:esHoy(d)?'2px solid '+T.au1:(st?'1px solid '+st.c+'66':'1px solid rgba(255,255,255,0.06)'),display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:0,opacity:fut?0.3:1}}>
+                  <div style={{fontSize:9,color:st?st.c:T.t3,fontWeight:800,lineHeight:1.1,...TT}}>{d}</div>
+                  <div style={{fontSize:13,lineHeight:1.1}}>{st?st.ic:''}</div>
+                </div>);
+            })}
+          </div>
+        </div>
+        {/* Leyenda */}
+        <div style={{display:'flex',flexWrap:'wrap',gap:'6px 12px',padding:'10px 2px 2px'}}>
+          {PLAN_CUMPL.map(c=>(<div key={c.k} style={{display:'flex',alignItems:'center',gap:4,fontSize:10.5,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}><span>{c.ic}</span>{EN?c.en:c.es}</div>))}
+          <div style={{display:'flex',alignItems:'center',gap:4,fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}><span style={{width:12,height:12,borderRadius:3,border:'1px solid rgba(255,255,255,0.15)',display:'inline-block'}}/>{EN?'Not logged':'Sin registrar'}</div>
+        </div>
+      </div>
+
+      {/* Gráficas en carrusel */}
+      <div style={{padding:'14px 0 0'}}>
+        <div style={{padding:'0 16px',fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:8,...TT}}>{EN?`Charts · ${MESES[mes]}`:`Gráficas · ${MESES[mes]}`}</div>
+        {!hayDatos ? (
+          <div style={{margin:'0 16px',background:'rgba(255,255,255,0.04)',border:'1.5px dashed rgba(255,255,255,0.14)',borderRadius:18,padding:'24px 18px',textAlign:'center'}}>
+            <div style={{fontSize:30,marginBottom:8}}>📊</div>
+            <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{EN?'No entries this month yet. Mark your meals in the Daily Schedule and your stats will appear here.':'Aún no hay registros este mes. Marca tus comidas en la Programación diaria y aquí verás tus estadísticas.'}</div>
+          </div>
+        ) : (<>
+          <div ref={scRef} onScroll={onScroll} style={{display:'flex',overflowX:'auto',scrollSnapType:'x mandatory',gap:0,padding:'0 16px',scrollbarWidth:'none',WebkitOverflowScrolling:'touch'}}>
+            {/* 1 · Cumplimiento global */}
+            <div style={{...cardSty,marginRight:12}}>
+              <div style={{fontWeight:900,fontSize:13.5,color:T.t1,marginBottom:12,...TT}}>{EN?'Overall compliance':'Cumplimiento global'}</div>
+              <div style={{display:'flex',alignItems:'center',gap:16}}>
+                <svg width="116" height="116" viewBox="0 0 120 120" style={{flexShrink:0}}>
+                  <circle cx="60" cy="60" r={donutR} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="12"/>
+                  <circle cx="60" cy="60" r={donutR} fill="none" stroke={T.g1} strokeWidth="12" strokeLinecap="round" strokeDasharray={donutC} strokeDashoffset={donutC*(1-stats.cumpl/100)} transform="rotate(-90 60 60)"/>
+                  <text x="60" y="56" textAnchor="middle" fontSize="27" fontWeight="900" fill={T.t1} fontFamily="Nunito">{stats.cumpl}%</text>
+                  <text x="60" y="76" textAnchor="middle" fontSize="10" fill={T.t3} fontFamily="Nunito">{EN?'followed':'seguidas'}</text>
+                </svg>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6}}>
+                    <div><b style={{color:T.g1}}>{stats.porEstado.seguida}</b> {EN?'meals followed':'comidas seguidas'}</div>
+                    <div><b style={{color:T.t1}}>{stats.totalReg}</b> {EN?'meals logged':'comidas registradas'}</div>
+                    <div><b style={{color:T.pur}}>{stats.porEstado.fuera}</b> {EN?'eaten out':'comiste fuera'}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {/* 2 · Por comida */}
+            <div style={{...cardSty,marginRight:12}}>
+              <div style={{fontWeight:900,fontSize:13.5,color:T.t1,marginBottom:12,...TT}}>{EN?'Compliance by meal':'Cumplimiento por comida'}</div>
+              {PLAN_TOMAS.map(t=>{ const o=stats.porToma[t]; const pct=o.total?Math.round(o.seguida/o.total*100):0; return(
+                <div key={t} style={{marginBottom:9}}>
+                  <div style={{display:'flex',justifyContent:'space-between',fontSize:11.5,marginBottom:3,fontFamily:"'DM Sans',sans-serif"}}><span style={{color:T.t2}}>{PLAN_TOMA_IC[t]} {TOMA_LBL[t]}</span><span style={{color:T.t1,fontWeight:800}}>{o.total?pct+'%':'—'}</span></div>
+                  <div style={{height:8,borderRadius:5,background:'rgba(255,255,255,0.06)'}}><div style={{height:'100%',width:pct+'%',borderRadius:5,background:T.g1,transition:'width 0.6s'}}/></div>
+                </div>);})}
+            </div>
+            {/* 3 · Reparto de estados */}
+            <div style={{...cardSty,marginRight:12}}>
+              <div style={{fontWeight:900,fontSize:13.5,color:T.t1,marginBottom:12,...TT}}>{EN?'Breakdown':'Reparto de estados'}</div>
+              {PLAN_CUMPL.map(c=>{ const n=stats.porEstado[c.k]||0; const pct=stats.totalReg?Math.round(n/stats.totalReg*100):0; return(
+                <div key={c.k} style={{marginBottom:9}}>
+                  <div style={{display:'flex',justifyContent:'space-between',fontSize:11.5,marginBottom:3,fontFamily:"'DM Sans',sans-serif"}}><span style={{color:T.t2}}>{c.ic} {EN?c.en:c.es}</span><span style={{color:c.c,fontWeight:800}}>{n} · {pct}%</span></div>
+                  <div style={{height:8,borderRadius:5,background:'rgba(255,255,255,0.06)'}}><div style={{height:'100%',width:pct+'%',borderRadius:5,background:c.c,transition:'width 0.6s'}}/></div>
+                </div>);})}
+            </div>
+            {/* 4 · Tendencia semanal */}
+            <div style={{...cardSty}}>
+              <div style={{fontWeight:900,fontSize:13.5,color:T.t1,marginBottom:14,...TT}}>{EN?'Weekly trend':'Tendencia semanal'}</div>
+              <div style={{display:'flex',alignItems:'flex-end',gap:10,height:130}}>
+                {semanasArr.map(w=>{ const o=stats.semanas[w]; const pct=o.total?Math.round(o.seguida/o.total*100):0; return(
+                  <div key={w} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:5}}>
+                    <div style={{fontSize:10.5,color:T.t1,fontWeight:800,...TT}}>{pct}%</div>
+                    <div style={{width:'100%',maxWidth:34,height:84,background:'rgba(255,255,255,0.05)',borderRadius:6,display:'flex',alignItems:'flex-end',overflow:'hidden'}}><div style={{width:'100%',height:Math.max(pct,2)+'%',background:pct>=80?T.g1:pct>=50?T.au1:T.red,borderRadius:6,transition:'height 0.6s'}}/></div>
+                    <div style={{fontSize:9,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>{EN?'W':'S'}{w+1}</div>
+                  </div>);})}
+              </div>
+            </div>
+          </div>
+          {/* Puntos del carrusel */}
+          <div style={{display:'flex',justifyContent:'center',gap:6,padding:'10px 0 0'}}>
+            {[0,1,2,3].map(i=>(<div key={i} style={{width:i===card?18:7,height:7,borderRadius:4,background:i===card?T.pur:'rgba(255,255,255,0.15)',transition:'all 0.3s'}}/>))}
+          </div>
+        </>)}
+      </div>
+    </div>
+  );
+}
+
 function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx,t,setTab}){
   const isPremium=profile?.plan==='premium';
   const isStandard=profile?.plan==='standard';
@@ -7330,6 +7542,11 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
           <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Daily Schedule':'Programación diaria'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Your meals for today with full recipe details':'Tus platos de hoy con receta e ingredientes'}</div></div>
           <div style={{color:'#64B5F6',fontSize:20,flexShrink:0}}>›</div>
         </button>
+        <button onClick={()=>setView('seguimiento')} style={{background:'rgba(206,130,255,0.12)',border:'2px solid rgba(206,130,255,0.3)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
+          <div style={{fontSize:40,flexShrink:0}}>📊</div>
+          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Tracking':'Seguimiento'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Calendar and charts of your meal compliance':'Calendario y gráficas de tu cumplimiento'}</div></div>
+          <div style={{color:T.pur,fontSize:20,flexShrink:0}}>›</div>
+        </button>
         {/* Plan estándar: candado semanal (sin gemas, se desbloquea el lunes) */}
         {isStandard&&planBloqueado&&(
           <div style={{background:'rgba(255,255,255,0.04)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:16,padding:'14px 16px',marginTop:4}}>
@@ -7357,6 +7574,12 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
         )}
       </div>
       <DotsNav/>
+    </div>
+  );
+  if(view==='seguimiento') return(
+    <div style={{paddingBottom:20}}>
+      <BtnVolver onClick={()=>setView(null)}/>
+      <SeguimientoView profile={profile} lang={lang}/>
     </div>
   );
   if(view==='plan') return(
