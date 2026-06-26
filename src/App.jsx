@@ -6998,22 +6998,43 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
       return;
     }
     const mapa = await cargarRecetasCache();
+    const recetas = Object.values(mapa);
     const tipoActual = tomaReceta.tipo;
     const kcalActual = tomaReceta.calorias||0;
     const nombreActual = normNombre(tomaReceta.nombre);
-    // Candidatas: mismo tipo, kcal parecidas (±20%), distinta a la actual
-    const candidatas = Object.values(mapa).filter(r=>{
-      const t2=(r.tipo||'');
-      const k2=parseFloat(r.calorias||r.calorias_totales)||0;
-      const n2=normNombre(r.nombre||r.nombre_receta||'');
-      const kcalOk = kcalActual===0 || (k2>=kcalActual*0.8 && k2<=kcalActual*1.2);
-      return t2===tipoActual && kcalOk && n2!==nombreActual;
-    });
-    let pool = candidatas;
-    // Si no hay del mismo tipo con kcal parecidas, relajar a solo mismo tipo
-    if(!pool.length){
-      pool = Object.values(mapa).filter(r=>(r.tipo||'')===tipoActual && normNombre(r.nombre||r.nombre_receta||'')!==nombreActual);
-    }
+    // ── Franja de comida (Categoria) que DEBE respetarse ──────────────────────
+    // La toma que se está cambiando determina la franja: desayuno/almuerzo/
+    // merienda NO puede sustituirse por un plato de comida/cena (p. ej. unas
+    // tortitas no deben convertirse en una ensalada de arroz). El recetario solo
+    // tiene dos categorías: 'Desayuno/Almuerzo/Merienda' y 'Comida/Cena'.
+    const catBucket = (r)=>{
+      const c = String(r.categoria||r.Categoria||r['categoría']||'').toLowerCase();
+      if(/comida|cena/.test(c)) return 'cd';
+      if(/desayuno|almuerzo|merienda/.test(c)) return 'dam';
+      return null;
+    };
+    const hayCategorias = recetas.some(r=>catBucket(r)!==null);   // red de seguridad si faltara el dato
+    const bucketObj = (openToma==='Comida'||openToma==='Cena') ? 'cd' : 'dam';
+    const nomDe    = (r)=>normNombre(r.nombre||r.nombre_receta||'');
+    const kcalDe   = (r)=>parseFloat(r.calorias||r.calorias_totales)||0;
+    const okTipo   = (r)=>(r.tipo||'')===tipoActual;
+    const okFranja = (r)=> !hayCategorias || catBucket(r)===bucketObj; // franja: restricción DURA (nunca se relaja)
+    const okOtra   = (r)=>nomDe(r)!==nombreActual;
+    const okKcal   = (r)=>{const k=kcalDe(r);return kcalActual===0||(k>=kcalActual*0.8&&k<=kcalActual*1.2);};
+    // Prioridad de selección. La FRANJA se mantiene en los cuatro niveles; el
+    // tipo (carne/pescado/…) se prioriza y solo se relaja —siempre dentro de la
+    // misma franja— si no hay ninguna alternativa del mismo tipo.
+    //   1) mismo tipo + misma franja + kcal parecidas (±20%)
+    //   2) mismo tipo + misma franja
+    //   3) misma franja + kcal parecidas
+    //   4) misma franja
+    const pools = [
+      recetas.filter(r=>okTipo(r)&&okFranja(r)&&okOtra(r)&&okKcal(r)),
+      recetas.filter(r=>okTipo(r)&&okFranja(r)&&okOtra(r)),
+      recetas.filter(r=>okFranja(r)&&okOtra(r)&&okKcal(r)),
+      recetas.filter(r=>okFranja(r)&&okOtra(r)),
+    ];
+    const pool = pools.find(p=>p.length) || [];
     if(!pool.length){
       showT&&showT({icon:"🚫",title:lang==='en'?'No alternative':'Sin alternativa',sub:lang==='en'?'No similar recipe available':'No hay receta similar disponible'});
       return;
