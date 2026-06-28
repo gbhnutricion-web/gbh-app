@@ -3600,6 +3600,19 @@ function GBHApp(){
     });
   },[]);
 
+  // ── Vincular la suscripción de OneSignal con el paciente (external_id) ──────
+  // Hace que cada suscripción lleve el profile_id como external_id. Es lo que
+  // permite enviar push a pacientes concretos (recordatorios inteligentes: solo
+  // a quien no ha registrado dieta/pesaje). Corre en cada carga con sesión, así
+  // que también enlaza a quienes YA estaban suscritos cuando reabran la app.
+  useEffect(()=>{
+    if(!profile?.id) return;
+    if(typeof window.OneSignalDeferred === "undefined") return;
+    window.OneSignalDeferred.push(async (OneSignal)=>{
+      try { await OneSignal.login(String(profile.id)); } catch(e){}
+    });
+  },[profile?.id]);
+
   // ── Semana de prueba: degradar a 'free' cuando caduca ──────────────────────
   // Solo afecta a cuentas con trial_ends_at (las de pago lo tienen a NULL).
   const trialDowngradeRef = useRef(false);
