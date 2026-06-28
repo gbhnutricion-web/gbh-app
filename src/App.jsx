@@ -7100,6 +7100,30 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
     });
   },[profile?.id]);
   const plan=planes[idx];const planJ=plan?.plan_json;
+  // ── Semana vigente ──────────────────────────────────────────────────────────
+  // Se identifica por la semana que el generador marca como actual
+  // (patient_config.semana_actual, que se reescribe en CADA publicación), con la
+  // fecha de publicación (fecha_gen) como respaldo y, en último término, la
+  // primera de la lista. Tomarla por el nº de semana más alto fallaba si el
+  // paciente reinicia el ciclo a la semana 1 tras la 12; y la fecha por sí sola
+  // tampoco basta, porque al reusar un nº de semana el upsert ACTUALIZA la fila
+  // y no refresca fecha_gen. Por eso la señal principal es semana_actual.
+  const idxActual = React.useMemo(()=>{
+    if(!Array.isArray(planes) || !planes.length) return 0;
+    const sa = config?.semana_actual;
+    if(sa!=null){
+      const i = planes.findIndex(p=>String(p.semana)===String(sa));
+      if(i>=0) return i;
+    }
+    let best=-1, bestT=-Infinity;
+    planes.forEach((p,i)=>{ const t=p.fecha_gen?Date.parse(p.fecha_gen):NaN; if(!isNaN(t)&&t>bestT){bestT=t;best=i;} });
+    return best>=0 ? best : 0;
+  },[planes, config?.semana_actual]);
+  // Al abrir el Plan (o tras (re)generar) posiciona en la semana vigente, no en
+  // la última que estuviera mirando el paciente. No interfiere con la navegación
+  // manual dentro de la sesión: idxActual solo cambia si cambian los planes o la
+  // semana_actual, no al pulsar las flechas.
+  React.useEffect(()=>{ setIdx(idxActual); },[idxActual]);
   // ¿El paciente estándar ya configuró su plan?
   const configCompleta = config?.config_completa === true;
   // Caché de todas las recetas (se carga una vez) para buscar por nombre sin
@@ -7494,8 +7518,13 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
   const WeekNav=()=>(<div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 16px 10px',gap:8}}>
     <button onClick={()=>setIdx(i=>Math.min(i+1,planes.length-1))} disabled={idx>=planes.length-1} style={{background:'none',border:idx>=planes.length-1?'1.5px solid rgba(255,255,255,0.1)':'1.5px solid '+T.bG,borderRadius:10,color:idx>=planes.length-1?T.t3:T.g1,fontSize:18,width:36,height:36,cursor:idx>=planes.length-1?'default':'pointer',flexShrink:0}}>‹</button>
     <div style={{textAlign:'center',flex:1}}>
-      <div style={{fontWeight:900,fontSize:15,color:T.t1}}>{lang==='en'?'Week':'Semana'} {plan.semana}</div>
-      {fechaStr&&<div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:2}}>{lang==='en'?'Generated':'Generado'} {fechaStr}</div>}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:7,flexWrap:'wrap'}}>
+        <span style={{fontWeight:900,fontSize:15,color:T.t1}}>{lang==='en'?'Week':'Semana'} {plan.semana}</span>
+        {idx===idxActual
+          ? <span style={{fontSize:9.5,fontWeight:900,color:T.g1,background:'rgba(88,204,2,0.15)',border:'1px solid '+T.bG,borderRadius:20,padding:'2px 9px',textTransform:'uppercase',letterSpacing:'0.03em',whiteSpace:'nowrap'}}>● {lang==='en'?'Current week':'Semana actual'}</span>
+          : <button onClick={()=>setIdx(idxActual)} style={{fontSize:9.5,fontWeight:800,color:T.au1,background:'rgba(255,200,0,0.12)',border:'1px solid rgba(255,200,0,0.3)',borderRadius:20,padding:'2px 9px',cursor:'pointer',whiteSpace:'nowrap',fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Go to current →':'Ir a la actual →'}</button>}
+      </div>
+      {fechaStr&&<div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:3}}>{lang==='en'?'Generated':'Generado'} {fechaStr}</div>}
     </div>
     <button onClick={()=>setIdx(i=>Math.max(i-1,0))} disabled={idx<=0} style={{background:'none',border:idx<=0?'1.5px solid rgba(255,255,255,0.1)':'1.5px solid '+T.bG,borderRadius:10,color:idx<=0?T.t3:T.g1,fontSize:18,width:36,height:36,cursor:idx<=0?'default':'pointer',flexShrink:0}}>›</button>
   </div>);
