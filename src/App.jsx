@@ -3591,6 +3591,11 @@ function GBHApp(){
         safari_web_id: "web.onesignal.auto.6514249a-4cb8-451b-a889-88f5913c9a7f",
         notifyButton: { enable: false }, // No mostrar el botón flotante de OneSignal
         allowLocalhostAsSecureOrigin: true,
+        // Usa el service worker propio de la app (que ahora importa el worker de
+        // OneSignal) en vez de registrar OneSignalSDKWorker.js aparte. Sin esto,
+        // dos workers compiten por el scope "/" y el push no se entrega.
+        serviceWorkerPath: "sw.js",
+        serviceWorkerParam: { scope: "/" },
       });
     });
   },[]);
@@ -4683,6 +4688,10 @@ function GBHApp(){
     if(typeof window.OneSignalDeferred !== "undefined"){
       window.OneSignalDeferred.push(async (OneSignal)=>{
         await OneSignal.Notifications.requestPermission();
+        // Asegura la suscripción (opt-in) una vez concedido el permiso. Sin esto,
+        // según el navegador el permiso puede quedar concedido pero el usuario
+        // sin suscribir, y OneSignal no tendría a quién enviar.
+        try { await OneSignal.User.PushSubscription.optIn(); } catch(e){}
         // Enviar tags del usuario para segmentar notificaciones
         if(profile){
           await OneSignal.User.addTags({
@@ -7700,16 +7709,16 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
                 {hasMeal&&<div style={{color:T.t3,fontSize:18,flexShrink:0}}>›</div>}
               </button>
               {mostrarChips&&(
-                <div style={{display:'flex',gap:6,flexWrap:'wrap',background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderTop:'none',borderRadius:'0 0 16px 16px',padding:'8px 10px 10px'}}>
+                <div style={{display:'flex',gap:6,background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderTop:'none',borderRadius:'0 0 16px 16px',padding:'8px 10px 10px'}}>
                   {PLAN_CUMPL.map(c=>{const on=estado===c.k;return(
-                    <button key={c.k} onClick={()=>setEstadoComida(toma,c.k)} style={{flex:'1 1 auto',display:'flex',alignItems:'center',justifyContent:'center',gap:4,padding:'7px 6px',borderRadius:10,cursor:'pointer',background:on?c.c+'26':'rgba(255,255,255,0.05)',border:on?('1.5px solid '+c.c):'1.5px solid transparent',color:on?c.c:T.t3,fontSize:11,fontWeight:on?900:700,fontFamily:"'Nunito',sans-serif",transition:'all 0.15s'}}>
-                      <span style={{fontSize:13,lineHeight:1}}>{c.ic}</span><span>{lang==='en'?c.en:c.es}</span>
+                    <button key={c.k} onClick={()=>setEstadoComida(toma,c.k)} title={lang==='en'?c.en:c.es} aria-label={lang==='en'?c.en:c.es} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',padding:'11px 0',borderRadius:12,cursor:'pointer',background:on?c.c+'30':'rgba(255,255,255,0.05)',border:on?('2px solid '+c.c):'1.5px solid rgba(255,255,255,0.06)',fontSize:22,lineHeight:1,transition:'all 0.15s'}}>
+                      {c.ic}
                     </button>);})}
                 </div>
               )}
             </div>);
           })}
-          {puedeRegistrar&&(
+          {puedeRegistrar&&(<>
             <div style={{background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:16,padding:'12px 14px'}}>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
                 <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.08em',display:'flex',alignItems:'center',gap:6}}><span>💬</span>{lang==='en'?'Note for your nutritionist':'Nota para tu nutricionista'}</div>
@@ -7718,7 +7727,15 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
               <textarea value={notaTmp} onChange={e=>{setNotaTmp(e.target.value);setNotaOK(false);}} onBlur={guardarNotaDia} rows={2} placeholder={lang==='en'?'e.g. I ate out on Saturday, pizza with friends…':'p. ej. el sábado comí fuera, pizza con amigos…'} style={{width:'100%',boxSizing:'border-box',resize:'vertical',background:'rgba(0,0,0,0.20)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:12,padding:'10px 12px',color:T.t1,fontSize:13,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,outline:'none'}}/>
               <div style={{fontSize:10.5,color:T.t3,marginTop:6,fontFamily:"'DM Sans',sans-serif"}}>{lang==='en'?'Optional · only your nutritionist sees this':'Opcional · solo lo ve tu nutricionista'}</div>
             </div>
-          )}
+            <div style={{padding:'4px 4px 0'}}>
+              <div style={{fontSize:10,color:T.t3,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{lang==='en'?'What each button means':'Qué significa cada botón'}</div>
+              <div style={{display:'flex',flexWrap:'wrap',gap:'8px 16px'}}>
+                {PLAN_CUMPL.map(c=>(
+                  <div key={c.k} style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}><span style={{fontSize:16,lineHeight:1}}>{c.ic}</span>{lang==='en'?c.en:c.es}</div>
+                ))}
+              </div>
+            </div>
+          </>)}
         </div>
       </>)}
       {openToma&&(<div style={{padding:'0 16px 16px'}}>
