@@ -6676,13 +6676,28 @@ const PLAN_TIPO_BG = {Carne:'rgba(192,57,43,0.22)',Pescado:'rgba(41,128,185,0.22
 const PLAN_TIPO_COLOR={Carne:'#E57373',Pescado:'#64B5F6',Vegetariana:'#81C784',Vegana:'#A5D6A7',Postre:'#F06292',Ensalada:'#AED581','Sopa/Crema':'#FFB74D'};
 
 // ── Exportación CSV del seguimiento de un paciente (para el nutricionista) ────
+// Incluye cumplimiento por comida + nota del día (daily_logs) y, fusionados por
+// fecha, los pesos registrados (weight_logs) para una monitorización
+// longitudinal del peso. Las fechas son la unión de ambos: aparece también un
+// día que solo tenga pesaje (sin registro de comidas) y viceversa.
 async function exportarSeguimientoCSV(profileId, nombre){
   try{
-    const rows = await sbReq('GET',`daily_logs?profile_id=eq.${profileId}&select=log_date,meals_log,day_note&order=log_date.asc`);
+    const [rows, pesos] = await Promise.all([
+      sbReq('GET',`daily_logs?profile_id=eq.${profileId}&select=log_date,meals_log,day_note&order=log_date.asc`),
+      sbReq('GET',`weight_logs?profile_id=eq.${profileId}&select=log_date,weight_kg&order=log_date.asc`)
+    ]);
     const cell = (v)=>{ const s=String(v==null?'':v).replace(/"/g,'""'); return /[",\n;]/.test(s)?`"${s}"`:s; };
-    const lines = [['Fecha','Desayuno','Almuerzo','Comida','Merienda','Cena','Nota'].join(',')];
+    // Mapa por fecha con cumplimiento (comidas + nota) y peso del día.
+    const porFecha = {};
     (rows||[]).forEach(r=>{ const m=r.meals_log||{};
-      lines.push([r.log_date, m.Desayuno||'', m.Almuerzo||'', m.Comida||'', m.Merienda||'', m.Cena||'', r.day_note||''].map(cell).join(',')); });
+      porFecha[r.log_date] = { ...(porFecha[r.log_date]||{}),
+        Desayuno:m.Desayuno||'', Almuerzo:m.Almuerzo||'', Comida:m.Comida||'',
+        Merienda:m.Merienda||'', Cena:m.Cena||'', nota:r.day_note||'' }; });
+    (pesos||[]).forEach(p=>{ porFecha[p.log_date] = { ...(porFecha[p.log_date]||{}), peso:p.weight_kg }; });
+    const fechas = Object.keys(porFecha).sort();
+    const lines = [['Fecha','Desayuno','Almuerzo','Comida','Merienda','Cena','Nota','Peso (kg)'].join(',')];
+    fechas.forEach(f=>{ const d=porFecha[f];
+      lines.push([f, d.Desayuno||'', d.Almuerzo||'', d.Comida||'', d.Merienda||'', d.Cena||'', d.nota||'', d.peso==null?'':d.peso].map(cell).join(',')); });
     const csv = '\ufeff'+lines.join('\n');   // BOM para que Excel respete los acentos
     const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
     const url = URL.createObjectURL(blob);
@@ -7705,6 +7720,16 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
           <div style={{fontSize:13,fontWeight:900,color:T.t2,fontFamily:"'Nunito',sans-serif"}}>{PLAN_DIAS_F[selDay-1]}{selDay===todayPlan?` · ${lang==='en'?'Today':'Hoy'}`:''} · {lang==='en'?'Week':'Semana'} {plan.semana}</div>
         </div>
         <div style={{padding:'0 16px',display:'flex',flexDirection:'column',gap:10}}>
+          {puedeRegistrar&&(
+            <div style={{background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:14,padding:'10px 12px'}}>
+              <div style={{fontSize:10,color:T.t3,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:7}}>{lang==='en'?'Tap to log each meal · what each button means':'Marca cada comida · qué significa cada botón'}</div>
+              <div style={{display:'flex',flexWrap:'wrap',gap:'7px 14px'}}>
+                {PLAN_CUMPL.map(c=>(
+                  <div key={c.k} style={{display:'flex',alignItems:'center',gap:5,fontSize:11.5,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}><span style={{fontSize:15,lineHeight:1}}>{c.ic}</span>{lang==='en'?c.en:c.es}</div>
+                ))}
+              </div>
+            </div>
+          )}
           {PLAN_TOMAS.map(toma=>{
             const meal=planJ?.[toma]?.[String(selDay)];
             const hasMeal=!!meal?.Nombre_Receta;
@@ -7731,7 +7756,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
               )}
             </div>);
           })}
-          {puedeRegistrar&&(<>
+          {puedeRegistrar&&(
             <div style={{background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:16,padding:'12px 14px'}}>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
                 <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.08em',display:'flex',alignItems:'center',gap:6}}><span>💬</span>{lang==='en'?'Note for your nutritionist':'Nota para tu nutricionista'}</div>
@@ -7740,15 +7765,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
               <textarea value={notaTmp} onChange={e=>{setNotaTmp(e.target.value);setNotaOK(false);}} onBlur={guardarNotaDia} rows={2} placeholder={lang==='en'?'e.g. I ate out on Saturday, pizza with friends…':'p. ej. el sábado comí fuera, pizza con amigos…'} style={{width:'100%',boxSizing:'border-box',resize:'vertical',background:'rgba(0,0,0,0.20)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:12,padding:'10px 12px',color:T.t1,fontSize:13,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,outline:'none'}}/>
               <div style={{fontSize:10.5,color:T.t3,marginTop:6,fontFamily:"'DM Sans',sans-serif"}}>{lang==='en'?'Optional · only your nutritionist sees this':'Opcional · solo lo ve tu nutricionista'}</div>
             </div>
-            <div style={{padding:'4px 4px 0'}}>
-              <div style={{fontSize:10,color:T.t3,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{lang==='en'?'What each button means':'Qué significa cada botón'}</div>
-              <div style={{display:'flex',flexWrap:'wrap',gap:'8px 16px'}}>
-                {PLAN_CUMPL.map(c=>(
-                  <div key={c.k} style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}><span style={{fontSize:16,lineHeight:1}}>{c.ic}</span>{lang==='en'?c.en:c.es}</div>
-                ))}
-              </div>
-            </div>
-          </>)}
+          )}
         </div>
       </>)}
       {openToma&&(<div style={{padding:'0 16px 16px'}}>
