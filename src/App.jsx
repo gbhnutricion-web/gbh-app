@@ -3437,12 +3437,12 @@ function SavedRecipeCard({rec, t, T, removeFromBook}){
           </div>
           <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8}}>{t("preparation")}</div>
           <div style={{fontSize:12,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6,marginBottom:14,whiteSpace:"pre-wrap"}}>{rec.instrucciones}</div>
-          <button onClick={()=>removeFromBook(rec.recipe_id)} style={{
+          {removeFromBook && (<button onClick={()=>removeFromBook(rec.recipe_id)} style={{
             width:"100%",padding:"9px",borderRadius:12,
             background:"rgba(255,75,75,0.07)",border:"1.5px solid rgba(255,75,75,0.2)",
             color:"rgba(255,120,120,0.8)",fontSize:12,fontWeight:800,
             cursor:"pointer",fontFamily:"'Nunito',sans-serif",
-          }}>🗑️ {t("recipeDeleteFromBook")}</button>
+          }}>🗑️ {t("recipeDeleteFromBook")}</button>)}
         </div>
       )}
     </Card>
@@ -3565,7 +3565,11 @@ function GBHApp(){
   const [forgotSent,  setForgotSent]  = useState(false);
   const [dailyRecipe,setDailyRecipe] = useState(null);
   const [savedRecipes,setSavedRecipes] = useState([]);
-  const [recipeView, setRecipeView]  = useState("daily"); // "daily" | "book"
+  const [recipeView, setRecipeView]  = useState("menu"); // "menu" | "daily" | "book" | "completo"
+  const [completoCat,     setCompletoCat]     = useState(null);   // categoría elegida en recetario completo
+  const [completoRecipes, setCompletoRecipes] = useState([]);
+  const [completoLoading, setCompletoLoading] = useState(false);
+  const completoCacheRef = React.useRef({});
   const [recipeLoading,setRecipeLoading] = useState(false);
   const refreshingRef = useRef(false); // bloqueo síncrono para evitar doble tap
   const [recipeRefreshes,setRecipeRefreshes] = useState(()=>lsGet(`gbh:recipe:refreshes:${toKey()}`,0));
@@ -3599,19 +3603,6 @@ function GBHApp(){
       });
     });
   },[]);
-
-  // ── Vincular la suscripción de OneSignal con el paciente (external_id) ──────
-  // Hace que cada suscripción lleve el profile_id como external_id. Es lo que
-  // permite enviar push a pacientes concretos (recordatorios inteligentes: solo
-  // a quien no ha registrado dieta/pesaje). Corre en cada carga con sesión, así
-  // que también enlaza a quienes YA estaban suscritos cuando reabran la app.
-  useEffect(()=>{
-    if(!profile?.id) return;
-    if(typeof window.OneSignalDeferred === "undefined") return;
-    window.OneSignalDeferred.push(async (OneSignal)=>{
-      try { await OneSignal.login(String(profile.id)); } catch(e){}
-    });
-  },[profile?.id]);
 
   // ── Semana de prueba: degradar a 'free' cuando caduca ──────────────────────
   // Solo afecta a cuentas con trial_ends_at (las de pago lo tienen a NULL).
@@ -3903,6 +3894,30 @@ function GBHApp(){
     grasas_g:    r.grasas_g     || r.Grasas_g        || 0,
     id_receta:   r.id_receta    || r.ID_Receta        || r.id || "",
   });
+
+  // ── Recetario completo: categorías (7 tipos de plato + desayunos) ──
+  const CATS_COMPLETO = [
+    {id:"desayuno",   es:"Desayunos",     en:"Breakfasts",  icon:"🥣", color:"#FFD54F", filtro:"categoria=eq."+encodeURIComponent("Desayuno/Almuerzo/Merienda")},
+    {id:"carne",      es:"Carnes",        en:"Meat",        icon:"🥩", color:"#E57373", filtro:"tipo=eq.Carne"},
+    {id:"pescado",    es:"Pescados",      en:"Fish",        icon:"🐟", color:"#64B5F6", filtro:"tipo=eq.Pescado"},
+    {id:"vegetariana",es:"Vegetariano",   en:"Vegetarian",  icon:"🥦", color:"#81C784", filtro:"tipo=eq.Vegetariana"},
+    {id:"vegana",     es:"Vegano",        en:"Vegan",       icon:"🌱", color:"#A5D6A7", filtro:"tipo=eq.Vegana"},
+    {id:"postre",     es:"Postres",       en:"Desserts",    icon:"🍰", color:"#F06292", filtro:"tipo=eq.Postre"},
+    {id:"sopa",       es:"Sopas y cremas",en:"Soups",       icon:"🍲", color:"#FFB74D", filtro:"tipo=eq."+encodeURIComponent("Sopa/Crema")},
+    {id:"ensalada",   es:"Ensaladas",     en:"Salads",      icon:"🥗", color:"#AED581", filtro:"tipo=eq.Ensalada"},
+  ];
+  const abrirCategoriaCompleta = async (cat) => {
+    setCompletoCat(cat);
+    if(completoCacheRef.current[cat.id]){ setCompletoRecipes(completoCacheRef.current[cat.id]); return; }
+    setCompletoLoading(true); setCompletoRecipes([]);
+    try{
+      const data = await sbReq("GET", `recipes?${cat.filtro}&select=*&order=calorias.asc&limit=300`);
+      const norm = (data||[]).map(normalizeRecipe);
+      completoCacheRef.current[cat.id] = norm;
+      setCompletoRecipes(norm);
+    }catch(e){ setCompletoRecipes([]); }
+    finally{ setCompletoLoading(false); }
+  };
 
   // Traduce un texto ES→EN usando MyMemory (gratuito, sin API key, funciona desde el browser)
   const translateText = async (text) => {
@@ -4900,6 +4915,7 @@ function GBHApp(){
   // Cargar ranking cuando se activa la pestaña
   useEffect(()=>{ if(tab==="ranking") loadRanking(); },[tab]);
   useEffect(()=>{ if(tab==="receta"&&!dailyRecipe&&!recipeLoading) fetchDailyRecipe(); },[tab]);
+  useEffect(()=>{ if(tab==="receta"){ setRecipeView("menu"); setCompletoCat(null); } },[tab]);
   const [langSwitching, setLangSwitching] = useState(false);
 
   // Cambia idioma con pantalla de carga intermedia
@@ -6316,26 +6332,51 @@ function GBHApp(){
           const ti = r ? emojiPlato(r.nombre, r.tipo) : "🍽️";
           const ingList = r?.ingredientes?.split(/,(?![^(]*\))/).map(s=>s.trim()).filter(Boolean) || [];
           const alreadySaved = r && savedRecipes.some(s => s.recipe_id === r.id_receta);
+          const tieneAccesoCompleto = profile?.plan==='premium' || profile?.plan==='standard';
 
           return(
             <div style={{padding:"0 16px 24px"}}>
 
-              {/* ── Toggle Receta del día / Mi recetario ── */}
-              <div style={{display:"flex",background:"rgba(255,255,255,0.06)",borderRadius:16,padding:4,marginBottom:16,gap:4}}>
-                {[{id:"daily",label:t("recipeTabDaily"),icon:"🍰"},{id:"book",label:t("recipeTabBook"),icon:"📖"}].map(({id,label,icon})=>(
-                  <button key={id} onClick={()=>setRecipeView(id)}
-                    style={{
-                      flex:1,padding:"10px 8px",borderRadius:12,border:"none",cursor:"pointer",
-                      background:recipeView===id?`linear-gradient(135deg,${T.g1},${T.g2})`:"transparent",
-                      color:recipeView===id?"white":T.t2,
-                      fontWeight:recipeView===id?900:600,fontSize:13,
-                      boxShadow:recipeView===id?`0 3px 0 ${T.g3}`:"none",
-                      transition:"all 0.2s",fontFamily:"'Nunito',sans-serif",
-                    }}>
-                    {icon} {label}{id==="book"&&savedRecipes.length>0?` (${savedRecipes.length})`:""}
+              {/* ══════════════ MENÚ: 3 botones (estilo plan) ══════════════ */}
+              {recipeView==="menu"&&(
+                <div style={{display:"flex",flexDirection:"column",gap:12,paddingTop:8}}>
+                  {/* Receta del día */}
+                  <button onClick={()=>setRecipeView("daily")} style={{background:'rgba(88,204,2,0.12)',border:'2px solid rgba(88,204,2,0.3)',borderRadius:20,padding:'20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
+                    <div style={{fontSize:40,flexShrink:0}}>🍰</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{t("recipeTabDaily")}</div>
+                      <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?"Today's pick with full recipe":'La receta de hoy con ingredientes y preparación'}</div>
+                    </div>
+                    <div style={{color:T.g1,fontSize:20,flexShrink:0}}>›</div>
                   </button>
-                ))}
-              </div>
+                  {/* Mi recetario */}
+                  <button onClick={()=>setRecipeView("book")} style={{background:'rgba(100,181,246,0.12)',border:'2px solid rgba(100,181,246,0.3)',borderRadius:20,padding:'20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
+                    <div style={{fontSize:40,flexShrink:0}}>📖</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{t("recipeTabBook")}{savedRecipes.length>0?` (${savedRecipes.length})`:""}</div>
+                      <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'The recipes you saved':'Las recetas que has guardado'}</div>
+                    </div>
+                    <div style={{color:'#64B5F6',fontSize:20,flexShrink:0}}>›</div>
+                  </button>
+                  {/* Recetario completo (bloqueado para free) */}
+                  <button onClick={()=>setRecipeView("completo")} style={{background:'rgba(255,200,0,0.10)',border:'2px solid rgba(255,200,0,0.3)',borderRadius:20,padding:'20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)',opacity:tieneAccesoCompleto?1:0.9}}>
+                    <div style={{fontSize:40,flexShrink:0}}>{tieneAccesoCompleto?"📚":"🔒"}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Full recipe book':'Recetario completo'}</div>
+                      <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{tieneAccesoCompleto?(lang==='en'?'All recipes by category, sorted by calories':'Todas las recetas por categoría, ordenadas por calorías'):(lang==='en'?'For subscribers (Standard or Premium)':'Para suscriptores (Estándar o Premium)')}</div>
+                    </div>
+                    <div style={{color:T.au1,fontSize:20,flexShrink:0}}>{tieneAccesoCompleto?"›":"🔒"}</div>
+                  </button>
+                </div>
+              )}
+
+              {/* ── Barra de volver (sub-vistas) ── */}
+              {recipeView!=="menu"&&(
+                <button onClick={()=>{ if(recipeView==="completo"&&completoCat){ setCompletoCat(null); } else { setRecipeView("menu"); setCompletoCat(null); } }}
+                  style={{background:"none",border:"none",cursor:"pointer",color:T.t2,fontSize:14,fontWeight:800,fontFamily:"'Nunito',sans-serif",padding:"4px 0 12px",display:"flex",alignItems:"center",gap:4}}>
+                  ‹ {recipeView==="completo"&&completoCat ? (lang==='en'?'Categories':'Categorías') : (lang==='en'?'Recipes':'Recetas')}
+                </button>
+              )}
 
               {/* ══════════════ VISTA: RECETA DEL DÍA ══════════════ */}
               {recipeView==="daily"&&(<>
@@ -6485,6 +6526,68 @@ function GBHApp(){
                       />
                     ))}
                   </div>
+                )}
+              </>)}
+
+              {/* ══════════════ VISTA: RECETARIO COMPLETO ══════════════ */}
+              {recipeView==="completo"&&(<>
+                {!tieneAccesoCompleto ? (
+                  /* ── Bloqueo free: invitación a suscribirse ── */
+                  <div style={{padding:'24px 8px 8px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:16}}>
+                    <div style={{fontSize:52}}>🔒</div>
+                    <div style={{fontSize:18,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Full recipe book':'Recetario completo'}</div>
+                    <div style={{fontSize:14,color:T.t2,lineHeight:1.7,maxWidth:300,fontFamily:"'DM Sans',sans-serif"}}>
+                      {lang==='en'?'All 571 recipes, sorted by calories and grouped by category, are available to Standard and Premium subscribers.':'Las 571 recetas, ordenadas por calorías y agrupadas por categoría, están disponibles para suscriptores Estándar y Premium.'}
+                    </div>
+                    <a href={`https://wa.me/${GBH_WHATSAPP}?text=${encodeURIComponent(lang==='en'?`Hi! I'm ${profile?.name||''} and I'd like to subscribe to access the full GBH recipe book 📚`:`¡Hola! Soy ${profile?.name||''} y me gustaría suscribirme para acceder al recetario completo de GBH 📚`)}`}
+                      target="_blank" rel="noopener noreferrer" onClick={()=>sfx&&sfx("tap")}
+                      style={{marginTop:4,width:'100%',maxWidth:300,background:'linear-gradient(135deg,#25D366,#1DA851)',color:'#fff',fontWeight:900,fontSize:15,borderRadius:18,padding:'16px 20px',textDecoration:'none',boxShadow:'0 4px 0 #128C4B',fontFamily:"'Nunito',sans-serif",display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
+                      <span style={{fontSize:20}}>💬</span>{lang==='en'?'Subscribe to unlock':'Suscribirme para acceder'}
+                    </a>
+                  </div>
+                ) : !completoCat ? (
+                  /* ── Pantalla 1: categorías (nada cargado todavía) ── */
+                  <>
+                    <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:4}}>{lang==='en'?'Choose a category':'Elige una categoría'}</div>
+                    <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:14}}>{lang==='en'?'Recipes load when you open a category':'Las recetas se cargan al abrir cada categoría'}</div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                      {CATS_COMPLETO.map(cat=>(
+                        <button key={cat.id} onClick={()=>abrirCategoriaCompleta(cat)} style={{
+                          background:`${cat.color}1a`,border:`1.5px solid ${cat.color}55`,borderRadius:16,
+                          padding:"18px 10px",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:8,
+                          boxShadow:`0 3px 0 ${cat.color}33`,fontFamily:"'Nunito',sans-serif"}}>
+                          <div style={{fontSize:34}}>{cat.icon}</div>
+                          <div style={{fontSize:13,fontWeight:900,color:T.wh,textAlign:"center",lineHeight:1.2}}>{lang==='en'?cat.en:cat.es}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  /* ── Pantalla 2: recetas de la categoría, ordenadas por calorías ── */
+                  <>
+                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+                      <div style={{fontSize:30}}>{completoCat.icon}</div>
+                      <div>
+                        <div style={{fontSize:17,fontWeight:900,color:T.wh,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?completoCat.en:completoCat.es}</div>
+                        {!completoLoading&&<div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>{completoRecipes.length} {lang==='en'?'recipes · by calories':'recetas · por calorías'}</div>}
+                      </div>
+                    </div>
+                    {completoLoading ? (
+                      <div style={{textAlign:"center",padding:40}}>
+                        <div style={{fontSize:32,marginBottom:10}}>⏳</div>
+                        <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>{lang==='en'?'Loading recipes…':'Cargando recetas…'}</div>
+                      </div>
+                    ) : completoRecipes.length===0 ? (
+                      <div style={{textAlign:"center",padding:40}}>
+                        <div style={{fontSize:40,marginBottom:10}}>🍽️</div>
+                        <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>{lang==='en'?'No recipes in this category':'No hay recetas en esta categoría'}</div>
+                      </div>
+                    ) : (
+                      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                        {completoRecipes.map(rec=>(<SavedRecipeCard key={rec.id_receta} rec={rec} t={t} T={T} />))}
+                      </div>
+                    )}
+                  </>
                 )}
               </>)}
 
@@ -6676,28 +6779,13 @@ const PLAN_TIPO_BG = {Carne:'rgba(192,57,43,0.22)',Pescado:'rgba(41,128,185,0.22
 const PLAN_TIPO_COLOR={Carne:'#E57373',Pescado:'#64B5F6',Vegetariana:'#81C784',Vegana:'#A5D6A7',Postre:'#F06292',Ensalada:'#AED581','Sopa/Crema':'#FFB74D'};
 
 // ── Exportación CSV del seguimiento de un paciente (para el nutricionista) ────
-// Incluye cumplimiento por comida + nota del día (daily_logs) y, fusionados por
-// fecha, los pesos registrados (weight_logs) para una monitorización
-// longitudinal del peso. Las fechas son la unión de ambos: aparece también un
-// día que solo tenga pesaje (sin registro de comidas) y viceversa.
 async function exportarSeguimientoCSV(profileId, nombre){
   try{
-    const [rows, pesos] = await Promise.all([
-      sbReq('GET',`daily_logs?profile_id=eq.${profileId}&select=log_date,meals_log,day_note&order=log_date.asc`),
-      sbReq('GET',`weight_logs?profile_id=eq.${profileId}&select=log_date,weight_kg&order=log_date.asc`)
-    ]);
+    const rows = await sbReq('GET',`daily_logs?profile_id=eq.${profileId}&select=log_date,meals_log,day_note&order=log_date.asc`);
     const cell = (v)=>{ const s=String(v==null?'':v).replace(/"/g,'""'); return /[",\n;]/.test(s)?`"${s}"`:s; };
-    // Mapa por fecha con cumplimiento (comidas + nota) y peso del día.
-    const porFecha = {};
+    const lines = [['Fecha','Desayuno','Almuerzo','Comida','Merienda','Cena','Nota'].join(',')];
     (rows||[]).forEach(r=>{ const m=r.meals_log||{};
-      porFecha[r.log_date] = { ...(porFecha[r.log_date]||{}),
-        Desayuno:m.Desayuno||'', Almuerzo:m.Almuerzo||'', Comida:m.Comida||'',
-        Merienda:m.Merienda||'', Cena:m.Cena||'', nota:r.day_note||'' }; });
-    (pesos||[]).forEach(p=>{ porFecha[p.log_date] = { ...(porFecha[p.log_date]||{}), peso:p.weight_kg }; });
-    const fechas = Object.keys(porFecha).sort();
-    const lines = [['Fecha','Desayuno','Almuerzo','Comida','Merienda','Cena','Nota','Peso (kg)'].join(',')];
-    fechas.forEach(f=>{ const d=porFecha[f];
-      lines.push([f, d.Desayuno||'', d.Almuerzo||'', d.Comida||'', d.Merienda||'', d.Cena||'', d.nota||'', d.peso==null?'':d.peso].map(cell).join(',')); });
+      lines.push([r.log_date, m.Desayuno||'', m.Almuerzo||'', m.Comida||'', m.Merienda||'', m.Cena||'', r.day_note||''].map(cell).join(',')); });
     const csv = '\ufeff'+lines.join('\n');   // BOM para que Excel respete los acentos
     const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
     const url = URL.createObjectURL(blob);
@@ -7720,16 +7808,6 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
           <div style={{fontSize:13,fontWeight:900,color:T.t2,fontFamily:"'Nunito',sans-serif"}}>{PLAN_DIAS_F[selDay-1]}{selDay===todayPlan?` · ${lang==='en'?'Today':'Hoy'}`:''} · {lang==='en'?'Week':'Semana'} {plan.semana}</div>
         </div>
         <div style={{padding:'0 16px',display:'flex',flexDirection:'column',gap:10}}>
-          {puedeRegistrar&&(
-            <div style={{background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:14,padding:'10px 12px'}}>
-              <div style={{fontSize:10,color:T.t3,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:7}}>{lang==='en'?'Tap to log each meal · what each button means':'Marca cada comida · qué significa cada botón'}</div>
-              <div style={{display:'flex',flexWrap:'wrap',gap:'7px 14px'}}>
-                {PLAN_CUMPL.map(c=>(
-                  <div key={c.k} style={{display:'flex',alignItems:'center',gap:5,fontSize:11.5,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}><span style={{fontSize:15,lineHeight:1}}>{c.ic}</span>{lang==='en'?c.en:c.es}</div>
-                ))}
-              </div>
-            </div>
-          )}
           {PLAN_TOMAS.map(toma=>{
             const meal=planJ?.[toma]?.[String(selDay)];
             const hasMeal=!!meal?.Nombre_Receta;
@@ -7756,7 +7834,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
               )}
             </div>);
           })}
-          {puedeRegistrar&&(
+          {puedeRegistrar&&(<>
             <div style={{background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:16,padding:'12px 14px'}}>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
                 <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.08em',display:'flex',alignItems:'center',gap:6}}><span>💬</span>{lang==='en'?'Note for your nutritionist':'Nota para tu nutricionista'}</div>
@@ -7765,7 +7843,15 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
               <textarea value={notaTmp} onChange={e=>{setNotaTmp(e.target.value);setNotaOK(false);}} onBlur={guardarNotaDia} rows={2} placeholder={lang==='en'?'e.g. I ate out on Saturday, pizza with friends…':'p. ej. el sábado comí fuera, pizza con amigos…'} style={{width:'100%',boxSizing:'border-box',resize:'vertical',background:'rgba(0,0,0,0.20)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:12,padding:'10px 12px',color:T.t1,fontSize:13,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,outline:'none'}}/>
               <div style={{fontSize:10.5,color:T.t3,marginTop:6,fontFamily:"'DM Sans',sans-serif"}}>{lang==='en'?'Optional · only your nutritionist sees this':'Opcional · solo lo ve tu nutricionista'}</div>
             </div>
-          )}
+            <div style={{padding:'4px 4px 0'}}>
+              <div style={{fontSize:10,color:T.t3,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{lang==='en'?'What each button means':'Qué significa cada botón'}</div>
+              <div style={{display:'flex',flexWrap:'wrap',gap:'8px 16px'}}>
+                {PLAN_CUMPL.map(c=>(
+                  <div key={c.k} style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}><span style={{fontSize:16,lineHeight:1}}>{c.ic}</span>{lang==='en'?c.en:c.es}</div>
+                ))}
+              </div>
+            </div>
+          </>)}
         </div>
       </>)}
       {openToma&&(<div style={{padding:'0 16px 16px'}}>
