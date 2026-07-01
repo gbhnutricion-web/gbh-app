@@ -3570,6 +3570,8 @@ function GBHApp(){
   const [completoRecipes, setCompletoRecipes] = useState([]);
   const [completoLoading, setCompletoLoading] = useState(false);
   const completoCacheRef = React.useRef({});
+  const [recCounts, setRecCounts] = useState(null);   // {total, byId:{catId:n}} — nº de recetas por categoría
+  const recCountsRef = React.useRef(false);
   const [recipeLoading,setRecipeLoading] = useState(false);
   const refreshingRef = useRef(false); // bloqueo síncrono para evitar doble tap
   const [recipeRefreshes,setRecipeRefreshes] = useState(()=>lsGet(`gbh:recipe:refreshes:${toKey()}`,0));
@@ -3898,14 +3900,14 @@ function GBHApp(){
 
   // ── Recetario completo: categorías (7 tipos de plato + desayunos) ──
   const CATS_COMPLETO = [
-    {id:"desayuno",   es:"Desayunos",     en:"Breakfasts",  icon:"🥣", color:"#FFD54F", filtro:"categoria=eq."+encodeURIComponent("Desayuno/Almuerzo/Merienda")},
-    {id:"carne",      es:"Carnes",        en:"Meat",        icon:"🥩", color:"#E57373", filtro:"tipo=eq.Carne"},
-    {id:"pescado",    es:"Pescados",      en:"Fish",        icon:"🐟", color:"#64B5F6", filtro:"tipo=eq.Pescado"},
-    {id:"vegetariana",es:"Vegetariano",   en:"Vegetarian",  icon:"🥦", color:"#81C784", filtro:"tipo=eq.Vegetariana"},
-    {id:"vegana",     es:"Vegano",        en:"Vegan",       icon:"🌱", color:"#A5D6A7", filtro:"tipo=eq.Vegana"},
-    {id:"postre",     es:"Postres",       en:"Desserts",    icon:"🍰", color:"#F06292", filtro:"tipo=eq.Postre"},
-    {id:"sopa",       es:"Sopas y cremas",en:"Soups",       icon:"🍲", color:"#FFB74D", filtro:"tipo=eq."+encodeURIComponent("Sopa/Crema")},
-    {id:"ensalada",   es:"Ensaladas",     en:"Salads",      icon:"🥗", color:"#AED581", filtro:"tipo=eq.Ensalada"},
+    {id:"desayuno",   es:"Desayunos",     en:"Breakfasts",  icon:"🥣", color:"#FFD54F", filtro:"categoria=eq."+encodeURIComponent("Desayuno/Almuerzo/Merienda"), match:r=>r.categoria==="Desayuno/Almuerzo/Merienda"},
+    {id:"carne",      es:"Carnes",        en:"Meat",        icon:"🥩", color:"#E57373", filtro:"tipo=eq.Carne", match:r=>r.tipo==="Carne"},
+    {id:"pescado",    es:"Pescados",      en:"Fish",        icon:"🐟", color:"#64B5F6", filtro:"tipo=eq.Pescado", match:r=>r.tipo==="Pescado"},
+    {id:"vegetariana",es:"Vegetariano",   en:"Vegetarian",  icon:"🥦", color:"#81C784", filtro:"tipo=eq.Vegetariana", match:r=>r.tipo==="Vegetariana"},
+    {id:"vegana",     es:"Vegano",        en:"Vegan",       icon:"🌱", color:"#A5D6A7", filtro:"tipo=eq.Vegana", match:r=>r.tipo==="Vegana"},
+    {id:"postre",     es:"Postres",       en:"Desserts",    icon:"🍰", color:"#F06292", filtro:"tipo=eq.Postre", match:r=>r.tipo==="Postre"},
+    {id:"sopa",       es:"Sopas y cremas",en:"Soups",       icon:"🍲", color:"#FFB74D", filtro:"tipo=eq."+encodeURIComponent("Sopa/Crema"), match:r=>r.tipo==="Sopa/Crema"},
+    {id:"ensalada",   es:"Ensaladas",     en:"Salads",      icon:"🥗", color:"#AED581", filtro:"tipo=eq.Ensalada", match:r=>r.tipo==="Ensalada"},
   ];
   const abrirCategoriaCompleta = async (cat) => {
     setCompletoCat(cat);
@@ -4918,6 +4920,22 @@ function GBHApp(){
   useEffect(()=>{ if(tab==="ranking") loadRanking(); },[tab]);
   useEffect(()=>{ if(tab==="receta"&&!dailyRecipe&&!recipeLoading) fetchDailyRecipe(); },[tab]);
   useEffect(()=>{ if(tab==="receta"){ setRecipeView("menu"); setCompletoCat(null); } },[tab]);
+  // Cuenta de recetas por categoría (consulta ligera: solo tipo+categoria, una vez).
+  // Se muestra en los botones del recetario y como total, y se actualiza sola al
+  // crecer el recetario porque cuenta lo que hay en Supabase.
+  useEffect(()=>{
+    if(tab!=="receta" || recCountsRef.current) return;
+    recCountsRef.current = true;
+    (async()=>{
+      try{
+        const data = await sbReq("GET","recipes?select=tipo,categoria&limit=1000");
+        const rows = Array.isArray(data)?data:[];
+        const byId = {};
+        for(const cat of CATS_COMPLETO) byId[cat.id] = rows.filter(cat.match).length;
+        setRecCounts({total:rows.length, byId});
+      }catch(e){ recCountsRef.current=false; }  // reintentará al reentrar
+    })();
+  },[tab]);  // eslint-disable-line react-hooks/exhaustive-deps
   const [langSwitching, setLangSwitching] = useState(false);
 
   // Cambia idioma con pantalla de carga intermedia
@@ -6554,7 +6572,7 @@ function GBHApp(){
                   /* ── Pantalla 1: categorías (nada cargado todavía) ── */
                   <>
                     <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:4}}>{lang==='en'?'Choose a category':'Elige una categoría'}</div>
-                    <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:14}}>{lang==='en'?'Recipes load when you open a category':'Las recetas se cargan al abrir cada categoría'}</div>
+                    <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:14}}>{recCounts?(<>📖 <b style={{color:T.wh}}>{recCounts.total}</b> {lang==='en'?'recipes in total · load when you open a category':'recetas en total · se cargan al abrir cada categoría'}</>):(lang==='en'?'Recipes load when you open a category':'Las recetas se cargan al abrir cada categoría')}</div>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                       {CATS_COMPLETO.map(cat=>(
                         <button key={cat.id} onClick={()=>abrirCategoriaCompleta(cat)} style={{
@@ -6563,6 +6581,7 @@ function GBHApp(){
                           boxShadow:`0 3px 0 ${cat.color}33`,fontFamily:"'Nunito',sans-serif"}}>
                           <div style={{fontSize:34}}>{cat.icon}</div>
                           <div style={{fontSize:13,fontWeight:900,color:T.wh,textAlign:"center",lineHeight:1.2}}>{lang==='en'?cat.en:cat.es}</div>
+                          {recCounts&&<div style={{fontSize:10.5,fontWeight:700,color:cat.color,fontFamily:"'DM Sans',sans-serif"}}>{recCounts.byId[cat.id]??0} {lang==='en'?'recipes':'recetas'}</div>}
                         </button>
                       ))}
                     </div>
@@ -7230,6 +7249,43 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
     });
   },[profile?.id]);
   const plan=planes[idx];const planJ=plan?.plan_json;
+  // ── Media calórica de la semana (mismo método que la automatización: media
+  //    de los totales diarios de kcal, cada día = suma de las kcal ya escaladas
+  //    de sus tomas). Da al paciente la seguridad de que, aunque cada comida
+  //    varíe, el promedio de la semana es preciso. ──────────────────────────
+  const mediaKcalSem = React.useMemo(()=>{
+    if(!planJ) return null;
+    const totales=[];
+    for(let d=1; d<=7; d++){
+      let tot=0, hay=false;
+      for(const tm of PLAN_TOMAS){
+        const m=planJ?.[tm]?.[String(d)];
+        const k=m?(parseFloat(m.Calorias_Totales)||0):0;
+        if(k>0){ tot+=k; hay=true; }
+      }
+      if(hay) totales.push(tot);
+    }
+    if(!totales.length) return null;
+    return Math.round(totales.reduce((a,b)=>a+b,0)/totales.length);
+  },[planJ]);
+  // ── Distribución de macros del día seleccionado (Atwater 4/4/9 sobre la suma
+  //    de P/H/G de todas las tomas del día). Alimenta el gráfico de sectores. ─
+  const macrosDia = React.useMemo(()=>{
+    if(!planJ) return null;
+    let p=0,h=0,g=0;
+    for(const tm of PLAN_TOMAS){
+      const m=planJ?.[tm]?.[String(selDay)];
+      if(!m) continue;
+      p+=parseFloat(m.Proteinas_g)||0;
+      h+=parseFloat(m.Hidratos_g)||0;
+      g+=parseFloat(m.Grasas_g)||0;
+    }
+    const kp=p*4, kh=h*4, kg=g*9, tot=kp+kh+kg;
+    if(tot<=0) return null;
+    return { p:Math.round(p), h:Math.round(h), g:Math.round(g),
+             fP:kp/tot, fH:kh/tot, fG:kg/tot,
+             pctP:Math.round(kp/tot*100), pctH:Math.round(kh/tot*100), pctG:Math.round(kg/tot*100) };
+  },[planJ,selDay]);
   // ── Semana vigente ──────────────────────────────────────────────────────────
   // Se identifica por la semana que el generador marca como actual
   // (patient_config.semana_actual, que se reescribe en CADA publicación), con la
@@ -7659,6 +7715,12 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
           ? <span style={{fontSize:9.5,fontWeight:900,color:T.g1,background:'rgba(88,204,2,0.15)',border:'1px solid '+T.bG,borderRadius:20,padding:'2px 9px',textTransform:'uppercase',letterSpacing:'0.03em',whiteSpace:'nowrap'}}>● {lang==='en'?'Current week':'Semana actual'}</span>
           : <button onClick={()=>setIdx(idxActual)} style={{fontSize:9.5,fontWeight:800,color:T.au1,background:'rgba(255,200,0,0.12)',border:'1px solid rgba(255,200,0,0.3)',borderRadius:20,padding:'2px 9px',cursor:'pointer',whiteSpace:'nowrap',fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Go to current →':'Ir a la actual →'}</button>}
       </div>
+      {mediaKcalSem!==null&&(
+        <div style={{display:'inline-flex',alignItems:'center',gap:6,marginTop:6,background:'rgba(88,204,2,0.12)',border:'1px solid '+T.bG,borderRadius:20,padding:'3px 11px'}}>
+          <span style={{fontSize:12,lineHeight:1}}>🔥</span>
+          <span style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>{lang==='en'?'Daily average':'Media diaria'}: <b style={{color:T.g1}}>{mediaKcalSem}</b> kcal</span>
+        </div>
+      )}
       {fechaStr&&<div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:3}}>{lang==='en'?'Generated':'Generado'} {fechaStr}</div>}
     </div>
     <button onClick={()=>setIdx(i=>Math.max(i-1,0))} disabled={idx<=0} style={{background:'none',border:idx<=0?'1.5px solid rgba(255,255,255,0.1)':'1.5px solid '+T.bG,borderRadius:10,color:idx<=0?T.t3:T.g1,fontSize:18,width:36,height:36,cursor:idx<=0?'default':'pointer',flexShrink:0}}>›</button>
@@ -7844,6 +7906,40 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
               )}
             </div>);
           })}
+          {macrosDia&&(
+            <div style={{background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:16,padding:'16px 16px'}}>
+              <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.08em',display:'flex',alignItems:'center',gap:6,marginBottom:14}}>
+                <span>📊</span>{lang==='en'?'Daily macro split':'Distribución de macros del día'}
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:18}}>
+                {(()=>{
+                  const R=42, SW=18, C=2*Math.PI*R;
+                  const segs=[{f:macrosDia.fH,c:T.g1},{f:macrosDia.fG,c:'#FFB74D'},{f:macrosDia.fP,c:'#64B5F6'}];
+                  let acc=0;
+                  return(
+                    <svg width="110" height="110" viewBox="0 0 112 112" style={{flexShrink:0}}>
+                      <g transform="rotate(-90 56 56)">
+                        <circle cx="56" cy="56" r={R} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={SW}/>
+                        {segs.map((s,i)=>{const dash=C*s.f;const el=(<circle key={i} cx="56" cy="56" r={R} fill="none" stroke={s.c} strokeWidth={SW} strokeDasharray={`${dash} ${C-dash}`} strokeDashoffset={-C*acc} strokeLinecap="butt"/>);acc+=s.f;return el;})}
+                      </g>
+                    </svg>
+                  );
+                })()}
+                <div style={{flex:1,display:'flex',flexDirection:'column',gap:9}}>
+                  {[{c:'#64B5F6',lbl:lang==='en'?'Protein':'Proteínas',pct:macrosDia.pctP,g:macrosDia.p},
+                    {c:T.g1,lbl:lang==='en'?'Carbs':'Hidratos',pct:macrosDia.pctH,g:macrosDia.h},
+                    {c:'#FFB74D',lbl:lang==='en'?'Fat':'Grasas',pct:macrosDia.pctG,g:macrosDia.g}].map((mm,i)=>(
+                    <div key={i} style={{display:'flex',alignItems:'center',gap:8}}>
+                      <div style={{width:10,height:10,borderRadius:3,background:mm.c,flexShrink:0}}/>
+                      <div style={{flex:1,fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif"}}>{mm.lbl}</div>
+                      <div style={{fontSize:13,fontWeight:900,color:mm.c,fontFamily:"'Nunito',sans-serif"}}>{mm.pct}%</div>
+                      <div style={{fontSize:11,color:T.t3,minWidth:34,textAlign:'right',fontFamily:"'DM Sans',sans-serif"}}>{mm.g} g</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
           {puedeRegistrar&&(<>
             <div style={{background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:16,padding:'12px 14px'}}>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
