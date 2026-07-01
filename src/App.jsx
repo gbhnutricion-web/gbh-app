@@ -3892,6 +3892,7 @@ function GBHApp(){
     proteinas_g: r.proteinas_g  || r.Proteinas_g     || 0,
     hidratos_g:  r.hidratos_g   || r.Hidratos_g      || 0,
     grasas_g:    r.grasas_g     || r.Grasas_g        || 0,
+    raciones:    parseInt(r.raciones || r.Raciones || 1) || 1,
     id_receta:   r.id_receta    || r.ID_Receta        || r.id || "",
   });
 
@@ -4810,6 +4811,7 @@ function GBHApp(){
       grasas_g: dailyRecipe.grasas_g,
       ingredientes: dailyRecipe.ingredientes,
       instrucciones: dailyRecipe.instrucciones,
+      raciones: dailyRecipe.raciones||1,
       saved_at: new Date().toISOString(),
     };
     const newSaved = [entry, ...savedRecipes];
@@ -6470,7 +6472,10 @@ function GBHApp(){
 
                   {/* Ingredientes */}
                   <Card style={{marginBottom:12,padding:"18px 18px"}}>
-                    <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:12}}>{t("ingredients")}</div>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap",marginBottom:12}}>
+                      <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.1em"}}>{t("ingredients")}</div>
+                      {r.raciones>1&&(<div style={{fontSize:11,color:tc,fontWeight:800,background:tc+"22",borderRadius:20,padding:"3px 11px",whiteSpace:"nowrap"}}>🍽️ {lang==="en"?`Makes ${r.raciones} servings`:`Rinde ${r.raciones} raciones`}</div>)}
+                    </div>
                     <div style={{display:"flex",flexDirection:"column",gap:7}}>
                       {ingList.map((ing,i)=>(
                         <div key={i} style={{display:"flex",alignItems:"flex-start",gap:10}}>
@@ -7317,6 +7322,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
         ingredientes: meal.Ingredientes,
         instrucciones:meal.Instrucciones||r?.instrucciones||(lang==='en'?'No preparation steps available.':'Sin pasos de preparación disponibles.'),
         racion_texto: racTxt,
+        raciones:     parseInt(meal.raciones||1)||1,
         kcal_objetivo:Math.round(parseFloat(meal.Calorias_Totales)||0),
       });
     } else if(r){
@@ -7331,6 +7337,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
         ingredientes: escalarIngredientesJS(r.ingredientes||'', fRac),
         instrucciones:r.instrucciones||(lang==='en'?'No preparation steps available.':'Sin pasos de preparación disponibles.'),
         racion_texto: racTxt,
+        raciones:     parseInt(r.raciones||1)||1,
         kcal_objetivo:Math.round((parseFloat(r.calorias||r.calorias_totales||meal.Calorias_Totales)||0)*fRac),
       });
     } else {
@@ -7427,6 +7434,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
       ingredientes: escalarIngredientesJS(elegida.ingredientes||'', f),
       instrucciones:elegida.instrucciones||(lang==='en'?'No preparation steps available.':'Sin pasos de preparación disponibles.'),
       racion_texto: f!==1 ? racionTextoJS(f, lang) : '',
+      raciones:     parseInt(elegida.raciones||1)||1,
       kcal_objetivo:kcalObj,
     });
     showT&&showT({icon:"🍽️",title:lang==='en'?'New recipe!':'¡Nueva receta!',sub:'-10 💎'});
@@ -7446,6 +7454,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
           Grasas_g:      Math.round((parseFloat(elegida.grasas_g)||0)*f),
           Ingredientes:  escalarIngredientesJS(elegida.ingredientes||'', f),
           Instrucciones: elegida.instrucciones||'',
+          raciones:      parseInt(elegida.raciones||1)||1,
           ...(f!==1?{racion_factor:f, racion_texto:racionTextoJS(f,lang)}:{}),
         };
         setPlanes(ps=>ps.map((p,i)=>i===idx?{...p,plan_json:nuevoJson}:p));
@@ -7481,6 +7490,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
       grasas_g:      tomaReceta.grasas_g,
       ingredientes:  tomaReceta.ingredientes,
       instrucciones: tomaReceta.instrucciones,
+      raciones:      tomaReceta.raciones||1,
       saved_at: new Date().toISOString(),
     };
     const newSaved = [entry, ...(savedRecipes||[])];
@@ -7896,7 +7906,10 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
             </div>
           </div>
           {ingList.length>0&&(<div style={{background:T.bgCard,borderRadius:20,padding:'18px 18px',marginBottom:12,border:'1px solid rgba(255,255,255,0.07)'}}>
-            <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:12}}>{lang==='en'?'Ingredients':'Ingredientes'}</div>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap',marginBottom:12}}>
+              <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em'}}>{lang==='en'?'Ingredients':'Ingredientes'}</div>
+              {tomaReceta.raciones>1&&(<div style={{fontSize:11,color:PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1,fontWeight:800,background:(PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1)+'22',borderRadius:20,padding:'3px 11px',whiteSpace:'nowrap'}}>🍽️ {lang==='en'?`Makes ${tomaReceta.raciones} servings`:`Rinde ${tomaReceta.raciones} raciones`}</div>)}
+            </div>
             <div style={{display:'flex',flexDirection:'column',gap:7}}>
               {ingList.map((ing,i)=>(<div key={i} style={{display:'flex',alignItems:'flex-start',gap:10}}><div style={{width:6,height:6,borderRadius:'50%',background:PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1,flexShrink:0,marginTop:6}}/><div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>{ing}</div></div>))}
             </div>
