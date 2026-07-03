@@ -7338,27 +7338,43 @@ const _DESPENSA=[
 const _UNIDADES=[
   [/^(kg|kilos?)\b\.?/i,"kg","peso"],[/^(gramos?|gr|g)\b\.?/i,"g","peso"],
   [/^(mililitros?|ml)\b\.?/i,"ml","peso"],[/^(cl)\b\.?/i,"cl","peso"],[/^(litros?|l)\b\.?/i,"l","peso"],
-  [/^cucharadas?(\s+soperas?)?\b/i,"cda","med"],[/^(cucharaditas?|cdtas?)\b\.?/i,"cdta","med"],[/^cdas?\b\.?/i,"cda","med"],
+  [/^cucharadas?(\s+soperas?)?(\s+rasas?|\s+colmadas?)?\b/i,"cda","med"],[/^(cucharaditas?|cdtas?)(\s+rasas?|\s+colmadas?)?\b\.?/i,"cdta","med"],[/^cdas?\b\.?/i,"cda","med"],
   [/^tarrinas?\b/i,"tarrina","cont"],[/^botes?\b/i,"bote","cont"],[/^latas?\b/i,"lata","cont"],
   [/^paquetes?\b/i,"paquete","cont"],[/^sobres?\b/i,"sobre","cont"],[/^botellas?\b/i,"botella","cont"],
   [/^bolsas?\b/i,"bolsa","cont"],[/^vasos?\b/i,"vaso","cont"],[/^tazas?\b/i,"taza","cont"],[/^briks?\b/i,"brik","cont"],
+  [/^tabletas?(\s+individual(es)?)?\b/i,"tableta","cont"],
+  [/^racion(?:es)?(\s+individual(es)?)?\b/i,"","ud"],[/^raci[oó]n(?:es)?(\s+individual(es)?)?\b/i,"","ud"],
+  [/^porci[oó]n(?:es)?(\s+individual(es)?)?\b/i,"","ud"],
   [/^(unidad(?:es)?|uds?)\b\.?/i,"","ud"],
   [/^(lonchas?|rodajas?|dientes?|hojas?|manojos?|piezas?|filetes?|rebanadas?|pu[nñ]ados?|onzas?|ramas?)\b/i,"","ud"],
 ];
+
 function agregarListaCompra(planJ){
   if(!planJ) return [];
   const nrm=s=>s.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
+  // items: clave = SOLO el nombre normalizado → el mismo ingrediente expresado en
+  // unidades distintas entre recetas ("120 g requesón" + "¼ tarrina requesón") se
+  // FUSIONA en una fila; dentro, sus cantidades se sub-agregan en `partes` por
+  // unidad y el badge las muestra combinadas: "120 g + 1 tarrina".
   const mapa=new Map();
-  const meter=(key,item)=>{const p=mapa.get(key); if(p){p.cant=(p.cant||0)+(item.cant||0); p.veces=(p.veces||0)+(item.veces||0);} else mapa.set(key,{key,...item});};
+  const meter=(nombre, parte)=>{
+    const key = parte.tipo==="desp" ? "desp|"+nombre : nrm(nombre);
+    let item=mapa.get(key);
+    if(!item){ item={key,nombre,tipo:parte.tipo,partes:[]}; mapa.set(key,item); }
+    const pk = parte.tipo+"|"+(parte.uni||"");
+    const prev=item.partes.find(p=>p._pk===pk);
+    if(prev){ prev.cant=(prev.cant||0)+(parte.cant||0); prev.veces=(prev.veces||0)+(parte.veces||0); }
+    else item.partes.push({_pk:pk,...parte});
+  };
   for(const tm of PLAN_TOMAS){
     const celdas=planJ[tm]; if(!celdas) continue;
     for(let d=1; d<=7; d++){
       const ing=celdas[String(d)]?.Ingredientes; if(!ing) continue;
-      // split por comas respetando paréntesis + fusión de descriptores
-      const segs=[]; 
+      // split por comas respetando paréntesis + fusión de descriptores (con espacio)
+      const segs=[];
       for(const raw of String(ing).split(/,(?![^(]*\))/)){
         const s=raw.trim(); if(!s) continue;
-        if(segs.length&&_DESC_SEG.test(s)) segs[segs.length-1]+=", "+s; else segs.push(s);
+        if(segs.length&&_DESC_SEG.test(s)) segs[segs.length-1]+=" "+s; else segs.push(s);
       }
       for(const seg of segs){
         const s=_normFrac(seg);
@@ -7373,26 +7389,27 @@ function agregarListaCompra(planJ){
           const mu=resto.match(rx);
           if(mu){ uni=u; tipo=tp; resto=resto.slice(mu[0].length).trim(); break; }
         }
-        resto=resto.replace(/^de\s+/i,"").replace(/^del\s+/i,"").trim().replace(/[.,;\s]+$/,"");
+        resto=resto.replace(/^de\s+/i,"").replace(/^del\s+/i,"").trim()
+                   .replace(/\s*,\s*/g," ").replace(/[.,;\s]+$/,"");
         if(mp){ cant=parseFloat(mp[1].replace(",",".")); uni=mp[2].toLowerCase(); if(uni==="gr"||uni==="gramos")uni="g"; tipo="peso"; }
-        // normalizar peso/volumen a g/ml
         if(tipo==="peso"){
           if(uni==="kg"){cant*=1000;uni="g";} if(uni==="l"){cant*=1000;uni="ml";} if(uni==="cl"){cant*=10;uni="ml";}
         }
         const nombre=resto||seg.trim();
-        // ── Despensa: compra realista, agrupada por canónico ──
         const desp=_DESPENSA.find(([rx])=>rx.test(nombre));
-        if(desp){ meter("desp|"+desp[1],{nombre:desp[1],tipo:"desp",compra:desp[2],cant:0,veces:1}); continue; }
+        if(desp){ meter(desp[1],{tipo:"desp",compra:desp[2],veces:1}); continue; }
         if(!nombre) continue;
-        if(cant==null){ meter(nrm(nombre)+"|x",{nombre,tipo:"veces",cant:0,veces:1}); continue; }
-        if(tipo==="peso"){ meter(nrm(nombre)+"|"+uni,{nombre,tipo,uni,cant,veces:0}); continue; }
-        if(tipo==="med"){ meter(nrm(nombre)+"|"+uni,{nombre,tipo,uni,cant,veces:0}); continue; }
-        if(tipo==="cont"){ meter(nrm(nombre)+"|c|"+uni,{nombre,tipo,uni,cant,veces:0}); continue; }
-        meter(nrm(nombre)+"|ud",{nombre,tipo:"ud",cant,veces:0});   // contable ("1 cebolla")
+        if(cant==null){ meter(nombre,{tipo:"veces",veces:1}); continue; }
+        if(tipo==="peso"||tipo==="med"){ meter(nombre,{tipo,uni,cant}); continue; }
+        if(tipo==="cont"){ meter(nombre,{tipo,uni,cant}); continue; }
+        meter(nombre,{tipo:"ud",cant});   // contable ("1 cebolla")
       }
     }
   }
+  // Orden de partes dentro de cada fila: peso primero, luego envases, medidas, ud
+  const rango={peso:0,cont:1,med:2,ud:3,veces:4,desp:5};
   const items=[...mapa.values()];
+  for(const it of items) it.partes.sort((a,b)=>(rango[a.tipo]??9)-(rango[b.tipo]??9));
   const alfa=(a,b)=>a.nombre.localeCompare(b.nombre,"es");
   return items.filter(x=>x.tipo!=="desp").sort(alfa)
        .concat(items.filter(x=>x.tipo==="desp").sort(alfa));
@@ -7924,7 +7941,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
   // probar varias opciones hasta dar con la buena acumularía ingredientes de
   // recetas descartadas. Para comprar una receta concreta (cambiada o del
   // recetario) está el botón 🛒 Comprar de cada receta (MiniListaCompra).
-  const listaSnapKey=`gbh:listasnap2:${profile?.id}:${plan?.semana??"x"}`;
+  const listaSnapKey=`gbh:listasnap3:${profile?.id}:${plan?.semana??"x"}`;
   const [listaSnap,setListaSnap]=React.useState(null);
   React.useEffect(()=>{
     if(!planJ){ setListaSnap(null); return; }
@@ -7936,22 +7953,22 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[listaSnapKey, planJ?1:0]);
   const listaItems = listaSnap||[];
-  // Formato de la cantidad según el tipo de ítem:
-  //  · despensa → compra realista ("1 botella")   · contenedor → techo ("1 bote")
-  //  · peso → "1,75 kg" en español                 · medidas → "3 cda"
-  const fmtCant=(it)=>{
-    if(it.tipo==="desp") return it.compra||"";
-    if(it.tipo==="veces") return it.veces>1?`×${it.veces}`:"";
-    if(it.tipo==="cont"){ const n=Math.max(1,Math.ceil(it.cant)); return `${n} ${it.uni}${n>1?"s":""}`; }
-    if(it.tipo==="ud"){ const n=Math.max(1,Math.ceil(it.cant)); return `×${n}`; }
-    if(it.tipo==="med"){ const n=Math.round(it.cant*10)/10; return `${String(n).replace(".",",")} ${it.uni}`; }
-    let c=it.cant, u=it.uni;
+  // Formato del badge: cada fila puede combinar varias expresiones del mismo
+  // ingrediente entre recetas → "120 g + 1 tarrina". Despensa → compra realista.
+  const fmtParte=(p)=>{
+    if(p.tipo==="desp") return p.compra||"";
+    if(p.tipo==="veces") return p.veces>1?`×${p.veces}`:"";
+    if(p.tipo==="cont"){ const n=Math.max(1,Math.ceil(p.cant)); return `${n} ${p.uni}${n>1?"s":""}`; }
+    if(p.tipo==="ud"){ const n=Math.max(1,Math.ceil(p.cant)); return `×${n}`; }
+    if(p.tipo==="med"){ const n=Math.round(p.cant*10)/10; return `${String(n).replace(".",",")} ${p.uni}`; }
+    let c=p.cant, u=p.uni;
     if(u==="g"&&c>=1000){ c=c/1000; u="kg"; }
     if(u==="ml"&&c>=1000){ c=c/1000; u="l"; }
     const num=(Math.round(c*100)/100).toString().replace(".",",");
     return `${num} ${u}`;
   };
-  const listaLsKey=`gbh:listacompra2:${profile?.id}:${plan?.semana??"x"}`;
+  const fmtCant=(it)=>(it.partes||[]).map(fmtParte).filter(Boolean).join(" + ");
+  const listaLsKey=`gbh:listacompra3:${profile?.id}:${plan?.semana??"x"}`;
   const [listaChecks,setListaChecks]=React.useState({});
   const [listaConfirm,setListaConfirm]=React.useState(false);   // doble tap en Regenerar
   const [miniCompra,setMiniCompra]=React.useState(null);        // popup 🛒 por receta (vista diaria)
