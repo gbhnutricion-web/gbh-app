@@ -8573,20 +8573,20 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
           <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Weekly Plan':'Planificación semanal'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Full meal plan for the week':'Menú completo de la semana con todas las tomas'}</div></div>
           <div style={{color:T.g1,fontSize:20,flexShrink:0}}>›</div>
         </button>
+        <button onClick={()=>setView('daily')} style={{background:'rgba(100,181,246,0.12)',border:'2px solid rgba(100,181,246,0.3)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
+          <div style={{fontSize:40,flexShrink:0}}>🍽️</div>
+          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Daily Plan':'Plan diario'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Your meals for today with full recipe details':'Tus platos de hoy con receta e ingredientes'}</div></div>
+          <div style={{color:'#64B5F6',fontSize:20,flexShrink:0}}>›</div>
+        </button>
         <button onClick={()=>setView('pdf')} style={{background:'rgba(255,200,0,0.10)',border:'2px solid rgba(255,200,0,0.3)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
           <div style={{fontSize:40,flexShrink:0}}>📒</div>
-          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Recipes & Shopping List':'Recetas y lista de la compra'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Download the PDF with your weekly recipes':'Descarga el PDF con recetas y lista del súper'}</div></div>
+          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Weekly Recipes':'Recetas semanales'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Download the PDF with this week\'s recipes':'Descarga el PDF con las recetas de la semana'}</div></div>
           <div style={{color:T.au1,fontSize:20,flexShrink:0}}>›</div>
         </button>
         <button onClick={()=>setView('lista')} style={{background:'rgba(255,140,60,0.10)',border:'2px solid rgba(255,140,60,0.32)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
           <div style={{fontSize:40,flexShrink:0}}>🛒</div>
-          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Interactive Shopping List':'Lista de la compra interactiva'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Tick off ingredients as you shop':'Marca los ingredientes mientras compras'}</div></div>
+          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Shopping List':'Lista de la compra'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Tick off ingredients as you shop':'Marca los ingredientes mientras compras'}</div></div>
           <div style={{color:'#FF8C3C',fontSize:20,flexShrink:0}}>›</div>
-        </button>
-        <button onClick={()=>setView('daily')} style={{background:'rgba(100,181,246,0.12)',border:'2px solid rgba(100,181,246,0.3)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
-          <div style={{fontSize:40,flexShrink:0}}>🍽️</div>
-          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Daily Schedule':'Programación diaria'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Your meals for today with full recipe details':'Tus platos de hoy con receta e ingredientes'}</div></div>
-          <div style={{color:'#64B5F6',fontSize:20,flexShrink:0}}>›</div>
         </button>
         <button onClick={()=>setView('seguimiento')} style={{background:'rgba(206,130,255,0.12)',border:'2px solid rgba(206,130,255,0.3)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
           <div style={{fontSize:40,flexShrink:0}}>📊</div>
