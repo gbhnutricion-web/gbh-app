@@ -7321,7 +7321,7 @@ function _normFrac(t){
   return t;
 }
 // Fragmentos que continúan el ingrediente anterior (mismo criterio que el script)
-const _DESC_SEG=/^(crud[oa]s?|cocid[oa]s?|en\s+polvo|virgen(\s+extra)?|extra\b|negr[oa]s?|blanc[oa]s?|fresc[oa]s?|natural(es)?|light|(semi)?desnatad[oa]s?|enter[oa]s?|integral(es)?|picad[oa]s?|rallad[oa]s?|tostad[oa]s?|molid[oa]s?|pelad[oa]s?|trocead[oa]s?|sin\s+sal|sin\s+az[uú]car(es)?|sin\s+gluten|sin\s+lactosa|sin\s+c[aá]scara|sec[oa]s?|madur[oa]s?|grandes?|peque[nñ][oa]s?|al\s+gusto|heura)\b/i;
+const _DESC_SEG=/^(crud[oa]s?|cocid[oa]s?|en\s+polvo|virgen(\s+extra)?|extra\b|negr[oa]s?|blanc[oa]s?|fresc[oa]s?|natural(es)?|light|(semi)?desnatad[oa]s?|enter[oa]s?|integral(es)?|picad[oa]s?|rallad[oa]s?|tostad[oa]s?|molid[oa]s?|pelad[oa]s?|trocead[oa]s?|sin\s+sal|sin\s+az[uú]car(es)?|sin\s+gluten|sin\s+lactosa|sin\s+c[aá]scara|sec[oa]s?|madur[oa]s?|grandes?|peque[nñ][oa]s?|al\s+gusto|heura|en\s+conserva|enlatad[oa]s?|en\s+lata|al\s+natural|escurrid[oa]s?|hervid[oa]s?|cocinad[oa]s?|asad[oa]s?|frit[oa]s?|congelad[oa]s?|descongelad[oa]s?|remojad[oa]s?|desalad[oa]s?|deshuesad[oa]s?|rellen[oa]s?\b|bulbo\b|zumo(\s+fresc[oa])?\b|laminad[oa]s?|desmenuzad[oa]s?|triturad[oa]s?|machacad[oa]s?|batid[oa]s?|exprimid[oa]s?|ahumad[oa]s?|salad[oa]s?|cortad[oa]s?(\s+en\s+\w+)?|en\s+dados|en\s+rodajas|en\s+tiras|en\s+juliana|en\s+copos?|en\s+alm[ií]bar|en\s+su\s+jugo|en\s+aceite|en\s+trozos|sin\s+piel|sin\s+hueso|sin\s+espinas?|para\s+(el\s+desayuno|decorar|servir|acompa[nñ]ar|untar|el\s+caf[eé]))\b/i;
 // Despensa: [detector, nombre canónico, compra realista]
 const _DESPENSA=[
   [/aceite/i,               "Aceite de oliva",        "1 botella"],
@@ -7349,6 +7349,8 @@ const _UNIDADES=[
   [/^(lonchas?|rodajas?|dientes?|hojas?|manojos?|piezas?|filetes?|rebanadas?|pu[nñ]ados?|onzas?|ramas?)\b/i,"","ud"],
 ];
 
+const _RX_AGUA=/^\s*[\d.,\u00bd\u00bc\u00be\u2153\u2154\u215b ]*\s*(vasos?|tazas?|ml|l|litros?)?\s*(de\s+)?(agua|hielo|cubitos\s+de\s+hielo)(\s+(fr[i\u00ed]a|caliente|tibia|mineral|con\s+gas|hirviendo|filtrada))?\s*(\([^)]*\))?\s*$/i;
+const _KEY_STRIP=/\b(crud[oa]s?|fresc[oa]s?|tostad[oa]s?|pelad[oa]s?|picad[oa]s?|trocead[oa]s?|laminad[oa]s?|cortad[oa]s?(\s+en\s+\w+)?|en\s+dados|en\s+rodajas|en\s+tiras|en\s+juliana|en\s+trozos|sin\s+sal|sin\s+piel|sin\s+hueso|sin\s+espinas?|deshuesad[oa]s?|escurrid[oa]s?)\b/gi;
 function agregarListaCompra(planJ){
   if(!planJ) return [];
   const nrm=s=>s.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
@@ -7357,10 +7359,20 @@ function agregarListaCompra(planJ){
   // FUSIONA en una fila; dentro, sus cantidades se sub-agregan en `partes` por
   // unidad y el badge las muestra combinadas: "120 g + 1 tarrina".
   const mapa=new Map();
+  // Clave canónica ligera: sin tildes, sin descriptores de ESTADO que no cambian
+  // el producto de compra (tostado, crudo, pelado, cortes…) y en singular.
+  // Así "25 g almendras" y "30 g almendra tostada" son UNA fila. Descriptores que
+  // SÍ cambian el producto (frito, ahumado, en conserva, en polvo…) se conservan.
+  const claveNombre=(nombre)=>{
+    let k=nrm(nombre).replace(_KEY_STRIP," ").replace(/\b(y|o|e|u)\b/g," ")
+                     .replace(/\s+/g," ").trim();
+    return k.split(" ").map(w=>w.length>3&&w.endsWith("s")?w.slice(0,-1):w).join(" ");
+  };
   const meter=(nombre, parte)=>{
-    const key = parte.tipo==="desp" ? "desp|"+nombre : nrm(nombre);
+    const key = parte.tipo==="desp" ? "desp|"+nombre : (claveNombre(nombre)||nrm(nombre));
     let item=mapa.get(key);
     if(!item){ item={key,nombre,tipo:parte.tipo,partes:[]}; mapa.set(key,item); }
+    else if(nombre.length<item.nombre.length){ item.nombre=nombre; }  // nombre más corto = más genérico
     const pk = parte.tipo+"|"+(parte.uni||"");
     const prev=item.partes.find(p=>p._pk===pk);
     if(prev){ prev.cant=(prev.cant||0)+(parte.cant||0); prev.veces=(prev.veces||0)+(parte.veces||0); }
@@ -7378,7 +7390,7 @@ function agregarListaCompra(planJ){
       }
       for(const seg of segs){
         const s=_normFrac(seg);
-        if(/^(cubitos de )?(agua|hielo)\b/i.test(s)) continue;   // no se compra
+        if(_RX_AGUA.test(s)) continue;   // el agua no se compra ("0.2 vaso de agua (40 g)")
         // cantidad entre paréntesis: manda ("0.5 taza (45 g) avena" → 45 g)
         const mp=s.match(/\((\d+(?:[.,]\d+)?)\s*(g|gr|gramos|ml|cl|kg|l)\b[^)]*\)/i);
         let resto=s.replace(/\([^)]*\)/g," ").replace(/\s+/g," ").trim();
@@ -7941,7 +7953,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
   // probar varias opciones hasta dar con la buena acumularía ingredientes de
   // recetas descartadas. Para comprar una receta concreta (cambiada o del
   // recetario) está el botón 🛒 Comprar de cada receta (MiniListaCompra).
-  const listaSnapKey=`gbh:listasnap3:${profile?.id}:${plan?.semana??"x"}`;
+  const listaSnapKey=`gbh:listasnap4:${profile?.id}:${plan?.semana??"x"}`;
   const [listaSnap,setListaSnap]=React.useState(null);
   React.useEffect(()=>{
     if(!planJ){ setListaSnap(null); return; }
