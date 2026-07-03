@@ -7338,7 +7338,7 @@ const _DESPENSA=[
 const _UNIDADES=[
   [/^(kg|kilos?)\b\.?/i,"kg","peso"],[/^(gramos?|gr|g)\b\.?/i,"g","peso"],
   [/^(mililitros?|ml)\b\.?/i,"ml","peso"],[/^(cl)\b\.?/i,"cl","peso"],[/^(litros?|l)\b\.?/i,"l","peso"],
-  [/^cucharadas?(\s+soperas?)?(\s+rasas?|\s+colmadas?)?\b/i,"cda","med"],[/^(cucharaditas?|cdtas?)(\s+rasas?|\s+colmadas?)?\b\.?/i,"cdta","med"],[/^cdas?\b\.?/i,"cda","med"],
+  [/^cucharadas?(\s+soperas?|\s+de\s+postre|\s+de\s+caf[eé])?(\s+rasas?|\s+colmadas?)?\b/i,"cda","med"],[/^(cucharaditas?|cdtas?)(\s+rasas?|\s+colmadas?)?\b\.?/i,"cdta","med"],[/^cdas?\b\.?/i,"cda","med"],
   [/^tarrinas?\b/i,"tarrina","cont"],[/^botes?\b/i,"bote","cont"],[/^latas?\b/i,"lata","cont"],
   [/^paquetes?\b/i,"paquete","cont"],[/^sobres?\b/i,"sobre","cont"],[/^botellas?\b/i,"botella","cont"],
   [/^bolsas?\b/i,"bolsa","cont"],[/^vasos?\b/i,"vaso","cont"],[/^tazas?\b/i,"taza","cont"],[/^briks?\b/i,"brik","cont"],
@@ -7346,9 +7346,81 @@ const _UNIDADES=[
   [/^racion(?:es)?(\s+individual(es)?)?\b/i,"","ud"],[/^raci[oó]n(?:es)?(\s+individual(es)?)?\b/i,"","ud"],
   [/^porci[oó]n(?:es)?(\s+individual(es)?)?\b/i,"","ud"],
   [/^(unidad(?:es)?|uds?)\b\.?/i,"","ud"],
-  [/^(lonchas?|rodajas?|dientes?|hojas?|manojos?|piezas?|filetes?|rebanadas?|pu[nñ]ados?|onzas?|ramas?)\b/i,"","ud"],
+  [/^(lonchas?|rodajas?|dientes?|hojas?|manojos?|piezas?|filetes?|rebanadas?|pu[nñ]ados?|onzas?|ramas?|gajos?|manos?\s+cerradas?(\s+sin\s+c[aá]scara)?)\b/i,"","sub"],
 ];
 
+// ─── Diccionario canónico + formatos de compra (GENERADO desde gbh_automatizacion.py) ───
+// NO editar a mano: regenerar con el exportador si cambian los canónicos del script.
+const _CANON=[[["leche"],"Leche","🥛","Huevos y lácteos","liquido_l",null,null],[["yogur","yogures"],"Yogur","🥛","Huevos y lácteos","pack_yogur",null,null],[["huevo","huevos","clara","claras","yema","yemas"],"Huevos","🥚","Huevos y lácteos","docena",null,null],[["queso","mozzarella","burata","parmesano","feta","requeson"],"Queso","🧀","Huevos y lácteos","peso_queso",null,null],[["mantequilla"],"Mantequilla","🧈","Huevos y lácteos","tarrina",null,null],[["nata","crema de leche"],"Nata","🥛","Huevos y lácteos","brick_nata",null,null],[["pollo","pechuga"],"Pollo","🍗","Carnicería","peso_carne",null,null],[["pavo"],"Pavo","🦃","Carnicería","peso_carne",null,null],[["ternera","vacuno"],"Ternera","🥩","Carnicería","peso_carne",null,null],[["cerdo","lomo de cerdo"],"Cerdo","🥩","Carnicería","peso_carne",null,null],[["cordero"],"Cordero","🥩","Carnicería","peso_carne",null,null],[["jamon"],"Jamón","🥓","Carnicería","lonchas",null,null],[["bacon","panceta","guanciale"],"Bacon","🥓","Carnicería","lonchas",null,null],[["salchicha"],"Salchichas","🌭","Carnicería","paquete_ud",null,6],[["morcilla"],"Morcilla","🥩","Carnicería","pieza_emb",null,null],[["chorizo"],"Chorizo","🥩","Carnicería","pieza_emb",null,null],[["carne picada","carne molida"],"Carne picada","🥩","Carnicería","peso_carne",null,null],[["salmon"],"Salmón","🐟","Pescadería","peso_pescado",null,null],[["merluza"],"Merluza","🐟","Pescadería","peso_pescado",null,null],[["bacalao"],"Bacalao","🐟","Pescadería","peso_pescado",null,null],[["atun"],"Atún","🐟","Pescadería","peso_pescado",null,null],[["sardina"],"Sardinas","🐟","Pescadería","peso_pescado",null,null],[["anchoa","boqueron"],"Anchoas","🐟","Pescadería","lata",null,null],[["lubina"],"Lubina","🐟","Pescadería","peso_pescado",null,null],[["dorada"],"Dorada","🐟","Pescadería","peso_pescado",null,null],[["mero"],"Mero","🐟","Pescadería","peso_pescado",null,null],[["trucha"],"Trucha","🐟","Pescadería","peso_pescado",null,null],[["gamba","langostino"],"Gambas","🦐","Pescadería","peso_pescado",null,null],[["almeja"],"Almejas","🦪","Pescadería","peso_pescado",null,null],[["mejillon"],"Mejillones","🦪","Pescadería","malla_marisco",null,null],[["calamar","sepia","chipiron"],"Calamar","🦑","Pescadería","peso_pescado",null,null],[["pulpo"],"Pulpo","🐙","Pescadería","peso_pescado",null,null],[["tomate","cherry","jitomate"],"Tomate","🍅","Frutas y verduras","verdura_ud",120,null],[["puerro"],"Puerro","🥬","Frutas y verduras",null,null,null],[["yuca","mandioca"],"Yuca","🥔","Frutas y verduras",null,null,null],[["haba"],"Habas","🫛","Frutas y verduras",null,null,null],[["aceituna","olivas"],"Aceitunas","🫒","Despensa",null,null,null],[["crema de cacahuete","mantequilla de cacahuete","cacahuete"],"Crema de cacahuete","🥜","Despensa",null,null,null],[["maicena","almidon de maiz","fecula"],"Maicena","🌽","Despensa",null,null,null],[["curcuma","comino","pimenton","oregano","albahaca","curry","canela","nuez moscada","eneldo","tomillo","romero"],"Especias","🧂","Despensa","especia",null,null],[["albaricoque seco","orejon","ciruela seca","higo seco","datil"],"Fruta desecada","🍑","Despensa",null,null,null],[["vainilla","esencia de vainilla","extracto de vainilla"],"Vainilla","🍶","Despensa",null,null,null],[["melocoton","durazno","nectarina","paraguayo"],"Melocotón","🍑","Frutas y verduras",null,null,null],[["barrita","barritas de cereales"],"Barritas de cereales","🍫","Despensa",null,null,null],[["cebolla","cebolleta","cebollino"],"Cebolla","🧅","Frutas y verduras","verdura_ud",150,null],[["ajo"],"Ajo","🧄","Frutas y verduras","cabeza_ajo",null,null],[["pimiento"],"Pimiento","🫑","Frutas y verduras","verdura_ud",150,null],[["lechuga","escarola","canonigo","rucula"],"Lechuga/hojas verdes","🥬","Frutas y verduras","bolsa_ensalada",null,null],[["espinaca"],"Espinacas","🥬","Frutas y verduras","bolsa_verdura",null,null],[["calabacin"],"Calabacín","🥒","Frutas y verduras","verdura_ud",250,null],[["berenjena"],"Berenjena","🍆","Frutas y verduras","verdura_ud",250,null],[["zanahoria"],"Zanahoria","🥕","Frutas y verduras","malla_kg",null,null],[["patata"],"Patata","🥔","Frutas y verduras","malla_kg",null,null],[["boniato","camote","batata"],"Boniato","🍠","Frutas y verduras","verdura_ud",250,null],[["aguacate","palta"],"Aguacate","🥑","Frutas y verduras","verdura_ud",200,null],[["champinon","seta","hongo"],"Champiñones/setas","🍄","Frutas y verduras","bandeja_verdura",null,null],[["brocoli"],"Brócoli","🥦","Frutas y verduras","verdura_ud",300,null],[["coliflor"],"Coliflor","🥦","Frutas y verduras","verdura_ud",500,null],[["calabaza"],"Calabaza","🎃","Frutas y verduras","peso_verdura",null,null],[["pepino"],"Pepino","🥒","Frutas y verduras","verdura_ud",200,null],[["limon"],"Limón","🍋","Frutas y verduras","malla_citrico",null,null],[["lima"],"Lima","🍋","Frutas y verduras","verdura_ud",70,null],[["naranja","mandarina"],"Naranja/mandarina","🍊","Frutas y verduras","malla_citrico",null,null],[["manzana"],"Manzana","🍎","Frutas y verduras","fruta_ud",180,null],[["platano","banana"],"Plátano","🍌","Frutas y verduras","fruta_ud",120,null],[["mango"],"Mango","🥭","Frutas y verduras","fruta_ud",300,null],[["fresa","freson"],"Fresas","🍓","Frutas y verduras","tarrina_fruta",null,null],[["frambuesa","arandano","mora","frutos rojos","grosella"],"Frutos rojos","🫐","Frutas y verduras","tarrina_fruta",null,null],[["kiwi"],"Kiwi","🥝","Frutas y verduras","fruta_ud",100,null],[["pera"],"Pera","🍐","Frutas y verduras","fruta_ud",180,null],[["melon"],"Melón","🍈","Frutas y verduras","pieza_grande",null,null],[["pina"],"Piña","🍍","Frutas y verduras","pieza_grande",null,null],[["jengibre"],"Jengibre","🫚","Frutas y verduras","trozo_raiz",null,null],[["guisante"],"Guisantes","🟢","Frutas y verduras","bolsa_legumbre",null,null],[["judia verde","judias verdes"],"Judías verdes","🫛","Frutas y verduras","manojo_verdura",null,null],[["esparrago"],"Espárragos","🌱","Frutas y verduras","manojo_verdura",null,null],[["perejil","cilantro","albahaca","romero","tomillo","laurel","oregano","eneldo","menta","hierbabuena"],"Hierbas aromáticas","🌿","Frutas y verduras","manojo_hierba",null,null],[["lenteja"],"Lentejas","🫘","Legumbres y cereales","bote_legumbre",null,null],[["garbanzo"],"Garbanzos","🫘","Legumbres y cereales","bote_legumbre",null,null],[["alubia","judia blanca","frijol","judion"],"Alubias","🫘","Legumbres y cereales","bote_legumbre",null,null],[["arroz"],"Arroz","🍚","Legumbres y cereales","paquete_seco",null,null],[["quinoa"],"Quinoa","🌾","Legumbres y cereales","paquete_seco",null,null],[["avena"],"Avena","🌾","Legumbres y cereales","paquete_seco",null,null],[["tahini","tahin","pasta de sesamo","pasta de ajonjoli","crema de sesamo"],"Pasta de sésamo (tahini)","🥜","Despensa",null,null,null],[["pasta","espagueti","macarron","fideo","tallarin","penne","fusilli","lasana","canelone","noqui","gnocchi"],"Pasta","🍝","Legumbres y cereales","paquete_seco",null,null],[["pan","tostada","hojaldre"],"Pan/tostadas","🍞","Legumbres y cereales","barra_pan",null,null],[["harina"],"Harina","🌾","Legumbres y cereales","paquete_seco",null,null],[["cuscus"],"Cuscús","🌾","Legumbres y cereales","paquete_seco",null,null],[["tofu"],"Tofu","🌱","Legumbres y cereales","bloque",null,null],[["heura"],"Heura","🌱","Legumbres y cereales",null,null,null],[["seitan"],"Seitán","🌱","Legumbres y cereales",null,null,null],[["surimi","palitos de surimi","gula"],"Surimi","🐟","Pescadería",null,null,null],[["soja","soya"],"Soja","🌱","Legumbres y cereales","brick_bebida",null,null],[["hummus"],"Hummus","🫘","Legumbres y cereales","tarrina",null,null],[["aceite","aove"],"Aceite de oliva","🫒","Despensa","botella",null,null],[["maiz","choclo","elote"],"Maíz","🌽","Despensa",null,null,null],[["papaya"],"Papaya","🥭","Frutas y verduras",null,null,null],[["sal"],"Sal","🧂","Despensa","paquete_basico",null,null],[["pimienta"],"Pimienta","🧂","Despensa","especia",null,null],[["vinagre"],"Vinagre","🍶","Despensa","botella",null,null],[["azucar"],"Azúcar","🍬","Despensa","paquete_basico",null,null],[["edulcorante","estevia","sacarina"],"Edulcorante","🍬","Despensa","paquete_basico",null,null],[["miel"],"Miel","🍯","Despensa","bote_basico",null,null],[["chocolate","cacao","nocilla"],"Chocolate/cacao","🍫","Despensa","tableta",null,null],[["nuez","nueces","almendra","pistacho","anacardo","avellana","frutos secos","pasa","uva pasa","ciruela pasa","semillas","pinon","pinones"],"Frutos secos","🥜","Despensa","bolsa_secos",null,null],[["semilla","chia","lino","sesamo"],"Semillas","🌰","Despensa","paquete_basico",null,null],[["caldo"],"Caldo","🥣","Despensa","brick_caldo",null,null],[["vino"],"Vino","🍷","Despensa","botella",null,null],[["mermelada"],"Mermelada","🍓","Despensa","bote_basico",null,null],[["mostaza"],"Mostaza","🟡","Despensa","bote_basico",null,null],[["curry","pimenton","comino","azafran","canela","cayena","especias","clavo"],"Especias","🌶️","Despensa","especia",null,null],[["coco"],"Coco","🥥","Despensa","paquete_basico",null,null],[["gelatina"],"Gelatina","🍮","Despensa","paquete_basico",null,null],[["levadura","bicarbonato","polvo de hornear","polvo hornear","polvo para hornear"],"Levadura/bicarbonato","🧁","Despensa","paquete_basico",null,null],[["rape"],"Rape","🐟","Pescadería",null,null,null],[["lenguado"],"Lenguado","🐟","Pescadería",null,null,null],[["marisco"],"Marisco variado","🦐","Pescadería",null,null,null],[["pescado"],"Pescado","🐟","Pescadería",null,null,null],[["conejo"],"Conejo","🍖","Carnicería",null,null,null],[["mortadela"],"Mortadela","🥓","Carnicería",null,null,null],[["apio"],"Apio","🥬","Frutas y verduras",null,null,null],[["acelga"],"Acelgas","🥬","Frutas y verduras",null,null,null],[["alcachofa"],"Alcachofas","🌿","Frutas y verduras",null,null,null],[["berro"],"Berros","🥬","Frutas y verduras",null,null,null],[["endibia","endivia"],"Endibias","🥬","Frutas y verduras",null,null,null],[["hinojo"],"Hinojo","🌿","Frutas y verduras",null,null,null],[["germinado"],"Germinados","🌱","Frutas y verduras",null,null,null],[["guindilla"],"Guindilla","🌶️","Frutas y verduras",null,null,null],[["jalapeno","chile"],"Chile/jalapeño","🌶️","Frutas y verduras",null,null,null],[["col rizada","repollo","berza","lombarda","kale","col"],"Col/repollo","🥬","Frutas y verduras",null,null,null],[["granada"],"Granada","🔴","Frutas y verduras",null,null,null],[["higo"],"Higos","🟣","Frutas y verduras",null,null,null],[["sandia"],"Sandía","🍉","Frutas y verduras",null,null,null],[["menestra"],"Menestra de verduras","🥗","Frutas y verduras",null,null,null],[["chalota"],"Chalotas","🧅","Frutas y verduras",null,null,null],[["ajete"],"Ajetes","🧄","Frutas y verduras",null,null,null],[["ricotta","ricota","mascarpone","cottage"],"Queso fresco (ricotta/cottage)","🧀","Huevos y lácteos",null,null,null],[["cuajada"],"Cuajada","🥛","Huevos y lácteos",null,null,null],[["natillas","natilla"],"Natillas","🍮","Huevos y lácteos",null,null,null],[["bebida vegetal","bebida de avena","leche vegetal"],"Bebida vegetal","🥛","Huevos y lácteos",null,null,null],[["galleta"],"Galletas","🍪","Despensa",null,null,null],[["tortilla de trigo","tortillas de trigo","tortilla de maiz"],"Tortillas/wraps","🌯","Legumbres y cereales",null,null,null],[["oblea"],"Obleas","🥟","Legumbres y cereales",null,null,null],[["focaccia"],"Focaccia","🍞","Legumbres y cereales",null,null,null],[["judias pintas","judia pinta","alubia pinta","frijol pinto"],"Alubias pintas","🫘","Legumbres y cereales",null,null,null],[["proteina en polvo","proteina de suero","proteina aislada","whey","caseina"],"Proteína en polvo","🥤","Despensa",null,null,null],[["bechamel"],"Bechamel","🥫","Despensa",null,null,null],[["mayonesa"],"Mayonesa","🥫","Despensa",null,null,null],[["pesto"],"Pesto","🥫","Despensa",null,null,null],[["vinagreta"],"Vinagreta","🥫","Despensa",null,null,null],[["alcaparra"],"Alcaparras","🫒","Despensa",null,null,null],[["palmito"],"Palmitos","🥫","Despensa",null,null,null]];
+
+// Matching idéntico al script: gana la coincidencia más a la IZQUIERDA del texto
+// y, a igual posición, la clave más LARGA. Tolera plurales (almendra→almendras).
+const _canonMatch=(txt)=>{
+  const t=txt.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+  let mejor=null,mPos=1e9,mLen=-1;
+  for(const e of _CANON){
+    for(const c of e[0]){
+      const m=t.match(new RegExp("\\b"+c.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"(?:es|s)?\\b"));
+      if(!m) continue;
+      const pos=m.index, ln=m[0].length;
+      if(pos<mPos||(pos===mPos&&ln>mLen)){ mejor=e; mPos=pos; mLen=ln; }
+    }
+  }
+  return mejor;
+};
+// Porte fiel de formato_compra_realista (badges cortos: el nombre ya va a la izquierda)
+function _fmtCompra(e, c){
+  const tipo=e[4], pud=e[5], paq=e[6]||6;
+  const g=(c.g||0)+((pud&&c.ud)?c.ud*pud:0), ml=c.ml||0, ud=c.ud||0, cda=c.cda||0, cdta=c.cdta||0;
+  const rk=(gr,paso)=>{const kg=Math.max(paso,Math.ceil(gr/paso)*paso);return kg>=1000?`${Math.round(kg/100)/10} kg`.replace(".",","):`${kg} g`;};
+  if(["peso_carne","peso_pescado","peso_verdura","peso_queso"].includes(tipo)){
+    const gr=g>0?g:(ud?ud*150:250);
+    const env={peso_carne:"bandeja ",peso_pescado:"",peso_verdura:"",peso_queso:"cuña "}[tipo];
+    return `${env}~${rk(gr,tipo.includes("carne")||tipo.includes("pescado")?500:250)}`;
+  }
+  if(tipo==="lonchas") return "1 paquete";
+  if(tipo==="pieza_emb") return "1 pieza";
+  if(tipo==="paquete_ud"){ const n=Math.max(1,Math.ceil(ud||1)); return n<=paq?"1 paquete":`${Math.ceil(n/paq)} paquetes`; }
+  if(tipo==="lata"){ const n=Math.max(1,Math.ceil(ud||1)); return n>1?`${n} latas`:"1 lata"; }
+  if(tipo==="malla_marisco") return "1 malla";
+  if(tipo==="verdura_ud"||tipo==="fruta_ud"){
+    const n=Math.max(1, Math.ceil((ud||0)+((c.g||0)/(pud||150))));
+    return `${n} ud`;
+  }
+  if(tipo==="cabeza_ajo") return "1 cabeza";
+  if(tipo==="bolsa_ensalada"||tipo==="bolsa_verdura"||tipo==="bolsa_legumbre"||tipo==="bolsa_secos") return "1 bolsa";
+  if(tipo==="bandeja_verdura") return "1 bandeja";
+  if(tipo==="malla_kg") return `1 malla (~${rk(g>0?g:500,500)})`;
+  if(tipo==="malla_citrico"){ const n=ud?Math.ceil(ud):Math.max(2,Math.round(g/180)); return `1 malla (~${Math.max(n,4)} ud)`; }
+  if(tipo==="tarrina_fruta"||tipo==="tarrina") return "1 tarrina";
+  if(tipo==="pieza_grande") return "1 ud";
+  if(tipo==="trozo_raiz") return "1 trozo";
+  if(tipo==="manojo_verdura") return "1 manojo";
+  if(tipo==="manojo_hierba") return "1 manojo o bote seco";
+  if(tipo==="docena"){
+    const n=ud?Math.ceil(ud):Math.max(2,Math.round(g/55));
+    if(n<=6) return "½ docena"; if(n<=12) return "1 docena"; return `${Math.ceil(n/12)} docenas`;
+  }
+  if(tipo==="liquido_l"){
+    let tot=ml+(g||0)+cda*15+cdta*5; if(tot<=0)tot=500;   // muchas recetas dan leche en g≈ml
+    const L=Math.max(1,Math.ceil(tot/1000));
+    return L>1?`${L} L`:"1 brick (1 L)";
+  }
+  if(tipo==="pack_yogur"){ const n=ud?Math.ceil(ud):4; return `1 pack (${Math.max(n,4)} ud)`; }
+  if(tipo==="brick_nata"||tipo==="brick_bebida"||tipo==="brick_caldo") return "1 brick";
+  if(tipo==="botella") return "1 botella";
+  if(tipo==="bote_legumbre"){ const n=ud?Math.max(1,Math.ceil(ud)):(g?Math.max(1,Math.ceil(g/400)):1); return n>1?`${n} botes`:"1 bote"; }
+  if(tipo==="paquete_basico"||tipo==="paquete_seco") return "1 paquete";
+  if(tipo==="bote_basico"||tipo==="especia") return "1 bote";
+  if(tipo==="tableta") return "1 tableta";
+  if(tipo==="bloque") return "1 bloque";
+  if(tipo==="barra_pan") return "1 barra";
+  // Sin formato configurado: aproximación redondeada
+  if(g>0) return `~${rk(g,100)}`;
+  if(ud>0) return `×${Math.ceil(ud)}`;
+  if(cda||cdta) return `${cda||cdta} ${cda?"cda":"cdta"}`;
+  return "al gusto";
+}
 const _RX_AGUA=/^\s*[\d.,\u00bd\u00bc\u00be\u2153\u2154\u215b ]*\s*(vasos?|tazas?|ml|l|litros?)?\s*(de\s+)?(agua|hielo|cubitos\s+de\s+hielo)(\s+(fr[i\u00ed]a|caliente|tibia|mineral|con\s+gas|hirviendo|filtrada))?\s*(\([^)]*\))?\s*$/i;
 const _KEY_STRIP=/\b(crud[oa]s?|fresc[oa]s?|tostad[oa]s?|pelad[oa]s?|picad[oa]s?|trocead[oa]s?|laminad[oa]s?|cortad[oa]s?(\s+en\s+\w+)?|en\s+dados|en\s+rodajas|en\s+tiras|en\s+juliana|en\s+trozos|sin\s+sal|sin\s+piel|sin\s+hueso|sin\s+espinas?|deshuesad[oa]s?|escurrid[oa]s?)\b/gi;
 function agregarListaCompra(planJ){
@@ -7407,13 +7479,29 @@ function agregarListaCompra(planJ){
         if(tipo==="peso"){
           if(uni==="kg"){cant*=1000;uni="g";} if(uni==="l"){cant*=1000;uni="ml";} if(uni==="cl"){cant*=10;uni="ml";}
         }
-        const nombre=resto||seg.trim();
+        const nombre=(resto||seg.trim()).replace(/[()]/g," ").replace(/\s+/g," ").trim();
+        if(!nombre) continue;
+        // ── Camino canónico: mismo diccionario y formatos comerciales que el PDF ──
+        // "Vale más comprar una unidad comercial, aunque sobre, que ajustar por
+        // gramos" — se acumulan g/ml/ud/cda y el badge sale de _fmtCompra.
+        const can=_canonMatch(seg);
+        if(can){
+          const key="can|"+can[1];
+          let item=mapa.get(key);
+          if(!item){ item={key,nombre:can[2]+" "+can[1],sortName:can[1],cat:can[3],entry:can,c:{}}; mapa.set(key,item); }
+          const c=item.c;
+          if(mp||tipo==="peso"){ const ku=(uni==="ml")?"ml":"g"; c[ku]=(c[ku]||0)+(cant||0); }
+          else if(tipo==="med"){ c[uni]=(c[uni]||0)+(cant||0); }
+          else if(tipo==="cont"||tipo==="ud"||(cant!=null&&!tipo)){ c.ud=(c.ud||0)+(cant||0); }  // "2 tomate" sin unidad = contable
+          else if(tipo==="sub"){ c.sub=(c.sub||0)+(cant||0); }   // rodajas/lonchas: no son unidades enteras
+          continue;
+        }
         const desp=_DESPENSA.find(([rx])=>rx.test(nombre));
         if(desp){ meter(desp[1],{tipo:"desp",compra:desp[2],veces:1}); continue; }
-        if(!nombre) continue;
         if(cant==null){ meter(nombre,{tipo:"veces",veces:1}); continue; }
         if(tipo==="peso"||tipo==="med"){ meter(nombre,{tipo,uni,cant}); continue; }
         if(tipo==="cont"){ meter(nombre,{tipo,uni,cant}); continue; }
+        if(tipo==="sub"){ meter(nombre,{tipo:"ud",cant:1}); continue; }   // sin canónico: 1 ud cubre
         meter(nombre,{tipo:"ud",cant});   // contable ("1 cebolla")
       }
     }
@@ -7421,10 +7509,10 @@ function agregarListaCompra(planJ){
   // Orden de partes dentro de cada fila: peso primero, luego envases, medidas, ud
   const rango={peso:0,cont:1,med:2,ud:3,veces:4,desp:5};
   const items=[...mapa.values()];
-  for(const it of items) it.partes.sort((a,b)=>(rango[a.tipo]??9)-(rango[b.tipo]??9));
-  const alfa=(a,b)=>a.nombre.localeCompare(b.nombre,"es");
-  return items.filter(x=>x.tipo!=="desp").sort(alfa)
-       .concat(items.filter(x=>x.tipo==="desp").sort(alfa));
+  for(const it of items) if(it.partes) it.partes.sort((a,b)=>(rango[a.tipo]??9)-(rango[b.tipo]??9));
+  const esDesp=(x)=>x.tipo==="desp"||x.cat==="Despensa";
+  const alfa=(a,b)=>(a.sortName||a.nombre).localeCompare(b.sortName||b.nombre,"es");
+  return items.filter(x=>!esDesp(x)).sort(alfa).concat(items.filter(esDesp).sort(alfa));
 }
 // ── Estados de cumplimiento por comida (registro del paciente) ──────────────
 // El registro por toma alimenta los mini-botones de Inicio y CIERRA la misión de
@@ -7953,7 +8041,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
   // probar varias opciones hasta dar con la buena acumularía ingredientes de
   // recetas descartadas. Para comprar una receta concreta (cambiada o del
   // recetario) está el botón 🛒 Comprar de cada receta (MiniListaCompra).
-  const listaSnapKey=`gbh:listasnap4:${profile?.id}:${plan?.semana??"x"}`;
+  const listaSnapKey=`gbh:listasnap5:${profile?.id}:${plan?.semana??"x"}`;
   const [listaSnap,setListaSnap]=React.useState(null);
   React.useEffect(()=>{
     if(!planJ){ setListaSnap(null); return; }
@@ -7979,7 +8067,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
     const num=(Math.round(c*100)/100).toString().replace(".",",");
     return `${num} ${u}`;
   };
-  const fmtCant=(it)=>(it.partes||[]).map(fmtParte).filter(Boolean).join(" + ");
+  const fmtCant=(it)=>it.entry?_fmtCompra(it.entry,it.c||{}):(it.partes||[]).map(fmtParte).filter(Boolean).join(" + ");
   const listaLsKey=`gbh:listacompra3:${profile?.id}:${plan?.semana??"x"}`;
   const [listaChecks,setListaChecks]=React.useState({});
   const [listaConfirm,setListaConfirm]=React.useState(false);   // doble tap en Regenerar
