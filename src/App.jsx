@@ -7469,6 +7469,54 @@ function _fmtCompra(e, c){
   if(cda||cdta) return `${cda||cdta} ${cda?"cda":"cdta"}`;
   return "al gusto";
 }
+// ─── Alimentos rechazados (GENERADO desde _RECHAZO_EXPANSION del script) ─────
+// El cambio de receta con gemas debe respetar los rechazos/alergias igual que
+// la generación: sin esto, un paciente que rechaza pescado podía traerse un
+// salmón con un cambio (fuga detectada jul-2026, casos Joselyn/Virginia).
+const _RECH_EXP={"pescado":["abadejo","anchoa","anguila","atun","bacalao","besugo","bonito","boqueron","caballa","dorada","emperador","gulas","huevas","jurel","lenguado","lubina","merluza","mero","mojama","palitos de cangrejo","palitos de mar","palometa","panga","perca","pescadilla","pescado","pez espada","rape","rodaballo","salmon","salmonete","sardina","surimi","tilapia","trucha","ventresca"],"pescados":["abadejo","anchoa","anguila","atun","bacalao","besugo","bonito","boqueron","caballa","dorada","emperador","gulas","huevas","jurel","lenguado","lubina","merluza","mero","mojama","palitos de cangrejo","palitos de mar","palometa","panga","perca","pescadilla","pescado","pez espada","rape","rodaballo","salmon","salmonete","sardina","surimi","tilapia","trucha","ventresca"],"marisco":["almeja","berberecho","bogavante","calamar","cangrejo","carabinero","centollo","chipiron","chirla","cigala","coquina","gamba","langosta","langostino","marisco","mejillon","navaja","necora","ostra","percebe","pulpo","quisquilla","sepia","vieira","zamburina"],"mariscos":["almeja","berberecho","bogavante","calamar","cangrejo","carabinero","centollo","chipiron","chirla","cigala","coquina","gamba","langosta","langostino","marisco","mejillon","navaja","necora","ostra","percebe","pulpo","quisquilla","sepia","vieira","zamburina"],"carne":["albondiga","bacon","beicon","buey","butifarra","carne","carrillada","cerdo","chorizo","chuleta","codillo","conejo","contramuslo","cordero","costilla","embutido","entrecot","fiambre","hamburguesa","jamon","lomo","longaniza","morcilla","mortadela","muslo","panceta","pato","pavo","pechuga","pollo","presa","rabo","salami","salchicha","salchichon","solomillo","ternera","tocino","vaca","vacuno"],"carnes":["albondiga","bacon","beicon","buey","butifarra","carne","carrillada","cerdo","chorizo","chuleta","codillo","conejo","contramuslo","cordero","costilla","embutido","entrecot","fiambre","hamburguesa","jamon","lomo","longaniza","morcilla","mortadela","muslo","panceta","pato","pavo","pechuga","pollo","presa","rabo","salami","salchicha","salchichon","solomillo","ternera","tocino","vaca","vacuno"],"huevo":["clara","flan","frittata","huevo","mayonesa","merengue","quiche","revuelto","tortilla espanola","tortilla francesa","yema"],"huevos":["clara","flan","frittata","huevo","mayonesa","merengue","quiche","revuelto","tortilla espanola","tortilla francesa","yema"],"lacteo":["bechamel","burgos","cheddar","cottage","cuajada","emmental","feta","gouda","helado","kefir","lacteo","leche","mantequilla","mascarpone","mozzarella","nata","natillas","parmesano","queso","queso crema","queso fresco","requeson","ricotta","yogur","yogurt"],"lacteos":["bechamel","burgos","cheddar","cottage","cuajada","emmental","feta","gouda","helado","kefir","lacteo","leche","mantequilla","mascarpone","mozzarella","nata","natillas","parmesano","queso","queso crema","queso fresco","requeson","ricotta","yogur","yogurt"],"lactosa":["bechamel","burgos","cheddar","cottage","cuajada","emmental","feta","gouda","helado","kefir","lacteo","leche","mantequilla","mascarpone","mozzarella","nata","natillas","parmesano","queso","queso crema","queso fresco","requeson","ricotta","yogur","yogurt"],"gluten":["baguette","biscote","bizcocho","bocadillo","canelon","cebada","centeno","colines","cous cous","crepe","croqueta","cuscus","empanada","empanadilla","espagueti","fideo","focaccia","galleta","gluten","gnocchi","gofre","harina","hojaldre","lasana","macarron","magdalena","masa","noodles","noquis","pan","pan rallado","pasta","picos","pizza","raviolis","rebozado","seitan","tallarin","tostada","trigo","wrap"],"trigo":["baguette","biscote","bizcocho","bocadillo","canelon","cebada","centeno","colines","cous cous","crepe","croqueta","cuscus","empanada","empanadilla","espagueti","fideo","focaccia","galleta","gluten","gnocchi","gofre","harina","hojaldre","lasana","macarron","magdalena","masa","noodles","noquis","pan","pan rallado","pasta","picos","pizza","raviolis","rebozado","seitan","tallarin","tostada","trigo","wrap"],"fruto seco":["almendra","anacardo","avellana","cacahuete","castana","fruto seco","frutos secos","macadamia","mani","nueces","nuez","pecana","pinon","pistacho"],"frutos secos":["almendra","anacardo","avellana","cacahuete","castana","fruto seco","frutos secos","macadamia","mani","nueces","nuez","pecana","pinon","pistacho"],"frutoseco":["almendra","anacardo","avellana","cacahuete","castana","fruto seco","frutos secos","macadamia","mani","nueces","nuez","pecana","pinon","pistacho"],"soja":["edamame","miso","soja","soja texturizada","tempeh","tofu"],"legumbre":["alubia","frijol","garbanzo","haba","judia blanca","judion","legumbre","lenteja"],"legumbres":["alubia","frijol","garbanzo","haba","judia blanca","judion","legumbre","lenteja"],"casqueria":["callos","casqueria","higado","molleja","rinon","sesos"],"conserva":["conserva","lata"],"conservas":["conserva","lata"],"baina":["judia verde","vaina"],"bainas":["judia verde","vaina"],"vinagrillo":["encurtido","pepinillo","vinagre"],"vinagrillos":["encurtido","pepinillo","vinagre"],"col":["berza","col","coliflor","kale","lombarda","repollo"],"coles":["berza","col","coliflor","kale","lombarda","repollo"]};
+const _RECH_STOP=new Set(["los","las","que","con","por","del","una","uno","este","esta","como","muy","para","the","and","alimentos","alimento","comida","comidas","ningun","ninguna","nada","tipo","tipos"]);
+function interpretarRechazados(notas){
+  const pref={terms:new Set(), tipos:new Set()};
+  const t=String(notas||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+  if(!t) return pref;
+  const pats=[/rechazad[oa]s?\s*:?\s*([^\n.]*)/g,/alergi[ao]s?\s*:?\s*([^\n.]*)/g,
+              /no me gustan?\s*:?\s*([^\n.]*)/g,/no le gustan?\s*:?\s*([^\n.]*)/g,
+              /no tolero\s*:?\s*([^\n.]*)/g,/no come\s*:?\s*([^\n.]*)/g];
+  for(const pat of pats){
+    let m;
+    while((m=pat.exec(t))!==null){
+      const seg=m[1]||"";
+      if(/\bpescados?\b/.test(seg)) pref.tipos.add("Pescado");
+      if(/\bcarnes?\b/.test(seg))   pref.tipos.add("Carne");
+      for(const k in _RECH_EXP){
+        if(new RegExp("\\b"+k+"\\b").test(seg)) for(const v of _RECH_EXP[k]) pref.terms.add(v);
+      }
+      for(const tr of seg.split(/[,;]|\sy\s|\se\s/)){
+        const pals=tr.trim().split(/\s+/).filter(p=>p&&p.length>=3&&!_RECH_STOP.has(p));
+        if(!pals.length) continue;
+        const cand=pals[0].replace(/[.:]+$/,"");
+        if(cand.length>=3&&!_RECH_STOP.has(cand)){
+          if(_RECH_EXP[cand]) for(const v of _RECH_EXP[cand]) pref.terms.add(v);
+          else pref.terms.add(cand);
+        }
+      }
+    }
+  }
+  return pref;
+}
+function recetaRechazadaJS(rec, pref){
+  if(!pref||(!pref.terms.size&&!pref.tipos.size)) return false;
+  if(pref.tipos.has(String(rec.tipo||rec.Tipo||""))) return true;
+  const txt=String((rec.nombre||rec.nombre_receta||"")+" "+(rec.ingredientes||""))
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+  for(const r of pref.terms){
+    let raiz=r;
+    if(raiz.endsWith("es")&&raiz.length>4) raiz=raiz.slice(0,-2);
+    else if(raiz.endsWith("s")&&raiz.length>3) raiz=raiz.slice(0,-1);
+    if(new RegExp("\\b"+raiz.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"(s|es)?\\b").test(txt)) return true;
+  }
+  return false;
+}
 const _RX_AGUA=/^\s*[\d.,\u00bd\u00bc\u00be\u2153\u2154\u215b ]*\s*(vasos?|tazas?|ml|l|litros?)?\s*(de\s+)?(agua|hielo|cubitos\s+de\s+hielo)(\s+(fr[i\u00ed]a|caliente|tibia|mineral|con\s+gas|hirviendo|filtrada))?\s*(\([^)]*\))?\s*$/i;
 const _KEY_STRIP=/\b(crud[oa]s?|fresc[oa]s?|tostad[oa]s?|pelad[oa]s?|picad[oa]s?|trocead[oa]s?|laminad[oa]s?|cortad[oa]s?(\s+en\s+\w+)?|en\s+dados|en\s+rodajas|en\s+tiras|en\s+juliana|en\s+trozos|sin\s+sal|sin\s+piel|sin\s+hueso|sin\s+espinas?|deshuesad[oa]s?|escurrid[oa]s?)\b/gi;
 function agregarListaCompra(planJ){
@@ -8338,6 +8386,10 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
     const okFranja = (r)=> !hayCategorias || catBucket(r)===bucketObj; // franja: restricción DURA (nunca se relaja)
     const okOtra   = (r)=>nomDe(r)!==nombreActual;
     const okKcal   = (r)=>{const k=kcalDe(r);return kcalActual===0||(k>=kcalActual*0.8&&k<=kcalActual*1.2);};
+    // SEGURIDAD: alimentos rechazados/alergias del paciente (notas del perfil).
+    // Filtro DURO en TODOS los niveles de relajación — nunca se sirve un rechazado.
+    const rechPref = interpretarRechazados(profile?.notas);
+    const okRech   = (r)=>!recetaRechazadaJS(r, rechPref);
     // Prioridad de selección. La FRANJA se mantiene en los cuatro niveles; el
     // tipo (carne/pescado/…) se prioriza y solo se relaja —siempre dentro de la
     // misma franja— si no hay ninguna alternativa del mismo tipo.
@@ -8346,10 +8398,10 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
     //   3) misma franja + kcal parecidas
     //   4) misma franja
     const pools = [
-      recetas.filter(r=>okTipo(r)&&okFranja(r)&&okOtra(r)&&okKcal(r)),
-      recetas.filter(r=>okTipo(r)&&okFranja(r)&&okOtra(r)),
-      recetas.filter(r=>okFranja(r)&&okOtra(r)&&okKcal(r)),
-      recetas.filter(r=>okFranja(r)&&okOtra(r)),
+      recetas.filter(r=>okRech(r)&&okTipo(r)&&okFranja(r)&&okOtra(r)&&okKcal(r)),
+      recetas.filter(r=>okRech(r)&&okTipo(r)&&okFranja(r)&&okOtra(r)),
+      recetas.filter(r=>okRech(r)&&okFranja(r)&&okOtra(r)&&okKcal(r)),
+      recetas.filter(r=>okRech(r)&&okFranja(r)&&okOtra(r)),
     ];
     const pool = pools.find(p=>p.length) || [];
     if(!pool.length){
