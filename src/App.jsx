@@ -119,6 +119,8 @@ const TRANS = {
     recipeOfDay:"🍰 Receta del día",
     calories:"Calorías", protein:"Proteína", carbs:"Hidratos", fat:"Grasas",
     ingredients:"🛒 Ingredientes", preparation:"👨‍🍳 Preparación",
+    buyBtn:"🛒 Comprar", buyListSub:"Marca lo que vayas metiendo en el carro",
+    listReset:"🔄 Regenerar lista", listConfirm:"Toca otra vez para confirmar ↺",
     loadingRecipe:"Cargando receta...",
     recipeLoadError:"No se pudo cargar la receta.\nComprueba tu conexión.",
     retry:"Reintentar",
@@ -328,6 +330,8 @@ const TRANS = {
     recipeOfDay:"🍰 Recipe of the day",
     calories:"Calories", protein:"Protein", carbs:"Carbs", fat:"Fat",
     ingredients:"🛒 Ingredients", preparation:"👨‍🍳 Preparation",
+    buyBtn:"🛒 Buy", buyListSub:"Tick items as you add them to your cart",
+    listReset:"🔄 Reset list", listConfirm:"Tap again to confirm ↺",
     loadingRecipe:"Loading recipe...",
     recipeLoadError:"Could not load the recipe.\nCheck your connection.",
     retry:"Retry",
@@ -1490,6 +1494,76 @@ function BigBtn({icon,label,done,onClick}){
     <button onClick={onClick} style={{width:"100%",padding:"18px 20px",borderRadius:20,border:`3px solid ${T.g3}`,cursor:"pointer",fontSize:17,fontWeight:900,background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"white",boxShadow:`0 6px 0 ${T.g3}`,transition:"all 0.15s",letterSpacing:"0.02em",display:"flex",alignItems:"center",justifyContent:"center",gap:14,animation:"glow 2.5s ease-in-out infinite",marginBottom:12,fontFamily:"'Nunito',sans-serif"}}>
       <span style={{fontSize:28}}>🍽️</span>{label}
     </button>
+  );
+}
+
+// ─── Desglose de dieta: mini-botones por toma (☀️🍎🍽️🥤🌙) ────────────────────
+// Sustituye al botón único de dieta cuando el paciente tiene plan publicado.
+// Cada botón refleja el estado registrado con el color de PLAN_CUMPL; sin
+// registrar se ve apagado. La tarjeta se pone verde al registrar TODAS las tomas.
+function MealBtns({tomas, meals, done, lang, onTap}){
+  const reg = tomas.filter(tm=>meals[tm]).length;
+  // ── Oveja-guía 🐑: señala la toma de la franja horaria actual (hora local del
+  // móvil). Se recoloca sola cada minuto por si la app queda abierta. Con tomas
+  // ausentes (p. ej. sin merienda), apunta a la última toma cuya franja empezó.
+  const [,setTick]=React.useState(0);
+  React.useEffect(()=>{ const id=setInterval(()=>setTick(x=>x+1),60000); return ()=>clearInterval(id); },[]);
+  const _ahora=new Date(); const _h=_ahora.getHours()+_ahora.getMinutes()/60;
+  let idxOveja=0; tomas.forEach((tm,i)=>{ if(_h>=(PLAN_TOMA_HORA[tm]??0)) idxOveja=i; });
+  const LBL = lang==="en"
+    ? {Desayuno:"BRKFST",Almuerzo:"SNACK 1",Comida:"LUNCH",Merienda:"SNACK 2",Cena:"DINNER"}
+    : {Desayuno:"DESAY.",Almuerzo:"ALMUER.",Comida:"COMIDA",Merienda:"MERIEN.",Cena:"CENA"};
+  return(
+    <div style={{background:done?"linear-gradient(135deg,rgba(43,122,0,0.5),rgba(88,204,2,0.25))":T.bgWood,
+      border:`3px solid ${done?T.g1:T.g3}`,borderRadius:20,padding:"13px 12px 11px",marginBottom:12,
+      boxShadow:`0 6px 0 ${done?T.g3:"rgba(0,0,0,0.4)"}`,transition:"all 0.25s"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:10}}>
+        <span style={{fontSize:20}}>{done?"✅":"🍽️"}</span>
+        <span style={{fontWeight:900,fontSize:14,color:done?T.g2:T.t1,fontFamily:"'Nunito',sans-serif"}}>
+          {done
+            ? (lang==="en"?"Today's diet logged! +15 XP":"¡Dieta del día registrada! +15 XP")
+            : (lang==="en"?`Log your meals · ${reg}/${tomas.length}`:`Registra tus comidas · ${reg}/${tomas.length}`)}
+        </span>
+      </div>
+      {/* Fila espejo de la botonera: la oveja cae exactamente sobre su toma */}
+      {!done&&(
+        <div style={{display:"flex",gap:6,justifyContent:"center",marginBottom:2}}>
+          {tomas.map((tm,i)=>(
+            <div key={tm} style={{flex:1,maxWidth:72,minWidth:0,display:"flex",flexDirection:"column",alignItems:"center",lineHeight:1,minHeight:26}}>
+              {i===idxOveja&&(<>
+                <span style={{fontSize:15,display:"inline-block",animation:"tomaBob 1.6s ease-in-out infinite"}}>🐑</span>
+                <span style={{fontSize:8,color:T.t3,marginTop:1}}>▼</span>
+              </>)}
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{display:"flex",gap:6,justifyContent:"center"}}>
+        {tomas.map(tm=>{
+          const est=meals[tm];
+          const info=est?PLAN_CUMPL.find(x=>x.k===est):null;
+          const c=info?.c||T.g1;
+          return(
+            <button key={tm} onClick={()=>onTap(tm)} title={tm} style={{
+              flex:1,maxWidth:72,minWidth:0,display:"flex",flexDirection:"column",alignItems:"center",gap:3,
+              background:est?c+"2e":"rgba(255,255,255,0.06)",
+              border:`2px solid ${est?c:"rgba(255,255,255,0.16)"}`,
+              borderRadius:14,padding:"9px 2px 7px",cursor:"pointer",
+              boxShadow:est?`0 3px 0 ${c}55`:"0 3px 0 rgba(0,0,0,0.35)",
+              transition:"all 0.15s",fontFamily:"'Nunito',sans-serif"}}>
+              <span style={{fontSize:19,lineHeight:1,filter:est?"none":"grayscale(0.55)"}}>{PLAN_TOMA_IC[tm]}</span>
+              <span style={{fontSize:7.5,fontWeight:900,color:est?c:T.t3,letterSpacing:"0.02em",whiteSpace:"nowrap"}}>{LBL[tm]}</span>
+              <span style={{fontSize:11,lineHeight:1}}>{est?(info?.ic||"✅"):<span style={{color:T.t3}}>○</span>}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div style={{textAlign:"center",marginTop:8,fontSize:9.5,color:T.t3,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>
+        {lang==="en"
+          ? "Tap = followed ✅ · tap a logged meal to edit it in your daily plan"
+          : "Toca = seguida ✅ · toca una comida registrada para editarla en tu plan del día"}
+      </div>
+    </div>
   );
 }
 
@@ -2952,8 +3026,166 @@ function ChestOpenModal({streak, onClose, onCollect, onGoHome}){
 }
 
 // ─── Weight chart component ───────────────────────────────────────────────────
-function WeightChart({chartData,setWeightMode,goalWeight}){
+// ─── Tarjeta de progreso compartible (estilo Strava) ─────────────────────────
+// Dibuja en un canvas 1080×1350 (4:5, ideal Instagram) un calco de la pestaña
+// de peso: nombre, gráfica, kg perdidos/ganados, barra de objetivo y marca GBH.
+// Devuelve {dataUrl, blob} para previsualizar, descargar o compartir.
+async function generarTarjetaProgreso({nombre, chartData, goalWeight, lang}){
+  const W=1080, H=1350;
+  const cv=document.createElement("canvas"); cv.width=W; cv.height=H;
+  const x=cv.getContext("2d");
+  const es=lang!=="en";
+  const rr=(px,py,pw,ph,r)=>{x.beginPath();x.moveTo(px+r,py);x.arcTo(px+pw,py,px+pw,py+ph,r);x.arcTo(px+pw,py+ph,px,py+ph,r);x.arcTo(px,py+ph,px,py,r);x.arcTo(px,py,px+pw,py,r);x.closePath();};
+  const F=(w,s)=>`${w} ${s}px 'Nunito','Segoe UI Emoji',sans-serif`;
+  const num=v=>String(Math.round(v*10)/10).replace(".",",");
+
+  const ini=chartData.find(d=>d.isInitial)||chartData[0];
+  const fin=chartData[chartData.length-1];
+  const diff=fin.weight-ini.weight, lost=diff<0;
+  const toGoal=goalWeight!=null?fin.weight-goalWeight:null;
+  const totalNeeded=goalWeight!=null?ini.weight-goalWeight:null;
+  const pct=goalWeight==null?null:(totalNeeded===0?100:Math.min(100,Math.max(0,Math.round((1-(toGoal/totalNeeded))*100))));
+  const reached=goalWeight!=null&&Math.abs(toGoal)<=0.5;
+  const dias=Math.max(1,Math.round((new Date(fin.date)-new Date(ini.date))/864e5));
+  const semanas=Math.max(1,Math.round(dias/7));
+
+  // ── Fondo: degradado verde GBH + halos suaves ──
+  const bg=x.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0,"#0d2b12"); bg.addColorStop(0.55,"#14301b"); bg.addColorStop(1,"#0a2313");
+  x.fillStyle=bg; x.fillRect(0,0,W,H);
+  x.globalAlpha=0.07;
+  x.fillStyle=reached?"#FFC800":"#58CC02";
+  x.beginPath();x.arc(W-80,140,260,0,7);x.fill();
+  x.beginPath();x.arc(60,H-160,300,0,7);x.fill();
+  x.globalAlpha=1;
+
+  // ── Cabecera de marca ──
+  x.textAlign="center";
+  x.fillStyle="#c9a84c"; x.font=F(900,30);
+  x.fillText("🌱 G B H   N U T R I C I Ó N", W/2, 92);
+  x.fillStyle="#fafdf6"; x.font=F(900,66);
+  x.fillText(es?"MI PROGRESO":"MY PROGRESS", W/2, 178);
+  x.fillStyle="rgba(250,253,246,0.75)"; x.font=F(700,32);
+  const quien=(nombre||"").trim();
+  x.fillText(`${quien?quien+" · ":""}${semanas} ${es?(semanas===1?"semana":"semanas"):(semanas===1?"week":"weeks")}`, W/2, 232);
+
+  // ── Gráfica de peso ──
+  const gx=100, gy=300, gw=W-200, gh=330;
+  x.fillStyle="rgba(255,255,255,0.045)"; rr(gx-30,gy-30,gw+60,gh+80,28); x.fill();
+  const ws=chartData.map(d=>d.weight);
+  let mn=Math.min(...ws), mx=Math.max(...ws);
+  if(goalWeight!=null){ mn=Math.min(mn,goalWeight); mx=Math.max(mx,goalWeight); }
+  const pad=(mx-mn)*0.15||1; mn-=pad; mx+=pad;
+  const X=i=>chartData.length===1?gx+gw/2:gx+(i/(chartData.length-1))*gw;
+  const Y=v=>gy+gh-((v-mn)/(mx-mn))*gh;
+  // línea de objetivo (rosa discontinua)
+  if(goalWeight!=null){
+    x.strokeStyle="#FF6B9D"; x.lineWidth=4; x.setLineDash([16,12]);
+    x.beginPath(); x.moveTo(gx,Y(goalWeight)); x.lineTo(gx+gw,Y(goalWeight)); x.stroke();
+    x.setLineDash([]);
+    x.fillStyle="#FF6B9D"; x.font=F(800,24); x.textAlign="left";
+    x.fillText(`${es?"Objetivo":"Goal"} ${num(goalWeight)} kg`, gx, Y(goalWeight)-12);
+  }
+  // área bajo la curva
+  x.beginPath(); x.moveTo(X(0),Y(ws[0]));
+  ws.forEach((v,i)=>x.lineTo(X(i),Y(v)));
+  x.lineTo(X(ws.length-1),gy+gh); x.lineTo(X(0),gy+gh); x.closePath();
+  const ar=x.createLinearGradient(0,gy,0,gy+gh);
+  ar.addColorStop(0,"rgba(255,200,0,0.22)"); ar.addColorStop(1,"rgba(255,200,0,0)");
+  x.fillStyle=ar; x.fill();
+  // línea real (dorada) con puntos
+  x.strokeStyle="#FFC800"; x.lineWidth=7; x.lineJoin="round";
+  x.beginPath(); ws.forEach((v,i)=>i?x.lineTo(X(i),Y(v)):x.moveTo(X(i),Y(v))); x.stroke();
+  const step=Math.max(1,Math.ceil(ws.length/14));
+  ws.forEach((v,i)=>{ if(i%step&&i!==ws.length-1) return;
+    x.fillStyle="#FFC800"; x.beginPath(); x.arc(X(i),Y(v),9,0,7); x.fill();
+    x.fillStyle="#0d2b12"; x.beginPath(); x.arc(X(i),Y(v),4,0,7); x.fill(); });
+  // etiquetas primer/último peso y fechas
+  x.font=F(900,30);
+  x.textAlign="left";  x.fillStyle="rgba(250,253,246,0.9)"; x.fillText(`${num(ini.weight)} kg`, gx, Y(ini.weight)+(Y(ini.weight)<gy+60?52:-20));
+  x.textAlign="right"; x.fillStyle="#FFC800"; x.fillText(`${num(fin.weight)} kg`, gx+gw, Y(fin.weight)+(Y(fin.weight)<gy+60?52:-20));
+  x.font=F(700,22); x.fillStyle="rgba(250,253,246,0.5)";
+  x.textAlign="left";  x.fillText(ini.date.slice(5).replace("-","/"), gx, gy+gh+38);
+  x.textAlign="right"; x.fillText(fin.date.slice(5).replace("-","/"), gx+gw, gy+gh+38);
+
+  // ── Bloque grande: kg perdidos/ganados ──
+  const by=740;
+  x.textAlign="center";
+  x.font=F(900,64); x.fillText(lost?"🪶":"💪🏼", W/2, by);
+  x.fillStyle="#fafdf6"; x.font=F(900,110);
+  x.fillText(`${num(Math.abs(diff))} kg`, W/2, by+118);
+  x.fillStyle="rgba(250,253,246,0.75)"; x.font=F(800,38);
+  x.fillText(lost?(es?"perdidos":"lost"):diff>0?(es?"ganados":"gained"):(es?"mantenidos":"maintained"), W/2, by+172);
+  x.fillStyle="rgba(250,253,246,0.5)"; x.font=F(700,30);
+  x.fillText(`${num(ini.weight)} kg  →  ${num(fin.weight)} kg`, W/2, by+222);
+
+  // ── Barra de objetivo ──
+  if(goalWeight!=null){
+    const py=1030, ph2=170, px2=90, pw2=W-180;
+    x.fillStyle=reached?"rgba(255,200,0,0.10)":"rgba(255,107,157,0.08)";
+    rr(px2,py,pw2,ph2,26); x.fill();
+    x.strokeStyle=reached?"#FFC800":"rgba(255,107,157,0.5)"; x.lineWidth=4; rr(px2,py,pw2,ph2,26); x.stroke();
+    x.textAlign="left"; x.font=F(900,30);
+    x.fillStyle=reached?"#FFC800":"#FF6B9D";
+    x.fillText(reached?(es?"🎉 ¡OBJETIVO ALCANZADO!":"🎉 GOAL REACHED!"):(es?"🎯 Camino al objetivo":"🎯 On my way"), px2+34, py+52);
+    x.textAlign="right"; x.fillStyle="#fafdf6"; x.font=F(900,42);
+    x.fillText(`${pct}%`, px2+pw2-34, py+56);
+    // barra
+    const bx=px2+34, bw2=pw2-68, bh2=26, byy=py+80;
+    x.fillStyle="rgba(255,255,255,0.10)"; rr(bx,byy,bw2,bh2,13); x.fill();
+    const fillW=Math.max(bh2,bw2*pct/100);
+    const bg2=x.createLinearGradient(bx,0,bx+fillW,0);
+    if(reached){ bg2.addColorStop(0,"#FFC800"); bg2.addColorStop(1,"#58CC02"); }
+    else { bg2.addColorStop(0,"#FF6B9D"); bg2.addColorStop(1,"#FF4081"); }
+    x.fillStyle=bg2; rr(bx,byy,fillW,bh2,13); x.fill();
+    x.textAlign="left"; x.fillStyle="rgba(250,253,246,0.65)"; x.font=F(700,26);
+    x.fillText(reached
+      ?(es?"Lo conseguí 💚":"I made it 💚")
+      :(es?`Me quedan ${num(Math.abs(toGoal))} kg · objetivo ${num(goalWeight)} kg`:`${num(Math.abs(toGoal))} kg to go · goal ${num(goalWeight)} kg`),
+      px2+34, py+ph2-26);
+  }
+
+  // ── Pie de marca ──
+  x.textAlign="center"; x.fillStyle="rgba(201,168,76,0.85)"; x.font=F(800,28);
+  x.fillText("gbh-app.vercel.app", W/2, H-56);
+
+  const dataUrl=cv.toDataURL("image/png");
+  const blob=await new Promise(res=>cv.toBlob(res,"image/png"));
+  return {dataUrl, blob};
+}
+
+function WeightChart({chartData,setWeightMode,goalWeight,shareName,lang}){
   const t=useLang();
+  // ── Tarjeta compartible: modal con la imagen generada {dataUrl, blob} ──
+  const [shareCard,setShareCard]=React.useState(null);
+  const [genBusy,setGenBusy]=React.useState(false);
+  const abrirTarjeta=async()=>{
+    if(genBusy) return;
+    setGenBusy(true);
+    try{ setShareCard(await generarTarjetaProgreso({nombre:shareName,chartData,goalWeight,lang})); }
+    catch(e){ console.warn("[tarjeta]",e); }
+    finally{ setGenBusy(false); }
+  };
+  const compartirTarjeta=async()=>{
+    if(!shareCard) return;
+    try{
+      const file=new File([shareCard.blob],"gbh-progreso.png",{type:"image/png"});
+      if(navigator.canShare&&navigator.canShare({files:[file]})){
+        await navigator.share({files:[file]});
+        return;
+      }
+    }catch(e){ /* cancelado o no soportado → descarga */ }
+    descargarTarjeta();
+  };
+  const descargarTarjeta=()=>{
+    if(!shareCard) return;
+    const a=document.createElement("a");
+    a.href=shareCard.dataUrl; a.download="gbh-progreso.png";
+    document.body.appendChild(a); a.click(); a.remove();
+  };
+  // Estado "objetivo alcanzado" para dorar el botón (mismo criterio que la barra)
+  const _fin=chartData[chartData.length-1];
+  const _reached=goalWeight!=null&&_fin&&Math.abs(_fin.weight-goalWeight)<=0.5;
   if(!chartData.length)return null;
   const f=chartData[0].weight,l=chartData[chartData.length-1].weight,diff=l-f,down=diff<0;
   return(
@@ -3030,6 +3262,41 @@ function WeightChart({chartData,setWeightMode,goalWeight}){
                 </div>
               );
             })()}
+            {/* ── Compartir progreso: botón único, discreto; dorado y brillante
+                   cuando el objetivo está alcanzado (hito que merece compartirse) ── */}
+            <button onClick={abrirTarjeta} style={{
+              width:"100%",marginTop:12,padding:"14px 18px",borderRadius:18,cursor:"pointer",
+              display:"flex",alignItems:"center",justifyContent:"center",gap:10,
+              background:_reached?`linear-gradient(135deg,${T.au1},${T.au2})`:"rgba(255,255,255,0.05)",
+              border:_reached?`2px solid ${T.au1}`:"2px solid rgba(255,255,255,0.14)",
+              color:_reached?"#1A1000":T.t1,fontWeight:900,fontSize:14,
+              fontFamily:"'Nunito',sans-serif",
+              boxShadow:_reached?`0 5px 0 ${T.au3}`:"0 4px 0 rgba(0,0,0,0.3)",
+              animation:_reached?"glow 2.5s ease-in-out infinite":"none"}}>
+              <span style={{fontSize:20}}>🖼️</span>
+              {genBusy
+                ?(lang==='en'?'Creating card…':'Creando tarjeta…')
+                :_reached
+                  ?(lang==='en'?'Goal reached — share it!':'¡Objetivo alcanzado — compártelo!')
+                  :(lang==='en'?'Share my progress':'Compartir mi progreso')}
+            </button>
+            {/* Modal de previsualización de la tarjeta */}
+            {shareCard&&(
+              <div onClick={()=>setShareCard(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:2000,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"20px 16px"}}>
+                <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:380,display:"flex",flexDirection:"column",gap:12}}>
+                  <img src={shareCard.dataUrl} alt="" style={{width:"100%",borderRadius:20,border:"2px solid rgba(255,255,255,0.2)",boxShadow:"0 12px 40px rgba(0,0,0,0.6)",animation:"popIn 0.2s ease"}}/>
+                  <div style={{display:"flex",gap:10}}>
+                    <button onClick={compartirTarjeta} style={{flex:1,padding:"14px",borderRadius:16,border:"none",cursor:"pointer",background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"#fff",fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif",boxShadow:`0 4px 0 ${T.g3}`}}>
+                      📤 {lang==='en'?'Share':'Compartir'}
+                    </button>
+                    <button onClick={descargarTarjeta} style={{flex:1,padding:"14px",borderRadius:16,cursor:"pointer",background:"rgba(255,255,255,0.10)",border:"2px solid rgba(255,255,255,0.2)",color:T.t1,fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif"}}>
+                      📥 {lang==='en'?'Download':'Descargar'}
+                    </button>
+                  </div>
+                  <button onClick={()=>setShareCard(null)} style={{padding:"10px",borderRadius:14,background:"none",border:"none",color:"rgba(255,255,255,0.6)",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>✕ {lang==='en'?'Close':'Cerrar'}</button>
+                </div>
+              </div>
+            )}
           </>
         );
       })()}
@@ -3388,8 +3655,69 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── SavedRecipeCard — tarjeta expandible del recetario personal ─────────────
+// ─── Mini lista de la compra por receta (botón 🛒 Comprar) ────────────────────
+// Popup con los ingredientes de UNA receta como checklist interactiva. Los
+// marcados se guardan SOLO en el dispositivo (localStorage, clave por receta),
+// deliberadamente sin Supabase: es un dato personal de compra y ahorra carga.
+// Al reabrir la receta recuerda lo tachado; "Regenerar" limpia para recomprar.
+function MiniListaCompra({nombre, ingredientes, idReceta, t, onClose}){
+  const items=React.useMemo(()=>(ingredientes||"").split(/,(?![^(]*\))/).map(s=>s.trim()).filter(Boolean),[ingredientes]);
+  const key=`gbh:minilista:${idReceta||nombre}`;
+  const [checks,setChecks]=React.useState(()=>lsGet(key,{}));
+  const [conf,setConf]=React.useState(false);
+  const marc=items.filter((_,i)=>checks[i]).length;
+  const toggle=(i)=>setChecks(c=>{const n={...c};if(n[i])delete n[i];else n[i]=true;lsSet(key,n);return n;});
+  const regen=()=>{ if(!conf){setConf(true);return;} setChecks({});lsSet(key,{});setConf(false); };
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.72)",zIndex:2000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:520,maxHeight:"80vh",overflowY:"auto",
+        background:"linear-gradient(180deg,#1d3a14,#142a0e)",border:"2px solid rgba(255,255,255,0.14)",borderBottom:"none",
+        borderRadius:"22px 22px 0 0",padding:"18px 18px 26px",animation:"popIn 0.2s ease"}}>
+        <div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:4}}>
+          <span style={{fontSize:24,flexShrink:0}}>🛒</span>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:900,fontSize:15,color:T.wh,lineHeight:1.25,fontFamily:"'Nunito',sans-serif"}}>{nombre}</div>
+            <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginTop:3}}>{t("buyListSub")}</div>
+          </div>
+          <button onClick={onClose} style={{background:"rgba(255,255,255,0.10)",border:"none",borderRadius:14,width:32,height:32,color:T.t2,fontSize:14,cursor:"pointer",fontWeight:900,flexShrink:0}}>✕</button>
+        </div>
+        <div style={{height:7,background:"rgba(255,255,255,0.08)",borderRadius:6,margin:"10px 0 14px",overflow:"hidden"}}>
+          <div style={{height:"100%",width:`${items.length?Math.round(marc/items.length*100):0}%`,background:`linear-gradient(90deg,${T.g3},${T.g1})`,borderRadius:6,transition:"width 0.25s"}}/>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {items.map((it,i)=>{
+            const on=!!checks[i];
+            return(
+              <button key={i} onClick={()=>toggle(i)} style={{
+                display:"flex",alignItems:"center",gap:11,textAlign:"left",cursor:"pointer",
+                background:on?"rgba(88,204,2,0.08)":"rgba(255,255,255,0.05)",
+                border:`1.5px solid ${on?"rgba(88,204,2,0.35)":"rgba(255,255,255,0.12)"}`,
+                borderRadius:13,padding:"10px 13px",transition:"all 0.15s"}}>
+                <span style={{width:21,height:21,flexShrink:0,borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",
+                  background:on?T.g1:"transparent",border:`2px solid ${on?T.g1:"rgba(255,255,255,0.3)"}`,
+                  color:"#0d2b12",fontSize:13,fontWeight:900,transition:"all 0.15s"}}>{on?"✓":""}</span>
+                <span style={{flex:1,fontSize:13,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4,
+                  color:on?T.t3:T.t1,textDecoration:on?"line-through":"none",textDecorationThickness:"2px",
+                  opacity:on?0.65:1,transition:"all 0.15s"}}>{it}</span>
+              </button>
+            );
+          })}
+        </div>
+        <button onClick={regen} style={{
+          width:"100%",marginTop:14,padding:"12px 18px",borderRadius:14,cursor:"pointer",
+          background:conf?"rgba(255,140,60,0.18)":"rgba(255,255,255,0.06)",
+          border:`2px solid ${conf?"#FF8C3C":"rgba(255,255,255,0.15)"}`,
+          color:conf?"#FF8C3C":T.t2,fontWeight:900,fontSize:13,fontFamily:"'Nunito',sans-serif",transition:"all 0.15s"}}>
+          {conf?t("listConfirm"):t("listReset")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SavedRecipeCard({rec, t, T, removeFromBook}){
   const [expanded, setExpanded] = React.useState(false);
+  const [showCompra, setShowCompra] = React.useState(false);  // popup 🛒 de esta receta
   const tipoColor = {
     Carne:"#E57373",Pescado:"#64B5F6",Vegetariana:"#81C784",
     Vegana:"#A5D6A7",Postre:"#F06292",Ensalada:"#AED581","Sopa/Crema":"#FFB74D",
@@ -3437,6 +3765,12 @@ function SavedRecipeCard({rec, t, T, removeFromBook}){
           </div>
           <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8}}>{t("preparation")}</div>
           <div style={{fontSize:12,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6,marginBottom:14,whiteSpace:"pre-wrap"}}>{rec.instrucciones}</div>
+          {ing.length>0&&(<button onClick={()=>setShowCompra(true)} style={{
+            width:"100%",padding:"10px",borderRadius:12,marginBottom:8,
+            background:"rgba(255,140,60,0.10)",border:"1.5px solid rgba(255,140,60,0.35)",
+            color:"#FF8C3C",fontSize:12.5,fontWeight:900,
+            cursor:"pointer",fontFamily:"'Nunito',sans-serif",
+          }}>{t("buyBtn")}</button>)}
           {removeFromBook && (<button onClick={()=>removeFromBook(rec.recipe_id)} style={{
             width:"100%",padding:"9px",borderRadius:12,
             background:"rgba(255,75,75,0.07)",border:"1.5px solid rgba(255,75,75,0.2)",
@@ -3445,6 +3779,8 @@ function SavedRecipeCard({rec, t, T, removeFromBook}){
           }}>🗑️ {t("recipeDeleteFromBook")}</button>)}
         </div>
       )}
+      {showCompra&&<MiniListaCompra nombre={rec.nombre} ingredientes={rec.ingredientes}
+        idReceta={rec.id_receta||rec.recipe_id} t={t} onClose={()=>setShowCompra(false)}/>}
     </Card>
   );
 }
@@ -3473,6 +3809,10 @@ function GBHApp(){
   const [logs,    setLogs]    = useState([]);
   const [allP,    setAllP]    = useState([]);
   const [logsAdmin, setLogsAdmin] = useState({});  // {profileId:{hoyMeals, nota, notaFecha}} para el panel
+  // ── Desglose de la dieta por tomas: mapa {Toma:{dia:true}} del plan vigente ──
+  // Se usa en Inicio para pintar los mini-botones por comida. null → sin plan
+  // publicado (o cuenta free) → se mantiene el botón clásico de dieta.
+  const [planTomas, setPlanTomas] = useState(null);
   const [wInput,  setWInput]  = useState("");
   const [weightMode, setWeightMode] = useState("default");
   const [userPhoto,  setUserPhoto]  = useState(()=>lsGet("gbh:userPhoto",null));
@@ -3572,6 +3912,12 @@ function GBHApp(){
   const completoCacheRef = React.useRef({});
   const [recCounts, setRecCounts] = useState(null);   // {total, byId:{catId:n}} — nº de recetas por categoría
   const recCountsRef = React.useRef(false);
+  // ── Buscador por ingrediente (recetario completo) ──
+  const [busqTexto,   setBusqTexto]   = useState("");   // texto escrito en el buscador
+  const [busqResults, setBusqResults] = useState(null); // null = sin búsqueda activa
+  const [busqLoading, setBusqLoading] = useState(false);
+  const todasRecetasRef = React.useRef(null);           // caché en memoria de todo el recetario
+  const busqTimerRef    = React.useRef(null);           // debounce del tecleo
   const [recipeLoading,setRecipeLoading] = useState(false);
   const refreshingRef = useRef(false); // bloqueo síncrono para evitar doble tap
   const [recipeRefreshes,setRecipeRefreshes] = useState(()=>lsGet(`gbh:recipe:refreshes:${toKey()}`,0));
@@ -3680,6 +4026,63 @@ function GBHApp(){
       }
     });
   },[]);
+
+  // ── Cargar las tomas del plan vigente (para el desglose de dieta en Inicio) ──
+  // Guarda solo un mapa reducido {Toma:{dia:true}} — ligero para localStorage y
+  // suficiente para saber qué comidas tiene el paciente cada día de la semana.
+  useEffect(()=>{
+    if(!profile?.id) return;
+    const esPago = profile.plan==="premium" || profile.plan==="standard";
+    if(!esPago){ setPlanTomas(null); return; }
+    const cacheKey=`gbh:plantomas:${profile.id}`;
+    const cached=lsGet(cacheKey,null);
+    if(cached) setPlanTomas(cached);
+    const reducir=(pj)=>{
+      const m={};
+      for(const tm of PLAN_TOMAS){
+        const celdas=pj?.[tm]; if(!celdas) continue;
+        const dd={};
+        for(let d=1;d<=7;d++){ if(celdas[String(d)]?.Nombre_Receta) dd[String(d)]=true; }
+        if(Object.keys(dd).length) m[tm]=dd;
+      }
+      return Object.keys(m).length?m:null;
+    };
+    sbReq("GET",`weekly_plans?profile_id=eq.${profile.id}&select=plan_json&order=semana.desc&limit=1`)
+      .then(rows=>{
+        const pj=Array.isArray(rows)&&rows[0]?.plan_json;
+        if(!pj) return;
+        const red=reducir(pj);
+        setPlanTomas(red);
+        if(red) lsSet(cacheKey,red); else lsSet(cacheKey,null);
+      })
+      .catch(()=>{});
+  },[profile?.id, profile?.plan]);
+  // Al volver a Inicio, refrescar el mapa de tomas como mucho cada 10 min —
+  // recoge planes recién generados desde la pestaña Plan sin recargar la app.
+  const planTomasTsRef = useRef(0);
+  useEffect(()=>{
+    if(tab!=="home" || !profile?.id) return;
+    if(profile.plan!=="premium" && profile.plan!=="standard") return;
+    if(Date.now()-planTomasTsRef.current < 10*60*1000) return;
+    planTomasTsRef.current = Date.now();
+    sbReq("GET",`weekly_plans?profile_id=eq.${profile.id}&select=plan_json&order=semana.desc&limit=1`)
+      .then(rows=>{
+        const pj=Array.isArray(rows)&&rows[0]?.plan_json;
+        if(!pj) return;
+        const m={};
+        for(const tm of PLAN_TOMAS){
+          const celdas=pj?.[tm]; if(!celdas) continue;
+          const dd={};
+          for(let d=1;d<=7;d++){ if(celdas[String(d)]?.Nombre_Receta) dd[String(d)]=true; }
+          if(Object.keys(dd).length) m[tm]=dd;
+        }
+        const red=Object.keys(m).length?m:null;
+        setPlanTomas(red);
+        lsSet(`gbh:plantomas:${profile.id}`,red);
+      })
+      .catch(()=>{});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[tab, profile?.id]);
 
   // ── Refrescar plan/gems/xp al volver a primer plano ────────────────────────
   //    Si el nutricionista cambia el plan de un paciente mientras tiene la app
@@ -3920,6 +4323,46 @@ function GBHApp(){
       setCompletoRecipes(norm);
     }catch(e){ setCompletoRecipes([]); }
     finally{ setCompletoLoading(false); }
+  };
+
+  // ── Buscador por ingrediente ─────────────────────────────────────────────
+  // Normaliza tildes y mayúsculas: "platano" encuentra "plátano", "Pollo"→"pollo".
+  const normTxt = (s)=>(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+  // Carga TODO el recetario una sola vez y lo cachea en memoria; las búsquedas
+  // posteriores filtran en local (instantáneo, sin más peticiones a Supabase).
+  const cargarTodasRecetas = async ()=>{
+    if(todasRecetasRef.current) return todasRecetasRef.current;
+    const data = await sbReq("GET","recipes?select=*&order=calorias.asc&limit=1000");
+    const norm = (Array.isArray(data)?data:[]).map(normalizeRecipe);
+    todasRecetasRef.current = norm;
+    return norm;
+  };
+  // Filtra por ingrediente (y nombre del plato). Maneja plurales españoles:
+  // "lentejas" también encuentra "lenteja", "pollos"→"pollo".
+  const filtrarPorIngrediente = (recetas, texto)=>{
+    const q = normTxt(texto.trim());
+    if(q.length<2) return null;
+    const terminos=[q];
+    if(q.endsWith("es")&&q.length>4) terminos.push(q.slice(0,-2));
+    if(q.endsWith("s") &&q.length>3) terminos.push(q.slice(0,-1));
+    return recetas.filter(r=>{
+      const campo = normTxt((r.ingredientes||"")+" "+(r.nombre||""));
+      return terminos.some(t=>campo.includes(t));
+    });
+  };
+  const buscarIngrediente = (texto)=>{
+    setBusqTexto(texto);
+    if(busqTimerRef.current) clearTimeout(busqTimerRef.current);
+    if(normTxt(texto.trim()).length<2){ setBusqResults(null); setBusqLoading(false); return; }
+    // La primera búsqueda descarga el recetario (con indicador); las demás son locales.
+    busqTimerRef.current = setTimeout(async ()=>{
+      try{
+        if(!todasRecetasRef.current) setBusqLoading(true);
+        const todas = await cargarTodasRecetas();
+        setBusqResults(filtrarPorIngrediente(todas, texto));
+      }catch(e){ setBusqResults([]); }
+      finally{ setBusqLoading(false); }
+    }, todasRecetasRef.current?150:0);
   };
 
   // Traduce un texto ES→EN usando MyMemory (gratuito, sin API key, funciona desde el browser)
@@ -4434,7 +4877,9 @@ function GBHApp(){
     lsSet(`gbh:tlog:${profile.id}:${today}`, nl);
     const l=[...logs];
     const idx=l.findIndex(x=>x.date===today);
-    const e={profile_id:profile.id,date:today,...nl,sc};
+    // Preservar campos que no gestiona saveLog (meals del registro por tomas, note…)
+    const prev = idx>=0 ? l[idx] : {};
+    const e={...prev,profile_id:profile.id,date:today,...nl,sc};
     if(idx>=0)l[idx]=e;else l.push(e);
     setLogs(l);lsSet(`gbh:logs:${profile.id}`,l);
     await sbReq("POST","daily_logs?on_conflict=profile_id,log_date",{profile_id:profile.id,log_date:today,diet_followed:nl.diet,steps_done:nl.steps,hydration_done:nl.hydration,sleep_done:nl.sleep,sc:sc||0});
@@ -4548,6 +4993,61 @@ function GBHApp(){
     }
     await chkBadges(streak,weights,badges);
   },[tLog,steps,streak,weights,badges,saveLog,addXG,chkBadges]);
+
+  // ── Desglose de dieta por tomas ──────────────────────────────────────────────
+  // Tomas que el paciente tiene HOY según su pauta (una toma al 0% no genera
+  // recetas en el plan y por tanto no aparece). null → botón clásico de dieta.
+  const tomasHoy = React.useMemo(()=>{
+    if(!planTomas) return null;
+    const dowJS=new Date().getDay(); const d=String(dowJS===0?7:dowJS);
+    const ts=PLAN_TOMAS.filter(tm=>planTomas?.[tm]?.[d]);
+    return ts.length?ts:null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[planTomas, tab]);  // 'tab' fuerza recomputar al volver a Inicio (cambio de día)
+
+  // Registro de comidas de hoy (fuente: logs, sincronizado con daily_logs.meals_log)
+  const mealsHoy = React.useMemo(()=>logs.find(l=>l.date===toKey())?.meals||{},[logs]);
+
+  // La racha/misión de dieta se completa cuando TODAS las tomas de la pauta están
+  // registradas — sea cual sea el estado (seguida, menos, cambiada, fuera, saltada).
+  // Registrar con honestidad cuenta: lo que rompe la racha es NO registrar.
+  const chkTomasCompletas = useCallback((meals)=>{
+    if(!tomasHoy || tLog.diet) return;
+    if(tomasHoy.every(tm=>meals && meals[tm])) toggleM("diet");
+  },[tomasHoy, tLog.diet, toggleM]);
+
+  // Tap en un mini-botón de toma desde Inicio:
+  //  · toma sin registrar → se marca "seguida" (verde) al instante
+  //  · toma ya registrada → abre el plan diario para ver/editar el registro
+  const marcarTomaHome = useCallback((toma)=>{
+    if(!profile?.id) return;
+    const today=toKey();
+    const key=`gbh:logs:${profile.id}`;
+    const arr=lsGet(key,[]);
+    const i=arr.findIndex(l=>l.date===today);
+    const cur=i>=0?arr[i]:{profile_id:profile.id,date:today,diet:false,steps:false,hydration:false,sleep:false,sc:0,meals:{},note:""};
+    if(cur.meals?.[toma]){ sfx("tap"); setTab("plan"); return; }
+    const meals={...(cur.meals||{}),[toma]:"seguida"};
+    const entry={...cur,meals};
+    if(i>=0)arr[i]=entry;else arr.push(entry);
+    try{ lsSet(key,arr); }catch{}
+    setLogs(ls=>{ const n=[...ls]; const j=n.findIndex(l=>l.date===today);
+      if(j>=0)n[j]={...n[j],meals}; else n.push(entry); return n; });
+    sfx("missionDone");
+    sbReq("POST","daily_logs?on_conflict=profile_id,log_date",{profile_id:profile.id,log_date:today,meals_log:meals});
+    chkTomasCompletas(meals);
+  },[profile?.id, chkTomasCompletas]);
+
+  // Callback para PlanTab: cuando el paciente registra una comida de HOY desde el
+  // plan diario, Inicio se actualiza al momento y se comprueba si cierra la racha.
+  const onMealRegistered = useCallback((dateKey, meals)=>{
+    if(dateKey!==toKey()) return;
+    setLogs(ls=>{ const n=[...ls]; const j=n.findIndex(l=>l.date===dateKey);
+      if(j>=0)n[j]={...n[j],meals};
+      else n.push({profile_id:profile?.id,date:dateKey,diet:false,steps:false,hydration:false,sleep:false,sc:0,meals,note:""});
+      return n; });
+    chkTomasCompletas(meals);
+  },[chkTomasCompletas, profile?.id]);
 
   const updSteps=useCallback(async(val)=>{
     const sc=Math.max(0,Math.min(99999,val));setSteps(sc);
@@ -4880,6 +5380,7 @@ function GBHApp(){
     @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
     @keyframes bounce{0%,100%{transform:translateY(0) rotate(-3deg)}40%{transform:translateY(-16px) rotate(3deg)}65%{transform:translateY(-6px) rotate(-1deg)}} @keyframes headTilt{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
     @keyframes popIn{0%{transform:scale(0.65);opacity:0}100%{transform:scale(1);opacity:1}}
+    @keyframes tomaBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
     @keyframes slideUp{from{transform:translateY(80px);opacity:0}to{transform:translateY(0);opacity:1}}
     @keyframes bounceIn{0%{transform:scale(0.5);opacity:0}60%{transform:scale(1.15)}80%{transform:scale(0.95)}100%{transform:scale(1);opacity:1}}
     @keyframes slideInLeft{from{transform:translateX(-24px);opacity:0}to{transform:translateX(0);opacity:1}}
@@ -4919,7 +5420,7 @@ function GBHApp(){
   // Cargar ranking cuando se activa la pestaña
   useEffect(()=>{ if(tab==="ranking") loadRanking(); },[tab]);
   useEffect(()=>{ if(tab==="receta"&&!dailyRecipe&&!recipeLoading) fetchDailyRecipe(); },[tab]);
-  useEffect(()=>{ if(tab==="receta"){ setRecipeView("menu"); setCompletoCat(null); } },[tab]);
+  useEffect(()=>{ if(tab==="receta"){ setRecipeView("menu"); setCompletoCat(null); setBusqTexto(""); setBusqResults(null); setBusqLoading(false); } },[tab]);
   // Cuenta de recetas por categoría (consulta ligera: solo tipo+categoria, una vez).
   // Se muestra en los botones del recetario y como total, y se actualiza sola al
   // crecer el recetario porque cuenta lo que hay en Supabase.
@@ -6020,7 +6521,9 @@ function GBHApp(){
             <span style={{background:T.bgWood,border:`2px solid ${T.bW}`,borderRadius:16,padding:"7px 20px",fontSize:11,fontWeight:900,color:T.au1,textTransform:"uppercase",letterSpacing:"0.08em",boxShadow:"0 4px 0 rgba(0,0,0,0.4)"}}>{t("dailyMissions")}</span>
           </div>
 
-          <BigBtn icon="🍽️" label={t("dietBtn")} done={tLog.diet} onClick={()=>toggleM("diet")}/>
+          {tomasHoy
+            ? <MealBtns tomas={tomasHoy} meals={mealsHoy} done={tLog.diet} lang={lang} onTap={marcarTomaHome}/>
+            : <BigBtn icon="🍽️" label={t("dietBtn")} done={tLog.diet} onClick={()=>toggleM("diet")}/>}
 
           <MRow num="2" icon="🌙" label={t("sleepLabel")} done={tLog.sleep} onToggle={()=>toggleM("sleep")} xpR={5}/>
           <StepsWidget done={tLog.steps} stepCount={steps} onToggle={()=>toggleM("steps")} onUpdateSteps={updSteps}/>
@@ -6077,7 +6580,7 @@ function GBHApp(){
                   ))}
                 </div>
               </Card>
-              {chartData.length>0&&<WeightChart chartData={chartData} setWeightMode={setWeightMode} goalWeight={profile?.goal_weight||null}/>}
+              {chartData.length>0&&<WeightChart chartData={chartData} setWeightMode={setWeightMode} goalWeight={profile?.goal_weight||null} shareName={profile?.name} lang={lang}/>}
             </>
           );
 
@@ -6153,7 +6656,7 @@ function GBHApp(){
                 </button>
               )}
               {/* Gráfica */}
-              {chartData.length>0&&<WeightChart chartData={chartData} setWeightMode={setWeightMode} goalWeight={profile?.goal_weight||null}/>}
+              {chartData.length>0&&<WeightChart chartData={chartData} setWeightMode={setWeightMode} goalWeight={profile?.goal_weight||null} shareName={profile?.name} lang={lang}/>}
               {/* Empty state */}
               {chartData.length===0&&(
                 <Card style={{textAlign:"center",padding:"28px"}}>
@@ -6392,7 +6895,7 @@ function GBHApp(){
 
               {/* ── Barra de volver (sub-vistas) ── */}
               {recipeView!=="menu"&&(
-                <button onClick={()=>{ if(recipeView==="completo"&&completoCat){ setCompletoCat(null); } else { setRecipeView("menu"); setCompletoCat(null); } }}
+                <button onClick={()=>{ if(recipeView==="completo"&&(busqResults!==null||busqTexto)){ buscarIngrediente(""); } else if(recipeView==="completo"&&completoCat){ setCompletoCat(null); } else { setRecipeView("menu"); setCompletoCat(null); } }}
                   style={{background:"none",border:"none",cursor:"pointer",color:T.t2,fontSize:14,fontWeight:800,fontFamily:"'Nunito',sans-serif",padding:"4px 0 12px",display:"flex",alignItems:"center",gap:4}}>
                   ‹ {recipeView==="completo"&&completoCat ? (lang==='en'?'Categories':'Categorías') : (lang==='en'?'Recipes':'Recetas')}
                 </button>
@@ -6568,7 +7071,51 @@ function GBHApp(){
                       <span style={{fontSize:20}}>💬</span>{lang==='en'?'Subscribe to unlock':'Suscribirme para acceder'}
                     </a>
                   </div>
-                ) : !completoCat ? (
+                ) : (<>
+                  {/* ── Buscador por ingrediente: siempre visible arriba ── */}
+                  <div style={{display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.06)",
+                    border:`1.5px solid ${T.bW}`,borderRadius:18,padding:"4px 6px 4px 14px",marginBottom:14,
+                    boxShadow:"0 3px 0 rgba(0,0,0,0.25)"}}>
+                    <span style={{fontSize:16,opacity:0.85}}>🔍</span>
+                    <input type="text" value={busqTexto} onChange={e=>buscarIngrediente(e.target.value)}
+                      placeholder={lang==='en'?'Type an ingredient… e.g. chicken':'Escribe un ingrediente… p. ej. pollo'}
+                      style={{flex:1,minWidth:0,background:"transparent",border:"none",outline:"none",
+                        color:T.t1,fontSize:14,fontFamily:"'DM Sans',sans-serif",padding:"11px 0"}}/>
+                    {busqTexto!==""&&(
+                      <button onClick={()=>{sfx&&sfx("tap");buscarIngrediente("");}}
+                        style={{background:"rgba(255,255,255,0.10)",border:"none",borderRadius:14,
+                          width:34,height:34,color:T.t2,fontSize:15,cursor:"pointer",fontWeight:900,flexShrink:0}}>✕</button>
+                    )}
+                  </div>
+
+                  {(busqLoading||busqResults!==null) ? (
+                    /* ── Resultados de la búsqueda por ingrediente ── */
+                    busqLoading ? (
+                      <div style={{textAlign:"center",padding:40}}>
+                        <div style={{fontSize:32,marginBottom:10}}>⏳</div>
+                        <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>{lang==='en'?'Searching the recipe book…':'Buscando en el recetario…'}</div>
+                      </div>
+                    ) : busqResults.length===0 ? (
+                      <div style={{textAlign:"center",padding:40}}>
+                        <div style={{fontSize:40,marginBottom:10}}>🥕</div>
+                        <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6}}>
+                          {lang==='en'?`No recipes with "${busqTexto.trim()}"`:`No hay recetas con "${busqTexto.trim()}"`}
+                        </div>
+                      </div>
+                    ) : (<>
+                      <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:12}}>
+                        🔍 <b style={{color:T.wh}}>{busqResults.length}</b> {lang==='en'?`recipes with "${busqTexto.trim()}" · by calories`:`recetas con "${busqTexto.trim()}" · por calorías`}
+                      </div>
+                      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                        {busqResults.slice(0,60).map(rec=>(<SavedRecipeCard key={rec.id_receta} rec={rec} t={t} T={T} />))}
+                      </div>
+                      {busqResults.length>60&&(
+                        <div style={{textAlign:"center",padding:"14px 0",fontSize:12,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>
+                          {lang==='en'?`Showing 60 of ${busqResults.length} — refine your search`:`Mostrando 60 de ${busqResults.length} — afina la búsqueda`}
+                        </div>
+                      )}
+                    </>)
+                  ) : !completoCat ? (
                   /* ── Pantalla 1: categorías (nada cargado todavía) ── */
                   <>
                     <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:4}}>{lang==='en'?'Choose a category':'Elige una categoría'}</div>
@@ -6613,6 +7160,7 @@ function GBHApp(){
                     )}
                   </>
                 )}
+                </>)}
               </>)}
 
             </div>
@@ -6621,7 +7169,7 @@ function GBHApp(){
 
 
         {tab==="progreso"&&<CalcTab weights={weights} profile={profile} setProfile={setProfile} lang={lang}/>}
-        {tab==="plan"&&<PlanTab profile={profile} lang={lang} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} showT={showT} sfx={sfx} t={t} setTab={setTab}/>}
+        {tab==="plan"&&<PlanTab profile={profile} lang={lang} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} showT={showT} sfx={sfx} t={t} setTab={setTab} onMealRegistered={onMealRegistered}/>}
         {tab==="consulta"&&<ConsultaTab profile={profile} lang={lang} sfx={sfx}/>}
       </div>
 
@@ -6753,9 +7301,51 @@ const PLAN_DIAS    = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 const PLAN_DIAS_F  = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
 const PLAN_TOMAS   = ['Desayuno','Almuerzo','Comida','Merienda','Cena'];
 const PLAN_TOMA_IC = {Desayuno:'☀️',Almuerzo:'🍎',Comida:'🍽️',Merienda:'🥤',Cena:'🌙'};
+// Hora local del móvil a la que "empieza" la franja de cada toma. Guía a la
+// oveja 🐑 de los mini-botones de Inicio: señala hasta qué comida debería haber
+// registrado ya el paciente. Editable si cambian los horarios habituales.
+const PLAN_TOMA_HORA = {Desayuno:0, Almuerzo:10.5, Comida:13, Merienda:16.5, Cena:20};
+// ── Agregación de la lista de la compra semanal ──────────────────────────────
+// Recorre las 7×tomas del plan_json (ingredientes ya escalados a la ración del
+// paciente), suma cantidades del mismo ingrediente, convierte unidades y cuenta
+// repeticiones de los ítems sin cantidad. Devuelve items ordenados con clave
+// estable nombre+unidad (para persistir los marcados).
+function agregarListaCompra(planJ){
+  if(!planJ) return [];
+  const nrm=s=>s.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
+  const mapa=new Map();
+  for(const tm of PLAN_TOMAS){
+    const celdas=planJ[tm]; if(!celdas) continue;
+    for(let d=1; d<=7; d++){
+      const ing=celdas[String(d)]?.Ingredientes; if(!ing) continue;
+      for(const raw of String(ing).split(/,(?![^(]*\))/)){
+        const it=raw.trim(); if(!it) continue;
+        // "250 g pechuga de pollo" | "1 cebolla" | "aceite de oliva"
+        const m=it.match(/^([\d]+(?:[.,]\d+)?)\s*(g|gr|kg|ml|cl|l|ud|uds)?\.?\s+(.+)$/i);
+        if(m){
+          const cant=parseFloat(m[1].replace(",","."));
+          let uni=(m[2]||"").toLowerCase(); if(uni==="gr")uni="g"; if(uni==="uds")uni="ud";
+          const nombre=m[3].trim();
+          const key=nrm(nombre)+"|"+(uni||"n");
+          const prev=mapa.get(key);
+          if(prev) prev.cant+=cant;
+          else mapa.set(key,{key,nombre,uni,cant});
+        } else {
+          const key=nrm(it)+"|x";
+          const prev=mapa.get(key);
+          if(prev) prev.veces+=1;
+          else mapa.set(key,{key,nombre:it,uni:"",cant:null,veces:1});
+        }
+      }
+    }
+  }
+  return [...mapa.values()].sort((a,b)=>a.nombre.localeCompare(b.nombre,"es"));
+}
 // ── Estados de cumplimiento por comida (registro del paciente) ──────────────
-// Aditivo: NO afecta a rachas, XP ni a la lógica de calorías. Solo registra y
-// se muestra al nutricionista. Las palabras mapean lo que pide el paciente:
+// El registro por toma alimenta los mini-botones de Inicio y CIERRA la misión de
+// dieta (racha) cuando TODAS las tomas de la pauta del día quedan registradas,
+// sea cual sea el estado: registrar con honestidad cuenta; no registrar, no.
+// No toca la lógica de calorías. Las palabras mapean lo que pide el paciente:
 // "como menos", "cambio el plato", "como fuera", "me salto la comida".
 const PLAN_CUMPL = [
   {k:'seguida',  es:'Seguida',     en:'Followed', ic:'✅', c:T.g1},
@@ -7014,7 +7604,7 @@ function SeguimientoView({profile, lang}){
   );
 }
 
-function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx,t,setTab}){
+function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx,t,setTab,onMealRegistered}){
   const isPremium=profile?.plan==='premium';
   const isStandard=profile?.plan==='standard';
   const tieneAcceso=isPremium||isStandard;
@@ -7131,6 +7721,9 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
     if(toma) body.meals_log=meals;
     if(note!==undefined) body.day_note=nota;
     sbReq('POST','daily_logs?on_conflict=profile_id,log_date',body);
+    // Avisar a Inicio: actualiza los mini-botones por toma y, si con este registro
+    // quedan todas las tomas del día registradas, completa la misión de dieta (racha).
+    if(toma && typeof onMealRegistered==='function') onMealRegistered(dateKey, meals);
   };
   const setEstadoComida = (toma,estado)=>{ if(!puedeRegistrar) return; persistDia(selDateKey,{toma,estado}); sfx&&sfx('step'); };
   const guardarNotaDia  = ()=>{ if(!puedeRegistrar) return; if(notaTmp===(regDia[selDateKey]?.note||'')) return;
@@ -7268,6 +7861,49 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
     if(!totales.length) return null;
     return Math.round(totales.reduce((a,b)=>a+b,0)/totales.length);
   },[planJ]);
+  // ── Lista de la compra interactiva (FIJA) ───────────────────────────────────
+  // Es una INSTANTÁNEA de la programación original de la semana, tomada la
+  // primera vez que el plan llega al dispositivo y guardada en localStorage.
+  // Deliberadamente NO se actualiza cuando el paciente cambia recetas con gemas:
+  // probar varias opciones hasta dar con la buena acumularía ingredientes de
+  // recetas descartadas. Para comprar una receta concreta (cambiada o del
+  // recetario) está el botón 🛒 Comprar de cada receta (MiniListaCompra).
+  const listaSnapKey=`gbh:listasnap:${profile?.id}:${plan?.semana??"x"}`;
+  const [listaSnap,setListaSnap]=React.useState(null);
+  React.useEffect(()=>{
+    if(!planJ){ setListaSnap(null); return; }
+    const s=lsGet(listaSnapKey,null);
+    if(Array.isArray(s)&&s.length){ setListaSnap(s); return; }
+    const items=agregarListaCompra(planJ);
+    if(items.length) lsSet(listaSnapKey,items);
+    setListaSnap(items);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[listaSnapKey, planJ?1:0]);
+  const listaItems = listaSnap||[];
+  // Formato español de cantidades: 1.750 g → "1,75 kg"; sin unidad → "×7"
+  const fmtCant=(it)=>{
+    if(it.cant==null) return it.veces>1?`×${it.veces}`:"";
+    let c=it.cant, u=it.uni;
+    if(u==="g"&&c>=1000){ c=c/1000; u="kg"; }
+    if(u==="ml"&&c>=1000){ c=c/1000; u="l"; }
+    const num=(Math.round(c*100)/100).toString().replace(".",",");
+    return u&&u!=="ud" ? `${num} ${u}` : `×${num}`;
+  };
+  const listaLsKey=`gbh:listacompra:${profile?.id}:${plan?.semana??"x"}`;
+  const [listaChecks,setListaChecks]=React.useState({});
+  const [listaConfirm,setListaConfirm]=React.useState(false);   // doble tap en Regenerar
+  const [miniCompra,setMiniCompra]=React.useState(null);        // popup 🛒 por receta (vista diaria)
+  React.useEffect(()=>{ setListaChecks(lsGet(listaLsKey,{})); setListaConfirm(false); },[listaLsKey]);
+  const toggleListaCheck=(k)=>{
+    sfx&&sfx("tap");
+    setListaChecks(c=>{ const n={...c}; if(n[k])delete n[k]; else n[k]=true; lsSet(listaLsKey,n); return n; });
+  };
+  const regenerarLista=()=>{
+    if(!listaConfirm){ setListaConfirm(true); return; }
+    sfx&&sfx("missionDone");
+    setListaChecks({}); lsSet(listaLsKey,{}); setListaConfirm(false);
+    showT&&showT({icon:"🛒",title:lang==='en'?'List reset!':'¡Lista regenerada!',sub:lang==='en'?'Ready for a new shopping trip':'Lista limpia para volver a hacer la compra'});
+  };
   // ── Distribución de macros del día seleccionado (Atwater 4/4/9 sobre la suma
   //    de P/H/G de todas las tomas del día). Alimenta el gráfico de sectores. ─
   const macrosDia = React.useMemo(()=>{
@@ -7763,6 +8399,11 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
           <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Recipes & Shopping List':'Recetas y lista de la compra'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Download the PDF with your weekly recipes':'Descarga el PDF con recetas y lista del súper'}</div></div>
           <div style={{color:T.au1,fontSize:20,flexShrink:0}}>›</div>
         </button>
+        <button onClick={()=>setView('lista')} style={{background:'rgba(255,140,60,0.10)',border:'2px solid rgba(255,140,60,0.32)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
+          <div style={{fontSize:40,flexShrink:0}}>🛒</div>
+          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Interactive Shopping List':'Lista de la compra interactiva'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Tick off ingredients as you shop':'Marca los ingredientes mientras compras'}</div></div>
+          <div style={{color:'#FF8C3C',fontSize:20,flexShrink:0}}>›</div>
+        </button>
         <button onClick={()=>setView('daily')} style={{background:'rgba(100,181,246,0.12)',border:'2px solid rgba(100,181,246,0.3)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
           <div style={{fontSize:40,flexShrink:0}}>🍽️</div>
           <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Daily Schedule':'Programación diaria'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Your meals for today with full recipe details':'Tus platos de hoy con receta e ingredientes'}</div></div>
@@ -7859,9 +8500,80 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
       </div>
     </div>
   );
+  if(view==='lista'){
+    const marcados=listaItems.filter(it=>listaChecks[it.key]).length;
+    return(
+    <div style={{padding:'0 0 24px'}}>
+      <WeekNav/><BtnVolver onClick={()=>{setView(null);setListaConfirm(false);}}/>
+      <div style={{padding:'4px 16px'}}>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
+          <span style={{fontSize:26}}>🛒</span>
+          <div style={{fontWeight:900,fontSize:17,color:T.t1,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Shopping list':'Lista de la compra'}</div>
+        </div>
+        {listaItems.length===0 ? (
+          <div style={{textAlign:'center',padding:'30px 10px'}}>
+            <div style={{fontSize:44,marginBottom:12}}>📭</div>
+            <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.7}}>
+              {lang==='en'
+                ?'This plan doesn\'t include ingredient details. Use the recipes PDF for now.'
+                :'Este plan no incluye el detalle de ingredientes. De momento, usa el PDF de recetas y lista del súper.'}
+            </div>
+          </div>
+        ) : (<>
+          {/* Progreso de la compra */}
+          <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:10}}>
+            <b style={{color:marcados===listaItems.length?T.g2:T.t1}}>{marcados}/{listaItems.length}</b> {lang==='en'?'items in the cart':'ingredientes en el carro'} · {lang==='en'?'week':'semana'} {plan?.semana}
+          </div>
+          <div style={{height:8,background:'rgba(255,255,255,0.08)',borderRadius:6,marginBottom:14,overflow:'hidden'}}>
+            <div style={{height:'100%',width:`${listaItems.length?Math.round(marcados/listaItems.length*100):0}%`,background:`linear-gradient(90deg,${T.g3},${T.g1})`,borderRadius:6,transition:'width 0.25s'}}/>
+          </div>
+          {/* Listado con casillas */}
+          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+            {listaItems.map(it=>{
+              const on=!!listaChecks[it.key];
+              return(
+                <button key={it.key} onClick={()=>toggleListaCheck(it.key)} style={{
+                  display:'flex',alignItems:'center',gap:12,textAlign:'left',cursor:'pointer',
+                  background:on?'rgba(88,204,2,0.08)':'rgba(255,255,255,0.05)',
+                  border:`1.5px solid ${on?'rgba(88,204,2,0.35)':'rgba(255,255,255,0.12)'}`,
+                  borderRadius:14,padding:'11px 14px',transition:'all 0.15s'}}>
+                  <span style={{width:22,height:22,flexShrink:0,borderRadius:7,display:'flex',alignItems:'center',justifyContent:'center',
+                    background:on?T.g1:'transparent',border:`2px solid ${on?T.g1:'rgba(255,255,255,0.3)'}`,
+                    color:'#0d2b12',fontSize:14,fontWeight:900,transition:'all 0.15s'}}>{on?'✓':''}</span>
+                  <span style={{flex:1,fontSize:13.5,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4,
+                    color:on?T.t3:T.t1,textDecoration:on?'line-through':'none',textDecorationThickness:'2px',
+                    opacity:on?0.65:1,transition:'all 0.15s'}}>{it.nombre}</span>
+                  {fmtCant(it)&&<span style={{fontSize:12,fontWeight:900,color:on?T.t3:T.au1,fontFamily:"'Nunito',sans-serif",flexShrink:0,opacity:on?0.6:1}}>{fmtCant(it)}</span>}
+                </button>
+              );
+            })}
+          </div>
+          {/* Regenerar: desmarca todo para repetir la semana (doble toque de confirmación) */}
+          <button onClick={regenerarLista} style={{
+            width:'100%',marginTop:16,padding:'14px 20px',borderRadius:16,cursor:'pointer',
+            background:listaConfirm?'rgba(255,140,60,0.18)':'rgba(255,255,255,0.06)',
+            border:`2px solid ${listaConfirm?'#FF8C3C':'rgba(255,255,255,0.15)'}`,
+            color:listaConfirm?'#FF8C3C':T.t2,fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif",
+            boxShadow:'0 4px 0 rgba(0,0,0,0.3)',transition:'all 0.15s'}}>
+            {listaConfirm
+              ?(lang==='en'?'Tap again to confirm ↺':'Toca otra vez para confirmar ↺')
+              :(lang==='en'?'🔄 Reset list':'🔄 Regenerar lista')}
+          </button>
+          <div style={{textAlign:'center',marginTop:8,fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>
+            {lang==='en'
+              ?'Unchecks everything — handy if you repeat this week\'s plan. This list is fixed to your original plan; to buy a swapped recipe, use its 🛒 Buy button.'
+              :'Desmarca todo — útil si repites la semana. Esta lista es fija a tu programación original; para comprar una receta cambiada, usa su botón 🛒 Comprar.'}
+          </div>
+        </>)}
+      </div>
+    </div>
+    );
+  }
   if(view==='daily'){
     const ingList=tomaReceta?.ingredientes?.split(/,(?![^(]*\))/).map(s=>s.trim()).filter(Boolean)||[];
     return(<div style={{paddingBottom:16}}>
+      {miniCompra&&<MiniListaCompra nombre={miniCompra.nombre} ingredientes={miniCompra.ingredientes}
+        idReceta={miniCompra.id} t={t} onClose={()=>setMiniCompra(null)}/>}
       <WeekNav/>
       <BtnVolver onClick={()=>{if(openToma){setOpenToma(null);setTomaReceta(null);}else setView(null);}}/>
       {!openToma&&(<>
@@ -8004,7 +8716,13 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
           {ingList.length>0&&(<div style={{background:T.bgCard,borderRadius:20,padding:'18px 18px',marginBottom:12,border:'1px solid rgba(255,255,255,0.07)'}}>
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap',marginBottom:12}}>
               <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em'}}>{lang==='en'?'Ingredients':'Ingredientes'}</div>
-              {tomaReceta.raciones>1&&(<div style={{fontSize:11,color:PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1,fontWeight:800,background:(PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1)+'22',borderRadius:20,padding:'3px 11px',whiteSpace:'nowrap'}}>🍽️ {lang==='en'?`Makes ${tomaReceta.raciones} servings`:`Rinde ${tomaReceta.raciones} raciones`}</div>)}
+              <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                {tomaReceta.raciones>1&&(<div style={{fontSize:11,color:PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1,fontWeight:800,background:(PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1)+'22',borderRadius:20,padding:'3px 11px',whiteSpace:'nowrap'}}>🍽️ {lang==='en'?`Makes ${tomaReceta.raciones} servings`:`Rinde ${tomaReceta.raciones} raciones`}</div>)}
+                <button onClick={()=>setMiniCompra({nombre:tomaReceta.nombre,ingredientes:tomaReceta.ingredientes,id:tomaReceta.id_receta})} style={{
+                  background:'rgba(255,140,60,0.12)',border:'1.5px solid rgba(255,140,60,0.4)',borderRadius:20,
+                  padding:'4px 13px',fontSize:11.5,fontWeight:900,color:'#FF8C3C',cursor:'pointer',
+                  fontFamily:"'Nunito',sans-serif",whiteSpace:'nowrap'}}>{t("buyBtn")}</button>
+              </div>
             </div>
             <div style={{display:'flex',flexDirection:'column',gap:7}}>
               {ingList.map((ing,i)=>(<div key={i} style={{display:'flex',alignItems:'flex-start',gap:10}}><div style={{width:6,height:6,borderRadius:'50%',background:PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1,flexShrink:0,marginTop:6}}/><div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>{ing}</div></div>))}
