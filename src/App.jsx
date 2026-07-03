@@ -4027,6 +4027,22 @@ function GBHApp(){
     });
   },[]);
 
+  // ── Aviso de nueva programación (premium) ──────────────────────────────────
+  // Cuando el nutricionista publica/regenera el plan (upsert en weekly_plans con
+  // fecha_gen nueva), el paciente ve un pop-up la primera vez que abre la app.
+  // Identidad del plan: semana|fecha_gen. La primera vez que se conoce un plan
+  // se guarda en silencio (evita avisar a toda la base en el despliegue inicial).
+  const [avisoNuevoPlan,setAvisoNuevoPlan]=useState(null);   // {semana} | null
+  const chkNuevoPlan=(row)=>{
+    try{
+      if(!row || profile?.plan!=="premium") return;
+      const idPlan=`${row.semana??"?"}|${row.fecha_gen??"?"}`;
+      const k=`gbh:planvisto:${profile.id}`;
+      const visto=lsGet(k,null);
+      if(visto===null){ lsSet(k,idPlan); return; }
+      if(visto!==idPlan){ lsSet(k,idPlan); setAvisoNuevoPlan({semana:row.semana}); }
+    }catch{}
+  };
   // ── Cargar las tomas del plan vigente (para el desglose de dieta en Inicio) ──
   // Guarda solo un mapa reducido {Toma:{dia:true}} — ligero para localStorage y
   // suficiente para saber qué comidas tiene el paciente cada día de la semana.
@@ -4047,9 +4063,11 @@ function GBHApp(){
       }
       return Object.keys(m).length?m:null;
     };
-    sbReq("GET",`weekly_plans?profile_id=eq.${profile.id}&select=plan_json&order=semana.desc&limit=1`)
+    sbReq("GET",`weekly_plans?profile_id=eq.${profile.id}&select=plan_json,semana,fecha_gen&order=semana.desc&limit=1`)
       .then(rows=>{
-        const pj=Array.isArray(rows)&&rows[0]?.plan_json;
+        const row=Array.isArray(rows)&&rows[0];
+        chkNuevoPlan(row);
+        const pj=row?.plan_json;
         if(!pj) return;
         const red=reducir(pj);
         setPlanTomas(red);
@@ -4065,9 +4083,11 @@ function GBHApp(){
     if(profile.plan!=="premium" && profile.plan!=="standard") return;
     if(Date.now()-planTomasTsRef.current < 10*60*1000) return;
     planTomasTsRef.current = Date.now();
-    sbReq("GET",`weekly_plans?profile_id=eq.${profile.id}&select=plan_json&order=semana.desc&limit=1`)
+    sbReq("GET",`weekly_plans?profile_id=eq.${profile.id}&select=plan_json,semana,fecha_gen&order=semana.desc&limit=1`)
       .then(rows=>{
-        const pj=Array.isArray(rows)&&rows[0]?.plan_json;
+        const row=Array.isArray(rows)&&rows[0];
+        chkNuevoPlan(row);
+        const pj=row?.plan_json;
         if(!pj) return;
         const m={};
         for(const tm of PLAN_TOMAS){
@@ -7169,6 +7189,34 @@ function GBHApp(){
 
 
         {tab==="progreso"&&<CalcTab weights={weights} profile={profile} setProfile={setProfile} lang={lang}/>}
+        {avisoNuevoPlan&&(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+            <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
+              border:`2.5px solid ${T.au1}`,borderRadius:24,padding:"26px 22px 20px",textAlign:"center",
+              boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:"popIn 0.25s ease"}}>
+              <div style={{fontSize:52,marginBottom:10,animation:"tomaBob 1.8s ease-in-out infinite",display:"inline-block"}}>📬</div>
+              <div style={{fontWeight:900,fontSize:19,color:T.au1,fontFamily:"'Nunito',sans-serif",marginBottom:8}}>
+                {lang==='en'?'New plan available!':'¡Nueva programación!'}
+              </div>
+              <div style={{fontSize:13.5,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6,marginBottom:18}}>
+                {lang==='en'
+                  ?`Your nutritionist has published your plan${avisoNuevoPlan.semana!=null?` for week ${avisoNuevoPlan.semana}`:''}. Take a look!`
+                  :`Tu nutricionista ha publicado tu plan${avisoNuevoPlan.semana!=null?` de la semana ${avisoNuevoPlan.semana}`:''}. ¡Échale un vistazo!`}
+              </div>
+              <button onClick={()=>{sfx("missionDone");setAvisoNuevoPlan(null);setTab("plan");}} style={{
+                width:"100%",padding:"15px",borderRadius:16,border:"none",cursor:"pointer",
+                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"#fff",fontWeight:900,fontSize:15,
+                fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.g3}`,marginBottom:10}}>
+                🍽️ {lang==='en'?'See my plan':'Ver mi programación'}
+              </button>
+              <button onClick={()=>{sfx("tap");setAvisoNuevoPlan(null);}} style={{
+                background:"none",border:"none",color:T.t3,fontWeight:800,fontSize:13,cursor:"pointer",
+                fontFamily:"'Nunito',sans-serif",padding:"6px"}}>
+                {lang==='en'?'Later':'Más tarde'}
+              </button>
+            </div>
+          </div>
+        )}
         {tab==="plan"&&<PlanTab profile={profile} lang={lang} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} showT={showT} sfx={sfx} t={t} setTab={setTab} onMealRegistered={onMealRegistered}/>}
         {tab==="consulta"&&<ConsultaTab profile={profile} lang={lang} sfx={sfx}/>}
       </div>
@@ -7777,6 +7825,37 @@ function SeguimientoView({profile, lang}){
   );
 }
 
+// ─── Overlay de generación (estándar): bloquea la app mientras Railway cocina ──
+// Pantalla completa con mensajes rotatorios para que el paciente NO navegue ni
+// cierre hasta que su programación esté volcada (evita estados a medias).
+const GEN_MSGS_ES=["🧮 Calculando tus calorías objetivo…","🥗 Eligiendo tus recetas…","📅 Cuadrando la semana…","🛒 Preparando tu lista de la compra…","✨ Últimos retoques…"];
+const GEN_MSGS_EN=["🧮 Calculating your target calories…","🥗 Picking your recipes…","📅 Balancing your week…","🛒 Building your shopping list…","✨ Final touches…"];
+function OverlayGenerando({lang}){
+  const msgs=lang==='en'?GEN_MSGS_EN:GEN_MSGS_ES;
+  const [i,setI]=React.useState(0);
+  React.useEffect(()=>{ const id=setInterval(()=>setI(x=>(x+1)%msgs.length),2600); return ()=>clearInterval(id); },[msgs.length]);
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(6,20,9,0.93)",zIndex:3000,
+      display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"32px"}}>
+      <div style={{fontSize:64,animation:"tomaBob 1.4s ease-in-out infinite",marginBottom:18}}>👨‍🍳</div>
+      <div style={{fontWeight:900,fontSize:19,color:T.wh,fontFamily:"'Nunito',sans-serif",marginBottom:10,textAlign:"center"}}>
+        {lang==='en'?'Generating your plan…':'Generando tu programación…'}
+      </div>
+      <div style={{fontSize:14,color:T.g2,fontWeight:800,fontFamily:"'Nunito',sans-serif",minHeight:22,textAlign:"center",transition:"all 0.3s"}}>
+        {msgs[i]}
+      </div>
+      <div style={{display:"flex",gap:7,margin:"18px 0 22px"}}>
+        {msgs.map((_,j)=>(<span key={j} style={{width:8,height:8,borderRadius:4,background:j===i?T.g1:"rgba(255,255,255,0.18)",transition:"all 0.3s"}}/>))}
+      </div>
+      <div style={{fontSize:12,color:T.t3,fontFamily:"'DM Sans',sans-serif",textAlign:"center",lineHeight:1.6,maxWidth:280}}>
+        {lang==='en'
+          ?"Don't close the app — it usually takes under a minute ⏱️"
+          :"No cierres la app: suele tardar menos de un minuto ⏱️"}
+      </div>
+    </div>
+  );
+}
+
 function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx,t,setTab,onMealRegistered}){
   const isPremium=profile?.plan==='premium';
   const isStandard=profile?.plan==='standard';
@@ -7933,8 +8012,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
           : `Tu nueva programación se desbloquea el lunes (${diasDesbloqueo} día${diasDesbloqueo!==1?'s':''}). Para variar una comida, cambia esa receta con gemas.`});
       return;
     }
-    setGenerando(true);
-    showT&&showT({icon:"⏳",title:lang==='en'?'Generating…':'Generando…',sub:lang==='en'?'This can take up to a minute':'Esto puede tardar hasta un minuto'});
+    setGenerando(true);   // el OverlayGenerando bloqueante informa del progreso
     // Semana de la que partimos: si tras el intento hay una MÁS NUEVA en
     // Supabase, la generación funcionó aunque el fetch fallara/expirara.
     // Para detectar éxito tras regenerar: guardamos la fecha_gen previa de la
@@ -8463,15 +8541,19 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
 
   // ── Pantalla de configuración del plan (paciente estándar) ──────────────────
   if(configView || (isStandard && !configCompleta)) {
-    return <PlanConfig profile={profile} lang={lang} config={config} setConfig={setConfig}
+    return (<>
+      {generando&&<OverlayGenerando lang={lang}/>}
+      <PlanConfig profile={profile} lang={lang} config={config} setConfig={setConfig}
              sfx={sfx} showT={showT}
              onClose={()=>setConfigView(false)}
              onGenerar={()=>generarProgramacion()}
-             primeraVez={isStandard && !configCompleta}/>;
+             primeraVez={isStandard && !configCompleta}/>
+    </>);
   }
 
   if(!planes.length) return(
     <div style={{paddingBottom:16}}>
+      {generando&&<OverlayGenerando lang={lang}/>}
       <div style={{padding:'24px 16px 8px',textAlign:'center'}}>
         <div style={{fontSize:40,marginBottom:10}}>📆</div>
         <div style={{fontSize:16,fontWeight:900,color:T.t1,marginBottom:8}}>
@@ -8521,7 +8603,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
     </div>
   );
   const fechaStr=plan.fecha_gen?new Date(plan.fecha_gen).toLocaleDateString(lang==='en'?'en-GB':'es-ES',{day:'numeric',month:'short'}):'';
-  const WeekNav=()=>(<div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 16px 10px',gap:8}}>
+  const WeekNav=()=>(<>{generando&&<OverlayGenerando lang={lang}/>}<div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 16px 10px',gap:8}}>
     <button onClick={()=>setIdx(i=>Math.min(i+1,planes.length-1))} disabled={idx>=planes.length-1} style={{background:'none',border:idx>=planes.length-1?'1.5px solid rgba(255,255,255,0.1)':'1.5px solid '+T.bG,borderRadius:10,color:idx>=planes.length-1?T.t3:T.g1,fontSize:18,width:36,height:36,cursor:idx>=planes.length-1?'default':'pointer',flexShrink:0}}>‹</button>
     <div style={{textAlign:'center',flex:1}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:7,flexWrap:'wrap'}}>
@@ -8539,7 +8621,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
       {fechaStr&&<div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:3}}>{lang==='en'?'Generated':'Generado'} {fechaStr}</div>}
     </div>
     <button onClick={()=>setIdx(i=>Math.max(i-1,0))} disabled={idx<=0} style={{background:'none',border:idx<=0?'1.5px solid rgba(255,255,255,0.1)':'1.5px solid '+T.bG,borderRadius:10,color:idx<=0?T.t3:T.g1,fontSize:18,width:36,height:36,cursor:idx<=0?'default':'pointer',flexShrink:0}}>›</button>
-  </div>);
+  </div></>);
   const BtnVolver=({onClick})=>(<button onClick={onClick} style={{background:'none',border:'none',color:T.g1,fontSize:13,fontWeight:700,cursor:'pointer',padding:'0 16px 10px',fontFamily:"'Nunito',sans-serif",display:'flex',alignItems:'center',gap:4}}>← {lang==='en'?'Back':'Volver'}</button>);
   const DotsNav=()=>planes.length>1?(<div style={{display:'flex',justifyContent:'center',gap:6,padding:'8px 0 4px'}}>{planes.map((_,i)=>(<div key={i} onClick={()=>setIdx(i)} style={{width:i===idx?20:7,height:7,borderRadius:4,background:i===idx?T.g1:'rgba(255,255,255,0.15)',cursor:'pointer',transition:'all 0.3s'}}/>))}</div>):null;
   // Chip de semana de prueba (solo cuentas estándar con trial activo)
