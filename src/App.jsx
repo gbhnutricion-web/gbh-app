@@ -7306,40 +7306,96 @@ const PLAN_TOMA_IC = {Desayuno:'☀️',Almuerzo:'🍎',Comida:'🍽️',Meriend
 // registrado ya el paciente. Editable si cambian los horarios habituales.
 const PLAN_TOMA_HORA = {Desayuno:0, Almuerzo:10.5, Comida:13, Merienda:16.5, Cena:20};
 // ── Agregación de la lista de la compra semanal ──────────────────────────────
-// Recorre las 7×tomas del plan_json (ingredientes ya escalados a la ración del
-// paciente), suma cantidades del mismo ingrediente, convierte unidades y cuenta
-// repeticiones de los ítems sin cantidad. Devuelve items ordenados con clave
-// estable nombre+unidad (para persistir los marcados).
+// Endurecida para el recetario vegano importado: fracciones unicode/ASCII
+// ("52 ½", "1/4"), unidades escritas ("gramos de"), descriptores tras coma que
+// NO son ingrediente nuevo ("coliflor, cruda (132,5 gr.)"), cantidad entre
+// paréntesis prioritaria ("½ taza (45 g) avena") y DESPENSA: las medidas de uso
+// (cucharadas de aceite, pizca de sal…) se convierten en la compra realista
+// ("1 botella de aceite"), porque nadie compra cucharadas soperas.
+const _FR={"½":0.5,"¼":0.25,"¾":0.75,"⅓":1/3,"⅔":2/3,"⅛":0.125};
+function _normFrac(t){
+  t=t.replace(/(\d+)\s*([½¼¾⅓⅔⅛])/g,(m,a,f)=>String(parseFloat(a)+_FR[f]));
+  for(const f in _FR) t=t.split(f).join(String(_FR[f]));
+  t=t.replace(/(\d+)\s+(\d+)\/(\d+)/g,(m,a,b,c)=>String(+a + (+b)/(+c)));
+  t=t.replace(/(^|[^\d/.,])(\d+)\/(\d+)(?!\d)/g,(m,p,a,b)=>p+String((+a)/(+b)));
+  return t;
+}
+// Fragmentos que continúan el ingrediente anterior (mismo criterio que el script)
+const _DESC_SEG=/^(crud[oa]s?|cocid[oa]s?|en\s+polvo|virgen(\s+extra)?|extra\b|negr[oa]s?|blanc[oa]s?|fresc[oa]s?|natural(es)?|light|(semi)?desnatad[oa]s?|enter[oa]s?|integral(es)?|picad[oa]s?|rallad[oa]s?|tostad[oa]s?|molid[oa]s?|pelad[oa]s?|trocead[oa]s?|sin\s+sal|sin\s+az[uú]car(es)?|sin\s+gluten|sin\s+lactosa|sin\s+c[aá]scara|sec[oa]s?|madur[oa]s?|grandes?|peque[nñ][oa]s?|al\s+gusto|heura)\b/i;
+// Despensa: [detector, nombre canónico, compra realista]
+const _DESPENSA=[
+  [/aceite/i,               "Aceite de oliva",        "1 botella"],
+  [/vinagre/i,              "Vinagre",                "1 botella"],
+  [/salsa de soja/i,        "Salsa de soja",          "1 botella"],
+  [/^sal\b|\bsal (marina|de mar|fina|gruesa)\b/i, "Sal", "1 paquete"],
+  [/pimienta|especias?|or[eé]gano|piment[oó]n|canela|comino|cayena|curry|c[uú]rcuma|hierbas|laurel|tomillo|romero|nuez moscada|jengibre en polvo|ajo en polvo|cebolla en polvo|vainilla/i, "Especias", "1 bote"],
+  [/edulcorante|estevia|stevia/i, "Edulcorante",      "1 paquete"],
+  [/levadura|bicarbonato/i, "Levadura / bicarbonato", "1 sobre"],
+  [/\bmiel\b/i,             "Miel",                   "1 bote"],
+  [/pesto/i,                "Pesto",                  "1 bote"],
+  [/mostaza/i,              "Mostaza",                "1 bote"],
+];
+const _UNIDADES=[
+  [/^(kg|kilos?)\b\.?/i,"kg","peso"],[/^(gramos?|gr|g)\b\.?/i,"g","peso"],
+  [/^(mililitros?|ml)\b\.?/i,"ml","peso"],[/^(cl)\b\.?/i,"cl","peso"],[/^(litros?|l)\b\.?/i,"l","peso"],
+  [/^cucharadas?(\s+soperas?)?\b/i,"cda","med"],[/^(cucharaditas?|cdtas?)\b\.?/i,"cdta","med"],[/^cdas?\b\.?/i,"cda","med"],
+  [/^tarrinas?\b/i,"tarrina","cont"],[/^botes?\b/i,"bote","cont"],[/^latas?\b/i,"lata","cont"],
+  [/^paquetes?\b/i,"paquete","cont"],[/^sobres?\b/i,"sobre","cont"],[/^botellas?\b/i,"botella","cont"],
+  [/^bolsas?\b/i,"bolsa","cont"],[/^vasos?\b/i,"vaso","cont"],[/^tazas?\b/i,"taza","cont"],[/^briks?\b/i,"brik","cont"],
+  [/^(unidad(?:es)?|uds?)\b\.?/i,"","ud"],
+  [/^(lonchas?|rodajas?|dientes?|hojas?|manojos?|piezas?|filetes?|rebanadas?|pu[nñ]ados?|onzas?|ramas?)\b/i,"","ud"],
+];
 function agregarListaCompra(planJ){
   if(!planJ) return [];
   const nrm=s=>s.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
   const mapa=new Map();
+  const meter=(key,item)=>{const p=mapa.get(key); if(p){p.cant=(p.cant||0)+(item.cant||0); p.veces=(p.veces||0)+(item.veces||0);} else mapa.set(key,{key,...item});};
   for(const tm of PLAN_TOMAS){
     const celdas=planJ[tm]; if(!celdas) continue;
     for(let d=1; d<=7; d++){
       const ing=celdas[String(d)]?.Ingredientes; if(!ing) continue;
+      // split por comas respetando paréntesis + fusión de descriptores
+      const segs=[]; 
       for(const raw of String(ing).split(/,(?![^(]*\))/)){
-        const it=raw.trim(); if(!it) continue;
-        // "250 g pechuga de pollo" | "1 cebolla" | "aceite de oliva"
-        const m=it.match(/^([\d]+(?:[.,]\d+)?)\s*(g|gr|kg|ml|cl|l|ud|uds)?\.?\s+(.+)$/i);
-        if(m){
-          const cant=parseFloat(m[1].replace(",","."));
-          let uni=(m[2]||"").toLowerCase(); if(uni==="gr")uni="g"; if(uni==="uds")uni="ud";
-          const nombre=m[3].trim();
-          const key=nrm(nombre)+"|"+(uni||"n");
-          const prev=mapa.get(key);
-          if(prev) prev.cant+=cant;
-          else mapa.set(key,{key,nombre,uni,cant});
-        } else {
-          const key=nrm(it)+"|x";
-          const prev=mapa.get(key);
-          if(prev) prev.veces+=1;
-          else mapa.set(key,{key,nombre:it,uni:"",cant:null,veces:1});
+        const s=raw.trim(); if(!s) continue;
+        if(segs.length&&_DESC_SEG.test(s)) segs[segs.length-1]+=", "+s; else segs.push(s);
+      }
+      for(const seg of segs){
+        const s=_normFrac(seg);
+        if(/^(cubitos de )?(agua|hielo)\b/i.test(s)) continue;   // no se compra
+        // cantidad entre paréntesis: manda ("0.5 taza (45 g) avena" → 45 g)
+        const mp=s.match(/\((\d+(?:[.,]\d+)?)\s*(g|gr|gramos|ml|cl|kg|l)\b[^)]*\)/i);
+        let resto=s.replace(/\([^)]*\)/g," ").replace(/\s+/g," ").trim();
+        let cant=null, uni="", tipo="";
+        const mnum=resto.match(/^(\d+(?:[.,]\d+)?)\s*/);
+        if(mnum){ cant=parseFloat(mnum[1].replace(",",".")); resto=resto.slice(mnum[0].length); }
+        for(const [rx,u,tp] of _UNIDADES){
+          const mu=resto.match(rx);
+          if(mu){ uni=u; tipo=tp; resto=resto.slice(mu[0].length).trim(); break; }
         }
+        resto=resto.replace(/^de\s+/i,"").replace(/^del\s+/i,"").trim().replace(/[.,;\s]+$/,"");
+        if(mp){ cant=parseFloat(mp[1].replace(",",".")); uni=mp[2].toLowerCase(); if(uni==="gr"||uni==="gramos")uni="g"; tipo="peso"; }
+        // normalizar peso/volumen a g/ml
+        if(tipo==="peso"){
+          if(uni==="kg"){cant*=1000;uni="g";} if(uni==="l"){cant*=1000;uni="ml";} if(uni==="cl"){cant*=10;uni="ml";}
+        }
+        const nombre=resto||seg.trim();
+        // ── Despensa: compra realista, agrupada por canónico ──
+        const desp=_DESPENSA.find(([rx])=>rx.test(nombre));
+        if(desp){ meter("desp|"+desp[1],{nombre:desp[1],tipo:"desp",compra:desp[2],cant:0,veces:1}); continue; }
+        if(!nombre) continue;
+        if(cant==null){ meter(nrm(nombre)+"|x",{nombre,tipo:"veces",cant:0,veces:1}); continue; }
+        if(tipo==="peso"){ meter(nrm(nombre)+"|"+uni,{nombre,tipo,uni,cant,veces:0}); continue; }
+        if(tipo==="med"){ meter(nrm(nombre)+"|"+uni,{nombre,tipo,uni,cant,veces:0}); continue; }
+        if(tipo==="cont"){ meter(nrm(nombre)+"|c|"+uni,{nombre,tipo,uni,cant,veces:0}); continue; }
+        meter(nrm(nombre)+"|ud",{nombre,tipo:"ud",cant,veces:0});   // contable ("1 cebolla")
       }
     }
   }
-  return [...mapa.values()].sort((a,b)=>a.nombre.localeCompare(b.nombre,"es"));
+  const items=[...mapa.values()];
+  const alfa=(a,b)=>a.nombre.localeCompare(b.nombre,"es");
+  return items.filter(x=>x.tipo!=="desp").sort(alfa)
+       .concat(items.filter(x=>x.tipo==="desp").sort(alfa));
 }
 // ── Estados de cumplimiento por comida (registro del paciente) ──────────────
 // El registro por toma alimenta los mini-botones de Inicio y CIERRA la misión de
@@ -7868,7 +7924,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
   // probar varias opciones hasta dar con la buena acumularía ingredientes de
   // recetas descartadas. Para comprar una receta concreta (cambiada o del
   // recetario) está el botón 🛒 Comprar de cada receta (MiniListaCompra).
-  const listaSnapKey=`gbh:listasnap:${profile?.id}:${plan?.semana??"x"}`;
+  const listaSnapKey=`gbh:listasnap2:${profile?.id}:${plan?.semana??"x"}`;
   const [listaSnap,setListaSnap]=React.useState(null);
   React.useEffect(()=>{
     if(!planJ){ setListaSnap(null); return; }
@@ -7880,16 +7936,22 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[listaSnapKey, planJ?1:0]);
   const listaItems = listaSnap||[];
-  // Formato español de cantidades: 1.750 g → "1,75 kg"; sin unidad → "×7"
+  // Formato de la cantidad según el tipo de ítem:
+  //  · despensa → compra realista ("1 botella")   · contenedor → techo ("1 bote")
+  //  · peso → "1,75 kg" en español                 · medidas → "3 cda"
   const fmtCant=(it)=>{
-    if(it.cant==null) return it.veces>1?`×${it.veces}`:"";
+    if(it.tipo==="desp") return it.compra||"";
+    if(it.tipo==="veces") return it.veces>1?`×${it.veces}`:"";
+    if(it.tipo==="cont"){ const n=Math.max(1,Math.ceil(it.cant)); return `${n} ${it.uni}${n>1?"s":""}`; }
+    if(it.tipo==="ud"){ const n=Math.max(1,Math.ceil(it.cant)); return `×${n}`; }
+    if(it.tipo==="med"){ const n=Math.round(it.cant*10)/10; return `${String(n).replace(".",",")} ${it.uni}`; }
     let c=it.cant, u=it.uni;
     if(u==="g"&&c>=1000){ c=c/1000; u="kg"; }
     if(u==="ml"&&c>=1000){ c=c/1000; u="l"; }
     const num=(Math.round(c*100)/100).toString().replace(".",",");
-    return u&&u!=="ud" ? `${num} ${u}` : `×${num}`;
+    return `${num} ${u}`;
   };
-  const listaLsKey=`gbh:listacompra:${profile?.id}:${plan?.semana??"x"}`;
+  const listaLsKey=`gbh:listacompra2:${profile?.id}:${plan?.semana??"x"}`;
   const [listaChecks,setListaChecks]=React.useState({});
   const [listaConfirm,setListaConfirm]=React.useState(false);   // doble tap en Regenerar
   const [miniCompra,setMiniCompra]=React.useState(null);        // popup 🛒 por receta (vista diaria)
