@@ -4552,13 +4552,14 @@ function GBHApp(){
             titulo:es?`¡${num(bloque)} kg ${perdiendo?"menos":"más"}!`:`${num(bloque)} kg ${perdiendo?"down":"up"}!`};
         }
       }
-      // 3) Racha
+      // 3) Racha — cada hito trae su cofre de gemas (se entrega al celebrar)
       if(!hito && streak>0){
         const HITOS=[365,200,100,50,30,14,7];
+        const COFRE={7:10,14:15,30:25,50:40,100:75,200:120,365:250};
         const h=HITOS.find(n=>streak>=n);
         if(h){
           const k=`gbh:hitovisto:${profile.id}:racha:${h}`;
-          if(!lsGet(k,false)) hito={k,icono:"🔥",cifra:String(h),dorada:h>=100,
+          if(!lsGet(k,false)) hito={k,icono:"🔥",cifra:String(h),dorada:h>=100,gemas:COFRE[h],
             etiqueta:es?"días de racha":"day streak",
             sub:es?"Ni un solo día sin registrar mi plan. Constancia con GBH Nutrición":"Not a single day unlogged. Consistency with GBH Nutrición",
             titulo:es?`¡Racha de ${h} días!`:`${h}-day streak!`};
@@ -4568,7 +4569,11 @@ function GBHApp(){
       lsSet(hito.k,true);
       generarTarjetaHito({icono:hito.icono,cifra:hito.cifra,etiqueta:hito.etiqueta,
         sub:hito.sub,nombre,dorada:hito.dorada,lang})
-        .then(card=>{ sfx("streakCelebration"); setHitoCard({...card,titulo:hito.titulo}); })
+        .then(card=>{
+          sfx("streakCelebration");
+          if(hito.gemas) addXG(0,hito.gemas);          // cofre del hito de racha
+          setHitoCard({...card,titulo:hito.titulo,gemas:hito.gemas||null});
+        })
         .catch(e=>console.warn("[hito]",e));
     }catch(e){ console.warn("[hito]",e); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4606,6 +4611,80 @@ function GBHApp(){
     return ()=>clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[profile?.id, allDone, trialDiasRest]);
+
+  // ── Escudos con consumo REAL + reparación de racha ─────────────────────────
+  // El escudo existía (compra 200 💎, cofres) pero nunca se consumía: la racha
+  // solo miraba l.diet y la "protección" era decorativa. Ahora, si AYER quedó
+  // sin registrar y había racha activa:
+  //   1) con escudos → se consume UNO automáticamente, el día queda cubierto
+  //      (diet_followed=true) y la racha sigue viva;
+  //   2) sin escudos y racha en peligro ≥3 días → pop-up para repararla por
+  //      25 💎. Ventana de 48h real: solo se ofrece si el hueco es exactamente
+  //      ayer (dos días sin registrar = racha perdida de verdad).
+  const RACHA_COSTE_REPARAR=25;
+  const [avisoRacha,setAvisoRacha]=useState(null);   // {perdida,fecha} | null
+  const repararDia=useCallback((fecha)=>{
+    if(!profile?.id) return;
+    const key=`gbh:logs:${profile.id}`;
+    const arr=lsGet(key,[]);
+    const i=arr.findIndex(l=>l.date===fecha);
+    const cur=i>=0?arr[i]:{profile_id:profile.id,date:fecha,diet:false,steps:false,hydration:false,sleep:false,sc:0,meals:{},note:""};
+    const entry={...cur,diet:true};
+    if(i>=0)arr[i]=entry;else arr.push(entry);
+    try{lsSet(key,arr);}catch{}
+    setLogs(ls=>{const n=[...ls];const j=n.findIndex(l=>l.date===fecha);
+      if(j>=0)n[j]={...n[j],diet:true};else n.push(entry);return n;});
+    sbReq("POST","daily_logs?on_conflict=profile_id,log_date",{profile_id:profile.id,log_date:fecha,diet_followed:true});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.id]);
+  useEffect(()=>{
+    if(!profile?.id||!logs.length) return;
+    try{
+      const d1=new Date();d1.setDate(d1.getDate()-1);
+      const d2=new Date();d2.setDate(d2.getDate()-2);
+      const ayer=toKey(d1),anteayer=toKey(d2);
+      if(logs.find(l=>l.date===ayer&&l.diet)) return;         // ayer cubierto
+      if(!logs.find(l=>l.date===anteayer&&l.diet)) return;    // no había racha
+      const k=`gbh:rachafix:${profile.id}:${ayer}`;
+      if(lsGet(k,false)) return;
+      // Longitud de la racha que peligra (hacia atrás desde anteayer)
+      let per=0;const dd=new Date(d2);
+      while(logs.find(l=>l.date===toKey(dd)&&l.diet)){per++;dd.setDate(dd.getDate()-1);}
+      if((profile.shields||0)>0){
+        lsSet(k,true);
+        const u={...profile,shields:profile.shields-1};
+        setProfile(u);lsSet(`gbh:p:${u.id}`,u);
+        sbReq("PATCH",`profiles?id=eq.${profile.id}`,{shields:u.shields});
+        repararDia(ayer);
+        sfx("shield");
+        showT({icon:"🛡️",title:lang==='en'?'Shield used!':'¡Escudo usado!',
+          sub:lang==='en'?`Your ${per}-day streak is safe`:`Tu racha de ${per} días sigue viva`});
+        return;
+      }
+      if(per<3){ lsSet(k,true); return; }   // rachas cortas: no merece rescate
+      if(avisoNuevoPlan||avisoRegistro||avisoSupl||avisoTrial||hitoCard||avisoVictoria) return; // reintenta
+      lsSet(k,true);
+      setAvisoRacha({perdida:per,fecha:ayer});
+    }catch{}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.id, logs, avisoNuevoPlan, avisoRegistro, avisoSupl, avisoTrial, hitoCard, avisoVictoria]);
+  const repararRacha=async()=>{
+    if(!avisoRacha) return;
+    if((profile?.gems||0)<RACHA_COSTE_REPARAR){
+      sfx("error");
+      showT({icon:"💎",title:lang==='en'?'Not enough gems':'Gemas insuficientes',
+        sub:lang==='en'?`You need ${RACHA_COSTE_REPARAR} 💎`:`Necesitas ${RACHA_COSTE_REPARAR} 💎`});
+      return;
+    }
+    const u={...profile,gems:profile.gems-RACHA_COSTE_REPARAR};
+    setProfile(u);lsSet(`gbh:p:${u.id}`,u);
+    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:u.gems});
+    repararDia(avisoRacha.fecha);
+    sfx("streakCelebration");
+    showT({icon:"💚",title:lang==='en'?'Streak repaired!':'¡Racha reparada!',
+      sub:lang==='en'?`Your ${avisoRacha.perdida}-day streak lives on`:`Tu racha de ${avisoRacha.perdida} días sigue viva`});
+    setAvisoRacha(null);
+  };
   const expr=getExpr(streak,tLog.diet,allDone,tLog.sleep);
   const fn=profile?.name?.split(" ")[0]||"";
 
@@ -7806,9 +7885,14 @@ function GBHApp(){
         {hitoCard&&(
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.82)",zIndex:2500,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"24px 20px"}}>
             <div style={{width:"100%",maxWidth:340,textAlign:"center",animation:"popIn 0.25s ease"}}>
-              <div style={{fontWeight:900,fontSize:21,color:T.au1,fontFamily:"'Nunito',sans-serif",marginBottom:12}}>
+              <div style={{fontWeight:900,fontSize:21,color:T.au1,fontFamily:"'Nunito',sans-serif",marginBottom:hitoCard.gemas?4:12}}>
                 🏆 {hitoCard.titulo}
               </div>
+              {hitoCard.gemas&&(
+                <div style={{fontWeight:900,fontSize:14,color:T.t1,fontFamily:"'Nunito',sans-serif",marginBottom:12}}>
+                  🎁 {lang==='en'?'Chest':'Cofre'}: +{hitoCard.gemas} 💎
+                </div>
+              )}
               <img src={hitoCard.dataUrl} alt="" style={{width:"62%",borderRadius:18,
                 border:`2px solid ${T.au1}`,boxShadow:"0 12px 40px rgba(0,0,0,0.6)",marginBottom:16}}/>
               <button onClick={compartirHito} style={{
@@ -7859,6 +7943,35 @@ function GBHApp(){
                 background:"none",border:"none",color:T.t3,fontWeight:800,fontSize:13,cursor:"pointer",
                 fontFamily:"'Nunito',sans-serif",padding:"6px"}}>
                 {lang==='en'?'Continue my day':'Seguir con mi día'}
+              </button>
+            </div>
+          </div>
+        )}
+        {avisoRacha&&!avisoNuevoPlan&&!avisoRegistro&&!avisoSupl&&!avisoTrial&&!hitoCard&&!avisoVictoria&&(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+            <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
+              border:`2.5px solid ${T.au1}`,borderRadius:24,padding:"26px 22px 20px",textAlign:"center",
+              boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:"popIn 0.25s ease"}}>
+              <div style={{fontSize:52,marginBottom:10,animation:"tomaBob 1.8s ease-in-out infinite",display:"inline-block"}}>💔</div>
+              <div style={{fontWeight:900,fontSize:19,color:T.au1,fontFamily:"'Nunito',sans-serif",marginBottom:8}}>
+                {lang==='en'?`Your ${avisoRacha.perdida}-day streak is in danger!`:`¡Tu racha de ${avisoRacha.perdida} días peligra!`}
+              </div>
+              <div style={{fontSize:13.5,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6,marginBottom:18}}>
+                {lang==='en'
+                  ?'Yesterday went unlogged. You can repair it now and keep your streak alive — this offer only lasts today.'
+                  :'Ayer se quedó sin registrar. Puedes repararla ahora y mantener tu racha viva — esta oferta solo dura hoy.'}
+              </div>
+              <button onClick={repararRacha} style={{
+                width:"100%",padding:"15px",borderRadius:16,border:"none",cursor:"pointer",
+                background:(profile?.gems||0)>=RACHA_COSTE_REPARAR?`linear-gradient(135deg,${T.g1},${T.g2})`:"rgba(255,255,255,0.10)",
+                color:"#fff",fontWeight:900,fontSize:15,opacity:(profile?.gems||0)>=RACHA_COSTE_REPARAR?1:0.6,
+                fontFamily:"'Nunito',sans-serif",boxShadow:(profile?.gems||0)>=RACHA_COSTE_REPARAR?`0 5px 0 ${T.g3}`:"none",marginBottom:10}}>
+                🔧 {lang==='en'?`Repair my streak · ${RACHA_COSTE_REPARAR} 💎`:`Reparar mi racha · ${RACHA_COSTE_REPARAR} 💎`}
+              </button>
+              <button onClick={()=>{sfx("tap");setAvisoRacha(null);}} style={{
+                background:"none",border:"none",color:T.t3,fontWeight:800,fontSize:13,cursor:"pointer",
+                fontFamily:"'Nunito',sans-serif",padding:"6px"}}>
+                {lang==='en'?'Let it go':'Dejarla ir'}
               </button>
             </div>
           </div>
