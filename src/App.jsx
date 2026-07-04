@@ -4667,7 +4667,11 @@ function GBHApp(){
       setAvisoRacha({perdida:per,fecha:ayer});
     }catch{}
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[profile?.id, logs, avisoNuevoPlan, avisoRegistro, avisoSupl, avisoTrial, hitoCard, avisoVictoria]);
+  // ⚠️ NO añadir aquí avisoRegistro/avisoSupl: se declaran más abajo y en el
+  // array de deps se evalúan DURANTE el render (TDZ → crash al abrir la app).
+  // El guard dentro del callback basta; si un pop-up bloquea, se reintenta al
+  // siguiente cambio de logs o en la próxima apertura.
+  },[profile?.id, logs]);
   const repararRacha=async()=>{
     if(!avisoRacha) return;
     if((profile?.gems||0)<RACHA_COSTE_REPARAR){
