@@ -626,6 +626,31 @@ import { ComposedChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 
 const SB  = "https://kszytoufvqogcitzbzqs.supabase.co";
 const KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtzenl0b3VmdnFvZ2NpdHpienFzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1OTQzOTgsImV4cCI6MjA5NDE3MDM5OH0.OcOUrgbyAL6aPBSW_hSNapmwSYMV5mNjLrJCmRghg-c";
 
+// ─── Stripe (suscripción Estándar 7 €/mes) ───────────────────────────────────
+const STRIPE_PAYMENT_LINK = "https://buy.stripe.com/aFa00k9SL8B32ud4nDbQY00";
+const STRIPE_API          = "https://gbh-stripe-production.up.railway.app";
+
+// Abre el checkout de Stripe con el paciente enganchado (client_reference_id):
+// el webhook usa ese id para poner plan=standard al completarse el pago.
+const abrirCheckoutStripe = (profileId) => {
+  if(!profileId) return;
+  window.open(`${STRIPE_PAYMENT_LINK}?client_reference_id=${profileId}`, "_blank", "noopener");
+};
+
+// Portal de clientes de Stripe (cancelar suscripción / cambiar método de pago).
+// Pide la URL de sesión al servicio de Railway y navega a ella.
+const abrirPortalStripe = async (profileId) => {
+  try{
+    const r = await fetch(`${STRIPE_API}/stripe/portal`, {
+      method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ profile_id: profileId }),
+    });
+    const d = await r.json().catch(()=>null);
+    if(r.ok && d?.url){ window.location.href = d.url; return true; }
+  }catch(e){ /* sin conexión o servicio caído */ }
+  return false;
+};
+
 // ─── Supabase Auth helpers (email + password) ─────────────────────────────────
 const sbAuth = {
   signUp: async (email, password) => {
@@ -3374,6 +3399,7 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
   const [delInput,    setDelInput]   = useState("");
   const [editingHeight, setEditingHeight] = useState(false);
   const [heightEdit,    setHeightEdit]    = useState(profile?.height_cm||170);
+  const [portalLoading, setPortalLoading] = useState(false);
   const fileRef = useRef(null);
 
   const onFile = (e) => {
@@ -3537,6 +3563,50 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
                   {flag}
                 </button>
               ))}
+            </div>
+          </div>
+          {/* ── Suscripción (Stripe) ── */}
+          <div style={{padding:"12px 0",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+              <div style={{minWidth:0}}>
+                <div style={{fontSize:10,color:T.t2,textTransform:"uppercase",letterSpacing:"0.08em",fontFamily:"'DM Sans',sans-serif",marginBottom:3}}>
+                  {lang==="en"?"Subscription":"Suscripción"}
+                </div>
+                <div style={{fontSize:14,fontWeight:800,color:T.wh,fontFamily:"'DM Sans',sans-serif"}}>
+                  {profile?.plan==="premium" ? "💎 Premium"
+                    : profile?.plan==="standard"
+                      ? (profile?.trial_ends_at ? (lang==="en"?"🌱 Free week":"🌱 Semana de prueba") : (lang==="en"?"⭐ Standard":"⭐ Estándar"))
+                      : (lang==="en"?"🌱 Free":"🌱 Gratis")}
+                </div>
+                {profile?.plan==="premium"&&(
+                  <div style={{fontSize:10,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginTop:2}}>
+                    {lang==="en"?"Managed by your nutritionist":"Gestionado por tu nutricionista"}
+                  </div>
+                )}
+              </div>
+              {profile?.plan==="premium" ? null
+                : (profile?.plan==="standard" && !profile?.trial_ends_at && profile?.plan_until) ? (
+                <button disabled={portalLoading}
+                  onClick={async()=>{
+                    setPortalLoading(true);
+                    const ok = await abrirPortalStripe(profile?.id);
+                    setPortalLoading(false);
+                    if(!ok) alert(lang==="en"?"Couldn't open the subscription portal. Please try again.":"No se pudo abrir el portal de suscripción. Inténtalo de nuevo.");
+                  }}
+                  style={{background:"rgba(255,255,255,0.08)",border:"1.5px solid rgba(255,255,255,0.18)",
+                    borderRadius:10,padding:"8px 12px",color:T.t1,fontWeight:800,fontSize:12,
+                    cursor:portalLoading?"wait":"pointer",fontFamily:"'Nunito',sans-serif",flexShrink:0,
+                    opacity:portalLoading?0.6:1}}>
+                  {portalLoading ? "⏳" : (lang==="en"?"Manage":"Gestionar")}
+                </button>
+              ) : (
+                <button onClick={()=>abrirCheckoutStripe(profile?.id)}
+                  style={{background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:"none",
+                    borderRadius:10,padding:"8px 12px",color:"#fff",fontWeight:900,fontSize:12,
+                    cursor:"pointer",boxShadow:`0 2px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif",flexShrink:0}}>
+                  {lang==="en"?"Subscribe · €7/mo":"Suscribirme · 7 €/mes"}
+                </button>
+              )}
             </div>
           </div>
           {/* Notificaciones */}
@@ -3971,6 +4041,27 @@ function GBHApp(){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[profile?.id, profile?.plan, profile?.trial_ends_at]);
 
+  // ── Red de seguridad plan_until: suscripción de pago caducada ──────────────
+  // La baja real la hace el webhook (customer.subscription.deleted). Esto solo
+  // cubre el caso de que un webhook se pierda: si el periodo pagado lleva >5
+  // días vencido (margen para los reintentos de cobro de Stripe), degradar.
+  const planUntilDowngradeRef = useRef(false);
+  useEffect(()=>{
+    if(!profile?.id) return;
+    if(profile.plan!=="standard" || profile.trial_ends_at || !profile.plan_until) return;
+    const fin = Date.parse(profile.plan_until);
+    if(isNaN(fin) || fin + 5*24*60*60*1000 > Date.now()) return;
+    if(planUntilDowngradeRef.current) return;
+    planUntilDowngradeRef.current = true;
+    const u = {...profile, plan:"free"};
+    setProfile(u); lsSet(`gbh:p:${u.id}`, u);
+    sbReq("PATCH", `profiles?id=eq.${profile.id}`, { plan:"free" });
+    showT&&showT({icon:"💳",
+      title: lang==="en" ? "Your subscription has expired" : "Tu suscripción ha caducado",
+      sub:   lang==="en" ? "Renew (€7/mo) to keep your weekly plan 💚" : "Renueva (7€/mes) para seguir con tu programación 💚"});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.id, profile?.plan, profile?.plan_until]);
+
   // ── Mantener viva la sesión (el token caduca a la hora) ────────────────────
   useEffect(()=>{
     const comprobar = () => {
@@ -4125,7 +4216,7 @@ function GBHApp(){
     const refrescar=async()=>{
       if(!navigator.onLine||document.hidden) return;
       try{
-        let fresh=await sbReq("GET",`profiles?id=eq.${profile.id}&select=plan,gems,xp,shields,target_kcal,trial_ends_at&limit=1`);
+        let fresh=await sbReq("GET",`profiles?id=eq.${profile.id}&select=plan,gems,xp,shields,target_kcal,trial_ends_at,plan_until&limit=1`);
         if(fresh===null){ // columna trial_ends_at aún sin migrar → select clásica
           fresh=await sbReq("GET",`profiles?id=eq.${profile.id}&select=plan,gems,xp,shields,target_kcal&limit=1`);
         }
@@ -4139,7 +4230,8 @@ function GBHApp(){
             plan:f.plan??prev.plan, gems:f.gems??prev.gems,
             xp:f.xp??prev.xp, shields:f.shields??prev.shields,
             target_kcal:f.target_kcal??prev.target_kcal,
-            trial_ends_at:f.trial_ends_at??prev.trial_ends_at};
+            trial_ends_at:f.trial_ends_at??prev.trial_ends_at,
+            plan_until:f.plan_until??prev.plan_until};
           lsSet(`gbh:p:${prev.id}`, merged);
           return merged;
         });
@@ -7187,10 +7279,17 @@ function GBHApp(){
                     <div style={{fontSize:14,color:T.t2,lineHeight:1.7,maxWidth:300,fontFamily:"'DM Sans',sans-serif"}}>
                       {lang==='en'?'All 571 recipes, sorted by calories and grouped by category, are available to Standard and Premium subscribers.':'Las 571 recetas, ordenadas por calorías y agrupadas por categoría, están disponibles para suscriptores Estándar y Premium.'}
                     </div>
-                    <a href={`https://wa.me/${GBH_WHATSAPP}?text=${encodeURIComponent(lang==='en'?`Hi! I'm ${profile?.name||''} and I'd like to subscribe to access the full GBH recipe book 📚`:`¡Hola! Soy ${profile?.name||''} y me gustaría suscribirme para acceder al recetario completo de GBH 📚`)}`}
+                    <button onClick={()=>{sfx&&sfx("tap");abrirCheckoutStripe(profile?.id);}}
+                      style={{marginTop:4,width:'100%',maxWidth:300,background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:'none',color:'#fff',fontWeight:900,fontSize:15,borderRadius:18,padding:'16px 20px',cursor:'pointer',boxShadow:`0 4px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif",display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
+                      <span style={{fontSize:20}}>⭐</span>{lang==='en'?'Subscribe · €7/month':'Suscribirme · 7 €/mes'}
+                    </button>
+                    <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>
+                      {lang==='en'?'Instant access · cancel anytime':'Acceso al momento · cancela cuando quieras'}
+                    </div>
+                    <a href={`https://wa.me/${GBH_WHATSAPP}?text=${encodeURIComponent(lang==='en'?`Hi! I'm ${profile?.name||''} and I have a question about the GBH subscription 📚`:`¡Hola! Soy ${profile?.name||''} y tengo una duda sobre la suscripción de GBH 📚`)}`}
                       target="_blank" rel="noopener noreferrer" onClick={()=>sfx&&sfx("tap")}
-                      style={{marginTop:4,width:'100%',maxWidth:300,background:'linear-gradient(135deg,#25D366,#1DA851)',color:'#fff',fontWeight:900,fontSize:15,borderRadius:18,padding:'16px 20px',textDecoration:'none',boxShadow:'0 4px 0 #128C4B',fontFamily:"'Nunito',sans-serif",display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
-                      <span style={{fontSize:20}}>💬</span>{lang==='en'?'Subscribe to unlock':'Suscribirme para acceder'}
+                      style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",textDecoration:'underline'}}>
+                      {lang==='en'?'Questions? Message me 💬':'¿Dudas? Escríbeme 💬'}
                     </a>
                   </div>
                 ) : (<>
