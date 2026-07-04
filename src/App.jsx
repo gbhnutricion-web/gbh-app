@@ -2260,6 +2260,7 @@ function CalcTab({weights,profile,setProfile,lang}){
   const [cHeight, setCheight]= useState(saved?.inputs?.height || (profile?.height_cm ? String(profile.height_cm) : ""));
   const [cAge,    setCage]   = useState(saved?.inputs?.age    || "0");
   const [cAct,    setCact]   = useState(saved?.inputs?.act    || "0");
+  const [cGoal,   setCgoal]  = useState(saved?.inputs?.goal   || (profile?.goal_weight ? String(profile.goal_weight) : ""));
 
   const ageMids =[22,30,40,50,60,70];
   const actMults=[1.2,1.375,1.55,1.725,1.9];
@@ -2274,18 +2275,22 @@ function CalcTab({weights,profile,setProfile,lang}){
     const w=currentW,age=ageMids[parseInt(cAge,10)]||30,mul=actMults[parseInt(cAct,10)]||1.2;
     const bmr=cSex==="M"?10*w+6.25*h-5*age+5:10*w+6.25*h-5*age-161;
     const tdee=Math.round(bmr*mul);
-    const diff=goalW?(w-goalW)*7700/90:0;
+    // Peso objetivo editable AQUÍ (antes solo en Ajustes): factor del ajuste
+    // calórico junto a actividad y edad. Vacío/no válido → sin ajuste.
+    const gVal=parseFloat(String(cGoal).replace(",","."));
+    const goalEff=(!isNaN(gVal)&&gVal>20&&gVal<300)?gVal:null;
+    const diff=goalEff?(w-goalEff)*7700/90:0;
     const adjRaw=Math.min(Math.max(diff,-1000),1000);
     const target=Math.round(tdee-adjRaw);
     const safe=cSex==="M"?Math.max(target,1500):Math.max(target,1200);
     const ageLabel=AGE_LABELS[parseInt(cAge,10)]||"";
     const actLabel=ACT_LABELS[parseInt(cAct,10)]||"";
-    const loseGain=goalW?(w>goalW?"deficit":"surplus"):null;
+    const loseGain=goalEff?(w>goalEff?"deficit":"surplus"):null;
     const now=new Date().toISOString();
     const res={
       bmr:Math.round(bmr),tdee,adj:Math.round(adjRaw),target:safe,loseGain,
-      inputs:{sex:cSex,height:cHeight,age:cAge,act:cAct},
-      goalW,currentW,date:new Date().toLocaleDateString(lang==="en"?"en-GB":"es-ES",{day:"2-digit",month:"short",year:"numeric"})
+      inputs:{sex:cSex,height:cHeight,age:cAge,act:cAct,goal:cGoal},
+      goalW:goalEff,currentW,date:new Date().toLocaleDateString(lang==="en"?"en-GB":"es-ES",{day:"2-digit",month:"short",year:"numeric"})
     };
     // 1 localStorage — acceso inmediato offline
     lsSet(calcKey,res);
@@ -2298,7 +2303,7 @@ function CalcTab({weights,profile,setProfile,lang}){
     sbReq("POST","calorie_targets",{
       profile_id:profile.id,sex:cSex,height_cm:Math.round(h),
       age_range:ageLabel,activity:actLabel,current_weight:w,
-      goal_weight:goalW||null,bmr:Math.round(bmr),tdee,
+      goal_weight:goalEff||null,bmr:Math.round(bmr),tdee,
       adjustment:Math.round(adjRaw),target_kcal:safe,
       lose_gain:loseGain,calculated_at:now,
     });
@@ -2306,6 +2311,7 @@ function CalcTab({weights,profile,setProfile,lang}){
     sbReq("PATCH",`profiles?id=eq.${profile.id}`,{
       sex:cSex,height_cm:Math.round(h),age_range:ageLabel,
       activity:actLabel,target_kcal:safe,calc_updated_at:now,
+      goal_weight:goalEff,
     });
     // 3b Reflejar el objetivo en el perfil EN MEMORIA (y en localStorage) al
     //    instante. Sin esto, al ir a la pestaña Plan en la misma sesión saltaba
@@ -2313,7 +2319,8 @@ function CalcTab({weights,profile,setProfile,lang}){
     //    (el PATCH de arriba solo toca Supabase, no el estado de React).
     if(setProfile){
       const updP = {...profile, sex:cSex, height_cm:Math.round(h),
-        age_range:ageLabel, activity:actLabel, target_kcal:safe, calc_updated_at:now};
+        age_range:ageLabel, activity:actLabel, target_kcal:safe, calc_updated_at:now,
+        goal_weight:goalEff};
       setProfile(updP);
       lsSet(`gbh:p:${profile.id}`, updP);
     }
@@ -2338,6 +2345,7 @@ function CalcTab({weights,profile,setProfile,lang}){
       setCheight(saved.inputs.height||"");
       setCage(saved.inputs.age||"0");
       setCact(saved.inputs.act||"0");
+      setCgoal(saved.inputs.goal ?? (profile?.goal_weight?String(profile.goal_weight):""));
     }
     setEditing(true);
   };
@@ -2426,6 +2434,18 @@ function CalcTab({weights,profile,setProfile,lang}){
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <input type="number" value={cHeight} onChange={e=>setCheight(e.target.value)} placeholder={t("calcHeightPH")} min={100} max={250} style={{flex:1,background:"rgba(255,255,255,0.07)",border:`2px solid ${T.bW}`,borderRadius:14,padding:"15px 16px",color:T.cr,fontSize:24,fontWeight:900,fontFamily:"'DM Sans',sans-serif",textAlign:"center",outline:"none"}}/>
           <span style={{fontSize:17,color:T.t2,fontWeight:700,flexShrink:0}}>cm</span>
+        </div>
+      </Card>
+      <Card style={{marginBottom:12}}>
+        <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:12}}>{t("goalWeight")}</div>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <input type="number" value={cGoal} onChange={e=>setCgoal(e.target.value)} placeholder="70.0" step="0.1" min={20} max={300} style={{flex:1,background:"rgba(255,255,255,0.07)",border:`2px solid ${T.bW}`,borderRadius:14,padding:"15px 16px",color:T.cr,fontSize:24,fontWeight:900,fontFamily:"'DM Sans',sans-serif",textAlign:"center",outline:"none"}}/>
+          <span style={{fontSize:17,color:T.t2,fontWeight:700,flexShrink:0}}>kg</span>
+        </div>
+        <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:8,lineHeight:1.5}}>
+          {lang==='en'
+            ?'Sets the direction of your calorie adjustment (deficit or surplus). Leave empty for maintenance.'
+            :'Marca la dirección del ajuste calórico (déficit o superávit). Déjalo vacío para mantenimiento.'}
         </div>
       </Card>
       <Card style={{marginBottom:12}}>
@@ -3179,6 +3199,72 @@ async function generarTarjetaProgreso({nombre, chartData, goalWeight, lang}){
   return {dataUrl, blob};
 }
 
+// ─── Tarjeta de HITO compartible (formato Story 9:16) ────────────────────────
+// A diferencia de la tarjeta de progreso (4:5, feed), esta se dispara sola al
+// alcanzar un hito (racha, kg, objetivo) y está pensada para Stories de
+// Instagram: icono gigante, número enorme y marca GBH. El paciente la comparte
+// con un toque → su audiencia ve la marca (mismo mecanismo que los posts
+// etiquetados, pero automatizado).
+async function generarTarjetaHito({icono, cifra, etiqueta, sub, nombre, dorada, lang}){
+  const W=1080, H=1920;
+  const cv=document.createElement("canvas"); cv.width=W; cv.height=H;
+  const x=cv.getContext("2d");
+  const F=(w,s)=>`${w} ${s}px 'Nunito','Segoe UI Emoji',sans-serif`;
+
+  // Fondo verde GBH + halos
+  const bg=x.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0,"#0d2b12"); bg.addColorStop(0.55,"#14301b"); bg.addColorStop(1,"#0a2313");
+  x.fillStyle=bg; x.fillRect(0,0,W,H);
+  x.globalAlpha=0.08; x.fillStyle=dorada?"#FFC800":"#58CC02";
+  x.beginPath();x.arc(W-60,220,320,0,7);x.fill();
+  x.beginPath();x.arc(40,H-260,380,0,7);x.fill();
+  x.globalAlpha=1;
+
+  // Marca
+  x.textAlign="center";
+  x.fillStyle="#c9a84c"; x.font=F(900,38);
+  x.fillText("🌱 G B H   N U T R I C I Ó N", W/2, 170);
+  if(nombre){
+    x.fillStyle="rgba(250,253,246,0.75)"; x.font=F(800,40);
+    x.fillText(nombre, W/2, 246);
+  }
+
+  // Anillo decorativo tras el bloque central
+  x.strokeStyle=dorada?"rgba(255,200,0,0.25)":"rgba(88,204,2,0.22)";
+  x.lineWidth=10; x.beginPath(); x.arc(W/2, 780, 330, 0, 7); x.stroke();
+  x.strokeStyle=dorada?"rgba(255,200,0,0.10)":"rgba(88,204,2,0.09)";
+  x.lineWidth=34; x.beginPath(); x.arc(W/2, 780, 385, 0, 7); x.stroke();
+
+  // Icono + cifra + etiqueta
+  x.font=F(900,190); x.fillText(icono, W/2, 660);
+  x.fillStyle=dorada?"#FFC800":"#fafdf6"; x.font=F(900,210);
+  x.fillText(cifra, W/2, 900);
+  x.fillStyle="#fafdf6"; x.font=F(900,64);
+  x.fillText(etiqueta, W/2, 1010);
+
+  // Subtítulo
+  if(sub){
+    x.fillStyle="rgba(250,253,246,0.7)"; x.font=F(700,42);
+    const palabras=sub.split(" "); let linea="", ly=1300;
+    for(const p of palabras){
+      const test=linea?linea+" "+p:p;
+      if(x.measureText(test).width>W-220){ x.fillText(linea,W/2,ly); linea=p; ly+=60; }
+      else linea=test;
+    }
+    if(linea) x.fillText(linea,W/2,ly);
+  }
+
+  // Pie de marca
+  x.fillStyle="rgba(201,168,76,0.9)"; x.font=F(800,36);
+  x.fillText(lang==='en'?"Track yours at":"Consigue el tuyo en", W/2, H-210);
+  x.fillStyle="#fafdf6"; x.font=F(900,44);
+  x.fillText("gbh-app.vercel.app", W/2, H-146);
+
+  const dataUrl=cv.toDataURL("image/png");
+  const blob=await new Promise(res=>cv.toBlob(res,"image/png"));
+  return {dataUrl, blob};
+}
+
 function WeightChart({chartData,setWeightMode,goalWeight,shareName,lang}){
   const t=useLang();
   // ── Tarjeta compartible: modal con la imagen generada {dataUrl, blob} ──
@@ -3549,7 +3635,6 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
             )}
           </div>
           <DataRow label={t("profileInitialWeight")} value={initW} field="weight"/>
-          <DataRow label={t("profileGoalWeight")}    value={profile?.goal_weight||"—"} field="goal"/>
           {/* Selector de idioma */}
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 0",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
             <div style={{fontSize:10,color:T.t2,textTransform:"uppercase",letterSpacing:"0.08em",fontFamily:"'DM Sans',sans-serif"}}>{t("langLabel")}</div>
@@ -3963,6 +4048,7 @@ function GBHApp(){
   const [aEmail,   setAEmail]   = useState("");
   const [aWeight,  setAWeight]  = useState("");
   const [aGoal,    setAGoal]    = useState("");
+  const [aRef,     setARef]     = useState("");   // código de invitación (opcional)
   const [aHeight,  setAHeight]  = useState(170);
   const [aSex,     setASex]     = useState("M");
   const [aPrivacy, setAPrivacy] = useState(false);
@@ -4040,6 +4126,21 @@ function GBHApp(){
       sub:   lang==="en" ? "Subscribe to keep your weekly plan 💚" : "Suscríbete (7€/mes) para seguir con tu programación 💚"});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[profile?.id, profile?.plan, profile?.trial_ends_at]);
+
+  // ── Referidos: completar referral_code en perfiles cacheados ───────────────
+  // Los perfiles guardados antes de la migración no traen la columna; se pide
+  // una vez y se funde en el perfil local para que aparezca la tarjeta de
+  // "Invita a un amigo" sin re-login.
+  useEffect(()=>{
+    if(!profile?.id || profile.referral_code) return;
+    sbReq("GET",`profiles?id=eq.${profile.id}&select=referral_code&limit=1`)
+      .then(rows=>{
+        const c=rows?.[0]?.referral_code;
+        if(c) setProfile(p=>{ const u={...p,referral_code:c}; try{lsSet(`gbh:p:${u.id}`,u);}catch{} return u; });
+      })
+      .catch(()=>{});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.id, profile?.referral_code]);
 
   // ── Countdown de trial + aviso proactivo (últimos 2 días) ──────────────────
   // El chip del PlanTab ya informa, pero el aviso de pérdida llegaba tarde
@@ -4392,7 +4493,119 @@ function GBHApp(){
   const xp=profile?.xp??0,gems=profile?.gems??0;
   const lv=getLevel(xp),nextLv=getNextLevel(lv);
   const xpPct=Math.min(((xp-lv.min)/((nextLv?.min||lv.min+1)-lv.min))*100,100);
+
+  // ── Hitos compartibles: detección automática + tarjeta Story ───────────────
+  // Al alcanzar un hito de racha (7/14/30/50/100/200/365), de kilos (cada
+  // 2,5 kg hacia el objetivo) o el objetivo de peso, se genera la tarjeta y
+  // salta el pop-up de celebración con botón de compartir. Cada hito se
+  // celebra UNA sola vez (clave por hito). Prioridad: objetivo > kilos > racha.
+  const [hitoCard,setHitoCard]=useState(null);   // {dataUrl,blob,titulo} | null
+  useEffect(()=>{
+    if(!profile?.id) return;
+    try{
+      if(avisoNuevoPlan||avisoRegistro||avisoSupl||avisoTrial||hitoCard) return;
+      const goalW=profile?.goal_weight??null;
+      const iniW=weights.find(w=>w.isInitial)?.weight??null;
+      const curW=weights.filter(w=>!w.isInitial).slice(-1)[0]?.weight??null;
+      // ── Siembra inicial: los hitos ya conseguidos ANTES de esta versión se
+      // marcan como vistos SIN pop-up (nada de celebraciones en retrospectiva).
+      // Solo se siembra cuando hay datos cargados, para no sembrar en vacío en
+      // un dispositivo recién instalado y disparar retro-avisos al llegar los
+      // datos remotos. Hasta sembrar, no se detecta nada.
+      const initK=`gbh:hitoinit:${profile.id}`;
+      if(!lsGet(initK,false)){
+        if(!(logs.length>0||weights.length>0)) return;   // espera datos
+        [7,14,30,50,100,200,365].forEach(n=>{ if(streak>=n) lsSet(`gbh:hitovisto:${profile.id}:racha:${n}`,true); });
+        if(iniW!=null&&curW!=null){
+          const perdiendo0=goalW!=null?goalW<iniW:curW<iniW;
+          const avance0=perdiendo0?iniW-curW:curW-iniW;
+          for(let b=2.5;b<=Math.floor(avance0/2.5)*2.5;b+=2.5)
+            lsSet(`gbh:hitovisto:${profile.id}:peso:${b}`,true);
+        }
+        if(goalW!=null&&curW!=null&&iniW!=null&&Math.abs(curW-goalW)<=0.5&&Math.abs(iniW-goalW)>0.5)
+          lsSet(`gbh:hitovisto:${profile.id}:objetivo`,true);
+        lsSet(initK,true);
+        return;
+      }
+      const nombre=(profile?.name||"").trim().split(" ")[0]||"";
+      const es=lang!=='en';
+      const num=v=>String(Math.round(v*10)/10).replace(".",es?",":".");
+      let hito=null;
+      // 1) Objetivo alcanzado
+      if(goalW!=null && curW!=null && iniW!=null && Math.abs(curW-goalW)<=0.5 && Math.abs(iniW-goalW)>0.5){
+        const k=`gbh:hitovisto:${profile.id}:objetivo`;
+        if(!lsGet(k,false)) hito={k,icono:"🎉",cifra:"100%",dorada:true,
+          etiqueta:es?"¡Objetivo alcanzado!":"Goal reached!",
+          sub:es?`De ${num(iniW)} kg a ${num(curW)} kg. Lo conseguí 💚`:`From ${num(iniW)} kg to ${num(curW)} kg. I made it 💚`,
+          titulo:es?"¡Has alcanzado tu objetivo!":"You reached your goal!"};
+      }
+      // 2) Kilos hacia el objetivo (bloques de 2,5 kg)
+      if(!hito && iniW!=null && curW!=null){
+        const perdiendo=goalW!=null?goalW<iniW:curW<iniW;
+        const avance=perdiendo?iniW-curW:curW-iniW;
+        const bloque=Math.floor(avance/2.5)*2.5;
+        if(bloque>=2.5){
+          const k=`gbh:hitovisto:${profile.id}:peso:${bloque}`;
+          if(!lsGet(k,false)) hito={k,icono:perdiendo?"🪶":"💪🏼",cifra:`−${num(bloque)} kg`.replace("−",perdiendo?"−":"+"),dorada:false,
+            etiqueta:es?(perdiendo?"perdidos":"ganados"):(perdiendo?"lost":"gained"),
+            sub:es?"Paso a paso, semana a semana, con mi plan de GBH Nutrición":"Step by step, week by week, with my GBH Nutrición plan",
+            titulo:es?`¡${num(bloque)} kg ${perdiendo?"menos":"más"}!`:`${num(bloque)} kg ${perdiendo?"down":"up"}!`};
+        }
+      }
+      // 3) Racha
+      if(!hito && streak>0){
+        const HITOS=[365,200,100,50,30,14,7];
+        const h=HITOS.find(n=>streak>=n);
+        if(h){
+          const k=`gbh:hitovisto:${profile.id}:racha:${h}`;
+          if(!lsGet(k,false)) hito={k,icono:"🔥",cifra:String(h),dorada:h>=100,
+            etiqueta:es?"días de racha":"day streak",
+            sub:es?"Ni un solo día sin registrar mi plan. Constancia con GBH Nutrición":"Not a single day unlogged. Consistency with GBH Nutrición",
+            titulo:es?`¡Racha de ${h} días!`:`${h}-day streak!`};
+        }
+      }
+      if(!hito) return;
+      lsSet(hito.k,true);
+      generarTarjetaHito({icono:hito.icono,cifra:hito.cifra,etiqueta:hito.etiqueta,
+        sub:hito.sub,nombre,dorada:hito.dorada,lang})
+        .then(card=>{ sfx("streakCelebration"); setHitoCard({...card,titulo:hito.titulo}); })
+        .catch(e=>console.warn("[hito]",e));
+    }catch(e){ console.warn("[hito]",e); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.id, streak, weights]);
+
+  const compartirHito=async()=>{
+    if(!hitoCard) return;
+    try{
+      const file=new File([hitoCard.blob],"gbh-hito.png",{type:"image/png"});
+      if(navigator.canShare&&navigator.canShare({files:[file]})){
+        await navigator.share({files:[file]}); return;
+      }
+    }catch(e){ if(e?.name==="AbortError") return; }
+    const a=document.createElement("a");
+    a.href=hitoCard.dataUrl; a.download="gbh-hito.png"; a.click();
+  };
   const allDone=tLog.diet&&tLog.steps&&tLog.hydration&&tLog.sleep;
+
+  // ── Paywall en momento de victoria: primer "día perfecto" del trial ────────
+  // La conversión funciona mejor tras una victoria que tras una fricción: la
+  // primera vez que un paciente EN TRIAL completa las 4 misiones del día, tras
+  // dejar que suene su celebración, se le invita a quedarse. UNA sola vez.
+  const [avisoVictoria,setAvisoVictoria]=useState(false);
+  useEffect(()=>{
+    if(!profile?.id || !allDone || !trialDiasRest) return;
+    const k=`gbh:victoria:${profile.id}`;
+    if(lsGet(k,false)) return;
+    const t=setTimeout(()=>{
+      try{
+        if(avisoNuevoPlan||avisoRegistro||avisoSupl||avisoTrial||hitoCard) return;
+        lsSet(k,true);
+        setAvisoVictoria(true);
+      }catch{}
+    },2600);
+    return ()=>clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.id, allDone, trialDiasRest]);
   const expr=getExpr(streak,tLog.diet,allDone,tLog.sleep);
   const fn=profile?.name?.split(" ")[0]||"";
 
@@ -4993,6 +5206,20 @@ function GBHApp(){
       console.warn("[alta] payload rechazado (", r.status, ") — reintento reducido");
     }
     if(!fp) fp = np;
+    // ── Referidos: canjear código de invitación (RPC server-side) ──
+    // Valida + enlaza + da la bienvenida (+25 💎) en una sola llamada segura.
+    // Nunca bloquea el alta: si falla, el registro sigue adelante igual.
+    if(aRef.trim()){
+      try{
+        const rr = await sbReq("POST","rpc/apply_referral",{p_profile:fp.id,p_code:aRef.trim()});
+        if(rr?.ok && rr.welcome_gems){
+          fp = {...fp, gems:(fp.gems||0)+rr.welcome_gems};
+          setTimeout(()=>{ try{ showT&&showT({icon:"🎁",
+            title: lang==="en"?`Welcome gift: +${rr.welcome_gems} 💎`:`Regalo de bienvenida: +${rr.welcome_gems} 💎`,
+            sub:   lang==="en"?"Invitation code applied":"Código de invitación aplicado"}); }catch{} },1500);
+        }
+      }catch(e){ console.warn("[referido] canje falló:",e); }
+    }
     const initW = parseFloat(aWeight);
     if(!isNaN(initW)&&initW>20&&initW<300){
       const initDate = toKey();
@@ -6043,6 +6270,16 @@ function GBHApp(){
           </div>
           <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:20}}>
             {t("goalHint")}
+          </div>
+          {/* ── Código de invitación (referidos, opcional) ── */}
+          <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>
+            {lang==='en'?'Invitation code (optional)':'Código de invitación (opcional)'}
+          </div>
+          <input type="text" value={aRef} onChange={e=>setARef(e.target.value.toUpperCase())}
+            onKeyDown={e=>e.key==="Enter"&&doAuth()} placeholder="GBH-XXXXX" maxLength={12}
+            autoCapitalize="characters" style={{...inp,marginBottom:6}}/>
+          <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:20}}>
+            {lang==='en'?'Did a friend invite you? Enter their code and get 25 💎':'¿Te ha invitado un amigo? Pon su código y llévate 25 💎'}
           </div>
           {/* ── Sexo ── */}
           <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:10}}>
@@ -7566,6 +7803,66 @@ function GBHApp(){
             </div>
           </div>
         )}
+        {hitoCard&&(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.82)",zIndex:2500,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"24px 20px"}}>
+            <div style={{width:"100%",maxWidth:340,textAlign:"center",animation:"popIn 0.25s ease"}}>
+              <div style={{fontWeight:900,fontSize:21,color:T.au1,fontFamily:"'Nunito',sans-serif",marginBottom:12}}>
+                🏆 {hitoCard.titulo}
+              </div>
+              <img src={hitoCard.dataUrl} alt="" style={{width:"62%",borderRadius:18,
+                border:`2px solid ${T.au1}`,boxShadow:"0 12px 40px rgba(0,0,0,0.6)",marginBottom:16}}/>
+              <button onClick={compartirHito} style={{
+                width:"100%",padding:"15px",borderRadius:16,border:"none",cursor:"pointer",
+                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"#fff",fontWeight:900,fontSize:15,
+                fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.g3}`,marginBottom:10}}>
+                📤 {lang==='en'?'Share my milestone':'Compartir mi hito'}
+              </button>
+              {(profile?.plan==='free'||trialDiasRest)&&(
+                <button onClick={()=>{sfx("tap");setHitoCard(null);abrirCheckoutStripe(profile?.id);}} style={{
+                  width:"100%",padding:"13px",borderRadius:16,cursor:"pointer",
+                  background:"rgba(255,200,0,0.10)",border:`1.5px solid ${T.au1}`,color:T.au1,
+                  fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif",marginBottom:10}}>
+                  ⭐ {lang==='en'
+                    ?(trialDiasRest?'Keep my plan · €7/month':'Get my plan back · €7/month')
+                    :(trialDiasRest?'Conservar mi plan · 7 €/mes':'Volver a mi plan · 7 €/mes')}
+                </button>
+              )}
+              <button onClick={()=>{sfx("tap");setHitoCard(null);}} style={{
+                background:"none",border:"none",color:T.t3,fontWeight:800,fontSize:13,cursor:"pointer",
+                fontFamily:"'Nunito',sans-serif",padding:"6px"}}>
+                {lang==='en'?'Not now':'Ahora no'}
+              </button>
+            </div>
+          </div>
+        )}
+        {avisoVictoria&&!hitoCard&&!avisoNuevoPlan&&!avisoRegistro&&!avisoSupl&&!avisoTrial&&(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+            <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
+              border:`2.5px solid ${T.au1}`,borderRadius:24,padding:"26px 22px 20px",textAlign:"center",
+              boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:"popIn 0.25s ease"}}>
+              <div style={{fontSize:52,marginBottom:10,animation:"tomaBob 1.8s ease-in-out infinite",display:"inline-block"}}>🌟</div>
+              <div style={{fontWeight:900,fontSize:19,color:T.au1,fontFamily:"'Nunito',sans-serif",marginBottom:8}}>
+                {lang==='en'?'A perfect day!':'¡Día perfecto!'}
+              </div>
+              <div style={{fontSize:13.5,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6,marginBottom:18}}>
+                {lang==='en'
+                  ?'All 4 missions completed. This is what following a plan made just for you feels like — don\u2019t let it end with your trial.'
+                  :'Las 4 misiones del día completadas. Así se siente seguir un plan hecho solo para ti — que no se acabe con la semana de prueba.'}
+              </div>
+              <button onClick={()=>{sfx("tap");setAvisoVictoria(false);abrirCheckoutStripe(profile?.id);}} style={{
+                width:"100%",padding:"15px",borderRadius:16,border:"none",cursor:"pointer",
+                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"#fff",fontWeight:900,fontSize:15,
+                fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.g3}`,marginBottom:10}}>
+                ⭐ {lang==='en'?'Keep my plan · €7/month':'Conservar mi plan · 7 €/mes'}
+              </button>
+              <button onClick={()=>{sfx("tap");setAvisoVictoria(false);}} style={{
+                background:"none",border:"none",color:T.t3,fontWeight:800,fontSize:13,cursor:"pointer",
+                fontFamily:"'Nunito',sans-serif",padding:"6px"}}>
+                {lang==='en'?'Continue my day':'Seguir con mi día'}
+              </button>
+            </div>
+          </div>
+        )}
         {tab==="plan"&&<PlanTab profile={profile} lang={lang} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} showT={showT} sfx={sfx} t={t} setTab={setTab} onMealRegistered={onMealRegistered}/>}
         {tab==="consulta"&&<ConsultaTab profile={profile} lang={lang} sfx={sfx}/>}
       </div>
@@ -7584,6 +7881,61 @@ function GBHApp(){
       </div>
     </div>
     </LangCtx.Provider>
+  );
+}
+
+// ─── Tarjeta "Invita a un amigo" (referidos) ─────────────────────────────────
+// Reutilizable: se muestra en Consultas para estándar/free (junto a "pasar a
+// Premium") y para premium (junto a WhatsApp y Programar consulta). Incluye el
+// código personalizado, botón de compartir nativo e instrucciones. El feedback
+// de copiado es local (la pestaña no recibe showT).
+function TarjetaInvitarAmigo({profile,lang,sfx}){
+  const [copiado,setCopiado]=React.useState(false);
+  if(!profile?.referral_code) return null;
+  const compartir=async()=>{
+    sfx&&sfx("tap");
+    const msg = lang==='en'
+      ? `I'm following my nutrition plan with GBH Nutrición 🌱 Sign up with my code ${profile.referral_code} and you get 25 💎 to start: https://gbh-app.vercel.app`
+      : `Estoy siguiendo mi plan de nutrición con GBH Nutrición 🌱 Regístrate con mi código ${profile.referral_code} y te llevas 25 💎 para empezar: https://gbh-app.vercel.app`;
+    try{ if(navigator.share){ await navigator.share({text:msg}); return; } }
+    catch(e){ if(e?.name==="AbortError") return; }
+    try{
+      await navigator.clipboard.writeText(msg);
+      setCopiado(true); setTimeout(()=>setCopiado(false),2200);
+    }catch{}
+  };
+  return(
+    <div style={{width:'100%',boxSizing:'border-box',background:'rgba(255,200,0,0.07)',
+      border:'2px solid rgba(255,200,0,0.4)',borderRadius:20,padding:'20px',
+      boxShadow:'0 4px 0 rgba(0,0,0,0.3)',textAlign:'left'}}>
+      <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:14}}>
+        <div style={{fontSize:36,flexShrink:0}}>🎁</div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:2,fontFamily:"'Nunito',sans-serif"}}>
+            {lang==='en'?'Invite a friend':'Invita a un amigo'}
+          </div>
+          <div style={{fontSize:12,color:T.au1,fontWeight:800,fontFamily:"'DM Sans',sans-serif"}}>
+            {lang==='en'?'Earn 50 💎 per friend':'Gana 50 💎 por cada amigo'}
+          </div>
+        </div>
+      </div>
+      <div style={{background:'rgba(255,200,0,0.10)',border:`1.5px dashed ${T.au1}`,
+        borderRadius:12,padding:'11px 14px',textAlign:'center',fontWeight:900,fontSize:17,
+        color:T.au1,letterSpacing:'0.14em',fontFamily:"'Nunito',sans-serif",marginBottom:10}}>
+        {profile.referral_code}
+      </div>
+      <button onClick={compartir} style={{width:'100%',padding:'13px',borderRadius:14,border:'none',
+        cursor:'pointer',background:copiado?'rgba(255,255,255,0.12)':`linear-gradient(135deg,${T.g1},${T.g2})`,
+        color:'#fff',fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif",
+        boxShadow:copiado?'none':`0 3px 0 ${T.g3}`,marginBottom:12}}>
+        {copiado?(lang==='en'?'✅ Copied!':'✅ ¡Copiado!'):`📤 ${lang==='en'?'Share my code':'Compartir mi código'}`}
+      </button>
+      <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6}}>
+        {lang==='en'
+          ?'How it works: your friend signs up with your code and gets 25 💎 to start. When they log their first day of meals, you earn 50 💎.'
+          :'Cómo funciona: tu amigo se registra con tu código y recibe 25 💎 de bienvenida. Cuando complete su primer día de registro de comidas, tú ganas 50 💎.'}
+      </div>
+    </div>
   );
 }
 
@@ -7628,6 +7980,9 @@ function ConsultaTab({profile,lang,sfx}){
       </a>
       <div style={{fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>
         {lang==='en'?'We reply the same day · @gbhnutricion':'Te respondemos en el día · @gbhnutricion'}
+      </div>
+      <div style={{width:'100%',maxWidth:300,marginTop:6}}>
+        <TarjetaInvitarAmigo profile={profile} lang={lang} sfx={sfx}/>
       </div>
     </div>
   );
@@ -7688,6 +8043,9 @@ function ConsultaTab({profile,lang,sfx}){
           </div>
           <div style={{color:'#64B5F6',fontSize:22,flexShrink:0}}>›</div>
         </button>
+
+        {/* Invita a un amigo (referidos) */}
+        <TarjetaInvitarAmigo profile={profile} lang={lang} sfx={sfx}/>
       </div>
     </div>
   );
