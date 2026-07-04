@@ -8836,11 +8836,12 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
           :'La planificación es exclusiva de las cuentas Estándar y Premium. Mejora tu plan y tendrás tu programación personalizada con recetas y lista de la compra.'}
       </div>
 
-      {/* Tarifas */}
+      {/* Tarifas: Estándar → pago directo Stripe · Premium → WhatsApp */}
       <div style={{display:'flex',flexDirection:'column',gap:10,width:'100%',maxWidth:330,marginTop:4}}>
-        <div style={{background:'rgba(88,204,2,0.08)',border:'2px solid '+T.bG,borderRadius:18,padding:'14px 16px',textAlign:'left',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={()=>{sfx&&sfx("tap");abrirCheckoutStripe(profile?.id);}}
+          style={{background:'rgba(88,204,2,0.08)',border:'2px solid '+T.bG,borderRadius:18,padding:'14px 16px',textAlign:'left',display:'flex',alignItems:'center',gap:12,cursor:'pointer',width:'100%',boxShadow:'0 3px 0 rgba(0,0,0,0.25)'}}>
           <div style={{fontSize:28,flexShrink:0}}>📅</div>
-          <div style={{flex:1}}>
+          <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:14,fontWeight:900,color:T.g1,fontFamily:"'Nunito',sans-serif"}}>
               {lang==='en'?'Standard · 7€/month':'Estándar · 7€/mes'}
             </div>
@@ -8849,11 +8850,16 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
                 ?'Weekly plan you configure yourself, full recipe book and app'
                 :'Programación semanal a tu medida, recetario completo y app'}
             </div>
+            <div style={{fontSize:10.5,fontWeight:800,color:T.g1,fontFamily:"'DM Sans',sans-serif",marginTop:4}}>
+              {lang==='en'?'Subscribe now · instant access →':'Suscríbete ahora · acceso al momento →'}
+            </div>
           </div>
-        </div>
-        <div style={{background:'rgba(255,200,0,0.07)',border:'2px solid rgba(255,200,0,0.35)',borderRadius:18,padding:'14px 16px',textAlign:'left',display:'flex',alignItems:'center',gap:12}}>
+          <div style={{color:T.g1,fontSize:20,flexShrink:0}}>›</div>
+        </button>
+        <a href={`https://wa.me/${GBH_WHATSAPP}?text=${waMsgPlan}`} target="_blank" rel="noopener noreferrer" onClick={()=>sfx&&sfx("tap")}
+          style={{background:'rgba(255,200,0,0.07)',border:'2px solid rgba(255,200,0,0.35)',borderRadius:18,padding:'14px 16px',textAlign:'left',display:'flex',alignItems:'center',gap:12,cursor:'pointer',textDecoration:'none',boxShadow:'0 3px 0 rgba(0,0,0,0.25)'}}>
           <div style={{fontSize:28,flexShrink:0}}>👑</div>
-          <div style={{flex:1}}>
+          <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:14,fontWeight:900,color:T.au1,fontFamily:"'Nunito',sans-serif"}}>
               Premium
             </div>
@@ -8862,20 +8868,15 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
                 ?'Personal follow-up with your nutritionist, plan made for you and direct contact'
                 :'Seguimiento personal con tu nutricionista, plan hecho para ti y contacto directo'}
             </div>
+            <div style={{fontSize:10.5,fontWeight:800,color:T.au1,fontFamily:"'DM Sans',sans-serif",marginTop:4}}>
+              {lang==='en'?'Chat with me on WhatsApp 💬':'Habla conmigo por WhatsApp 💬'}
+            </div>
           </div>
-        </div>
+          <div style={{color:T.au1,fontSize:20,flexShrink:0}}>›</div>
+        </a>
       </div>
 
-      {/* CTA WhatsApp */}
-      <a href={`https://wa.me/${GBH_WHATSAPP}?text=${waMsgPlan}`} target="_blank" rel="noopener noreferrer"
-        style={{marginTop:6,width:'100%',maxWidth:330,background:'linear-gradient(135deg,#25D366,#1DA851)',
-          color:'#fff',fontWeight:900,fontSize:15,borderRadius:18,padding:'16px 20px',
-          textDecoration:'none',boxShadow:'0 4px 0 #128C4B',fontFamily:"'Nunito',sans-serif",
-          display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
-        <span style={{fontSize:20}}>💬</span>
-        {lang==='en'?'Write us on WhatsApp':'Escríbenos por WhatsApp'}
-      </a>
-      <div style={{fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>
+      <div style={{fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginTop:2}}>
         {lang==='en'?'We reply the same day · @gbhnutricion':'Te respondemos en el día · @gbhnutricion'}
       </div>
     </div>
