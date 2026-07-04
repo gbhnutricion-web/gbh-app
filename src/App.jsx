@@ -5028,6 +5028,36 @@ function GBHApp(){
   // Registro de comidas de hoy (fuente: logs, sincronizado con daily_logs.meals_log)
   const mealsHoy = React.useMemo(()=>logs.find(l=>l.date===toKey())?.meals||{},[logs]);
 
+  // ── Recordatorio diario 20:00 — registro pendiente ─────────────────────────
+  // Mismo mecanismo que el aviso de nueva programación: a partir de las 20:00,
+  // si el paciente aún tiene tomas de HOY sin registrar, salta un pop-up (una
+  // sola vez al día) que le lleva directo al plan diario. Se comprueba cada
+  // minuto y al volver la app a primer plano, por si estaba abierta antes de
+  // las 20:00. No se muestra si el pop-up de nueva programación está activo
+  // (en ese caso reintenta al minuto siguiente sin consumir el aviso del día).
+  const [avisoRegistro,setAvisoRegistro]=useState(null);   // {pendientes:[...]} | null
+  useEffect(()=>{
+    if(!profile?.id || tLog.diet || !tomasHoy) return;
+    const chk=()=>{
+      try{
+        if(new Date().getHours()<20) return;
+        if(tLog.diet || !tomasHoy || avisoNuevoPlan) return;
+        const k=`gbh:recordatorio20:${profile.id}:${toKey()}`;
+        if(lsGet(k,false)) return;
+        const pendientes=tomasHoy.filter(tm=>!mealsHoy?.[tm]);
+        if(!pendientes.length) return;
+        lsSet(k,true);                 // marcado al mostrarse → máx. 1 vez/día
+        setAvisoRegistro({pendientes});
+      }catch{}
+    };
+    chk();
+    const id=setInterval(chk,60*1000);
+    const onVis=()=>{ if(!document.hidden) chk(); };
+    document.addEventListener("visibilitychange",onVis);
+    return ()=>{ clearInterval(id); document.removeEventListener("visibilitychange",onVis); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.id, tLog.diet, tomasHoy, mealsHoy, avisoNuevoPlan]);
+
   // La racha/misión de dieta se completa cuando TODAS las tomas de la pauta están
   // registradas — sea cual sea el estado (seguida, menos, cambiada, fuera, saltada).
   // Registrar con honestidad cuenta: lo que rompe la racha es NO registrar.
@@ -7210,6 +7240,40 @@ function GBHApp(){
                 🍽️ {lang==='en'?'See my plan':'Ver mi programación'}
               </button>
               <button onClick={()=>{sfx("tap");setAvisoNuevoPlan(null);}} style={{
+                background:"none",border:"none",color:T.t3,fontWeight:800,fontSize:13,cursor:"pointer",
+                fontFamily:"'Nunito',sans-serif",padding:"6px"}}>
+                {lang==='en'?'Later':'Más tarde'}
+              </button>
+            </div>
+          </div>
+        )}
+        {avisoRegistro&&!avisoNuevoPlan&&(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+            <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
+              border:`2.5px solid ${T.au1}`,borderRadius:24,padding:"26px 22px 20px",textAlign:"center",
+              boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:"popIn 0.25s ease"}}>
+              <div style={{fontSize:52,marginBottom:10,animation:"tomaBob 1.8s ease-in-out infinite",display:"inline-block"}}>🔥</div>
+              <div style={{fontWeight:900,fontSize:19,color:T.au1,fontFamily:"'Nunito',sans-serif",marginBottom:8}}>
+                {lang==='en'?"Don't lose your streak!":'¡No pierdas tu racha!'}
+              </div>
+              <div style={{fontSize:13.5,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6,marginBottom:6}}>
+                {lang==='en'
+                  ?'You still haven\u2019t logged your daily record. You have these meals pending:'
+                  :'Todavía no has registrado tu racha diaria. Tienes pendientes estas comidas:'}
+              </div>
+              <div style={{fontSize:13.5,fontWeight:800,color:T.au1,fontFamily:"'Nunito',sans-serif",lineHeight:1.7,marginBottom:18}}>
+                {avisoRegistro.pendientes.map(tm=>{
+                  const en={Desayuno:'Breakfast',Almuerzo:'Mid-morning',Comida:'Lunch',Merienda:'Snack',Cena:'Dinner'};
+                  return lang==='en'?(en[tm]||tm):tm;
+                }).join(' · ')}
+              </div>
+              <button onClick={()=>{sfx("missionDone");setAvisoRegistro(null);setTab("plan");}} style={{
+                width:"100%",padding:"15px",borderRadius:16,border:"none",cursor:"pointer",
+                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"#fff",fontWeight:900,fontSize:15,
+                fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.g3}`,marginBottom:10}}>
+                📆 {lang==='en'?'Go to daily plan':'Ir al plan diario'}
+              </button>
+              <button onClick={()=>{sfx("tap");setAvisoRegistro(null);}} style={{
                 background:"none",border:"none",color:T.t3,fontWeight:800,fontSize:13,cursor:"pointer",
                 fontFamily:"'Nunito',sans-serif",padding:"6px"}}>
                 {lang==='en'?'Later':'Más tarde'}
