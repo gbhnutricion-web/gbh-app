@@ -4033,6 +4033,16 @@ function GBHApp(){
   // Identidad del plan: semana|fecha_gen. La primera vez que se conoce un plan
   // se guarda en silencio (evita avisar a toda la base en el despliegue inicial).
   const [avisoNuevoPlan,setAvisoNuevoPlan]=useState(null);   // {semana} | null
+  // ── Medicación/suplementación del plan vigente (para el recordatorio) ──────
+  const [suplPlan,setSuplPlan]=useState(()=>profile?.id?lsGet(`gbh:suplplan:${profile.id}`,null):null);
+  const guardarSuplPlan=(pj)=>{
+    try{
+      if(!profile?.id) return;
+      const sup=normSupl(pj);
+      setSuplPlan(sup);
+      lsSet(`gbh:suplplan:${profile.id}`,sup);
+    }catch{}
+  };
   const chkNuevoPlan=(row)=>{
     try{
       if(!row || profile?.plan!=="premium") return;
@@ -4068,6 +4078,7 @@ function GBHApp(){
         const row=Array.isArray(rows)&&rows[0];
         chkNuevoPlan(row);
         const pj=row?.plan_json;
+        guardarSuplPlan(pj);
         if(!pj) return;
         const red=reducir(pj);
         setPlanTomas(red);
@@ -4088,6 +4099,7 @@ function GBHApp(){
         const row=Array.isArray(rows)&&rows[0];
         chkNuevoPlan(row);
         const pj=row?.plan_json;
+        guardarSuplPlan(pj);
         if(!pj) return;
         const m={};
         for(const tm of PLAN_TOMAS){
@@ -5057,6 +5069,66 @@ function GBHApp(){
     return ()=>{ clearInterval(id); document.removeEventListener("visibilitychange",onVis); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[profile?.id, tLog.diet, tomasHoy, mealsHoy, avisoNuevoPlan]);
+
+  // ── Recordatorio de medicación/suplementación ───────────────────────────────
+  // Mismo mecanismo que los otros pop-ups: cada minuto (y al volver a primer
+  // plano) se comprueba si hay algún ítem cuya hora ya pasó y sigue sin
+  // completar hoy. Se avisa UNA vez al día por ítem. No cuenta para la racha.
+  const [avisoSupl,setAvisoSupl]=useState(null);   // item | null
+  useEffect(()=>{
+    if(!profile?.id || !suplPlan?.length) return;
+    const chk=()=>{
+      try{
+        if(avisoNuevoPlan || avisoRegistro || avisoSupl) return;
+        const ahora=new Date();
+        const hhmm=`${String(ahora.getHours()).padStart(2,'0')}:${String(ahora.getMinutes()).padStart(2,'0')}`;
+        const hoy=toKey();
+        const hechos=lsGet(suplHechosKey(profile.id,hoy),{});
+        for(const it of suplPlan){
+          if(it.hora>hhmm || hechos[it.nombre]) continue;
+          const k=`gbh:suplaviso:${profile.id}:${hoy}:${it.nombre}`;
+          if(lsGet(k,false)) continue;
+          lsSet(k,true);                 // máx. 1 aviso/día por ítem
+          setAvisoSupl(it);
+          return;
+        }
+      }catch{}
+    };
+    chk();
+    const id=setInterval(chk,60*1000);
+    const onVis=()=>{ if(!document.hidden) chk(); };
+    document.addEventListener("visibilitychange",onVis);
+    return ()=>{ clearInterval(id); document.removeEventListener("visibilitychange",onVis); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.id, suplPlan, avisoNuevoPlan, avisoRegistro, avisoSupl]);
+
+  // Completar un suplemento/medicación desde el pop-up: marca el día, suma
+  // +5 gemas y lo registra en daily_logs (clave 'supl|Nombre', solo seguimiento
+  // — NUNCA afecta a la racha ni a las misiones diarias).
+  const marcarSuplHome = useCallback((item)=>{
+    if(!profile?.id || !item) return;
+    const hoy=toKey();
+    const hk=suplHechosKey(profile.id,hoy);
+    const hechos=lsGet(hk,{});
+    if(hechos[item.nombre]) return;
+    lsSet(hk,{...hechos,[item.nombre]:true});
+    const key=`gbh:logs:${profile.id}`;
+    const arr=lsGet(key,[]);
+    const i=arr.findIndex(l=>l.date===hoy);
+    const cur=i>=0?arr[i]:{profile_id:profile.id,date:hoy,diet:false,steps:false,hydration:false,sleep:false,sc:0,meals:{},note:""};
+    const meals={...(cur.meals||{}),[`supl|${item.nombre}`]:"hecho"};
+    const entry={...cur,meals};
+    if(i>=0)arr[i]=entry;else arr.push(entry);
+    try{ lsSet(key,arr); }catch{}
+    setLogs(ls=>{ const n=[...ls]; const j=n.findIndex(l=>l.date===hoy);
+      if(j>=0)n[j]={...n[j],meals}; else n.push(entry); return n; });
+    sbReq("POST","daily_logs?on_conflict=profile_id,log_date",{profile_id:profile.id,log_date:hoy,meals_log:meals});
+    addXG(0,5);
+    sfx("missionDone");
+    showT({icon:SUPL_IC[item.tipo]||'💊',title:lang==='en'?'Done! +5 💎':'¡Completado! +5 💎',
+           sub:item.nombre});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.id, addXG]);
 
   // La racha/misión de dieta se completa cuando TODAS las tomas de la pauta están
   // registradas — sea cual sea el estado (seguida, menos, cambiada, fuera, saltada).
@@ -7281,6 +7353,39 @@ function GBHApp(){
             </div>
           </div>
         )}
+        {avisoSupl&&!avisoNuevoPlan&&!avisoRegistro&&(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+            <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
+              border:`2.5px solid ${T.au1}`,borderRadius:24,padding:"26px 22px 20px",textAlign:"center",
+              boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:"popIn 0.25s ease"}}>
+              <div style={{fontSize:52,marginBottom:10,animation:"tomaBob 1.8s ease-in-out infinite",display:"inline-block"}}>{SUPL_IC[avisoSupl.tipo]||'💊'}</div>
+              <div style={{fontWeight:900,fontSize:19,color:T.au1,fontFamily:"'Nunito',sans-serif",marginBottom:8}}>
+                {lang==='en'
+                  ?(avisoSupl.tipo==='Medicación'?'Medication reminder':'Supplement reminder')
+                  :(avisoSupl.tipo==='Medicación'?'Recordatorio de medicación':'Recordatorio de suplementación')}
+              </div>
+              <div style={{fontSize:13.5,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6,marginBottom:6}}>
+                {lang==='en'
+                  ?`It's past ${avisoSupl.hora} and you haven't logged:`
+                  :`Ya son más de las ${avisoSupl.hora} y todavía no has completado:`}
+              </div>
+              <div style={{fontSize:15,fontWeight:900,color:T.au1,fontFamily:"'Nunito',sans-serif",lineHeight:1.5,marginBottom:18}}>
+                {avisoSupl.nombre}{avisoSupl.dosis?` · ${avisoSupl.dosis}`:''}
+              </div>
+              <button onClick={()=>{marcarSuplHome(avisoSupl);setAvisoSupl(null);}} style={{
+                width:"100%",padding:"15px",borderRadius:16,border:"none",cursor:"pointer",
+                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"#fff",fontWeight:900,fontSize:15,
+                fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.g3}`,marginBottom:10}}>
+                ✅ {lang==='en'?'Done! (+5 💎)':'¡Ya lo he tomado! (+5 💎)'}
+              </button>
+              <button onClick={()=>{sfx("tap");setAvisoSupl(null);}} style={{
+                background:"none",border:"none",color:T.t3,fontWeight:800,fontSize:13,cursor:"pointer",
+                fontFamily:"'Nunito',sans-serif",padding:"6px"}}>
+                {lang==='en'?'Dismiss':'Descartar'}
+              </button>
+            </div>
+          </div>
+        )}
         {tab==="plan"&&<PlanTab profile={profile} lang={lang} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} showT={showT} sfx={sfx} t={t} setTab={setTab} onMealRegistered={onMealRegistered}/>}
         {tab==="consulta"&&<ConsultaTab profile={profile} lang={lang} sfx={sfx}/>}
       </div>
@@ -7413,6 +7518,32 @@ const PLAN_DIAS    = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 const PLAN_DIAS_F  = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
 const PLAN_TOMAS   = ['Desayuno','Almuerzo','Comida','Merienda','Cena'];
 const PLAN_TOMA_IC = {Desayuno:'☀️',Almuerzo:'🍎',Comida:'🍽️',Merienda:'🥤',Cena:'🌙'};
+
+// ── Medicación y suplementación (plan_json.suplementacion) ──────────────────
+// El bloque viene del Excel de pautas vía la automatización. El parser es
+// tolerante con la clave y la capitalización de los campos para no depender
+// de la versión exacta del generador. hora en formato 'HH:MM'.
+const SUPL_HORAS_TOMA = {Desayuno:'08:00',Almuerzo:'11:00',Comida:'14:00',Merienda:'17:30',Cena:'21:00'};
+const SUPL_IC = {'Medicación':'💊','Medicacion':'💊','Suplemento':'💪'};
+const normSupl = (pj)=>{
+  const raw = pj?.suplementacion ?? pj?.Suplementacion ?? pj?.medicacion ?? pj?.suplementos ?? null;
+  if(!Array.isArray(raw)) return null;
+  const out = raw.map(it=>({
+    nombre:(it.nombre??it.Nombre??it.name??'').toString().trim(),
+    tipo:  (it.tipo??it.Tipo??'Suplemento').toString().trim(),
+    hora:  (it.hora??it.Hora??'').toString().trim().slice(0,5),
+    dosis: (it.dosis??it.Dosis??it['dosis_pauta']??'').toString().trim(),
+    notas: (it.notas??it.Notas??'').toString().trim(),
+  })).filter(it=>it.nombre && /^\d{2}:\d{2}$/.test(it.hora));
+  return out.length?out:null;
+};
+// Toma tras la que se coloca el botón según la hora ('' = antes del desayuno)
+const suplTrasToma = (hora)=>{
+  let tras='';
+  for(const tm of PLAN_TOMAS){ if((SUPL_HORAS_TOMA[tm]||'99:99') <= hora) tras=tm; }
+  return tras;
+};
+const suplHechosKey = (id,date)=>`gbh:suplhecho:${id}:${date}`;   // {nombre:true}
 // Hora local del móvil a la que "empieza" la franja de cada toma. Guía a la
 // oveja 🐑 de los mini-botones de Inicio: señala hasta qué comida debería haber
 // registrado ya el paciente. Editable si cambian los horarios habituales.
@@ -8035,6 +8166,29 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
   const esFuturo   = fechaDeDia(selDay) > finDeHoy;             // no se registran días futuros
   const puedeRegistrar = (idx===0) && !esFuturo;                // solo la semana en curso
   const [regDia,setRegDia]   = React.useState({});              // { 'YYYY-MM-DD': {meals:{}, note:''} }
+  // ── Medicación/suplementación de HOY (plan_json.suplementacion) ─────────────
+  // Botones horizontales entre las tomas (colocados por hora). Al completarlos:
+  // +5 gemas y desaparecen el resto del día. Solo seguimiento: no tocan la racha.
+  const suplHoy = React.useMemo(()=>normSupl(planJ),[planJ]);
+  const [suplHechos,setSuplHechos]=React.useState({});
+  React.useEffect(()=>{
+    if(!profile?.id) return;
+    setSuplHechos(lsGet(suplHechosKey(profile.id,selDateKey),{}));
+  },[profile?.id,selDateKey]);
+  const marcarSupl=(item)=>{
+    if(!profile?.id || suplHechos[item.nombre]) return;
+    const nuevos={...suplHechos,[item.nombre]:true};
+    setSuplHechos(nuevos);
+    lsSet(suplHechosKey(profile.id,selDateKey),nuevos);
+    persistDia(selDateKey,{toma:`supl|${item.nombre}`,estado:'hecho'});   // seguimiento en daily_logs
+    const newGems=(profile.gems||0)+5;
+    const updP={...profile,gems:newGems};
+    setProfile(updP); lsSet(`gbh:p:${profile.id}`,updP);
+    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:newGems});
+    sfx&&sfx("missionDone");
+    showT&&showT({icon:SUPL_IC[item.tipo]||'💊',
+      title:lang==='en'?'Done! +5 💎':'¡Completado! +5 💎',sub:item.nombre});
+  };
   const [notaTmp,setNotaTmp] = React.useState('');              // texto en edición de la nota del día
   const [notaOK,setNotaOK]   = React.useState(false);           // indicador "guardada ✓"
 
@@ -8969,12 +9123,39 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
           <div style={{fontSize:13,fontWeight:900,color:T.t2,fontFamily:"'Nunito',sans-serif"}}>{PLAN_DIAS_F[selDay-1]}{selDay===todayPlan?` · ${lang==='en'?'Today':'Hoy'}`:''} · {lang==='en'?'Week':'Semana'} {plan.semana}</div>
         </div>
         <div style={{padding:'0 16px',display:'flex',flexDirection:'column',gap:10}}>
+          {(()=>{
+            // Botón de suplemento/medicación: horizontal largo, dorado, con hora.
+            // Solo HOY (semana en curso) y desaparece al completarse ese día.
+            const mostrarSupl = suplHoy && selDay===todayPlan && puedeRegistrar;
+            const SuplBtn = ({it})=>(
+              <button key={`supl-${it.nombre}`} onClick={()=>marcarSupl(it)} style={{
+                width:'100%',boxSizing:'border-box',display:'flex',alignItems:'center',gap:12,
+                background:'linear-gradient(135deg,rgba(201,168,76,0.16),rgba(201,168,76,0.06))',
+                border:`1.5px dashed ${T.au1}`,borderRadius:16,padding:'12px 16px',
+                textAlign:'left',cursor:'pointer',transition:'all 0.2s'}}>
+                <div style={{fontSize:22,width:38,height:38,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:12,background:'rgba(201,168,76,0.15)',flexShrink:0}}>{SUPL_IC[it.tipo]||'💊'}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:10,color:T.au1,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:2,fontFamily:"'DM Sans',sans-serif"}}>
+                    ⏰ {it.hora} · {lang==='en'?(it.tipo==='Medicación'?'Medication':'Supplement'):it.tipo}
+                  </div>
+                  <div style={{fontSize:13.5,fontWeight:800,color:T.t1,fontFamily:"'Nunito',sans-serif",whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                    {it.nombre}{it.dosis?` · ${it.dosis}`:''}
+                  </div>
+                </div>
+                <div style={{fontSize:12,fontWeight:900,color:T.au1,flexShrink:0,fontFamily:"'Nunito',sans-serif"}}>+5 💎</div>
+              </button>
+            );
+            const suplEn=(tras)=>!mostrarSupl?null:
+              suplHoy.filter(it=>suplTrasToma(it.hora)===tras && !suplHechos[it.nombre])
+                     .map(it=><SuplBtn key={it.nombre} it={it}/>);
+            return(<>
+          {suplEn('')}
           {PLAN_TOMAS.map(toma=>{
             const meal=planJ?.[toma]?.[String(selDay)];
             const hasMeal=!!meal?.Nombre_Receta;
             const mostrarChips=hasMeal&&puedeRegistrar;
             const estado=regDia[selDateKey]?.meals?.[toma];
-            return(<div key={toma}>
+            return(<React.Fragment key={toma}><div key={toma}>
               <button onClick={()=>hasMeal&&abrirToma(toma)} disabled={!hasMeal} style={{width:'100%',boxSizing:'border-box',background:hasMeal?(PLAN_TIPO_BG[meal?.Tipo]||'rgba(255,255,255,0.06)'):'rgba(255,255,255,0.04)',border:hasMeal?'1.5px solid rgba(255,255,255,0.12)':'1.5px solid rgba(255,255,255,0.05)',borderRadius:mostrarChips?'16px 16px 0 0':16,padding:'14px 16px',textAlign:'left',cursor:hasMeal?'pointer':'default',display:'flex',alignItems:'center',gap:12,transition:'all 0.2s'}}>
                 <div style={{fontSize:26,width:44,height:44,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:14,background:'rgba(255,255,255,0.06)',flexShrink:0}}>{PLAN_TOMA_IC[toma]||'🍴'}</div>
                 <div style={{flex:1,minWidth:0}}>
@@ -8993,8 +9174,10 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
                     </button>);})}
                 </div>
               )}
-            </div>);
+            </div>{suplEn(toma)}</React.Fragment>);
           })}
+            </>);
+          })()}
           {macrosDia&&(
             <div style={{background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:16,padding:'16px 16px'}}>
               <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.08em',display:'flex',alignItems:'center',gap:6,marginBottom:14}}>
