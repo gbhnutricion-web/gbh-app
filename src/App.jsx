@@ -3661,7 +3661,7 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
 // deliberadamente sin Supabase: es un dato personal de compra y ahorra carga.
 // Al reabrir la receta recuerda lo tachado; "Regenerar" limpia para recomprar.
 function MiniListaCompra({nombre, ingredientes, idReceta, t, onClose}){
-  const items=React.useMemo(()=>(ingredientes||"").split(/,(?![^(]*\))/).map(s=>s.trim()).filter(Boolean),[ingredientes]);
+  const items=React.useMemo(()=>(ingredientes||"").split(/[,;](?![^(]*\))/).map(s=>s.trim()).filter(Boolean),[ingredientes]);
   const key=`gbh:minilista:${idReceta||nombre}`;
   const [checks,setChecks]=React.useState(()=>lsGet(key,{}));
   const [conf,setConf]=React.useState(false);
@@ -3732,7 +3732,7 @@ function SavedRecipeCard({rec, t, T, removeFromBook}){
   };
   const tc  = tipoColor[rec.tipo] || T.g1;
   const ti  = emojiPlato(rec.nombre, rec.tipo);
-  const ing = rec.ingredientes?.split(/,(?![^(]*\))/).map(s=>s.trim()).filter(Boolean) || [];
+  const ing = rec.ingredientes?.split(/[,;](?![^(]*\))/).map(s=>s.trim()).filter(Boolean) || [];
 
   return(
     <Card style={{padding:"16px 16px"}}>
@@ -6873,7 +6873,7 @@ function GBHApp(){
           };
           const tc = r ? (tipoColor[r.tipo]||T.g1) : T.g1;
           const ti = r ? emojiPlato(r.nombre, r.tipo) : "🍽️";
-          const ingList = r?.ingredientes?.split(/,(?![^(]*\))/).map(s=>s.trim()).filter(Boolean) || [];
+          const ingList = r?.ingredientes?.split(/[,;](?![^(]*\))/).map(s=>s.trim()).filter(Boolean) || [];
           const alreadySaved = r && savedRecipes.some(s => s.recipe_id === r.id_receta);
           const tieneAccesoCompleto = profile?.plan==='premium' || profile?.plan==='standard';
 
@@ -7386,7 +7386,7 @@ const _DESPENSA=[
 const _UNIDADES=[
   [/^(kg|kilos?)\b\.?/i,"kg","peso"],[/^(gramos?|gr|g)\b\.?/i,"g","peso"],
   [/^(mililitros?|ml)\b\.?/i,"ml","peso"],[/^(cl)\b\.?/i,"cl","peso"],[/^(litros?|l)\b\.?/i,"l","peso"],
-  [/^cucharadas?(\s+soperas?|\s+de\s+postre|\s+de\s+caf[eé])?(\s+rasas?|\s+colmadas?)?\b/i,"cda","med"],[/^(cucharaditas?|cdtas?)(\s+rasas?|\s+colmadas?)?\b\.?/i,"cdta","med"],[/^cdas?\b\.?/i,"cda","med"],
+  [/^cucharadas?(\s+soperas?|\s+(de\s+)?postre|\s+(de\s+)?caf[eé])?(\s+rasas?|\s+colmadas?)?\b/i,"cda","med"],[/^(cucharaditas?|cdtas?)(\s+rasas?|\s+colmadas?)?\b\.?/i,"cdta","med"],[/^cdas?\b\.?/i,"cda","med"],
   [/^tarrinas?\b/i,"tarrina","cont"],[/^botes?\b/i,"bote","cont"],[/^latas?\b/i,"lata","cont"],
   [/^paquetes?\b/i,"paquete","cont"],[/^sobres?\b/i,"sobre","cont"],[/^botellas?\b/i,"botella","cont"],
   [/^bolsas?\b/i,"bolsa","cont"],[/^vasos?\b/i,"vaso","cont"],[/^tazas?\b/i,"taza","cont"],[/^briks?\b/i,"brik","cont"],
@@ -7552,7 +7552,7 @@ function agregarListaCompra(planJ){
       const ing=celdas[String(d)]?.Ingredientes; if(!ing) continue;
       // split por comas respetando paréntesis + fusión de descriptores (con espacio)
       const segs=[];
-      for(const raw of String(ing).split(/,(?![^(]*\))/)){
+      for(const raw of String(ing).split(/[,;](?![^(]*\))/)){
         const s=raw.trim(); if(!s) continue;
         if(segs.length&&_DESC_SEG.test(s)) segs[segs.length-1]+=" "+s; else segs.push(s);
       }
@@ -8883,7 +8883,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
     );
   }
   if(view==='daily'){
-    const ingList=tomaReceta?.ingredientes?.split(/,(?![^(]*\))/).map(s=>s.trim()).filter(Boolean)||[];
+    const ingList=tomaReceta?.ingredientes?.split(/[,;](?![^(]*\))/).map(s=>s.trim()).filter(Boolean)||[];
     return(<div style={{paddingBottom:16}}>
       {miniCompra&&<MiniListaCompra nombre={miniCompra.nombre} ingredientes={miniCompra.ingredientes}
         idReceta={miniCompra.id} t={t} onClose={()=>setMiniCompra(null)}/>}
