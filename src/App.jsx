@@ -4041,6 +4041,30 @@ function GBHApp(){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[profile?.id, profile?.plan, profile?.trial_ends_at]);
 
+  // ── Countdown de trial + aviso proactivo (últimos 2 días) ──────────────────
+  // El chip del PlanTab ya informa, pero el aviso de pérdida llegaba tarde
+  // (toast al caducar). Esto añade: banner permanente en Inicio durante el
+  // trial y un pop-up (1/día) cuando quedan ≤2 días, con lo que el paciente
+  // pierde al pasar a free. CTA directo al checkout de Stripe.
+  const trialFin = (profile?.plan==="standard" && profile?.trial_ends_at) ? Date.parse(profile.trial_ends_at) : null;
+  const trialDiasRest = (trialFin && !isNaN(trialFin) && trialFin>Date.now())
+    ? Math.max(1, Math.ceil((trialFin-Date.now())/86400000)) : null;
+  const [avisoTrial,setAvisoTrial]=useState(null);   // {dias} | null
+  useEffect(()=>{
+    if(!profile?.id || !trialDiasRest || trialDiasRest>2) return;
+    const k=`gbh:trialaviso:${profile.id}:${toKey()}`;
+    if(lsGet(k,false)) return;
+    const t=setTimeout(()=>{
+      try{
+        if(avisoNuevoPlan||avisoRegistro) return;     // reintenta en la próxima apertura
+        lsSet(k,true);                                // máx. 1 aviso/día
+        setAvisoTrial({dias:trialDiasRest});
+      }catch{}
+    },1500);
+    return ()=>clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.id, trialDiasRest]);
+
   // ── Red de seguridad plan_until: suscripción de pago caducada ──────────────
   // La baja real la hace el webhook (customer.subscription.deleted). Esto solo
   // cubre el caso de que un webhook se pierda: si el periodo pagado lleva >5
@@ -6645,6 +6669,26 @@ function GBHApp(){
 
         {/* ── HOME ──────────────────────────────────────────────────────────── */}
         {tab==="home"&&<>
+          {/* ── Countdown de semana de prueba (tap → checkout) ── */}
+          {trialDiasRest&&(
+            <button onClick={()=>{sfx("tap");abrirCheckoutStripe(profile?.id);}} style={{
+              width:"100%",boxSizing:"border-box",display:"flex",alignItems:"center",gap:10,
+              background:trialDiasRest<=2?"rgba(229,115,115,0.12)":"rgba(255,200,0,0.10)",
+              border:`1.5px solid ${trialDiasRest<=2?"rgba(229,115,115,0.5)":"rgba(255,200,0,0.45)"}`,
+              borderRadius:14,padding:"10px 14px",marginBottom:14,cursor:"pointer",textAlign:"left"}}>
+              <span style={{fontSize:20,lineHeight:1}}>{trialDiasRest<=2?"⏳":"🎁"}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:12.5,fontWeight:900,color:trialDiasRest<=2?"#e57373":T.au1,fontFamily:"'Nunito',sans-serif"}}>
+                  {lang==='en'
+                    ? (trialDiasRest===1?'Last day of your free trial!':`Free trial · ${trialDiasRest} days left`)
+                    : (trialDiasRest===1?'¡Último día de tu semana gratis!':`Semana de prueba · quedan ${trialDiasRest} días`)}
+                </div>
+                <div style={{fontSize:10.5,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>
+                  {lang==='en'?'Keep your plan from €7/month →':'Conserva tu programación por 7 €/mes →'}
+                </div>
+              </div>
+            </button>
+          )}
           {/* Mascot + bubble con diana y mute a los lados */}
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,paddingTop:4,paddingBottom:18}}>
 
@@ -7481,6 +7525,43 @@ function GBHApp(){
                 background:"none",border:"none",color:T.t3,fontWeight:800,fontSize:13,cursor:"pointer",
                 fontFamily:"'Nunito',sans-serif",padding:"6px"}}>
                 {lang==='en'?'Dismiss':'Descartar'}
+              </button>
+            </div>
+          </div>
+        )}
+        {avisoTrial&&!avisoNuevoPlan&&!avisoRegistro&&!avisoSupl&&(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+            <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
+              border:`2.5px solid ${T.au1}`,borderRadius:24,padding:"26px 22px 20px",textAlign:"center",
+              boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:"popIn 0.25s ease"}}>
+              <div style={{fontSize:52,marginBottom:10,animation:"tomaBob 1.8s ease-in-out infinite",display:"inline-block"}}>⏳</div>
+              <div style={{fontWeight:900,fontSize:19,color:T.au1,fontFamily:"'Nunito',sans-serif",marginBottom:8}}>
+                {lang==='en'
+                  ? (avisoTrial.dias===1?'Last day of your free week!':`Your free week ends in ${avisoTrial.dias} days`)
+                  : (avisoTrial.dias===1?'¡Último día de tu semana gratis!':`Tu semana gratis termina en ${avisoTrial.dias} días`)}
+              </div>
+              <div style={{fontSize:13.5,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6,marginBottom:10}}>
+                {lang==='en'
+                  ?'Afterwards you\u2019ll move to the free plan and lose access to your weekly meal plan, recipes and shopping list.'
+                  :'Después pasarás al plan gratuito y perderás el acceso a tu programación semanal, las recetas y la lista de la compra.'}
+              </div>
+              {(streak>0||((profile?.gems||0)>0))&&(
+                <div style={{fontSize:13,fontWeight:800,color:T.au1,fontFamily:"'Nunito',sans-serif",lineHeight:1.6,marginBottom:18}}>
+                  {lang==='en'
+                    ?<>Your {streak>0?`${streak}-day streak 🔥`:''}{streak>0&&(profile?.gems||0)>0?' and ':''}{(profile?.gems||0)>0?`${profile.gems} gems 💎`:''} will be waiting for you.</>
+                    :<>{streak>0?`Tu racha de ${streak} días 🔥`:''}{streak>0&&(profile?.gems||0)>0?' y ':''}{(profile?.gems||0)>0?`tus ${profile.gems} gemas 💎`:''} te esperan al otro lado.</>}
+                </div>
+              )}
+              <button onClick={()=>{sfx("tap");setAvisoTrial(null);abrirCheckoutStripe(profile?.id);}} style={{
+                width:"100%",padding:"15px",borderRadius:16,border:"none",cursor:"pointer",
+                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"#fff",fontWeight:900,fontSize:15,
+                fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.g3}`,marginBottom:10}}>
+                ⭐ {lang==='en'?'Subscribe · €7/month':'Suscribirme · 7 €/mes'}
+              </button>
+              <button onClick={()=>{sfx("tap");setAvisoTrial(null);}} style={{
+                background:"none",border:"none",color:T.t3,fontWeight:800,fontSize:13,cursor:"pointer",
+                fontFamily:"'Nunito',sans-serif",padding:"6px"}}>
+                {lang==='en'?'Later':'Más tarde'}
               </button>
             </div>
           </div>
