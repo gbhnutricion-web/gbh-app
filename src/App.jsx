@@ -8166,29 +8166,6 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
   const esFuturo   = fechaDeDia(selDay) > finDeHoy;             // no se registran días futuros
   const puedeRegistrar = (idx===0) && !esFuturo;                // solo la semana en curso
   const [regDia,setRegDia]   = React.useState({});              // { 'YYYY-MM-DD': {meals:{}, note:''} }
-  // ── Medicación/suplementación de HOY (plan_json.suplementacion) ─────────────
-  // Botones horizontales entre las tomas (colocados por hora). Al completarlos:
-  // +5 gemas y desaparecen el resto del día. Solo seguimiento: no tocan la racha.
-  const suplHoy = React.useMemo(()=>normSupl(planJ),[planJ]);
-  const [suplHechos,setSuplHechos]=React.useState({});
-  React.useEffect(()=>{
-    if(!profile?.id) return;
-    setSuplHechos(lsGet(suplHechosKey(profile.id,selDateKey),{}));
-  },[profile?.id,selDateKey]);
-  const marcarSupl=(item)=>{
-    if(!profile?.id || suplHechos[item.nombre]) return;
-    const nuevos={...suplHechos,[item.nombre]:true};
-    setSuplHechos(nuevos);
-    lsSet(suplHechosKey(profile.id,selDateKey),nuevos);
-    persistDia(selDateKey,{toma:`supl|${item.nombre}`,estado:'hecho'});   // seguimiento en daily_logs
-    const newGems=(profile.gems||0)+5;
-    const updP={...profile,gems:newGems};
-    setProfile(updP); lsSet(`gbh:p:${profile.id}`,updP);
-    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:newGems});
-    sfx&&sfx("missionDone");
-    showT&&showT({icon:SUPL_IC[item.tipo]||'💊',
-      title:lang==='en'?'Done! +5 💎':'¡Completado! +5 💎',sub:item.nombre});
-  };
   const [notaTmp,setNotaTmp] = React.useState('');              // texto en edición de la nota del día
   const [notaOK,setNotaOK]   = React.useState(false);           // indicador "guardada ✓"
 
@@ -8359,6 +8336,30 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
     });
   },[profile?.id]);
   const plan=planes[idx];const planJ=plan?.plan_json;
+  // ── Medicación/suplementación de HOY (plan_json.suplementacion) ─────────────
+  // Botones horizontales entre las tomas (colocados por hora). Al completarlos:
+  // +5 gemas y desaparecen el resto del día. Solo seguimiento: no tocan la racha.
+  // ⚠️ Este bloque DEBE ir después de la declaración de planJ (TDZ).
+  const suplHoy = React.useMemo(()=>normSupl(planJ),[planJ]);
+  const [suplHechos,setSuplHechos]=React.useState({});
+  React.useEffect(()=>{
+    if(!profile?.id) return;
+    setSuplHechos(lsGet(suplHechosKey(profile.id,selDateKey),{}));
+  },[profile?.id,selDateKey]);
+  const marcarSupl=(item)=>{
+    if(!profile?.id || suplHechos[item.nombre]) return;
+    const nuevos={...suplHechos,[item.nombre]:true};
+    setSuplHechos(nuevos);
+    lsSet(suplHechosKey(profile.id,selDateKey),nuevos);
+    persistDia(selDateKey,{toma:`supl|${item.nombre}`,estado:'hecho'});   // seguimiento en daily_logs
+    const newGems=(profile.gems||0)+5;
+    const updP={...profile,gems:newGems};
+    setProfile(updP); lsSet(`gbh:p:${profile.id}`,updP);
+    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:newGems});
+    sfx&&sfx("missionDone");
+    showT&&showT({icon:SUPL_IC[item.tipo]||'💊',
+      title:lang==='en'?'Done! +5 💎':'¡Completado! +5 💎',sub:item.nombre});
+  };
   // ── Media calórica de la semana (mismo método que la automatización: media
   //    de los totales diarios de kcal, cada día = suma de las kcal ya escaladas
   //    de sus tomas). Da al paciente la seguridad de que, aunque cada comida
