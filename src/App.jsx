@@ -4079,6 +4079,8 @@ function GBHApp(){
   const [busqResults, setBusqResults] = useState(null); // null = sin búsqueda activa
   const [busqLoading, setBusqLoading] = useState(false);
   const todasRecetasRef = React.useRef(null);           // caché en memoria de todo el recetario
+  const todasRecetasPromiseRef = React.useRef(null);    // descarga en curso: evita fetch duplicados en paralelo
+  const busqSeqRef      = React.useRef(0);              // token de búsqueda: descarta resultados obsoletos
   const busqTimerRef    = React.useRef(null);           // debounce del tecleo
   const [recipeLoading,setRecipeLoading] = useState(false);
   const refreshingRef = useRef(false); // bloqueo síncrono para evitar doble tap
@@ -4796,10 +4798,22 @@ function GBHApp(){
   // posteriores filtran en local (instantáneo, sin más peticiones a Supabase).
   const cargarTodasRecetas = async ()=>{
     if(todasRecetasRef.current) return todasRecetasRef.current;
-    const data = await sbReq("GET","recipes?select=*&order=calorias.asc&limit=1000");
-    const norm = (Array.isArray(data)?data:[]).map(normalizeRecipe);
-    todasRecetasRef.current = norm;
-    return norm;
+    // Si ya hay una descarga en curso, reutilizarla: sin esto, cada tecla
+    // durante la primera búsqueda lanzaba un fetch paralelo y el que resolvía
+    // el último machacaba los resultados de la consulta más reciente
+    // (bug "440 recetas con Canela": eran los resultados de "Ca").
+    if(todasRecetasPromiseRef.current) return todasRecetasPromiseRef.current;
+    todasRecetasPromiseRef.current = (async ()=>{
+      try{
+        const data = await sbReq("GET","recipes?select=*&order=calorias.asc&limit=1000");
+        const norm = (Array.isArray(data)?data:[]).map(normalizeRecipe);
+        todasRecetasRef.current = norm;
+        return norm;
+      } finally {
+        todasRecetasPromiseRef.current = null;
+      }
+    })();
+    return todasRecetasPromiseRef.current;
   };
   // Filtra por ingrediente (y nombre del plato). Maneja plurales españoles:
   // "lentejas" también encuentra "lenteja", "pollos"→"pollo".
@@ -4817,15 +4831,19 @@ function GBHApp(){
   const buscarIngrediente = (texto)=>{
     setBusqTexto(texto);
     if(busqTimerRef.current) clearTimeout(busqTimerRef.current);
-    if(normTxt(texto.trim()).length<2){ setBusqResults(null); setBusqLoading(false); return; }
+    if(normTxt(texto.trim()).length<2){ busqSeqRef.current++; setBusqResults(null); setBusqLoading(false); return; }
+    // Token de esta búsqueda: si mientras esperábamos la descarga el usuario
+    // siguió tecleando, este cierre queda obsoleto y NO pinta sus resultados.
+    const seq = ++busqSeqRef.current;
     // La primera búsqueda descarga el recetario (con indicador); las demás son locales.
     busqTimerRef.current = setTimeout(async ()=>{
       try{
         if(!todasRecetasRef.current) setBusqLoading(true);
         const todas = await cargarTodasRecetas();
+        if(seq !== busqSeqRef.current) return; // llegó tarde: descartar
         setBusqResults(filtrarPorIngrediente(todas, texto));
-      }catch(e){ setBusqResults([]); }
-      finally{ setBusqLoading(false); }
+      }catch(e){ if(seq === busqSeqRef.current) setBusqResults([]); }
+      finally{ if(seq === busqSeqRef.current) setBusqLoading(false); }
     }, todasRecetasRef.current?150:0);
   };
 
