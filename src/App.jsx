@@ -3265,6 +3265,59 @@ async function generarTarjetaHito({icono, cifra, etiqueta, sub, nombre, dorada, 
   return {dataUrl, blob};
 }
 
+// ─── Tarjeta "Tu metabolismo esta semana" (TDEE · solo premium) ──────────────
+// Datos: plan_json.seguimiento, calculados por el nutricionista en su Excel de
+// seguimiento (TDEE adaptativo real, no una fórmula genérica). Convierte ese
+// trabajo semanal invisible en valor visible — nadie a este precio lo ofrece
+// con un humano detrás.
+function TarjetaMetabolismo({seg,lang}){
+  if(!seg?.tdee) return null;
+  const es=lang!=='en';
+  const nf=v=>Math.round(v).toLocaleString(es?'es-ES':'en-US');
+  const d=seg.deficit;
+  const esDef=d!=null&&d<0;
+  const ret=seg.retencion_kg;
+  return(
+    <div style={{background:'rgba(255,255,255,0.04)',border:'2px solid rgba(255,200,0,0.35)',
+      borderRadius:20,padding:'20px',marginTop:14,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
+      <div style={{fontSize:10,color:T.au1,textTransform:'uppercase',letterSpacing:'0.1em',
+        fontWeight:900,marginBottom:12,fontFamily:"'DM Sans',sans-serif"}}>
+        📊 {es?'Tu metabolismo':'Your metabolism'}{seg.semana?` · ${es?'semana':'week'} ${seg.semana}`:''}
+      </div>
+      <div style={{textAlign:'center',marginBottom:14}}>
+        <div style={{fontSize:34,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif",lineHeight:1}}>
+          ≈ {nf(seg.tdee)} <span style={{fontSize:16,color:T.t2}}>kcal/{es?'día':'day'}</span>
+        </div>
+        <div style={{fontSize:11.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:4}}>
+          {es?'tu gasto energético real estimado (TDEE)':'your estimated real energy expenditure (TDEE)'}
+        </div>
+      </div>
+      <div style={{display:'flex',gap:10,marginBottom:ret!=null&&Math.abs(ret)>=0.3?12:4}}>
+        <div style={{flex:1,background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'10px 12px',textAlign:'center'}}>
+          <div style={{fontSize:10,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:2}}>{es?'Tu pauta':'Your target'}</div>
+          <div style={{fontSize:16,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif"}}>{seg.kcal_pautadas?nf(seg.kcal_pautadas):'—'} kcal</div>
+        </div>
+        <div style={{flex:1,background:esDef?'rgba(88,204,2,0.10)':'rgba(100,181,246,0.10)',borderRadius:12,padding:'10px 12px',textAlign:'center'}}>
+          <div style={{fontSize:10,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:2}}>{d!=null?(esDef?(es?'Déficit diario':'Daily deficit'):(es?'Superávit diario':'Daily surplus')):(es?'Ajuste':'Adjustment')}</div>
+          <div style={{fontSize:16,fontWeight:900,color:esDef?T.g2:'#64B5F6',fontFamily:"'Nunito',sans-serif"}}>{d!=null?`${d>0?'+':'−'}${nf(Math.abs(d))} kcal`:'—'}</div>
+        </div>
+      </div>
+      {ret!=null&&Math.abs(ret)>=0.3&&(
+        <div style={{fontSize:11.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.55,
+          background:'rgba(100,181,246,0.08)',border:'1px solid rgba(100,181,246,0.25)',
+          borderRadius:12,padding:'10px 12px',marginBottom:4}}>
+          💧 {es
+            ?`≈ ${String(ret).replace('.',',')} kg de retención hídrica estimada esta semana — tu avance real puede ir por delante de lo que marca la báscula.`
+            :`≈ ${ret} kg of estimated water retention this week — your real progress may be ahead of what the scale shows.`}
+        </div>
+      )}
+      <div style={{fontSize:9.5,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginTop:8,textAlign:'center'}}>
+        {es?'Calculado por tu nutricionista con tus mediciones de seguimiento':'Calculated by your nutritionist from your tracking measurements'}
+      </div>
+    </div>
+  );
+}
+
 function WeightChart({chartData,setWeightMode,goalWeight,shareName,lang}){
   const t=useLang();
   // ── Tarjeta compartible: modal con la imagen generada {dataUrl, blob} ──
@@ -4259,6 +4312,17 @@ function GBHApp(){
   const [avisoNuevoPlan,setAvisoNuevoPlan]=useState(null);   // {semana} | null
   // ── Medicación/suplementación del plan vigente (para el recordatorio) ──────
   const [suplPlan,setSuplPlan]=useState(()=>profile?.id?lsGet(`gbh:suplplan:${profile.id}`,null):null);
+  // ── Seguimiento (TDEE) del plan vigente → tarjeta premium en Peso ──────────
+  const [segPlan,setSegPlan]=useState(()=>profile?.id?lsGet(`gbh:segplan:${profile.id}`,null):null);
+  const guardarSeguimiento=(pj)=>{
+    try{
+      if(!profile?.id) return;
+      const s=pj?.seguimiento??null;
+      const seg=(s&&typeof s==='object'&&s.tdee)?s:null;
+      setSegPlan(seg);
+      lsSet(`gbh:segplan:${profile.id}`,seg);
+    }catch{}
+  };
   const guardarSuplPlan=(pj)=>{
     try{
       if(!profile?.id) return;
@@ -4317,6 +4381,7 @@ function GBHApp(){
         chkNuevoPlan(row);
         const pj=row?.plan_json;
         guardarSuplPlan(pj);
+        guardarSeguimiento(pj);
         if(!pj) return;
         const red=reducir(pj);
         setPlanTomas(red);
@@ -4338,6 +4403,7 @@ function GBHApp(){
         chkNuevoPlan(row);
         const pj=row?.plan_json;
         guardarSuplPlan(pj);
+        guardarSeguimiento(pj);
         if(!pj) return;
         const m={};
         for(const tm of PLAN_TOMAS){
@@ -7272,6 +7338,7 @@ function GBHApp(){
                 </div>
               </Card>
               {chartData.length>0&&<WeightChart chartData={chartData} setWeightMode={setWeightMode} goalWeight={profile?.goal_weight||null} shareName={profile?.name} lang={lang}/>}
+              {profile?.plan==='premium'&&<TarjetaMetabolismo seg={segPlan} lang={lang}/>}
             </>
           );
 
@@ -7348,6 +7415,7 @@ function GBHApp(){
               )}
               {/* Gráfica */}
               {chartData.length>0&&<WeightChart chartData={chartData} setWeightMode={setWeightMode} goalWeight={profile?.goal_weight||null} shareName={profile?.name} lang={lang}/>}
+              {profile?.plan==='premium'&&<TarjetaMetabolismo seg={segPlan} lang={lang}/>}
               {/* Empty state */}
               {chartData.length===0&&(
                 <Card style={{textAlign:"center",padding:"28px"}}>
@@ -10514,6 +10582,186 @@ class ErrorBoundary extends React.Component {
     return this.props.children;
   }
 }
+// ═══ RECETARIO PÚBLICO (escaparate de captación, sin login) ══════════════════
+// /recetas → parrilla de las recetas con publica=true · /recetas/<slug> → ficha.
+// Es la puerta de entrada ANTES de la cuenta: quien llega desde un Reel o desde
+// el link compartido por un paciente ve la receta completa con sus macros, y el
+// CTA lleva al registro (trial 7 días). La ruta se decide UNA vez al cargar
+// (constante de sesión) para no violar las reglas de hooks; volver al registro
+// es navegación completa (location.href), no pushState.
+const RUTA_PUBLICA = typeof window!=='undefined' && /^\/recetas(\/|$)/.test(window.location.pathname);
+
+function RecetasPublicas(){
+  const [recetas,setRecetas]=useState(null);          // null=cargando · []=error/vacío
+  const [slug,setSlug]=useState(()=>{
+    const m=window.location.pathname.match(/^\/recetas\/([a-z0-9-]+)/);
+    return m?m[1]:null;
+  });
+  useEffect(()=>{
+    sbReq("GET","recipes?publica=eq.true&select=id_receta,nombre,tipo,categoria,calorias,proteinas_g,hidratos_g,grasas_g,ingredientes,instrucciones,raciones,slug&order=nombre.asc")
+      .then(rows=>setRecetas(Array.isArray(rows)?rows:[]))
+      .catch(()=>setRecetas([]));
+    const onPop=()=>{
+      const m=window.location.pathname.match(/^\/recetas\/([a-z0-9-]+)/);
+      setSlug(m?m[1]:null);
+    };
+    window.addEventListener("popstate",onPop);
+    return ()=>window.removeEventListener("popstate",onPop);
+  },[]);
+  const abrir=(s)=>{ window.history.pushState({},"",`/recetas/${s}`); setSlug(s); window.scrollTo(0,0); };
+  const volver=()=>{ window.history.pushState({},"","/recetas"); setSlug(null); window.scrollTo(0,0); };
+  const irRegistro=()=>{ window.location.href="/"; };
+  const r = slug && recetas ? recetas.find(x=>x.slug===slug) : null;
+
+  const Chip=({v,l,c})=>(
+    <div style={{flex:1,background:"rgba(255,255,255,0.05)",borderRadius:12,padding:"10px 6px",textAlign:"center"}}>
+      <div style={{fontSize:16,fontWeight:900,color:c||T.t1,fontFamily:"'Nunito',sans-serif"}}>{v}</div>
+      <div style={{fontSize:9.5,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>{l}</div>
+    </div>
+  );
+  const CTA=()=>(
+    <div style={{background:"linear-gradient(180deg,#1d3a14,#142a0e)",border:`2px solid ${T.au1}`,
+      borderRadius:20,padding:"22px 18px",textAlign:"center",marginTop:22}}>
+      <div style={{fontSize:30,marginBottom:8}}>🌱</div>
+      <div style={{fontWeight:900,fontSize:16.5,color:T.au1,fontFamily:"'Nunito',sans-serif",marginBottom:8,lineHeight:1.35}}>
+        ¿Y si tu semana entera estuviera organizada así, a tus calorías?
+      </div>
+      <div style={{fontSize:12.5,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6,marginBottom:16}}>
+        Programación semanal personalizada, recetas con macros exactos y lista de la compra automática.
+        Con un nutricionista real detrás.
+      </div>
+      <button onClick={irRegistro} style={{width:"100%",padding:"15px",borderRadius:16,border:"none",cursor:"pointer",
+        background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"#fff",fontWeight:900,fontSize:15,
+        fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.g3}`}}>
+        Pruébalo gratis 7 días
+      </button>
+      <div style={{fontSize:10,color:T.t3,marginTop:10,fontFamily:"'DM Sans',sans-serif"}}>
+        Sin tarjeta · Cancela cuando quieras
+      </div>
+    </div>
+  );
+  const compartir=async(rec)=>{
+    const url=`https://gbh-app.vercel.app/recetas/${rec.slug}`;
+    const msg=`${emojiPlato(rec.nombre,rec.tipo)} ${rec.nombre} — ${Math.round(rec.calorias)} kcal y ${Math.round(rec.proteinas_g)} g de proteína, receta completa de GBH Nutrición: ${url}`;
+    try{ if(navigator.share){ await navigator.share({text:msg}); return; } }
+    catch(e){ if(e?.name==="AbortError") return; }
+    try{ await navigator.clipboard.writeText(msg); alert("Enlace copiado 📋"); }catch{}
+  };
+
+  return(
+    <div style={{minHeight:"100vh",background:T.bg,color:T.t1,fontFamily:"'DM Sans',sans-serif"}}>
+      <div style={{maxWidth:520,margin:"0 auto",padding:"18px 16px 40px"}}>
+        {/* Cabecera de marca */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18}}>
+          <div style={{fontWeight:900,fontSize:15,color:T.au1,fontFamily:"'Nunito',sans-serif",letterSpacing:"0.06em"}}>
+            🌱 GBH NUTRICIÓN
+          </div>
+          <button onClick={irRegistro} style={{background:"rgba(255,200,0,0.10)",border:`1.5px solid ${T.au1}`,
+            borderRadius:12,padding:"8px 14px",color:T.au1,fontWeight:900,fontSize:12,cursor:"pointer",
+            fontFamily:"'Nunito',sans-serif"}}>
+            Probar gratis
+          </button>
+        </div>
+
+        {recetas===null&&(
+          <div style={{textAlign:"center",padding:"60px 0",color:T.t2}}>Cargando recetas…</div>
+        )}
+
+        {recetas&&!r&&(
+          <>
+            <div style={{fontWeight:900,fontSize:24,fontFamily:"'Nunito',sans-serif",marginBottom:6}}>
+              Recetas con macros exactos
+            </div>
+            <div style={{fontSize:13,color:T.t2,lineHeight:1.6,marginBottom:18}}>
+              Una muestra del recetario que siguen nuestros pacientes: calorías y macros calculados
+              al gramo, listas para cocinar hoy.
+            </div>
+            {recetas.length===0&&(
+              <div style={{textAlign:"center",padding:"40px 0",color:T.t2}}>
+                No se pudieron cargar las recetas. Inténtalo de nuevo en un momento.
+              </div>
+            )}
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {recetas.map(rec=>(
+                <button key={rec.slug} onClick={()=>abrir(rec.slug)} style={{display:"flex",alignItems:"center",gap:14,
+                  background:"rgba(255,255,255,0.04)",border:"1.5px solid rgba(255,255,255,0.08)",borderRadius:16,
+                  padding:"14px 16px",cursor:"pointer",textAlign:"left",width:"100%",boxSizing:"border-box"}}>
+                  <div style={{fontSize:30,flexShrink:0}}>{emojiPlato(rec.nombre,rec.tipo)}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:800,fontSize:14.5,color:T.t1,fontFamily:"'Nunito',sans-serif",marginBottom:3}}>
+                      {rec.nombre}
+                    </div>
+                    <div style={{fontSize:11.5,color:T.t2}}>
+                      {Math.round(rec.calorias)} kcal · {Math.round(rec.proteinas_g)} g proteína
+                    </div>
+                  </div>
+                  <div style={{color:T.t3,fontSize:20,flexShrink:0}}>›</div>
+                </button>
+              ))}
+            </div>
+            <CTA/>
+          </>
+        )}
+
+        {recetas&&slug&&!r&&(
+          <div style={{textAlign:"center",padding:"60px 0",color:T.t2}}>
+            Esta receta no existe o dejó de ser pública.
+            <div style={{marginTop:14}}>
+              <button onClick={volver} style={{background:"none",border:`1.5px solid ${T.au1}`,borderRadius:12,
+                padding:"10px 18px",color:T.au1,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
+                Ver todas las recetas
+              </button>
+            </div>
+          </div>
+        )}
+
+        {r&&(
+          <>
+            <button onClick={volver} style={{background:"none",border:"none",color:T.t2,fontWeight:800,
+              fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif",padding:"0 0 14px",display:"block"}}>
+              ‹ Todas las recetas
+            </button>
+            <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:14}}>
+              <div style={{fontSize:44,flexShrink:0}}>{emojiPlato(r.nombre,r.tipo)}</div>
+              <div>
+                <div style={{fontWeight:900,fontSize:20,fontFamily:"'Nunito',sans-serif",lineHeight:1.25}}>{r.nombre}</div>
+                <div style={{fontSize:11.5,color:T.au1,fontWeight:800,marginTop:3}}>{r.tipo}{r.categoria?` · ${r.categoria}`:''}</div>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8,marginBottom:16}}>
+              <Chip v={`${Math.round(r.calorias)}`} l="kcal" c={T.au1}/>
+              <Chip v={`${Math.round(r.proteinas_g)}g`} l="proteínas"/>
+              <Chip v={`${Math.round(r.hidratos_g)}g`} l="hidratos"/>
+              <Chip v={`${Math.round(r.grasas_g)}g`} l="grasas"/>
+            </div>
+            <div style={{background:"rgba(255,255,255,0.04)",borderRadius:16,padding:"16px",marginBottom:12}}>
+              <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:10}}>
+                🛒 Ingredientes{r.raciones>1?` (${r.raciones} raciones)`:''}
+              </div>
+              {String(r.ingredientes||'').split(/[;\n]|, (?=\d)/).map((ing,i)=>ing.trim()&&(
+                <div key={i} style={{fontSize:13.5,lineHeight:1.7,color:T.t1}}>• {ing.trim()}</div>
+              ))}
+            </div>
+            <div style={{background:"rgba(255,255,255,0.04)",borderRadius:16,padding:"16px"}}>
+              <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:10}}>
+                👨‍🍳 Preparación
+              </div>
+              <div style={{fontSize:13.5,lineHeight:1.8,color:T.t1,whiteSpace:"pre-wrap"}}>{r.instrucciones}</div>
+            </div>
+            <button onClick={()=>compartir(r)} style={{width:"100%",marginTop:12,padding:"13px",borderRadius:14,
+              border:`1.5px solid ${T.au1}`,background:"rgba(255,200,0,0.08)",color:T.au1,fontWeight:900,
+              fontSize:14,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
+              📤 Compartir esta receta
+            </button>
+            <CTA/>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function App(){
+  if(RUTA_PUBLICA) return <ErrorBoundary><RecetasPublicas/></ErrorBoundary>;
   return <ErrorBoundary><GBHApp/></ErrorBoundary>;
 }
