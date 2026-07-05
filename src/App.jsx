@@ -4044,6 +4044,12 @@ function GBHApp(){
   const [confetti,setConfetti]= useState(false);
   const [loading, setLoading] = useState(false);
   const [taps,    setTaps]    = useState(0);
+  // ── Acceso al panel de administración: 5 toques + PIN ─────────────────────
+  const [pinGate, setPinGate] = useState(false);   // pantalla del PIN abierta
+  const [pinVal,  setPinVal]  = useState("");      // dígitos introducidos
+  const [pinErr,  setPinErr]  = useState(false);   // último intento fallido
+  const [filtroAdmin, setFiltroAdmin] = useState('todos');   // todos|premium|normal
+  const [planAdmin, setPlanAdmin] = useState({});  // {profile_id: plan} para las insignias 💎/⭐
   const [aName,    setAName]    = useState("");
   const [aEmail,   setAEmail]   = useState("");
   const [aWeight,  setAWeight]  = useState("");
@@ -5818,9 +5824,24 @@ function GBHApp(){
     await addXG(xpG, gemG);
   };
 
-  const tapSheep=()=>{const n=taps+1;setTaps(n);if(tapRef.current)clearTimeout(tapRef.current);tapRef.current=setTimeout(()=>setTaps(0),2500);if(n>=5){setScreen("admin");loadAdmin();setTaps(0);}};
+  const tapSheep=()=>{const n=taps+1;setTaps(n);if(tapRef.current)clearTimeout(tapRef.current);tapRef.current=setTimeout(()=>setTaps(0),2500);if(n>=5){setPinVal("");setPinErr(false);setPinGate(true);setTaps(0);}};
+  const GBH_ADMIN_PIN="5895";
+  const pinTecla=(d)=>{
+    if(pinErr)setPinErr(false);
+    const v=(pinVal+d).slice(0,4);
+    setPinVal(v);
+    if(v.length===4){
+      if(v===GBH_ADMIN_PIN){setPinGate(false);setPinVal("");setScreen("admin");loadAdmin();}
+      else{setPinErr(true);setTimeout(()=>{setPinVal("");},350);}
+    }
+  };
   const loadAdmin=async()=>{
     const d=await sbReq("GET","admin_overview?select=*")||[];
+    // Plan de servicio por paciente (premium/standard) para el filtro del panel
+    try{
+      const pl=await sbReq("GET","profiles?select=id,plan");
+      if(Array.isArray(pl)) setPlanAdmin(Object.fromEntries(pl.map(x=>[x.id,x.plan||'standard'])));
+    }catch(e){/* sin plan: todos salen como Normal */}
     if(d.length){ setAllP(d); }
     else { setAllP(Object.keys(localStorage).filter(k=>k.startsWith("gbh:p:")).map(k=>lsGet(k,{})).filter(p=>p.id)); }
     // Cumplimiento por comida de hoy + última nota (de los últimos 8 días) por paciente
@@ -6485,11 +6506,51 @@ function GBHApp(){
   );
 
   // ── ADMIN ────────────────────────────────────────────────────────────────────
+  if(pinGate){
+    return(
+      <div style={{fontFamily:"'Nunito',sans-serif",background:`radial-gradient(ellipse at top,#1A3A10,${T.bg})`,minHeight:"100vh",maxWidth:420,margin:"0 auto",color:T.t1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
+        <style>{CSS}</style>
+        <div style={{fontSize:38,marginBottom:8}}>🔐</div>
+        <div style={{fontSize:17,fontWeight:900,marginBottom:4}}>Acceso de administrador</div>
+        <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:22}}>Introduce el PIN de 4 dígitos</div>
+        {/* Puntos del PIN */}
+        <div style={{display:"flex",gap:14,marginBottom:26,animation:pinErr?"gbhShake 0.35s":"none"}}>
+          {[0,1,2,3].map(i=>(
+            <div key={i} style={{width:16,height:16,borderRadius:"50%",transition:"all 0.12s",
+              background:pinErr?T.red:(i<pinVal.length?T.g1:"rgba(255,255,255,0.12)"),
+              border:"2px solid "+(pinErr?T.red:(i<pinVal.length?T.g1:"rgba(255,255,255,0.25)")),
+              boxShadow:i<pinVal.length&&!pinErr?`0 0 10px ${T.g1}66`:"none"}}/>
+          ))}
+        </div>
+        {pinErr&&<div style={{fontSize:12,color:T.red,fontWeight:800,marginTop:-16,marginBottom:14}}>PIN incorrecto</div>}
+        {/* Teclado */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,72px)",gap:12}}>
+          {["1","2","3","4","5","6","7","8","9","←","0","✕"].map(k=>(
+            <button key={k}
+              onClick={()=>{if(k==="✕"){setPinGate(false);setPinVal("");}else if(k==="←"){setPinVal(v=>v.slice(0,-1));setPinErr(false);}else pinTecla(k);}}
+              style={{height:64,borderRadius:18,fontSize:k==="←"||k==="✕"?18:22,fontWeight:900,cursor:"pointer",
+                fontFamily:"'Nunito',sans-serif",color:k==="✕"?T.red:T.t1,
+                background:k==="✕"?"rgba(255,75,75,0.10)":"rgba(255,255,255,0.06)",
+                border:"2px solid "+(k==="✕"?"rgba(255,75,75,0.3)":"rgba(255,255,255,0.12)"),
+                boxShadow:"0 4px 0 rgba(0,0,0,0.4)"}}>
+              {k}
+            </button>
+          ))}
+        </div>
+        <style>{`@keyframes gbhShake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}`}</style>
+      </div>
+    );
+  }
   if(screen==="admin"){
     const adh=(id)=>{const l=lsGet(`gbh:logs:${id}`,[]);const d7=Array.from({length:7},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return toKey(d);});return Math.round((d7.filter(k=>l.find(x=>x.date===k&&x.diet)).length/7)*100);};
     const pSt=(id)=>{const l=lsGet(`gbh:logs:${id}`,[]);let s=0;const d=new Date();while(true){if(l.find(x=>x.date===toKey(d)&&x.diet)){s++;d.setDate(d.getDate()-1);}else break;}return s;};
     const lW=(id)=>{const w=lsGet(`gbh:weights:${id}`,[]);return w.length?w[w.length-1].weight:null;};
     const st=(a)=>a>=80?{t:"✅ En Objetivo",c:T.g1}:a>=50?{t:"⚠️ Riesgo",c:T.au1}:{t:"🔴 Inactivo",c:T.red};
+    // ── Tier por paciente (profiles.plan): 💎 premium / ⭐ normal ──
+    const tierDe=(p)=>((planAdmin[p.id]||p.plan)==='premium'?'premium':'standard');
+    const listaP=allP.filter(p=>filtroAdmin==='todos'?true:(filtroAdmin==='premium'?tierDe(p)==='premium':tierDe(p)!=='premium'));
+    const nPremT=allP.filter(p=>tierDe(p)==='premium').length;
+    const nNormT=allP.length-nPremT;
     return(
       <div style={{fontFamily:"'Nunito',sans-serif",background:`radial-gradient(ellipse at top,#1A3A10,${T.bg})`,minHeight:"100vh",maxWidth:420,margin:"0 auto",color:T.t1,paddingBottom:20}}>
         <style>{CSS}</style>
@@ -6510,10 +6571,30 @@ function GBHApp(){
           </div>
           <Card>
             <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:12}}>Listado de pacientes</div>
+            {/* ── Filtro por servicio: Todos | Premium | Normal ── */}
+            <div style={{display:"flex",gap:6,marginBottom:12}}>
+              {[{id:'todos',l:`Todos · ${allP.length}`},{id:'premium',l:`💎 Premium · ${nPremT}`},{id:'normal',l:`⭐ Normal · ${nNormT}`}].map(f=>(
+                <button key={f.id} onClick={()=>setFiltroAdmin(f.id)}
+                  style={{flex:1,padding:"9px 2px",borderRadius:12,cursor:"pointer",whiteSpace:"nowrap",
+                    fontWeight:900,fontSize:11.5,fontFamily:"'Nunito',sans-serif",
+                    background:filtroAdmin===f.id?"rgba(88,204,2,0.18)":"rgba(255,255,255,0.05)",
+                    border:filtroAdmin===f.id?`2px solid ${T.g1}`:"2px solid rgba(255,255,255,0.10)",
+                    color:filtroAdmin===f.id?T.g1:T.t2,
+                    boxShadow:filtroAdmin===f.id?"0 3px 0 rgba(0,0,0,0.35)":"none"}}>
+                  {f.l}
+                </button>
+              ))}
+            </div>
             {allP.length===0?<div style={{color:T.t2,textAlign:"center",padding:"20px 0",fontSize:13,fontFamily:"'DM Sans',sans-serif"}}>Sin datos aún.</div>
-            :allP.map(p=>{const a=p.adherence_7d??adh(p.id),s=p.total_streak_days??pSt(p.id),w=p.last_weight??lW(p.id);const{t:si,c:sc}=st(a);const li=logsAdmin[p.id];return(
+            :listaP.map(p=>{const a=p.adherence_7d??adh(p.id),s=p.total_streak_days??pSt(p.id),w=p.last_weight??lW(p.id);const{t:si,c:sc}=st(a);const li=logsAdmin[p.id];return(
               <div key={p.id} style={{borderBottom:"1px solid rgba(255,255,255,0.07)",padding:"12px 0"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:8}}><div style={{fontWeight:900,fontSize:14,flex:1,minWidth:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}</div><div style={{fontSize:12,fontWeight:800,color:sc,flexShrink:0}}>{si}</div><button onClick={()=>exportarSeguimientoCSV(p.id,p.name)} title="Descargar seguimiento (CSV)" style={{background:"rgba(206,130,255,0.14)",border:"1px solid rgba(206,130,255,0.35)",borderRadius:8,padding:"3px 9px",fontSize:11,fontWeight:800,color:T.pur,cursor:"pointer",flexShrink:0,fontFamily:"'Nunito',sans-serif"}}>⬇ CSV</button></div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:8}}>
+                  <div style={{fontWeight:900,fontSize:14,flex:1,minWidth:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                    <span title={tierDe(p)==='premium'?"Premium":"Normal"} style={{marginRight:5}}>{tierDe(p)==='premium'?"💎":"⭐"}</span>{p.name}
+                  </div>
+                  <div style={{fontSize:12,fontWeight:800,color:sc,flexShrink:0}}>{si}</div>
+                  <button onClick={()=>exportarSeguimientoCSV(p.id,p.name)} title="Descargar seguimiento (CSV)" style={{background:"rgba(206,130,255,0.14)",border:"1px solid rgba(206,130,255,0.35)",borderRadius:8,padding:"3px 9px",fontSize:11,fontWeight:800,color:T.pur,cursor:"pointer",flexShrink:0,fontFamily:"'Nunito',sans-serif"}}>⬇ CSV</button>
+                </div>
                 <div style={{display:"flex",gap:14,marginBottom:6}}><span style={{fontSize:12,color:T.t2}}>🔥 <b style={{color:T.t1}}>{s}d</b></span><span style={{fontSize:12,color:T.t2}}>⚖️ <b style={{color:T.t1}}>{w?`${w}kg`:"—"}</b></span><span style={{fontSize:12,color:T.t2}}>7d: <b style={{color:a>=80?T.g1:a>=50?T.au1:T.red}}>{a}%</b></span><span style={{fontSize:12,color:T.t2}}>XP: <b style={{color:T.xp}}>{p.xp||0}</b></span></div>
                 <div style={{background:"rgba(255,255,255,0.06)",borderRadius:6,height:6}}><div style={{height:"100%",width:`${a}%`,background:a>=80?T.g1:a>=50?T.au1:T.red,borderRadius:6,transition:"width 0.8s"}}/></div>
                 {li&&(li.hoyMeals||li.nota)&&(
@@ -9493,9 +9574,9 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
       {/* Botones visibles pero bloqueados */}
       <div style={{padding:'0 16px',display:'flex',flexDirection:'column',gap:12}}>
         {[
-          {icon:'📅',label:lang==='en'?'Weekly Plan':'Planificación semanal',sub:lang==='en'?'Full meal plan for the week':'Menú completo de la semana'},
-          {icon:'📒',label:lang==='en'?'Recipes & Shopping List':'Recetas y lista de la compra',sub:lang==='en'?'PDF with your weekly recipes':'PDF con recetas y lista del súper'},
-          {icon:'🍽️',label:lang==='en'?'Daily Schedule':'Programación diaria',sub:lang==='en'?'Today\'s meals with recipe details':'Tus platos de hoy con receta e ingredientes'},
+          {icon:'📅',label:lang==='en'?'Weekly Plan & Recipes':'Plan y recetas semanales',sub:lang==='en'?'Your week at a glance, recipes and progress (PDF)':'Tu semana de un vistazo, recetas y tu progreso (PDF)'},
+          {icon:'🍽️',label:lang==='en'?'Daily Plan':'Plan diario',sub:lang==='en'?'Today\'s meals with recipe details':'Tus platos de hoy con receta e ingredientes'},
+          {icon:'🛒',label:lang==='en'?'Shopping List':'Lista de la compra',sub:lang==='en'?'Tick off ingredients as you shop':'Marca los ingredientes mientras compras'},
         ].map(({icon,label,sub})=>(
           <div key={label} style={{background:'rgba(255,255,255,0.04)',border:'2px solid rgba(255,255,255,0.08)',
                   borderRadius:20,padding:'20px 20px',display:'flex',alignItems:'center',gap:16,opacity:0.45}}>
@@ -9577,20 +9658,20 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
       <TrialChip/>
       <WeekNav/>
       <div style={{padding:'12px 16px',display:'flex',flexDirection:'column',gap:12}}>
-        <button onClick={()=>setView('plan')} style={{background:'rgba(46,125,82,0.18)',border:'2px solid rgba(46,125,82,0.4)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
+        {/* Tarjeta unificada (jul-2026): sustituye a 'Planificación semanal' +
+            'Recetas semanales'. El PDF ya incluye la tabla semanal completa,
+            así que la vista duplicada sobra. Entrada DIRECTA al PDF (sin
+            pantalla intermedia con botón de descarga); si el PDF aún no
+            existe, cae a la vista 'pdf' que muestra el aviso de no disponible. */}
+        <button onClick={()=>{if(plan.pdf_url){window.open(plan.pdf_url,'_blank','noopener');}else{setView('pdf');}}} style={{background:'rgba(255,200,0,0.10)',border:'2px solid rgba(255,200,0,0.3)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
           <div style={{fontSize:40,flexShrink:0}}>📅</div>
-          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Weekly Plan':'Planificación semanal'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Full meal plan for the week':'Menú completo de la semana con todas las tomas'}</div></div>
-          <div style={{color:T.g1,fontSize:20,flexShrink:0}}>›</div>
+          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Weekly Plan & Recipes':'Plan y recetas semanales'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Your week at a glance, recipes and progress (PDF)':'Tu semana de un vistazo, recetas y tu progreso (PDF)'}</div></div>
+          <div style={{color:T.au1,fontSize:20,flexShrink:0}}>›</div>
         </button>
         <button onClick={()=>setView('daily')} style={{background:'rgba(100,181,246,0.12)',border:'2px solid rgba(100,181,246,0.3)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
           <div style={{fontSize:40,flexShrink:0}}>🍽️</div>
           <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Daily Plan':'Plan diario'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Your meals for today with full recipe details':'Tus platos de hoy con receta e ingredientes'}</div></div>
           <div style={{color:'#64B5F6',fontSize:20,flexShrink:0}}>›</div>
-        </button>
-        <button onClick={()=>setView('pdf')} style={{background:'rgba(255,200,0,0.10)',border:'2px solid rgba(255,200,0,0.3)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
-          <div style={{fontSize:40,flexShrink:0}}>📒</div>
-          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Weekly Recipes':'Recetas semanales'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Download the PDF with this week\'s recipes':'Descarga el PDF con las recetas de la semana'}</div></div>
-          <div style={{color:T.au1,fontSize:20,flexShrink:0}}>›</div>
         </button>
         <button onClick={()=>setView('lista')} style={{background:'rgba(255,140,60,0.10)',border:'2px solid rgba(255,140,60,0.32)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
           <div style={{fontSize:40,flexShrink:0}}>🛒</div>
@@ -9637,40 +9718,8 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
       <SeguimientoView profile={profile} lang={lang}/>
     </div>
   );
-  if(view==='plan') return(
-    <div style={{paddingBottom:8}}>
-      <WeekNav/><BtnVolver onClick={()=>setView(null)}/>
-      <div style={{overflowX:'auto',WebkitOverflowScrolling:'touch',paddingBottom:8}}>
-        <div style={{minWidth:560,padding:'0 10px'}}>
-          <div style={{display:'grid',gridTemplateColumns:'72px repeat(7,1fr)',gap:3,marginBottom:3}}>
-            <div style={{background:'rgba(255,255,255,0.04)',borderRadius:10,padding:'6px 4px',textAlign:'center',fontSize:10,color:T.t3,fontWeight:700}}>{lang==='en'?'Meal':'Toma'}</div>
-            {PLAN_DIAS.map((d,i)=>(<div key={d} style={{background:i>=5?'rgba(74,158,110,0.25)':'rgba(46,125,82,0.25)',borderRadius:10,padding:'6px 2px',textAlign:'center',fontSize:10,color:i>=5?'#7fe89c':T.g1,fontWeight:900}}>{d}</div>))}
-          </div>
-          {PLAN_TOMAS.map(toma=>{
-            if(!planJ?.[toma]) return null;
-            const celdas=planJ[toma];
-            const colores=['rgba(61,100,200,0.18)','rgba(180,90,20,0.18)','rgba(110,40,160,0.18)','rgba(20,140,80,0.18)','rgba(160,30,80,0.18)'];
-            let ci=0;const visto={};const colorIdx={};
-            for(let c=1;c<=7;c++){const nom=celdas[String(c)]?.Nombre_Receta||'';if(!nom)continue;if(!(nom in visto)){visto[nom]=ci%colores.length;ci++;}colorIdx[c]=visto[nom];}
-            return(<div key={toma} style={{display:'grid',gridTemplateColumns:'72px repeat(7,1fr)',gap:3,marginBottom:3}}>
-              <div style={{background:'rgba(46,125,82,0.2)',border:'1px solid rgba(46,125,82,0.35)',borderRadius:10,padding:'8px 3px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2}}>
-                <span style={{fontSize:14}}>{PLAN_TOMA_IC[toma]||'🍴'}</span>
-                <span style={{fontSize:8,color:'#7fe89c',fontWeight:900,textAlign:'center',lineHeight:1.2}}>{toma.toUpperCase()}</span>
-              </div>
-              {[1,2,3,4,5,6,7].map(col=>{
-                const r=celdas[String(col)];
-                if(!r?.Nombre_Receta) return <div key={col} style={{borderRadius:10,background:'rgba(255,255,255,0.03)',minHeight:64,border:'1px solid rgba(255,255,255,0.05)'}}/>;
-                return(<div key={col} style={{background:PLAN_TIPO_BG[r.Tipo]||colores[colorIdx[col]||0],border:'1px solid rgba(255,255,255,0.09)',borderRadius:10,padding:'6px 4px',minHeight:64,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:3}}>
-                  <span style={{fontSize:13}}>{emojiPlato(r.Nombre_Receta, r.Tipo)}</span>
-                  <span style={{fontSize:8.5,color:T.t1,fontWeight:700,textAlign:'center',lineHeight:1.3,wordBreak:'break-word',fontFamily:"'Nunito',sans-serif"}}>{r.Nombre_Receta}</span>
-                </div>);
-              })}
-            </div>);
-          })}
-        </div>
-      </div>
-    </div>
-  );
+  // (jul-2026) Vista 'plan' retirada: la tarjeta unificada abre el PDF, que ya
+  // incluye la tabla 'Tu Semana de un Vistazo' generada por la automatización.
   if(view==='pdf') return(
     <div style={{padding:'0 0 16px'}}>
       <WeekNav/><BtnVolver onClick={()=>setView(null)}/>
