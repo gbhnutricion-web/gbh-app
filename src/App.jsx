@@ -7771,6 +7771,7 @@ function GBHApp(){
                     <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:12}}>{t("preparation")}</div>
                     <div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{r.instrucciones}</div>
                   </Card>
+                  <BotonCompartirReceta rec={r} lang={lang} sfx={sfx}/>
                 </>)}
 
                 {!recipeLoading&&!r&&(
@@ -9387,6 +9388,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
         racion_texto: racTxt,
         raciones:     parseInt(meal.raciones||1)||1,
         kcal_objetivo:Math.round(parseFloat(meal.Calorias_Totales)||0),
+        slug:         r?.slug||null,  publica: !!(r?.publica),   // escaparate público
       });
     } else if(r){
       // ── Plan antiguo: receta base del recetario, escalada en cliente ──
@@ -9402,6 +9404,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
         racion_texto: racTxt,
         raciones:     parseInt(r.raciones||1)||1,
         kcal_objetivo:Math.round((parseFloat(r.calorias||r.calorias_totales||meal.Calorias_Totales)||0)*fRac),
+        slug:         r.slug||null,   publica: !!r.publica,      // escaparate público
       });
     } else {
       // No se encontró en el recetario: mostrar al menos los macros del plan
@@ -10109,6 +10112,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
             <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:12}}>{lang==='en'?'Preparation':'Preparación'}</div>
             <div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.7,whiteSpace:'pre-wrap'}}>{tomaReceta.instrucciones}</div>
           </div>
+          <BotonCompartirReceta rec={tomaReceta} lang={lang} sfx={sfx}/>
 
           {/* Botones: cambiar receta (10💎) y guardar (20💎) */}
           <div style={{display:'flex',gap:10,marginTop:12}}>
@@ -10582,6 +10586,33 @@ class ErrorBoundary extends React.Component {
     return this.props.children;
   }
 }
+// ─── Botón "Compartir receta" (solo recetas del escaparate público) ──────────
+// Aparece en la ficha del recetario y en el visor de la toma del plan cuando la
+// receta tiene slug público. Comparte la URL /recetas/<slug>: cada paciente que
+// comparte su cena es un anuncio del escaparate con la marca GBH.
+function BotonCompartirReceta({rec,lang,sfx,style}){
+  const [copiado,setCopiado]=useState(false);
+  if(!rec?.slug||!rec?.publica) return null;
+  const compartir=async()=>{
+    sfx&&sfx("tap");
+    const url=`https://gbh-app.vercel.app/recetas/${rec.slug}`;
+    const msg=lang==='en'
+      ?`${emojiPlato(rec.nombre,rec.tipo)} ${rec.nombre} — ${Math.round(rec.calorias)} kcal, ${Math.round(rec.proteinas_g)} g protein. Full recipe from my GBH Nutrición plan: ${url}`
+      :`${emojiPlato(rec.nombre,rec.tipo)} ${rec.nombre} — ${Math.round(rec.calorias)} kcal y ${Math.round(rec.proteinas_g)} g de proteína. Receta completa de mi plan de GBH Nutrición: ${url}`;
+    try{ if(navigator.share){ await navigator.share({text:msg}); return; } }
+    catch(e){ if(e?.name==="AbortError") return; }
+    try{ await navigator.clipboard.writeText(msg); setCopiado(true); setTimeout(()=>setCopiado(false),2200); }catch{}
+  };
+  return(
+    <button onClick={compartir} style={{width:'100%',marginTop:12,padding:'13px',borderRadius:14,
+      border:`1.5px solid ${T.au1}`,background:copiado?'rgba(255,255,255,0.10)':'rgba(255,200,0,0.08)',
+      color:T.au1,fontWeight:900,fontSize:13.5,cursor:'pointer',fontFamily:"'Nunito',sans-serif",...style}}>
+      {copiado?(lang==='en'?'✅ Link copied!':'✅ ¡Enlace copiado!')
+              :`📤 ${lang==='en'?'Share this recipe':'Compartir esta receta'}`}
+    </button>
+  );
+}
+
 // ═══ RECETARIO PÚBLICO (escaparate de captación, sin login) ══════════════════
 // /recetas → parrilla de las recetas con publica=true · /recetas/<slug> → ficha.
 // Es la puerta de entrada ANTES de la cuenta: quien llega desde un Reel o desde
