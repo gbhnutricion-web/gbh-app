@@ -4261,6 +4261,20 @@ function GBHApp(){
     try{
       if(!profile?.id) return;
       const sup=normSupl(pj);
+      if(!sup && profile.plan==='standard'){
+        // Standard: los recordatorios los define el propio paciente en su
+        // configuración de plan (patient_config.suplementacion, máx. 3).
+        // Se leen aquí para alimentar el pop-up de aviso por hora.
+        sbReq('GET',`patient_config?profile_id=eq.${profile.id}&select=suplementacion&limit=1`)
+          .then(rows=>{
+            const row=Array.isArray(rows)?rows[0]:null;
+            const arr=row&&Array.isArray(row.suplementacion)?row.suplementacion.slice(0,3):null;
+            const own=normSupl({suplementacion:arr});
+            setSuplPlan(own);
+            lsSet(`gbh:suplplan:${profile.id}`,own);
+          }).catch(()=>{});
+        return;
+      }
       setSuplPlan(sup);
       lsSet(`gbh:suplplan:${profile.id}`,sup);
     }catch{}
@@ -9072,11 +9086,22 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
     });
   },[profile?.id]);
   const plan=planes[idx];const planJ=plan?.plan_json;
-  // ── Medicación/suplementación de HOY (plan_json.suplementacion) ─────────────
+  // ── Medicación/suplementación de HOY ─────────────────────────────────────────
+  // Premium: viene del Excel vía plan_json.suplementacion (automatización).
+  // Standard: la define el PROPIO paciente en su configuración de plan
+  // (patient_config.suplementacion, máx. 3 recordatorios → máx. +15 💎/día).
   // Botones horizontales entre las tomas (colocados por hora). Al completarlos:
   // +5 gemas y desaparecen el resto del día. Solo seguimiento: no tocan la racha.
-  // ⚠️ Este bloque DEBE ir después de la declaración de planJ (TDZ).
-  const suplHoy = React.useMemo(()=>normSupl(planJ),[planJ]);
+  // ⚠️ Este bloque DEBE ir después de la declaración de planJ y config (TDZ).
+  const suplHoy = React.useMemo(()=>{
+    const delPlan = normSupl(planJ);
+    if(delPlan) return delPlan;
+    if(isStandard){
+      const arr = Array.isArray(config?.suplementacion) ? config.suplementacion.slice(0,3) : null;
+      return normSupl({suplementacion:arr});
+    }
+    return null;
+  },[planJ,config,isStandard]);
   const [suplHechos,setSuplHechos]=React.useState({});
   React.useEffect(()=>{
     if(!profile?.id) return;
@@ -9574,8 +9599,8 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
       {/* Botones visibles pero bloqueados */}
       <div style={{padding:'0 16px',display:'flex',flexDirection:'column',gap:12}}>
         {[
-          {icon:'📅',label:lang==='en'?'Weekly Plan & Recipes':'Plan y recetas semanales',sub:lang==='en'?'Your week at a glance, recipes and progress (PDF)':'Tu semana de un vistazo, recetas y tu progreso (PDF)'},
-          {icon:'🍽️',label:lang==='en'?'Daily Plan':'Plan diario',sub:lang==='en'?'Today\'s meals with recipe details':'Tus platos de hoy con receta e ingredientes'},
+          {icon:'📅',label:lang==='en'?'Plan & Recipes':'Plan y recetas',sub:lang==='en'?'Your week at a glance, recipes and progress (PDF)':'Tu semana de un vistazo, recetas y tu progreso (PDF)'},
+          {icon:'🍽️',label:lang==='en'?'Daily Meals':'Platos diarios',sub:lang==='en'?'Today\'s meals with recipe details':'Tus platos de hoy con receta e ingredientes'},
           {icon:'🛒',label:lang==='en'?'Shopping List':'Lista de la compra',sub:lang==='en'?'Tick off ingredients as you shop':'Marca los ingredientes mientras compras'},
         ].map(({icon,label,sub})=>(
           <div key={label} style={{background:'rgba(255,255,255,0.04)',border:'2px solid rgba(255,255,255,0.08)',
@@ -9665,12 +9690,12 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
             existe, cae a la vista 'pdf' que muestra el aviso de no disponible. */}
         <button onClick={()=>{if(plan.pdf_url){window.open(plan.pdf_url,'_blank','noopener');}else{setView('pdf');}}} style={{background:'rgba(255,200,0,0.10)',border:'2px solid rgba(255,200,0,0.3)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
           <div style={{fontSize:40,flexShrink:0}}>📅</div>
-          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Weekly Plan & Recipes':'Plan y recetas semanales'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Your week at a glance, recipes and progress (PDF)':'Tu semana de un vistazo, recetas y tu progreso (PDF)'}</div></div>
+          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Plan & Recipes':'Plan y recetas'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Your week at a glance, recipes and progress (PDF)':'Tu semana de un vistazo, recetas y tu progreso (PDF)'}</div></div>
           <div style={{color:T.au1,fontSize:20,flexShrink:0}}>›</div>
         </button>
         <button onClick={()=>setView('daily')} style={{background:'rgba(100,181,246,0.12)',border:'2px solid rgba(100,181,246,0.3)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
           <div style={{fontSize:40,flexShrink:0}}>🍽️</div>
-          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Daily Plan':'Plan diario'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Your meals for today with full recipe details':'Tus platos de hoy con receta e ingredientes'}</div></div>
+          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Daily Meals':'Platos diarios'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Your meals for today with full recipe details':'Tus platos de hoy con receta e ingredientes'}</div></div>
           <div style={{color:'#64B5F6',fontSize:20,flexShrink:0}}>›</div>
         </button>
         <button onClick={()=>setView('lista')} style={{background:'rgba(255,140,60,0.10)',border:'2px solid rgba(255,140,60,0.32)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
@@ -10068,6 +10093,27 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
     dist_cena:     config?.dist_cena     ?? 30,
   });
   const [guardando,setGuardando]=React.useState(false);
+  // ── Recordatorios de suplementación/medicación (opcional, MÁX. 3) ──────────
+  // El paciente standard se los define él mismo (nombre + hora). Límite de 3
+  // para acotar las gemas: 3 × 5 💎 = máx. +15 💎/día por esta vía. Se guardan
+  // en patient_config.suplementacion con el MISMO formato que el plan_json de
+  // premium, así reutilizan botones dorados, pop-up de aviso y daily_logs.
+  const MAX_RECS=3;
+  const [recs,setRecs]=React.useState(()=>{
+    const arr=Array.isArray(config?.suplementacion)?config.suplementacion:[];
+    return arr.slice(0,MAX_RECS).map(it=>({
+      nombre:(it?.nombre??'').toString(),
+      tipo:(it?.tipo==='Medicación'||it?.tipo==='Medicacion')?'Medicación':'Suplemento',
+      hora:(it?.hora??'').toString().slice(0,5),
+    }));
+  });
+  const horaOk=(h)=>/^\d{2}:\d{2}$/.test(h);
+  // Fila "a medias" (nombre sin hora o hora sin nombre) → bloquea el guardado.
+  // Filas totalmente vacías se descartan en silencio.
+  const recsAMedias=recs.some(r=>(r.nombre.trim()!=='')!==horaOk(r.hora));
+  const recsLimpios=recs.filter(r=>r.nombre.trim()!==''&&horaOk(r.hora))
+    .slice(0,MAX_RECS)
+    .map(r=>({nombre:r.nombre.trim().slice(0,40),tipo:r.tipo,hora:r.hora}));
 
   const total=Object.values(dist).reduce((a,b)=>a+b,0);
 
@@ -10085,22 +10131,29 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
       tipo_dieta: dieta,
       patron_dias: patron,
       ...dist,
+      suplementacion: recsLimpios,   // [] borra los recordatorios si los quitó todos
       config_completa: true,
       auto_generado: true,
     };
     // Guardado VERIFICADO: si la config no llega a Supabase, el generador
     // leería valores viejos (causa del bug "misma receta todos los días").
-    let guardado = false, sinPatron = false;
+    // Reintentos DEGRADADOS por si alguna columna opcional no está migrada:
+    // completo → sin suplementacion → sin suplementacion ni patron_dias.
+    let guardado = false, sinPatron = false, sinSupl = false;
     let r = await sbDirect("POST","patient_config?on_conflict=profile_id",payload);
     if(r.ok){ guardado = true; }
     else {
-      // Columna patron_dias quizá sin migrar → reintento sin ella
-      const { patron_dias:_p, ...payloadSinPatron } = payload;
-      r = await sbDirect("POST","patient_config?on_conflict=profile_id",payloadSinPatron);
-      if(r.ok){ guardado = true; sinPatron = true; }
-      else if(r.status === 0){
-        // Sin red: encolar para cuando vuelva la conexión
-        await sbReq("POST","patient_config?on_conflict=profile_id",payload);
+      const { suplementacion:_s, ...payloadSinSupl } = payload;
+      r = await sbDirect("POST","patient_config?on_conflict=profile_id",payloadSinSupl);
+      if(r.ok){ guardado = true; sinSupl = true; }
+      else {
+        const { patron_dias:_p, ...payloadSinAmbas } = payloadSinSupl;
+        r = await sbDirect("POST","patient_config?on_conflict=profile_id",payloadSinAmbas);
+        if(r.ok){ guardado = true; sinPatron = true; sinSupl = true; }
+        else if(r.status === 0){
+          // Sin red: encolar para cuando vuelva la conexión
+          await sbReq("POST","patient_config?on_conflict=profile_id",payload);
+        }
       }
     }
     if(!guardado && r.status !== 0){
@@ -10113,7 +10166,15 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
       return;
     }
     if(sinPatron) console.warn("[plan-config] patron_dias no guardado (columna pendiente de migrar)");
+    if(sinSupl)   console.warn("[plan-config] suplementacion no guardada (columna pendiente de migrar en patient_config)");
     setConfig&&setConfig(prev=>({...(prev||{}),...payload}));
+    // Refrescar en el acto el pop-up de aviso por hora (sin esperar recarga):
+    // misma clave localStorage que usa el recordatorio de Inicio.
+    try{
+      if(profile?.plan==='standard'){
+        lsSet(`gbh:suplplan:${profile.id}`, normSupl({suplementacion:recsLimpios}));
+      }
+    }catch{}
     sfx&&sfx("recipe");
     // Generar la programación al instante (si el servidor está configurado)
     if(onGenerar){
@@ -10247,14 +10308,76 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
         </div>
       </div>
 
+      {/* ── Recordatorios de suplementación/medicación (opcional, máx. 3) ── */}
+      <div style={{padding:'12px 16px'}}>
+        <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:4}}>
+          {lang==='en'?'4 · Supplement/medication reminders':'4 · Recordatorios de suplementación/medicación'}
+        </div>
+        <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginBottom:10,lineHeight:1.4}}>
+          {lang==='en'
+            ?`Optional. Up to ${MAX_RECS}: name it and set the time. Each one completed = +5 💎.`
+            :`Opcional. Hasta ${MAX_RECS}: ponles nombre y hora. Cada uno completado = +5 💎.`}
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+          {recs.map((r,i)=>(
+            <div key={i} style={{background:'rgba(201,168,76,0.06)',border:`1.5px dashed ${T.au1}`,borderRadius:16,padding:'10px 12px'}}>
+              <div style={{display:'flex',gap:8,marginBottom:8}}>
+                <input value={r.nombre} maxLength={40}
+                  placeholder={lang==='en'?'Name (e.g. Creatine 5g)':'Nombre (ej: Creatina 5g)'}
+                  onChange={e=>setRecs(rs=>rs.map((x,j)=>j===i?{...x,nombre:e.target.value}:x))}
+                  style={{flex:1,minWidth:0,background:'rgba(255,255,255,0.05)',border:'1.5px solid rgba(255,255,255,0.12)',
+                    borderRadius:12,padding:'10px 12px',color:T.t1,fontSize:13.5,fontWeight:700,
+                    fontFamily:"'Nunito',sans-serif",outline:'none'}}/>
+                <button onClick={()=>setRecs(rs=>rs.filter((_,j)=>j!==i))}
+                  style={{width:40,flexShrink:0,background:'rgba(255,82,82,0.10)',border:'1.5px solid rgba(255,82,82,0.35)',
+                    borderRadius:12,color:'#FF8A80',fontSize:16,fontWeight:900,cursor:'pointer'}}>✕</button>
+              </div>
+              <div style={{display:'flex',gap:8,alignItems:'stretch'}}>
+                {['Suplemento','Medicación'].map(tp=>{
+                  const sel=r.tipo===tp;
+                  return(
+                    <button key={tp} onClick={()=>setRecs(rs=>rs.map((x,j)=>j===i?{...x,tipo:tp}:x))}
+                      style={{flex:1,background:sel?'rgba(201,168,76,0.16)':'rgba(255,255,255,0.04)',
+                        border:`1.5px solid ${sel?T.au1:'rgba(255,255,255,0.10)'}`,borderRadius:12,
+                        padding:'8px 4px',cursor:'pointer',fontSize:11.5,fontWeight:900,
+                        color:sel?T.au1:T.t3,fontFamily:"'Nunito',sans-serif"}}>
+                      {SUPL_IC[tp]} {lang==='en'?(tp==='Medicación'?'Medication':'Supplement'):tp}
+                    </button>
+                  );
+                })}
+                <input type="time" value={r.hora}
+                  onChange={e=>setRecs(rs=>rs.map((x,j)=>j===i?{...x,hora:e.target.value}:x))}
+                  style={{width:104,flexShrink:0,background:'rgba(255,255,255,0.05)',
+                    border:`1.5px solid ${horaOk(r.hora)?'rgba(255,255,255,0.12)':'rgba(255,183,77,0.5)'}`,
+                    borderRadius:12,padding:'8px 10px',color:T.t1,fontSize:13.5,fontWeight:800,
+                    fontFamily:"'Nunito',sans-serif",outline:'none',colorScheme:'dark'}}/>
+              </div>
+            </div>
+          ))}
+          {recs.length<MAX_RECS&&(
+            <button onClick={()=>setRecs(rs=>[...rs,{nombre:'',tipo:'Suplemento',hora:''}])}
+              style={{background:'rgba(255,255,255,0.04)',border:'1.5px dashed rgba(255,255,255,0.2)',
+                borderRadius:16,padding:'12px 16px',cursor:'pointer',fontSize:13,fontWeight:800,
+                color:T.t2,fontFamily:"'Nunito',sans-serif"}}>
+              ＋ {lang==='en'?'Add reminder':'Añadir recordatorio'} ({recs.length}/{MAX_RECS})
+            </button>
+          )}
+        </div>
+        {recsAMedias&&(
+          <div style={{marginTop:8,fontSize:11.5,color:'#FFB74D',fontWeight:700,fontFamily:"'DM Sans',sans-serif"}}>
+            ⚠️ {lang==='en'?'Complete name AND time on every reminder (or remove it).':'Completa nombre Y hora en cada recordatorio (o elimínalo).'}
+          </div>
+        )}
+      </div>
+
       {/* ── Guardar ── */}
       <div style={{padding:'16px 16px 0',display:'flex',flexDirection:'column',gap:10}}>
-        <button onClick={guardar} disabled={guardando||total!==100}
-          style={{background:total===100?'linear-gradient(135deg,'+T.g1+','+T.g2+')':'rgba(255,255,255,0.08)',
-                  color:total===100?'#fff':T.t3,fontWeight:900,fontSize:15,borderRadius:18,
-                  padding:'16px 24px',border:'none',cursor:total===100?'pointer':'default',
-                  boxShadow:total===100?'0 4px 0 '+T.g3:'none',fontFamily:"'Nunito',sans-serif"}}>
-          {guardando?(lang==='en'?'Generating…':'Generando…'):total!==100?(lang==='en'?'Must total 100%':'Debe sumar 100%'):(onGenerar?(lang==='en'?'Save & generate plan':'Guardar y generar plan'):(lang==='en'?'Save my plan':'Guardar mi plan'))}
+        <button onClick={guardar} disabled={guardando||total!==100||recsAMedias}
+          style={{background:(total===100&&!recsAMedias)?'linear-gradient(135deg,'+T.g1+','+T.g2+')':'rgba(255,255,255,0.08)',
+                  color:(total===100&&!recsAMedias)?'#fff':T.t3,fontWeight:900,fontSize:15,borderRadius:18,
+                  padding:'16px 24px',border:'none',cursor:(total===100&&!recsAMedias)?'pointer':'default',
+                  boxShadow:(total===100&&!recsAMedias)?'0 4px 0 '+T.g3:'none',fontFamily:"'Nunito',sans-serif"}}>
+          {guardando?(lang==='en'?'Generating…':'Generando…'):total!==100?(lang==='en'?'Must total 100%':'Debe sumar 100%'):recsAMedias?(lang==='en'?'Finish reminders':'Completa los recordatorios'):(onGenerar?(lang==='en'?'Save & generate plan':'Guardar y generar plan'):(lang==='en'?'Save my plan':'Guardar mi plan'))}
         </button>
         {!primeraVez&&(
           <button onClick={onClose} style={{background:'none',border:'none',color:T.t3,fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:"'Nunito',sans-serif"}}>
