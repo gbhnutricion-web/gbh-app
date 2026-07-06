@@ -9001,7 +9001,31 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
   const selDateKey = toKey(fechaDeDia(selDay));
   const finDeHoy   = (()=>{ const d=new Date(); d.setHours(23,59,59,999); return d; })();
   const esFuturo   = fechaDeDia(selDay) > finDeHoy;             // no se registran días futuros
-  const puedeRegistrar = (idx===0) && !esFuturo;                // solo la semana en curso
+  // ── Semana vigente ──────────────────────────────────────────────────────────
+  // Se identifica por la semana que el generador marca como actual
+  // (patient_config.semana_actual, que se reescribe en CADA publicación), con la
+  // fecha de publicación (fecha_gen) como respaldo y, en último término, la
+  // primera de la lista. Tomarla por el nº de semana más alto fallaba si el
+  // paciente reinicia el ciclo a la semana 1 tras la 12; y la fecha por sí sola
+  // tampoco basta, porque al reusar un nº de semana el upsert ACTUALIZA la fila
+  // y no refresca fecha_gen. Por eso la señal principal es semana_actual.
+  // (Declarado ANTES de puedeRegistrar porque este depende de él.)
+  const idxActual = React.useMemo(()=>{
+    if(!Array.isArray(planes) || !planes.length) return 0;
+    const sa = config?.semana_actual;
+    if(sa!=null){
+      const i = planes.findIndex(p=>String(p.semana)===String(sa));
+      if(i>=0) return i;
+    }
+    let best=-1, bestT=-Infinity;
+    planes.forEach((p,i)=>{ const t=p.fecha_gen?Date.parse(p.fecha_gen):NaN; if(!isNaN(t)&&t>bestT){bestT=t;best=i;} });
+    return best>=0 ? best : 0;
+  },[planes, config?.semana_actual]);
+  // El registro de platos se ancla a la SEMANA VIGENTE (idxActual), no a la de
+  // número más alto (idx===0). Con idx===0, un reinicio de ciclo (S12 → S1) o
+  // una fila huérfana con nº alto dejaban el registro apuntando a un plan viejo:
+  // el paciente monitorizaba los platos de una semana que no era.
+  const puedeRegistrar = (idx===idxActual) && !esFuturo;        // solo la semana en curso
   const [regDia,setRegDia]   = React.useState({});              // { 'YYYY-MM-DD': {meals:{}, note:''} }
   const [notaTmp,setNotaTmp] = React.useState('');              // texto en edición de la nota del día
   const [notaOK,setNotaOK]   = React.useState(false);           // indicador "guardada ✓"
@@ -9294,25 +9318,8 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
              fP:kp/tot, fH:kh/tot, fG:kg/tot,
              pctP:Math.round(kp/tot*100), pctH:Math.round(kh/tot*100), pctG:Math.round(kg/tot*100) };
   },[planJ,selDay]);
-  // ── Semana vigente ──────────────────────────────────────────────────────────
-  // Se identifica por la semana que el generador marca como actual
-  // (patient_config.semana_actual, que se reescribe en CADA publicación), con la
-  // fecha de publicación (fecha_gen) como respaldo y, en último término, la
-  // primera de la lista. Tomarla por el nº de semana más alto fallaba si el
-  // paciente reinicia el ciclo a la semana 1 tras la 12; y la fecha por sí sola
-  // tampoco basta, porque al reusar un nº de semana el upsert ACTUALIZA la fila
-  // y no refresca fecha_gen. Por eso la señal principal es semana_actual.
-  const idxActual = React.useMemo(()=>{
-    if(!Array.isArray(planes) || !planes.length) return 0;
-    const sa = config?.semana_actual;
-    if(sa!=null){
-      const i = planes.findIndex(p=>String(p.semana)===String(sa));
-      if(i>=0) return i;
-    }
-    let best=-1, bestT=-Infinity;
-    planes.forEach((p,i)=>{ const t=p.fecha_gen?Date.parse(p.fecha_gen):NaN; if(!isNaN(t)&&t>bestT){bestT=t;best=i;} });
-    return best>=0 ? best : 0;
-  },[planes, config?.semana_actual]);
+  // ── Semana vigente: idxActual está declarado más arriba (antes de
+  // puedeRegistrar, que depende de él). Aquí solo queda el posicionamiento. ──
   // Al abrir el Plan (o tras (re)generar) posiciona en la semana vigente, no en
   // la última que estuviera mirando el paciente. No interfiere con la navegación
   // manual dentro de la sesión: idxActual solo cambia si cambian los planes o la
