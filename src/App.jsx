@@ -9356,6 +9356,28 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
     return mapa;
   }
 
+  // ── Slugs del escaparate público: mini-consulta (≤15 filas) cacheada ──────
+  // Los planes nuevos traen la receta embebida y NO consultan el recetario,
+  // así que el slug público hay que resolverlo aparte. Promesa deduplicada
+  // (mismo patrón que la descarga del recetario) y match por nombre normalizado.
+  const slugsPubRef = React.useRef(null);
+  const slugsPubPromiseRef = React.useRef(null);
+  const cargarSlugsPublicos = async ()=>{
+    if(slugsPubRef.current) return slugsPubRef.current;
+    if(slugsPubPromiseRef.current) return slugsPubPromiseRef.current;
+    slugsPubPromiseRef.current = (async ()=>{
+      try{
+        const rows = await sbReq("GET","recipes?publica=eq.true&select=nombre,slug");
+        const mapa = {};
+        (Array.isArray(rows)?rows:[]).forEach(x=>{ if(x.slug) mapa[normNombre(x.nombre)] = x.slug; });
+        slugsPubRef.current = mapa;
+        return mapa;
+      }catch(e){ return {}; }
+      finally{ slugsPubPromiseRef.current = null; }
+    })();
+    return slugsPubPromiseRef.current;
+  };
+
   async function abrirToma(toma){
     const meal=planJ?.[toma]?.[String(selDay)];
     if(!meal?.Nombre_Receta) return;
@@ -9379,6 +9401,17 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
         const k = Object.keys(mapa).find(key=>key.includes(frag) || frag.includes(key));
         if(k) r = mapa[k];
       }
+    }
+
+    // Slug del escaparate público: se resuelve SIEMPRE (los planes nuevos no
+    // pasan por el recetario y r llega null — sin esto, el botón de compartir
+    // no aparecía nunca en el plan diario).
+    if(!r?.slug){
+      try{
+        const pubs = await cargarSlugsPublicos();
+        const s = pubs[normNombre(meal.Nombre_Receta)];
+        if(s) r = {...(r||{}), slug:s, publica:true};
+      }catch(e){}
     }
 
     if(meal.Ingredientes){
