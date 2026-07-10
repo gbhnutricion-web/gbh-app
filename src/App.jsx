@@ -9789,6 +9789,41 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
     <div style={{paddingBottom:16}}>
       <TrialChip/>
       <WeekNav/>
+      {/* ── Etiqueta de optimización por favoritas (plan_json.fav_resumen) ──
+          Va ENTRE la tabla de calorías generales (media diaria del WeekNav) y
+          el plan de recetas. Muestra cuántas favoritas entraron y el % de la
+          "semana perfecta" (respecto al techo físico alcanzable), con CTA de
+          gemas. Solo si hay favoritas en el plan. */}
+      {planJ?.fav_resumen && (planJ.fav_resumen.mostradas||0)>0 && (()=>{
+        const fr=planJ.fav_resumen;
+        const pct=Math.max(0,Math.min(100,Math.round(fr.pct||0)));
+        const alto=pct>=80;
+        return(
+          <div style={{margin:'4px 16px 0',background:'rgba(255,200,0,0.10)',border:'2px solid rgba(255,200,0,0.30)',borderRadius:18,padding:'14px 16px',boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
+            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+              <span style={{fontSize:22,lineHeight:1,flexShrink:0}}>⭐</span>
+              <div style={{flex:1,fontWeight:900,fontSize:13,color:T.au1,fontFamily:"'Nunito',sans-serif",lineHeight:1.3}}>
+                {lang==='en'
+                  ? `${fr.mostradas} of your favourite recipes are in this week's plan`
+                  : `${fr.mostradas} de tus recetas favoritas están en tu plan de esta semana`}
+              </div>
+              <span style={{fontWeight:900,fontSize:16,color:T.au1,fontFamily:"'Nunito',sans-serif",flexShrink:0}}>{pct}%</span>
+            </div>
+            <div style={{height:9,borderRadius:6,background:'rgba(255,255,255,0.10)',overflow:'hidden'}}>
+              <div style={{height:'100%',width:pct+'%',borderRadius:6,background:'linear-gradient(90deg,'+T.au2+','+T.au1+')',transition:'width 0.5s'}}/>
+            </div>
+            <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,marginTop:8}}>
+              {lang==='en'
+                ? (alto
+                    ? "You're almost at your perfect week! Unlock new recipes with your gems and save them to keep growing it."
+                    : "Every recipe you save as a favourite fine-tunes your plan. Unlock new ones with your gems and save them to make it even more yours.")
+                : (alto
+                    ? '¡Ya casi tienes tu semana perfecta! Desbloquea recetas nuevas con tus 💎 y guárdalas para seguir ampliándola.'
+                    : 'Cada receta que guardas como favorita afina más tu plan. Desbloquea nuevas con tus 💎 y guárdalas para hacerlo aún más tuyo.')}
+            </div>
+          </div>
+        );
+      })()}
       <div style={{padding:'12px 16px',display:'flex',flexDirection:'column',gap:12}}>
         {/* Tarjeta unificada (jul-2026): sustituye a 'Planificación semanal' +
             'Recetas semanales'. El PDF ya incluye la tabla semanal completa,
