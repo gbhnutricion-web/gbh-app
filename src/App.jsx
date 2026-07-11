@@ -2806,6 +2806,7 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
   const [borrador, setBorrador] = useState(nombre);
   const [verConjuntos, setVerConjuntos] = useState(false);
   const [abiertos, setAbiertos] = useState({});
+  const seccion = { fontSize:11.5, fontWeight:900, color:T.t3, letterSpacing:1, textTransform:"uppercase", margin:"14px 0 8px" };
   const [personalidad, setPersonalidad] = useState("normal");
   return (
 
@@ -2983,6 +2984,44 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
               </div>
             </div>
           
+  );
+}
+
+// ─── 🎉 Bienvenida de Bo (1ª vez): presentación y adopción con nombre propio ───
+function BienvenidaBo({ onAdoptar }) {
+  const [borrador, setBorrador] = useState("");
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.72)", display:"flex",
+      alignItems:"center", justifyContent:"center", zIndex:9600, padding:16 }}>
+      <div style={{ background:T.bgCard, border:`2px solid ${T.au1}`, borderRadius:24,
+        padding:"24px 20px", maxWidth:340, width:"100%", textAlign:"center" }}>
+        <div style={{ fontSize:13, fontWeight:900, color:T.au1, letterSpacing:1.5, textTransform:"uppercase" }}>
+          🎉 Nueva compañera
+        </div>
+        <div style={{ fontWeight:900, fontSize:20, margin:"8px 0 2px", color:T.t1 }}>
+          ¡Te presentamos a la nueva mascota del rebaño!
+        </div>
+        <Sheep estado="feliz" equipados={[]} color="blanca" size={150} />
+        <div style={{ fontSize:14, color:T.t2, lineHeight:1.5, margin:"4px 0 14px" }}>
+          Ha llegado desde GBH Nutrición para acompañarte en tu progreso.
+          Se llama <b style={{color:T.cr}}>Bo</b>… pero puedes ponerle el nombre que tú prefieras:
+        </div>
+        <input value={borrador} maxLength={12}
+          onChange={e => setBorrador(e.target.value)}
+          placeholder="Nombre de tu oveja"
+          style={{ width:"100%", boxSizing:"border-box", background:"rgba(255,255,255,0.08)",
+            border:`2px solid ${T.g1}`, borderRadius:14, color:T.wh, fontWeight:900,
+            fontSize:16, padding:"11px 14px", fontFamily:"inherit", outline:"none",
+            textAlign:"center", marginBottom:12 }} />
+        <button onClick={() => onAdoptar((borrador.trim() || "Bo").slice(0, 12))}
+          style={{ width:"100%", background:`linear-gradient(180deg, ${T.g2}, ${T.g1})`,
+            border:"none", borderRadius:16, color:T.bg, fontWeight:900, fontSize:16,
+            padding:"13px 0", cursor:"pointer", fontFamily:"inherit",
+            boxShadow:"0 4px 0 #2B7A00" }}>
+          🐑 ¡Adoptar a {borrador.trim() || "Bo"}!
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -6675,6 +6714,15 @@ function GBHApp(){
   const [ptsHoy,setPtsHoy]=useState(0);
   const [ptsSemana,setPtsSemana]=useState(0);
   const arrancarJuegoRef=useRef(null);
+  const [boBienvenida,setBoBienvenida]=useState(false);
+  useEffect(()=>{ if(profile?.id && !localStorage.getItem("gbh_bo_bienvenida")) setBoBienvenida(true); },[profile?.id]);
+  const adoptarBo=(n)=>{
+    localStorage.setItem("gbh_bo_bienvenida","1");
+    setBoBienvenida(false);
+    setBoNombre(n);
+    setProfile(p=>p?{...p,bo_nombre:n}:p);
+    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{bo_nombre:n});
+  };
   const boNivel=(getLevel(xp||0)||{}).l||1;
   useEffect(()=>{ if(!profile) return;
     if(profile.bo_nombre) setBoNombre(profile.bo_nombre);
@@ -8783,6 +8831,7 @@ function GBHApp(){
       {showQuiz&&<QuizModal onClose={()=>setShowQuiz(false)} onComplete={onQuizComplete} todayKey={toKey()} lang={lang} onGoHome={()=>{setShowQuiz(false);setTab("home");}}/>}
       {showChest&&<ChestOpenModal streak={streak} onClose={()=>setShowChest(false)} onCollect={onChestCollect} onGoHome={()=>{setShowChest(false);setTab("home");}}/>}
       {/* ── 🐑 Zona de juego + Personalización de Bo ── */}
+      {boBienvenida&&(<BienvenidaBo onAdoptar={adoptarBo}/>)}
       {zonaJuego&&(
         <div style={{position:"fixed",inset:0,zIndex:9000,background:T.bg,display:"flex",flexDirection:"column"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 16px 8px"}}>
@@ -9246,11 +9295,11 @@ function GBHApp(){
       `}</style>
             <div style={{position:"relative"}}>
               <button onClick={()=>{ cargarPartidasHoy(); setZonaJuego(true); }} title="Zona de juego"
-                style={{position:"absolute",left:"2%",top:"24%",zIndex:2,width:44,height:44,borderRadius:16,background:"rgba(255,255,255,0.07)",border:"1.5px solid rgba(255,255,255,0.12)",boxShadow:"0 3px 0 rgba(0,0,0,0.4)",cursor:"pointer",fontFamily:"inherit",padding:0,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s"}}>
+                style={{position:"absolute",left:0,top:"24%",zIndex:2,width:44,height:44,borderRadius:16,background:"rgba(255,255,255,0.07)",border:"1.5px solid rgba(255,255,255,0.12)",boxShadow:"0 3px 0 rgba(0,0,0,0.4)",cursor:"pointer",fontFamily:"inherit",padding:0,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s"}}>
                 <span style={{fontSize:20,lineHeight:1}}>🎮</span>
               </button>
               <button onClick={()=>setPanelBo(true)} title="Personalizar a tu oveja"
-                style={{position:"absolute",right:"2%",top:"24%",zIndex:2,width:44,height:44,borderRadius:16,background:"rgba(255,255,255,0.07)",border:"1.5px solid rgba(255,255,255,0.12)",boxShadow:"0 3px 0 rgba(0,0,0,0.4)",cursor:"pointer",fontFamily:"inherit",padding:0,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s"}}>
+                style={{position:"absolute",right:0,top:"24%",zIndex:2,width:44,height:44,borderRadius:16,background:"rgba(255,255,255,0.07)",border:"1.5px solid rgba(255,255,255,0.12)",boxShadow:"0 3px 0 rgba(0,0,0,0.4)",cursor:"pointer",fontFamily:"inherit",padding:0,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s"}}>
                 <span style={{fontSize:20,lineHeight:1}}>🎨</span>
               </button>
               <div onClick={tapSheep} style={{cursor:"pointer",display:"flex",justifyContent:"center"}}>
