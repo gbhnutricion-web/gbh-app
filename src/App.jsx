@@ -1112,6 +1112,1880 @@ const sbReq = async(method, path, body=null) => {
 // ─── Avatar base GBH (oveja 3D) — fondo transparente ────────────────────────
 // Las 3 resoluciones evitan re-escalar en cada uso
 
+// ─── Paleta del sprite ───────────────────────────────────────────────────────
+const PAL = {
+  W: "#FDF6E3", w: "#E3D5B3", F: "#4A3728", f: "#6B5140",
+  L: "#3A2A1E", E: "#FFFFFF", B: "#1A120C", P: "#E8837A",
+  T: "#7EC8E3", R: "#C0392B", r: "#E74C3C", G: "#F5B800",
+  g: "#2D9B5A", K: "#111111", k: "#3A3A3A", M: "#CE82FF",
+  C: "#A07848", c: "#8B6040", N: "#1B2A5E", n: "#2E4590",
+  D: "#9C9C9C", d: "#7A7A7A", O: "#E8802A", o: "#C4661B",
+};
+
+// ─── Colores de lana (desbloqueo por nivel) ──────────────────────────────────
+const COLORES = [
+  { id:"blanca",  nombre:"Blanca",    W:"#FDF6E3", w:"#E3D5B3", nivel:1  },
+  { id:"marron",  nombre:"Marrón",    W:"#9C6B3F", w:"#7D5330", nivel:12 },
+  { id:"gris",    nombre:"Gris",      W:"#C9C9C9", w:"#A5A5A5", nivel:15 },
+  { id:"azul",    nombre:"Azul",      W:"#6EB9E8", w:"#4E97C6", nivel:33 },
+  { id:"negra",   nombre:"Negra",     W:"#4A4A4A", w:"#333333", nivel:50 },
+  { id:"roja",    nombre:"Roja",      W:"#E85D5D", w:"#C64444", nivel:62 },
+  { id:"naranja", nombre:"Naranja",   W:"#F09A4A", w:"#D57E2E", nivel:82 },
+  { id:"rosa",    nombre:"Rosa",      W:"#F7C6D9", w:"#E39BB8", nivel:100 },
+  { id:"morada",  nombre:"Morada",    W:"#B78BE0", w:"#9B6CC8", nivel:118 },
+  { id:"dalmata", nombre:"Dálmata",   W:"#FDFDFD", w:"#E8E8E8", nivel:130, patron:"dalmata", emoji:"🐶" },
+  { id:"payasa",  nombre:"Payasa",    W:"#FDFDFD", w:"#EDEDED", nivel:170, patron:"payaso", emoji:"🤡", caraPropia:true },
+  { id:"verde",   nombre:"Verde GBH", W:"#89E219", w:"#58CC02", nivel:200 },
+  { id:"esqueleto", nombre:"Esqueleto", W:"#3E3E3E", w:"#2A2A2A", nivel:230, patron:"esqueleto", emoji:"💀", caraPropia:true },
+  { id:"arcoiris", nombre:"Arcoíris", W:"#FDF6E3", w:"#E3D5B3", nivel:310, patron:"arcoiris", emoji:"🌈" },
+  { id:"dorada",  nombre:"Dorada",    W:"#FFD84D", w:"#E0B000", nivel:400 },
+];
+
+// Overlays y transformaciones de los patrones especiales
+const ARCOIRIS_FILAS = ["#FF5555","#FF9944","#FFD84D","#7ED957","#4FA8F5","#B57EDC"];
+const PATRON_PX = {
+  // Patrón de color: mantiene la cara de oveja
+  dalmata: [ [4,1,"#333333"],[9,2,"#333333"],[13,3,"#333333"],[2,10,"#333333"],[6,12,"#333333"],[11,11,"#333333"],[3,3,"#333333"] ],
+  // Skins de TRANSFORMACIÓN: cara propia fija; la skin manda sobre la oveja
+  payaso: [
+    // ojos
+    [5,7,"#111111"],[10,7,"#111111"],
+    // rombos azules de maquillaje sobre y bajo los ojos
+    [5,6,"#4FA8F5"],[10,6,"#4FA8F5"],[5,8,"#4FA8F5"],[10,8,"#4FA8F5"],
+    // nariz roja de bola
+    [7,8,"#E74C3C"],[8,8,"#E74C3C"],[7,9,"#C0392B"],[8,9,"#C0392B"],
+    // sonrisa gigante pintada, de comisura a comisura
+    [4,9,"#E74C3C"],[11,9,"#E74C3C"],
+    [5,10,"#E74C3C"],[6,10,"#E74C3C"],[7,10,"#E74C3C"],[8,10,"#E74C3C"],[9,10,"#E74C3C"],[10,10,"#E74C3C"],
+  ],
+  esqueleto: [
+    // cuencas negras grandes (2x2)
+    [5,6,"#111111"],[6,6,"#111111"],[5,7,"#111111"],[6,7,"#111111"],
+    [9,6,"#111111"],[10,6,"#111111"],[9,7,"#111111"],[10,7,"#111111"],
+    // hueco nasal
+    [7,8,"#111111"],[8,8,"#111111"],
+    // boca: barra negra con dentadura blanca separada debajo
+    [5,9,"#111111"],[6,9,"#111111"],[7,9,"#111111"],[8,9,"#111111"],[9,9,"#111111"],[10,9,"#111111"],
+    [6,10,"#111111"],[8,10,"#111111"],[10,10,"#111111"],
+  ],
+};
+
+const BASE = [
+  "................",
+  "....WWWWWWWW....",
+  "..WWWWWWWWWWWW..",
+  ".WWWWWWWWWWWWWW.",
+  "FFWWWWWWWWWWWWFF",
+  "FFWWFFFFFFFFWWFF",
+  ".WWFFFFFFFFFFWW.",
+  ".WWFFFFFFFFFFWW.",
+  ".WWFFFFFFFFFFWW.",
+  ".WWFFFFFFFFFFWW.",
+  ".WWWFFFFFFFFWWW.",
+  "..WWWWWWWWWWWW..",
+  "..wWWWWWWWWWWw..",
+  "....LL....LL....",
+  "....LL....LL....",
+  "................",
+];
+
+// Overlays de cara por estado: [x, y, colorKey]
+const FACES = {
+  feliz: [
+    [5,7,"E"],[6,7,"E"],[9,7,"E"],[10,7,"E"],[5,6,"E"],[10,6,"E"],
+    [4,8,"P"],[11,8,"P"],
+    [6,9,"f"],[7,10,"f"],[8,10,"f"],[9,9,"f"],
+  ],
+  normal: [
+    [5,7,"E"],[6,7,"B"],[9,7,"B"],[10,7,"E"],
+    [7,9,"f"],[8,9,"f"],
+  ],
+  hambrienta: [
+    [5,7,"E"],[6,7,"B"],[9,7,"B"],[10,7,"E"],
+    [6,9,"f"],[7,9,"B"],[8,9,"B"],[9,9,"f"],[7,10,"B"],[8,10,"B"],
+  ],
+  triste: [
+    [5,7,"B"],[6,7,"E"],[9,7,"E"],[10,7,"B"],
+    [5,8,"T"],[5,9,"T"],
+    [6,10,"f"],[7,9,"f"],[8,9,"f"],[9,10,"f"],
+  ],
+  dormida: [
+    [5,7,"f"],[6,7,"f"],[9,7,"f"],[10,7,"f"],
+    [7,9,"f"],
+  ],
+};
+
+// ─── Accesorios (desbloqueo por nivel) ───────────────────────────────────────
+const ACCESORIOS = [
+  // ── Piezas sueltas ──
+  { id:"flor", zona:"cabeza", nombre:"Flor", emoji:"🌸", nivel:3, px:[
+    [3,1,"P"],[5,1,"P"],[4,2,"P"],[4,1,"G"] ]},
+  { id:"gorro", zona:"cabeza", nombre:"Gorro de lana", emoji:"🧢", nivel:10, px:[
+    [7,0,"G"],[8,0,"G"],
+    [4,1,"R"],[5,1,"R"],[6,1,"R"],[7,1,"r"],[8,1,"r"],[9,1,"R"],[10,1,"R"],[11,1,"R"],
+    [3,2,"r"],[4,2,"R"],[5,2,"r"],[6,2,"R"],[7,2,"R"],[8,2,"R"],[9,2,"r"],[10,2,"R"],[11,2,"r"],[12,2,"R"] ]},
+  { id:"corbata", zona:"cuello", nombre:"Corbata", emoji:"👔", nivel:20, px:[
+    [7,11,"R"],[8,11,"R"],[7,12,"r"],[8,12,"r"] ]},
+  { id:"gafas", zona:"cara", nombre:"Gafas de sol", emoji:"🕶️", nivel:35, px:[
+    [3,7,"K"],[4,7,"K"],[5,7,"k"],[6,7,"k"],[7,7,"K"],[8,7,"K"],[9,7,"k"],[10,7,"k"],[11,7,"K"],[12,7,"K"],
+    [5,8,"K"],[6,8,"K"],[9,8,"K"],[10,8,"K"] ]},
+  // ── Set Chef 👨‍🍳 ──
+  { id:"gorrochef", zona:"cabeza", set:"chef", nombre:"Gorro de chef", emoji:"👨‍🍳", nivel:40, px:[
+    [5,0,"E"],[6,0,"E"],[7,0,"E"],[8,0,"E"],[9,0,"E"],[10,0,"E"],
+    [4,1,"E"],[5,1,"E"],[6,1,"E"],[7,1,"E"],[8,1,"E"],[9,1,"E"],[10,1,"E"],[11,1,"E"],
+    [5,2,"E"],[6,2,"w"],[7,2,"E"],[8,2,"E"],[9,2,"w"],[10,2,"E"] ]},
+  { id:"panuelochef", zona:"cuello", set:"chef", nombre:"Pañuelo de cocina", emoji:"🍳", nivel:48, px:[
+    [5,11,"R"],[6,11,"R"],[7,11,"R"],[8,11,"R"],[9,11,"R"],[10,11,"R"],[10,12,"r"] ]},
+  { id:"gorrodormir", zona:"cabeza", nombre:"Gorro de dormir", emoji:"🌙", nivel:55, px:[
+    [4,2,"T"],[5,2,"T"],[6,2,"T"],[7,2,"T"],[8,2,"T"],[9,2,"T"],[10,2,"T"],[11,2,"T"],
+    [5,1,"T"],[6,1,"T"],[7,1,"T"],[8,1,"T"],[9,1,"T"],[9,0,"T"],[10,0,"T"],[11,0,"E"] ]},
+  { id:"bufanda", zona:"cuello", nombre:"Bufanda GBH", emoji:"🧣", nivel:65, px:[
+    [3,11,"g"],[4,11,"G"],[5,11,"g"],[6,11,"G"],[7,11,"g"],[8,11,"G"],[9,11,"g"],[10,11,"G"],[11,11,"g"],[12,11,"G"],
+    [11,12,"g"],[11,13,"G"] ]},
+  // ── Set Vaquero 🤠 ──
+  { id:"sombrerovaquero", zona:"cabeza", set:"vaquero", nombre:"Sombrero vaquero", emoji:"🤠", nivel:70, px:[
+    [6,0,"C"],[7,0,"C"],[8,0,"C"],[9,0,"C"],
+    [5,1,"c"],[6,1,"C"],[7,1,"C"],[8,1,"C"],[9,1,"C"],[10,1,"c"],
+    [2,2,"C"],[3,2,"C"],[4,2,"C"],[5,2,"C"],[6,2,"c"],[7,2,"c"],[8,2,"c"],[9,2,"c"],[10,2,"C"],[11,2,"C"],[12,2,"C"],[13,2,"C"] ]},
+  { id:"bandana", zona:"cuello", set:"vaquero", nombre:"Bandana", emoji:"🪢", nivel:78, px:[
+    [5,11,"C"],[6,11,"C"],[7,11,"C"],[8,11,"C"],[9,11,"C"],[10,11,"C"],[7,12,"c"],[8,12,"c"] ]},
+  { id:"cuernos", zona:"cuernos", nombre:"Cuernos de demonio", emoji:"😈", nivel:85, px:[
+    [2,0,"R"],[3,0,"r"],[3,1,"R"],[13,0,"R"],[12,0,"r"],[12,1,"R"] ]},
+  { id:"cinta", zona:"cabeza", nombre:"Cinta deportiva", emoji:"🏃", nivel:95, px:[
+    [3,4,"R"],[4,4,"R"],[5,4,"r"],[6,4,"R"],[7,4,"E"],[8,4,"E"],[9,4,"R"],[10,4,"r"],[11,4,"R"],[12,4,"R"] ]},
+  // ── Set Payaso 🤡 ──
+  { id:"narizpayaso", zona:"cara", set:"payaso", nombre:"Nariz de payaso", emoji:"🔴", nivel:105, px:[
+    [7,8,"R"],[8,8,"R"],[7,9,"r"],[8,9,"r"] ]},
+  { id:"peluca", zona:"cabeza", set:"payaso", nombre:"Peluca de colores", emoji:"🤡", nivel:112, px:[
+    [3,1,"R"],[4,1,"G"],[5,1,"T"],[10,1,"M"],[11,1,"G"],[12,1,"R"],
+    [2,2,"M"],[3,2,"T"],[12,2,"G"],[13,2,"T"],[4,0,"T"],[5,0,"M"],[10,0,"G"],[11,0,"M"] ]},
+  { id:"pajarita", zona:"cuello", nombre:"Pajarita", emoji:"🎀", nivel:115, px:[
+    [6,11,"M"],[7,11,"M"],[8,11,"G"],[9,11,"M"],[10,11,"M"],[6,12,"M"],[10,12,"M"] ]},
+  { id:"lazolunares", zona:"cuello", set:"payaso", nombre:"Lazo de lunares", emoji:"🎪", nivel:122, px:[
+    [4,11,"M"],[5,11,"G"],[6,11,"M"],[7,11,"M"],[8,11,"M"],[9,11,"M"],[10,11,"G"],[11,11,"M"],
+    [5,12,"M"],[6,12,"G"],[9,12,"G"],[10,12,"M"] ]},
+  // ── Set Policía 👮 ──
+  { id:"aviador", zona:"cara", set:"policia", nombre:"Gafas de aviador", emoji:"🕶️", nivel:125, px:[
+    [4,7,"G"],[5,7,"K"],[6,7,"K"],[7,7,"G"],[8,7,"G"],[9,7,"K"],[10,7,"K"],[11,7,"G"],
+    [5,8,"K"],[6,8,"K"],[9,8,"K"],[10,8,"K"] ]},
+  { id:"policia", zona:"cabeza", set:"policia", nombre:"Gorra de policía", emoji:"👮", nivel:135, px:[
+    [5,0,"N"],[6,0,"N"],[7,0,"N"],[8,0,"N"],[9,0,"N"],[10,0,"N"],
+    [4,1,"N"],[5,1,"n"],[6,1,"N"],[7,1,"G"],[8,1,"G"],[9,1,"N"],[10,1,"n"],[11,1,"N"],
+    [5,2,"K"],[6,2,"K"],[7,2,"K"],[8,2,"K"],[9,2,"K"],[10,2,"K"] ]},
+  // ── Set Enfermería 👩‍⚕️ ──
+  { id:"cofia", zona:"cabeza", set:"enfermeria", nombre:"Cofia sanitaria", emoji:"⚕️", nivel:145, px:[
+    [5,1,"E"],[6,1,"E"],[7,1,"R"],[8,1,"R"],[9,1,"E"],[10,1,"E"],
+    [4,2,"E"],[5,2,"E"],[6,2,"E"],[7,2,"R"],[8,2,"R"],[9,2,"E"],[10,2,"E"],[11,2,"E"] ]},
+  { id:"mascarilla", zona:"cara", set:"enfermeria", nombre:"Mascarilla", emoji:"😷", nivel:150, px:[
+    [5,9,"T"],[6,9,"T"],[7,9,"T"],[8,9,"T"],[9,9,"T"],[10,9,"T"],
+    [6,10,"T"],[7,10,"T"],[8,10,"T"],[9,10,"T"] ]},
+  { id:"aureola", zona:"cabeza", nombre:"Aureola de ángel", emoji:"😇", nivel:155, px:[
+    [5,0,"G"],[6,0,"G"],[7,0,"G"],[8,0,"G"],[9,0,"G"],[10,0,"G"] ]},
+  { id:"fonendo", zona:"cuello", set:"enfermeria", nombre:"Fonendoscopio", emoji:"🩺", nivel:160, px:[
+    [5,11,"k"],[6,11,"k"],[7,11,"k"],[8,11,"k"],[9,11,"k"],[10,11,"k"],[8,12,"E"],[8,13,"G"] ]},
+  { id:"capa", zona:"espalda", nombre:"Capa de héroe", emoji:"🦸", nivel:180, px:[
+    [1,9,"R"],[1,10,"R"],[1,11,"r"],[1,12,"R"],[2,10,"r"],[2,11,"R"],[2,12,"r"],[2,13,"R"],[1,13,"r"] ]},
+  // ── Set Pirata 🏴‍☠️ ──
+  { id:"parche", zona:"cara", set:"pirata", nombre:"Parche pirata", emoji:"🏴‍☠️", nivel:190, px:[
+    [4,6,"k"],[5,6,"k"],[6,6,"k"],[7,6,"k"],[8,6,"k"],[11,6,"k"],
+    [9,6,"k"],[10,6,"k"],[9,7,"K"],[10,7,"K"],[9,8,"K"],[10,8,"K"] ]},
+  { id:"tricornio", zona:"cabeza", set:"pirata", nombre:"Tricornio", emoji:"🦜", nivel:200, px:[
+    [5,1,"K"],[6,1,"K"],[7,1,"E"],[8,1,"E"],[9,1,"K"],[10,1,"K"],
+    [3,2,"K"],[4,2,"K"],[5,2,"K"],[6,2,"K"],[7,2,"K"],[8,2,"K"],[9,2,"K"],[10,2,"K"],[11,2,"K"],[12,2,"K"] ]},
+  { id:"loro", zona:"espalda", set:"pirata", nombre:"Loro al hombro", emoji:"🦜", nivel:210, px:[
+    [14,8,"g"],[15,8,"G"],[13,9,"g"],[14,9,"g"],[13,10,"R"],[14,10,"g"],[14,11,"g"] ]},
+  { id:"soldado", zona:"cabeza", nombre:"Casco de soldado", emoji:"🪖", nivel:220, px:[
+    [6,0,"g"],[7,0,"g"],[8,0,"g"],[9,0,"g"],
+    [4,1,"g"],[5,1,"g"],[6,1,"g"],[7,1,"g"],[8,1,"g"],[9,1,"g"],[10,1,"g"],[11,1,"g"],
+    [3,2,"g"],[4,2,"g"],[5,2,"g"],[6,2,"g"],[7,2,"g"],[8,2,"g"],[9,2,"g"],[10,2,"g"],[11,2,"g"],[12,2,"g"] ]},
+  { id:"carnero", zona:"cuernos", nombre:"Cuernos de carnero", emoji:"🐏", nivel:240, px:[
+    [2,2,"C"],[1,3,"C"],[1,4,"C"],[2,5,"C"],[3,5,"c"],[2,3,"c"],[2,4,"C"],
+    [13,2,"C"],[14,3,"C"],[14,4,"C"],[13,5,"C"],[12,5,"c"],[13,3,"c"],[13,4,"C"] ]},
+  // ── Set Mago 🧙 ──
+  { id:"sombreromago", zona:"cabeza", set:"mago", nombre:"Sombrero de mago", emoji:"🧙", nivel:250, px:[
+    [7,0,"M"],[8,0,"M"],[6,1,"M"],[7,1,"G"],[8,1,"M"],[9,1,"M"],
+    [4,2,"M"],[5,2,"G"],[6,2,"M"],[7,2,"M"],[8,2,"M"],[9,2,"M"],[10,2,"G"],[11,2,"M"] ]},
+  { id:"capaestrellas", zona:"espalda", set:"mago", nombre:"Capa estrellada", emoji:"✨", nivel:260, px:[
+    [1,9,"M"],[1,10,"M"],[1,11,"G"],[1,12,"M"],[2,10,"M"],[2,11,"M"],[2,12,"G"],[2,13,"M"],[1,13,"M"] ]},
+  { id:"alitas", zona:"espalda", nombre:"Alitas de ángel", emoji:"👼", nivel:280, px:[
+    [0,8,"E"],[0,9,"E"],[1,9,"E"],[0,10,"E"],[1,10,"E"],[1,11,"E"],[0,11,"E"],
+    [15,8,"E"],[15,9,"E"],[14,9,"E"],[15,10,"E"],[14,10,"E"],[14,11,"E"],[15,11,"E"] ]},
+  // ── Set Ricachón 🎩 ──
+  { id:"chistera", zona:"cabeza", set:"ricachon", nombre:"Chistera", emoji:"🎩", nivel:290, px:[
+    [5,0,"K"],[6,0,"K"],[7,0,"K"],[8,0,"K"],[9,0,"K"],[10,0,"K"],
+    [5,1,"K"],[6,1,"G"],[7,1,"G"],[8,1,"G"],[9,1,"G"],[10,1,"K"],
+    [3,2,"K"],[4,2,"K"],[5,2,"K"],[6,2,"K"],[7,2,"K"],[8,2,"K"],[9,2,"K"],[10,2,"K"],[11,2,"K"],[12,2,"K"] ]},
+  { id:"monoculo", zona:"cara", set:"ricachon", nombre:"Monóculo", emoji:"🧐", nivel:300, px:[
+    [9,7,"G"],[10,7,"E"],[9,8,"E"],[10,8,"G"],[11,9,"G"],[11,10,"G"] ]},
+  // ── Set Campeón 🥇 ──
+  { id:"cinturon", zona:"cuello", set:"campeon", nombre:"Cinturón de campeón", emoji:"🥇", nivel:320, px:[
+    [4,12,"G"],[5,12,"G"],[6,12,"G"],[7,12,"E"],[8,12,"E"],[9,12,"G"],[10,12,"G"],[11,12,"G"] ]},
+  { id:"corona", zona:"cabeza", set:"campeon", nombre:"Corona Campeón", emoji:"👑", nivel:350, px:[
+    [5,0,"G"],[7,0,"G"],[8,0,"G"],[10,0,"G"],
+    [5,1,"G"],[6,1,"G"],[7,1,"G"],[8,1,"G"],[9,1,"G"],[10,1,"G"] ]},
+  // ── Sets de animales ──
+  { id:"orejasburro", zona:"orejas", set:"burro", nombre:"Orejas de burro", emoji:"🫏", nivel:25, px:[
+    [1,0,"D"],[2,0,"D"],[1,1,"D"],[2,1,"P"],[1,2,"D"],[2,2,"D"],[2,3,"d"],
+    [13,0,"D"],[14,0,"D"],[14,1,"D"],[13,1,"P"],[13,2,"D"],[14,2,"D"],[13,3,"d"] ]},
+  { id:"colaburro", zona:"cola", set:"burro", nombre:"Cola de burro", emoji:"🪢", nivel:60, px:[
+    [0,10,"D"],[0,11,"D"],[0,12,"D"],[0,13,"k"],[1,13,"k"] ]},
+  { id:"orejasconejo", zona:"orejas", set:"conejo", nombre:"Orejas de conejo", emoji:"🐰", nivel:90, px:[
+    [1,0,"E"],[2,0,"E"],[1,1,"E"],[2,1,"P"],[1,2,"E"],[2,2,"E"],
+    [13,0,"E"],[14,0,"E"],[13,1,"P"],[14,1,"E"],[13,2,"E"],[14,2,"E"] ]},
+  { id:"colaconejo", zona:"cola", set:"conejo", nombre:"Cola de pompón", emoji:"⚪", nivel:165, px:[
+    [0,11,"E"],[1,11,"E"],[0,12,"E"],[1,12,"E"] ]},
+  { id:"picobuho", zona:"cara", set:"buho", nombre:"Pico de búho", emoji:"🦉", nivel:235, px:[
+    [7,8,"O"],[8,8,"O"],[7,9,"o"],[8,9,"o"] ]},
+  { id:"penachos", zona:"orejas", set:"buho", nombre:"Penachos de búho", emoji:"🪶", nivel:270, px:[
+    [2,0,"w"],[3,0,"w"],[2,1,"w"],[12,0,"w"],[13,0,"w"],[13,1,"w"] ]},
+  { id:"orejaszorro", zona:"orejas", set:"zorro", nombre:"Orejas de zorro", emoji:"🦊", nivel:330, px:[
+    [2,0,"o"],[1,1,"O"],[2,1,"O"],[3,1,"O"],[2,2,"O"],
+    [13,0,"o"],[12,1,"O"],[13,1,"O"],[14,1,"O"],[13,2,"O"] ]},
+  { id:"colazorro", zona:"cola", set:"zorro", nombre:"Cola de zorro", emoji:"🦊", nivel:360, px:[
+    [0,10,"O"],[1,10,"O"],[0,11,"O"],[1,11,"O"],[0,12,"E"],[1,12,"E"] ]},
+  { id:"cuernounicornio", zona:"cuernos", set:"unicornio", nombre:"Cuerno de unicornio", emoji:"🦄", nivel:380, px:[
+    [7,0,"G"],[8,0,"P"],[7,1,"P"],[8,1,"G"] ]},
+  { id:"colaunicornio", zona:"cola", set:"unicornio", nombre:"Cola de unicornio", emoji:"🌈", nivel:420, px:[
+    [0,10,"R"],[1,10,"M"],[0,11,"G"],[1,11,"P"],[0,12,"T"],[1,12,"M"] ]},
+];
+
+// ─── Conjuntos temáticos: visten varias zonas de golpe ───────────────────────
+const CONJUNTOS = [
+  { id:"chef", nombre:"Chef", emoji:"👨‍🍳", piezas:["gorrochef","panuelochef"] },
+  { id:"vaquero", nombre:"Vaquero", emoji:"🤠", piezas:["sombrerovaquero","bandana"] },
+  { id:"payaso", nombre:"Payaso", emoji:"🤡", piezas:["peluca","narizpayaso","lazolunares"] },
+  { id:"policia", nombre:"Policía", emoji:"👮", piezas:["policia","aviador","corbata"] },
+  { id:"enfermeria", nombre:"Enfermería", emoji:"⚕️", piezas:["cofia","mascarilla","fonendo"] },
+  { id:"angel", nombre:"Ángel", emoji:"😇", piezas:["aureola","alitas"] },
+  { id:"pirata", nombre:"Pirata", emoji:"🏴‍☠️", piezas:["tricornio","parche","loro"] },
+  { id:"mago", nombre:"Mago", emoji:"🧙", piezas:["sombreromago","capaestrellas"] },
+  { id:"ricachon", nombre:"Ricachón", emoji:"🎩", piezas:["chistera","monoculo","pajarita"] },
+  { id:"clasica", nombre:"Oveja clásica GBH", emoji:"🐏", piezas:["carnero"], color:"verde" },
+  { id:"campeon", nombre:"Campeón GBH", emoji:"🥇", piezas:["corona","cinturon","capa"] },
+  { id:"burro", nombre:"Burro", emoji:"🫏", piezas:["orejasburro","colaburro"], color:"gris" },
+  { id:"conejo", nombre:"Conejo", emoji:"🐰", piezas:["orejasconejo","colaconejo"], color:"blanca" },
+  { id:"buho", nombre:"Búho verde", emoji:"🦉", piezas:["penachos","picobuho"], color:"verde" },
+  { id:"zorro", nombre:"Zorro", emoji:"🦊", piezas:["orejaszorro","colazorro"], color:"naranja" },
+  { id:"unicornio", nombre:"Unicornio", emoji:"🦄", piezas:["cuernounicornio","colaunicornio"], color:"arcoiris" },
+];
+
+// ─── Repositorio de mensajes ─────────────────────────────────────────────────
+// 50 píldoras de nutrición + mensajes de estado de la mascota.
+// En producción: 60% probabilidad de consejo, 40% mensaje de estado.
+const TIPS_NUTRICION = [
+  "La proteína es el macro más saciante: inclúyela en cada comida 💪",
+  "La fibra de verduras y legumbres alimenta a tus bacterias buenas 🦠",
+  "Beber agua antes de comer ayuda a regular el apetito 💧",
+  "Dormir menos de 7h aumenta el hambre al día siguiente 😴",
+  "El peso diario oscila; lo que importa es la tendencia semanal 📈",
+  "Los huevos son de las proteínas más completas que existen 🥚",
+  "Caminar 10 min después de comer mejora tu glucosa 🚶",
+  "La fruta entera sacia mucho más que su zumo 🍎",
+  "Congelar pan y tostarlo baja su índice glucémico 🍞",
+  "El pescado azul aporta omega-3: 2-3 veces por semana 🐟",
+  "Cocinar en casa te da control total de lo que comes 👨‍🍳",
+  "Las legumbres combinan proteína y fibra: dobles puntos ✌️",
+  "Masticar despacio da tiempo a que llegue la señal de saciedad 🐢",
+  "Un déficit pequeño y sostenido gana a una dieta extrema 🎯",
+  "El café solo no rompe el ayuno y puede ayudar a entrenar ☕",
+  "Los frutos secos sacian, pero mide el puñado: son densos 🥜",
+  "La vitamina D se activa con el sol: sal a pasear ☀️",
+  "El yogur natural sin azúcar es un básico proteico 🥛",
+  "Planificar el menú semanal evita decisiones impulsivas 📋",
+  "Más color en el plato = más variedad de micronutrientes 🌈",
+  "La avena aporta beta-glucanos, aliados de tu colesterol 🌾",
+  "El alcohol suma calorías vacías y frena la recuperación 🚫",
+  "Entrenar fuerza protege tu músculo mientras pierdes grasa 🏋️",
+  "Las especias dan sabor sin sumar calorías: úsalas sin miedo 🌶️",
+  "Pésate siempre en las mismas condiciones: ayunas, sin ropa ⚖️",
+  "El aceite de oliva virgen extra es grasa de calidad, con medida 🫒",
+  "Verdura en comida y cena: la mitad del plato es buena regla 🥦",
+  "Retener líquidos tras entrenar o con estrés es normal 💦",
+  "El chocolate >85% puede caber en tu plan con moderación 🍫",
+  "Saltarte una comida no arruina nada: retoma en la siguiente 🔄",
+  "Los carbohidratos no engordan por sí solos: cuenta el total 🍚",
+  "Batido de proteína: útil si no llegas con comida real 🥤",
+  "Los ultraprocesados están diseñados para que no pares de comer ⚠️",
+  "El desayuno no es obligatorio: hazlo si te sienta bien 🌅",
+  "La sal en exceso retiene agua: ojo con salsas y snacks 🧂",
+  "Comer proteína en la cena ayuda a la recuperación nocturna 🌙",
+  "Las claras son proteína pura, pero la yema tiene los nutrientes 🍳",
+  "10.000 pasos diarios queman más de lo que crees 👟",
+  "El hambre emocional pasa; el hambre real crece poco a poco 🧠",
+  "Los lácteos enteros sacian más que los desnatados 🧀",
+  "Cocina de más y guarda raciones: tu yo del martes lo agradece 🍱",
+  "El té verde hidrata y aporta antioxidantes 🍵",
+  "Un gramo de grasa tiene 9 kcal; proteína y carbos, 4 ⚡",
+  "La creatina es de los suplementos con más evidencia 🔬",
+  "Comer despacio y sin pantallas reduce lo que ingieres 📵",
+  "El pan integral de verdad lleva harina integral como 1er ingrediente 🔍",
+  "Tus músculos son tu seguro de vida metabólico: cuídalos 🛡️",
+  "Las palomitas caseras son el snack de cine más ligero 🍿",
+  "Un capricho planificado no es un fracaso: es adherencia 🎉",
+  "La constancia imperfecta gana a la perfección intermitente 🏆",
+];
+
+const MSGS_ESTADO = {
+  feliz: [
+    "¡Hoy lo has bordado! Estoy orgullosa de ti 🥰",
+    "¡Beee! Cuando tú cumples, yo salto de alegría 🎉",
+    "Racha viva y misiones hechas... ¡así se cuida a una oveja!",
+  ],
+  normal: [
+    "Buen día para sumar: ¿registramos la dieta de hoy?",
+    "Aquí ando, pastando tranquila... esperando tus misiones 🌱",
+    "Un pasito hoy, otro mañana. Yo te acompaño 🐾",
+  ],
+  hambrienta: [
+    "¡Beee! Tengo hambre... registra tu dieta y comemos juntas 🥗",
+    "Mi lana pierde brillo cuando no registras... ¡aliméntame!",
+    "¿Hoy no hay registro? Se me hace larga la tarde... 😋",
+  ],
+  triste: [
+    "Te echo de menos... llevamos días sin registrar juntos 💔",
+    "Nuestra racha peligra... ¡pero aún estamos a tiempo! 🔥",
+    "Una ovejita triste se anima rápido: solo un registro 🥺",
+  ],
+  dormida: [
+    "Zzz... mañana más y mejor... zzz 💤",
+    "Día completado... me voy a soñar con praderas verdes 🌙",
+    "Descansar también es parte del plan... zzz 😴",
+  ],
+};
+
+// ─── Caracteres de la mascota (desbloqueo por nivel) ─────────────────────────
+// El mensaje base es el mismo; el carácter añade una coletilla al final.
+// Regla de oro: las pullitas van sobre la relación con la oveja,
+// NUNCA sobre el cuerpo o la comida del paciente.
+// ─── Mensajes por contexto (heredados del avatar del inicio) ─────────────────
+// En producción son event-driven (getExpr: racha, dieta, hora) y tienen
+// PRIORIDAD sobre el resto al abrir la pantalla. Personalizados con nombre y racha.
+const MSGS_CONTEXTO = [
+  "🎉 ¡Día perfecto, Alejandro! Misiones completadas",
+  "👑 ¡112 días, Alejandro! Leyenda absoluta",
+  "🔥 ¡12 días seguidos! ¡Imparable, Alejandro!",
+  "✅ ¡Dieta registrada! Sigue así, Alejandro",
+  "😴 Buen descanso, Alejandro. ¡Mañana a tope!",
+  "⚠️ Alejandro, ¡aún puedes registrar la dieta! No pierdas la racha 🔥",
+  "💚 ¡Hola Alejandro! Hoy es el día para empezar",
+  "¡Hola Alejandro! ¿Listo para marcar el día? 🌱",
+];
+
+const PERSONALIDADES = [
+  { id:"normal", nombre:"Normal", emoji:"🐑", nivel:1, coletillas:[] },
+  { id:"optimista", nombre:"Optimista", emoji:"🌞", nivel:30, coletillas:[
+    "¡Y recuerda: tú puedes con esto y con más! 💪",
+    "¡Hoy va a ser un día ESTUPENDO, lo presiento!",
+    "¡Cada día que pasa estás más cerca! ✨",
+    "¡Beee-nial, sigamos así!",
+    "¡El rebaño entero cree en ti! 🐑🐑🐑",
+    "¡Si yo puedo con esta lana en agosto, tú puedes con todo!",
+  ], frases:[
+    "¡Tú fíjate en las ovejas americanas! Ellas no dicen 'beee', dicen '¡Yeah, I can do it!'. ¡Pues nosotros igual! ✨",
+    "¡No lo llamemos dieta, llamémoslo 'El gran sueño metabólico del rebaño'! ¡Vamos equipo!",
+    "¡Si Mahoma no va a la montaña, la oveja sube haciendo zancadas búlgaras! ¡Tú puedes! 💪",
+    "¡Hoy eres un 10! Y si te caes, te levantas con más fuerza, ¡como un cordero recién nacido pero con más bíceps!",
+    "¡Sonríe, que la vida es un prado sin vallas y tú eres el tractor que lo arrasa todo! 🚜💛",
+  ]},
+  { id:"gruñona", nombre:"Gruñona", emoji:"😤", nivel:70, coletillas:[
+    "...no es que a ti te importe mucho, claro. 🙄",
+    "Beee. Sí, lo dice una oveja. ¿Algún problema?",
+    "...te lo repito porque ayer ni me escuchaste.",
+    "Y no me hagas repetirlo, que se me gasta la lana.",
+    "...aunque tú harás lo que te dé la gana, como siempre. 😒",
+    "De nada, ¿eh? Un 'gracias' no estaría de más.",
+  ], frases:[
+    "Que digo yo... tanta proteína, tanto macro y tanta gaita. ¡En mi época pastábamos hierba seca y levantábamos tractores! 🙄",
+    "Me traéis loca con la racha. ¡Una racha es lo que me daba mi pastor en el lomo cuando me perdía!",
+    "Saben aquel que diu que va una oveja al nutricionista y... bah, déjalo, no tiene gracia. Como tener que repetirte las cosas.",
+    "Mucho ayuno intermitente, pero a mí me tienes aquí esperando desde las ocho. 😒",
+    "He visto esquilados a trasquilones con más orden que tu forma de registrar las comidas.",
+  ]},
+  { id:"melancolica", nombre:"Melancólica", emoji:"🌧️", nivel:140, coletillas:[
+    "...en fin, todo pasa. Como el otoño en la pradera. ☁️",
+    "*suspiro lanudo*... qué bonito era todo antes.",
+    "...como decía mi abuela oveja: beee. Cuánta razón tenía.",
+    "La vida es un prado... y a veces llueve. 🌧️",
+    "...me he acordado de mi esquilada de 2019. No preguntes.",
+    "Qué le vamos a hacer... *mira al horizonte*",
+  ], frases:[
+    "A veces me pregunto... ¿adónde va la pelusa de mi lana cuando me rasco en la valla? Al vacío... como todo. ☁️",
+    "La vida es como un tupper mal cerrado en la mochila del gimnasio. Tarde o temprano, la tragedia ocurre. 🌧️",
+    "Hoy he visto una nube con forma de brócoli. Luego se ha deshecho. Todo es una metáfora. *suspiro*",
+    "¿Para qué contar ovejas para dormir, si al final todas despertamos en el mismo prado de la rutina? 🥺",
+    "Ayer me comí un trébol de cuatro hojas. Sigo igual de triste, pero con más fibra. 🍀",
+  ]},
+  { id:"teatrera", nombre:"Teatrera", emoji:"🎭", nivel:260, coletillas:[
+    "¡¡Y ESCRÍBELO EN TU CORAZÓN!! *cae sobre la hierba*",
+    "...*pausa dramática*... eso es TODO. Telón. 🎭",
+    "¡Oh, destino! ¡Qué sabia soy y qué poco me aplauden!",
+    "*se desmaya de la emoción* ...estoy bien, estoy bien.",
+    "¡Que conste en acta, ante todo el rebaño! 📜",
+    "¡BEEE! Perdón, me he emocionado. *reverencia*",
+  ], frases:[
+    "¡Por la gloria de mi madre esquilada! ¡Has clavado el día, pedazo de fistro nutricional! 💃",
+    "¡Te das cuén! ¡Esa racha tiene más fuego que las calderas del infierno lanudo! 🔥",
+    "¡Alerta, alerta! ¡Poned las calles de alfombra verde que entra Su Majestad del Registro de Comidas! 👑",
+    "¡Siete caballos vienen de Bonanza, y todos quieren saber tu secreto para esa constancia! 🐎",
+    "*hace un moonwalk con las pezuñas* ¡Beee-llísimo! ¡Arte puro en movimiento!",
+  ]},
+];
+
+
+// Zonas del cuerpo: un solo accesorio equipado por zona (intercambiables)
+const ZONAS = [
+  { id:"cabeza", nombre:"Cabeza", emoji:"🎩" },
+  { id:"cuernos", nombre:"Cuernos", emoji:"🐏" },
+  { id:"cara", nombre:"Cara", emoji:"🕶️" },
+  { id:"cuello", nombre:"Cuello", emoji:"🧣" },
+  { id:"espalda", nombre:"Espalda", emoji:"🦸" },
+  { id:"orejas", nombre:"Orejas", emoji:"🐰" },
+  { id:"cola", nombre:"Cola", emoji:"🦄" },
+];
+
+const ESTADOS = [
+  { id:"feliz", label:"Feliz", emoji:"😊", desc:"Misiones de hoy completadas", felicidad:100, anim:"bounce" },
+  { id:"normal", label:"Normal", emoji:"🙂", desc:"Día en curso, aún hay misiones", felicidad:70, anim:"idle" },
+  { id:"hambrienta", label:"Hambrienta", emoji:"😋", desc:"Dieta de hoy sin registrar", felicidad:50, anim:"wiggle" },
+  { id:"triste", label:"Triste", emoji:"😢", desc:"2+ días sin registrar — racha en peligro", felicidad:25, anim:"droop" },
+  { id:"dormida", label:"Dormida", emoji:"😴", desc:"Es de noche o día ya completado", felicidad:80, anim:"breathe" },
+];
+
+function Sheep({ estado, equipados, color, size = 200, mini = false }) {
+  const col = COLORES.find(c => c.id === color) || COLORES[0];
+  const pal = { ...PAL, W: col.W, w: col.w };
+  // Skins de transformación: la zona de la cara se vuelve el "lienzo" de la skin
+  // (hueso para la calavera, cara pintada de blanco para la payasa)
+  if (col.caraPropia) { pal.F = "#F4F1E6"; pal.f = "#E4DFCE"; }
+  if (col.patron === "payaso") { pal.F = "#FAFAFA"; pal.f = "#ECECEC"; }
+  const pixels = [];
+  BASE.forEach((row, y) => {
+    [...row].forEach((c, x) => {
+      if (c === ".") return;
+      // Arcoíris: la lana se pinta por bandas horizontales
+      if (col.patron === "arcoiris" && (c === "W" || c === "w")) {
+        pixels.push([x, y, null, ARCOIRIS_FILAS[y % ARCOIRIS_FILAS.length]]);
+      } else {
+        pixels.push([x, y, c]);
+      }
+    });
+  });
+  // Overlay del patrón (manchas dálmata, maquillaje payaso, huesos esqueleto)
+  const patronExtra = (PATRON_PX[col.patron] || []).map(([x, y, hex]) => [x, y, null, hex]);
+  const gafasOn = equipados.includes("gafas");
+  // Con skin de transformación, la cara de oveja NO se dibuja: la cara ES la de la skin
+  const face = col.caraPropia ? []
+    : (FACES[estado] || []).filter(([,y]) => !(gafasOn && (y === 7 || (y === 8 && estado !== "feliz"))));
+  const acc = ACCESORIOS.filter(a => equipados.includes(a.id)).flatMap(a => a.px);
+  const anim = ESTADOS.find(e => e.id === estado)?.anim || "idle";
+
+  return (
+    <div style={{ position:"relative", width:size, height:size, margin:"0 auto" }}>
+      <svg viewBox="0 0 16 16" width={size} height={size}
+        style={{ imageRendering:"pixelated", animation: mini ? "none" : `${anim} 2.2s ease-in-out infinite`, display:"block" }}>
+        {pixels.map(([x,y,c,hex],i) => <rect key={"b"+i} x={x} y={y} width={1} height={1} fill={hex || pal[c]} />)}
+        {patronExtra.map(([x,y,c,hex],i) => <rect key={"p"+i} x={x} y={y} width={1} height={1} fill={hex} />)}
+        {face.map(([x,y,c],i) => <rect key={"f"+i} x={x} y={y} width={1} height={1} fill={pal[c]} />)}
+        {acc.map(([x,y,c],i) => <rect key={"a"+i} x={x} y={y} width={1} height={1} fill={pal[c]} />)}
+      </svg>
+      {!mini && estado === "feliz" && <span className="float-fx" style={{ left:"8%", top:"6%" }}>💚</span>}
+      {!mini && estado === "feliz" && <span className="float-fx" style={{ right:"6%", top:"14%", animationDelay:".7s" }}>✨</span>}
+      {!mini && estado === "dormida" && <span className="float-fx" style={{ right:"4%", top:"2%" }}>💤</span>}
+      {!mini && estado === "hambrienta" && <span className="float-fx" style={{ right:"2%", top:"10%" }}>🥗</span>}
+      {!mini && estado === "triste" && <span className="float-fx" style={{ left:"10%", top:"4%" }}>🌧️</span>}
+    </div>
+  );
+}
+
+// ─── Píxeles compuestos de la oveja (para el canvas del juego) ───────────────
+function buildPixels(colorId, equipados) {
+  // MISMA lógica de apariencia que el componente Sheep (patrones y skins incluidos),
+  // para que la oveja del juego sea idéntica a la de la pestaña/chat/ranking.
+  const col = COLORES.find(c => c.id === colorId) || COLORES[0];
+  const pal = { ...PAL, W: col.W, w: col.w };
+  if (col.caraPropia) { pal.F = "#F4F1E6"; pal.f = "#E4DFCE"; }
+  if (col.patron === "payaso") { pal.F = "#FAFAFA"; pal.f = "#ECECEC"; }
+  const px = [];
+  BASE.forEach((row, y) => [...row].forEach((c, x) => {
+    if (c === ".") return;
+    if (col.patron === "arcoiris" && (c === "W" || c === "w")) {
+      px.push([x, y, ARCOIRIS_FILAS[y % ARCOIRIS_FILAS.length]]);
+    } else {
+      px.push([x, y, pal[c]]);
+    }
+  }));
+  // Overlay del patrón (manchas, maquillaje, calavera)
+  (PATRON_PX[col.patron] || []).forEach(([x, y, hex]) => px.push([x, y, hex]));
+  // Cara de oveja solo si la skin no tiene cara propia
+  if (!col.caraPropia) FACES.normal.forEach(([x, y, c]) => px.push([x, y, pal[c]]));
+  ACCESORIOS.filter(a => equipados.includes(a.id)).forEach(a => a.px.forEach(([x, y, c]) => px.push([x, y, pal[c]])));
+  return px;
+}
+
+// ─── 🎮 El Salto del Rebaño (runner offline, estilo dino) ────────────────────
+function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJugar, arrancarRef,
+  puntosHoy = 0, puntosSemana = 0, onFinPartida }) {
+  const canvasRef = useRef(null);
+  const tapRef = useRef(null);      // handler del toque expuesto al JSX (sobrevive re-renders)
+  const [modoElegido, setModoElegido] = useState("noche");   // juego seleccionado en la pantalla previa
+  const [jugando, setJugando] = useState(false);
+  const [fin, setFin] = useState(false);
+  const [score, setScore] = useState(0);
+  const [best, setBest] = useState(0);
+  const [cuenta, setCuenta] = useState(0); // 5..1 countdown; 0 = jugando
+
+  // Al terminar cada partida, sus puntos se suman al marcador diario y semanal
+  useEffect(() => { if (fin) onFinPartida && onFinPartida(score); }, [fin]);
+
+  useEffect(() => {
+    if (!jugando) return;
+    const cv = canvasRef.current;
+    const ctx = cv.getContext("2d");
+    // Lienzo LÓGICO fijo 340×680; el buffer real se ajusta a pantalla × devicePixelRatio
+    // → se acabaron los gráficos reescalados: cada frame se dibuja a resolución nativa
+    const W = 340, H = 680, suelo = H - 52;
+    const S = 5, SH = 16 * S, SX = 36;
+    const ajustarBuffer = () => {
+      const r = cv.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 3);
+      cv.width  = Math.max(1, Math.round((r.width  || W) * dpr));
+      cv.height = Math.max(1, Math.round((r.height || H) * dpr));
+    };
+    ajustarBuffer();
+    const px = buildPixels(color, equipados);
+
+    // ── Temas de juego: el consumible transforma el modo completo ──
+    const TEMAS = {
+      noche: {
+        familia: "runner",
+        cielo: "#4A2C4E", cieloBottom: "#C25E3A", suelo: "#2B7A00", hierba: "rgba(137,226,25,0.4)",
+        sol: "rgba(255,210,120,0.55)",
+        obstaculo: "lobo",            // lobos que saltar
+        volador: "cuervo",            // cuervos que rebotan
+        nubeColor: "rgba(255,200,160,0.18)",
+      },
+      oro: {
+        familia: "plataformas",
+        cielo: "#3A2A5A", cieloBottom: "#8A5A9E", suelo: "#6B4A2A", hierba: "rgba(255,200,100,0.4)",
+        nubeColor: "rgba(255,220,180,0.14)",
+      },
+      mar: {
+        familia: "flappy",
+        cielo: "#2E86C8", cieloBottom: "#0A3D6E",
+        nubeColor: "rgba(0,0,0,0)",
+      },
+      jefe: {
+        familia: "shooter",
+        cielo: "#2A1E36", cieloBottom: "#3E2C4E", suelo: "#3A2F44", hierba: "rgba(180,150,220,0.25)",
+        nubeColor: "rgba(0,0,0,0)",
+      },
+      prado: {
+        familia: "carriles",
+        cielo: "#8FD3E8", cieloBottom: "#DCEFC0",
+        madera: "#8A6432", maderaBorde: "#5A3E1C", maderaLinea: "rgba(0,0,0,0.22)",
+        prado1: "#3E8A2E", prado2: "#2B6A1E",
+        sol: "#FFD84D",
+        nubeColor: "rgba(255,255,255,0.55)",
+      },
+    };
+    // Icono del consumible según a qué modo lleva
+    const ICONO_MODO = { noche: "🌙", oro: "💲", mar: "🫧", jefe: "🎯", prado: "🐺" };
+    const otroModo = (actual) => {
+      // Nunca repite el último destino: garantiza variedad real entre transiciones
+      let otros = Object.keys(TEMAS).filter(m => m !== actual && m !== st.ultimoDestino);
+      if (otros.length === 0) otros = Object.keys(TEMAS).filter(m => m !== actual);
+      const destino = otros[Math.floor(Math.random() * otros.length)];
+      st.ultimoDestino = destino;
+      return destino;
+    };
+    // Se arranca en el juego ELEGIDO en la pantalla previa
+    const modoInicial = TEMAS[modoElegido] ? modoElegido : "noche";
+
+    const st = { y: suelo - SH, vy: 0, modo: modoInicial, transicion: 0,
+      vallas: TEMAS[modoInicial].familia === "runner"
+        ? [{ tipo: TEMAS[modoInicial].obstaculo, x: W + 60, w: 20, h: 52, ok: false }] : [],
+      consumibles: [], desdeConsumible: 0, graciaTransicion: 50, mismos: 0,
+      monedas: [], suelos: [{ x: -20, w: W + 60, top: suelo }], sx: SX, enSuelo: true,
+      corales: [], balas: [], balasJefe: [], jefe: null, jefeNivel: 0, flotantes: [],
+      carril: 1, objetos: [], olaCad: 0, faseCamino: 0, flechaFlash: null,
+      vel: 4.2, score: 0, vivo: true, nubes: [
+      { x: 50, y: 70 }, { x: 190, y: 130 }, { x: 280, y: 45 }],
+    };
+    if (TEMAS[modoInicial].familia === "flappy") st.y = H * 0.4;
+    if (TEMAS[modoInicial].familia === "carriles") st.carril = 1;   // arrancas por el camino central
+
+    const saltar = (px) => {
+      if (!st.vivo) return;
+      const fam = TEMAS[st.modo].familia;
+      if (fam === "plataformas") {
+        if (st.enSuelo) { st.vy = -18; st.enSuelo = false; }
+      } else if (fam === "flappy") {
+        st.vy = -9.0;                      // impulso de nado hacia arriba
+      } else if (fam === "carriles") {
+        // ◀ ▶: cada toque salta UN camino a ese lado
+        if (px !== undefined) {
+          const d = px < W / 2 ? -1 : 1;
+          st.carril = Math.max(0, Math.min(2, (st.carril === undefined ? 1 : st.carril) + d));
+          st.flechaFlash = { d, t: 9 };   // la flecha pulsada se ilumina un instante
+        }
+      } else {
+        if (st.y >= suelo - SH - 1) st.vy = -17;   // runner y shooter
+      }
+    };
+    const onTap = (e) => {
+      const r = cv.getBoundingClientRect();
+      const cx = e.clientX !== undefined ? e.clientX
+        : (e.touches && e.touches[0] ? e.touches[0].clientX : undefined);
+      if (cx === undefined || !r.width) saltar();
+      else saltar((cx - r.left) * (W / r.width));     // coordenada en espacio del canvas
+    };
+    tapRef.current = onTap;
+    const onKey = (e) => {
+      if (e.code === "Space" || e.code === "ArrowUp") { e.preventDefault(); saltar(); }
+      if (e.code === "ArrowLeft")  { e.preventDefault(); saltar(0); }
+      if (e.code === "ArrowRight") { e.preventDefault(); saltar(W); }
+    };
+    window.addEventListener("keydown", onKey);
+
+    let raf;
+    const loop = () => {
+      // Coordenadas lógicas → resolución nativa (nítido en cualquier pantalla)
+      ctx.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
+      if (st.vivo && cuentaRef.current <= 0) {
+        if (st.vel < 7.6) st.vel += 0.0011;  // acelera suave, con tope
+        if (st.transicion > 0) st.transicion -= 0.04;
+        const tema = TEMAS[st.modo];
+        if (st.graciaTransicion > 0) st.graciaTransicion--;
+        const dif = Math.min(st.score / 200, 1);
+
+        if (tema.familia === "runner") {
+          // ═══ FAMILIA RUNNER (día / noche): saltar obstáculos de tierra; los voladores REBOTAN ═══
+          if (st.sx === undefined) st.sx = SX;
+          st.vy += 1.05; st.y = Math.min(st.y + st.vy, suelo - SH);
+          if (st.y === suelo - SH) st.vy = 0;
+          // La oveja tiende a volver a su carril (SX) tras un empujón lateral
+          if (st.sx > SX) st.sx = Math.max(SX, st.sx - 1.4);
+          else if (st.sx < SX) st.sx = Math.min(SX, st.sx + 1.0);   // recuperas terreno poco a poco: jugar bien te devuelve a tu sitio
+          const ultima = st.vallas[st.vallas.length - 1];
+          const sepMin = 240 - dif * 80;
+          const sepJit = 40 + Math.random() * (260 - dif * 120);
+          const sepActual = ultima ? (W + 14) - ultima.x : 9999;
+
+          if (st.graciaTransicion <= 0 && sepActual > sepMin + sepJit) {
+            if (st.quiereConsumible) {
+              // El orbe corona el arco de salto del siguiente lobo: esquivarlo es recogerlo
+              st.quiereConsumible = false;
+              st.vallas.push({ tipo: tema.obstaculo, x: W + 14, w: 20, h: 52, ok: false });
+              st.consumibles.push({ x: W + 14 + 34, y: suelo - SH - 108, to: otroModo(st.modo) });
+              st.mismos = 0;
+            } else {
+            const pVolador = st.score >= 3 ? 0.30 + dif * 0.25 : 0;
+            const ultTipo = ultima ? (ultima.vuela ? "aire" : "tierra") : null;
+            let quiereAire = Math.random() < pVolador;
+            if (st.mismos >= 2) { quiereAire = ultTipo !== "aire"; st.mismos = 0; }
+            if ((quiereAire ? "aire" : "tierra") === ultTipo) st.mismos = (st.mismos || 0) + 1;
+            else st.mismos = 0;
+            if (quiereAire) {
+              const alto = suelo - SH - (44 + Math.floor(Math.random() * 3) * 12);
+              st.vallas.push({ tipo: tema.volador, vuela: true, x: W + 14, w: 46, h: 30, y: alto, ok: false });
+            } else {
+              st.vallas.push({ tipo: tema.obstaculo, x: W + 14, w: 20, h: 38 + Math.floor(Math.random() * 4) * 13, ok: false });
+            }
+            if (dif > 0.4 && Math.random() < dif * 0.25) {
+              const gapCombo = 130 + Math.random() * 40;
+              const aire2 = Math.random() < pVolador;
+              if (aire2) st.vallas.push({ tipo: tema.volador, vuela: true, x: W + 14 + gapCombo, w: 46, h: 30,
+                y: suelo - SH - (44 + Math.floor(Math.random() * 3) * 12), ok: false });
+              else st.vallas.push({ tipo: tema.obstaculo, x: W + 14 + gapCombo, w: 20,
+                h: 38 + Math.floor(Math.random() * 4) * 13, ok: false });
+            }
+            }
+          }
+          st.vallas.forEach(v => { v.x -= st.vel * (v.vuela ? 1.18 : 1); });
+          st.vallas = st.vallas.filter(v => v.x > -50);
+          st.vallas.forEach(v => {
+            if (!v.ok && v.x + v.w < st.sx) { v.ok = true; st.score += 4; setScore(st.score); }
+            const margen = 12;
+            const sL = st.sx + margen, sR = st.sx + SH - margen;
+            const sT = st.y + 10, sB = st.y + SH - 6;
+            if (v.vuela) {
+              // ── VOLADOR: no mata, REBOTA ──
+              const solapa = sR > v.x && sL < v.x + v.w && sB > v.y && sT < v.y + v.h;
+              if (solapa && !v.rebotado) {
+                v.rebotado = true;
+                const pisaDesdeArriba = st.vy > 0 && st.y + SH - 20 < v.y;
+                if (pisaDesdeArriba) {
+                  // Caes encima → rebote hacia ARRIBA (y un empujón adelante)
+                  st.vy = -15; st.sx = Math.min(st.sx + 26, W * 0.5);
+                } else {
+                  // Choque frontal → rebote hacia la IZQUIERDA (riesgo de borde)
+                  st.sx -= 70; st.vy = -6;
+                }
+              }
+            } else {
+              // ── OBSTÁCULO DE TIERRA: mata ──
+              if (sR > v.x && sL < v.x + v.w && sB > suelo - v.h) {
+                st.vivo = false; setFin(true); setBest(b => Math.max(b, st.score));
+              }
+            }
+          });
+          // Muerte por borde izquierdo (empujada por los rebotes)
+          if (st.sx + SH < 6) { st.vivo = false; setFin(true); setBest(b => Math.max(b, st.score)); }
+
+        } else if (tema.familia === "plataformas") {
+          // ═══ FAMILIA PLATAFORMAS (oro): niveles de suelo sólido con COLISIÓN real ═══
+          // st.suelos = bloques macizos a distinta altura. Colisión por arriba y por los lados.
+          // Muerte: caer por un hueco O quedar empujada fuera por el borde izquierdo.
+          if (st.suelos === undefined) { st.suelos = []; st.monedas = []; }
+          if (st.sx === undefined) st.sx = SX;   // posición X propia de la oveja (empujable)
+          if (st.suelos.length === 0) st.suelos.push({ x: -20, w: W - 100, top: suelo });
+
+          // 3 niveles de altura del "top" de cada bloque de suelo
+          const NIVELES = [suelo, suelo - 60, suelo - 120];
+
+          const fin = st.suelos.reduce((m, s) => Math.max(m, s.x + s.w), 0);
+          if (fin < W + 300) {
+            const hayHueco = st.graciaTransicion <= 0 && Math.random() < 0.38;
+            const hueco = hayHueco ? 80 + Math.random() * (30 + dif * 45) : 0;
+            const tramo = 140 + Math.random() * 150;
+            const top = NIVELES[Math.floor(Math.random() * 3)];
+            const x0 = fin + hueco;
+            st.suelos.push({ x: x0, w: tramo, top });
+            // monedas sobre el tramo (a ras del top, no requieren saltar salvo cambio de nivel)
+            if (st.quiereConsumible) {
+              // El orbe espera en mitad del tramo, a la altura de la carrera: tu camino pasa por él
+              st.quiereConsumible = false;
+              st.consumibles.push({ x: x0 + 70, y: top - 58, to: otroModo(st.modo) });
+            } else if (Math.random() < 0.55) {
+              const nMon = 1 + (Math.random() < 0.5 ? 1 : 0);
+              for (let i = 0; i < nMon; i++) st.monedas.push({ x: x0 + 40 + i * 34, y: top - 40, cogida: false });
+            }
+          }
+          st.suelos.forEach(s => { s.x -= st.vel; });
+          st.suelos = st.suelos.filter(s => s.x + s.w > -60);
+          st.monedas.forEach(m => { m.x -= st.vel; });
+          st.monedas = st.monedas.filter(m => m.x > -30 && !m.cogida);
+
+          // Física vertical
+          st.vy += 1.15; st.y += st.vy;
+          const sL = st.sx + 8, sR = st.sx + SH - 8;     // caja horizontal de la oveja
+          const pieY = st.y + SH, cabezaY = st.y;
+          st.enSuelo = false;
+
+          st.suelos.forEach(s => {
+            const solapaX = sR > s.x && sL < s.x + s.w;
+            if (!solapaX) return;
+            // Aterrizar sobre el top del bloque
+            if (st.vy >= 0 && pieY >= s.top && pieY <= s.top + 30 && cabezaY < s.top - 10) {
+              st.y = s.top - SH; st.vy = 0; st.enSuelo = true;
+            }
+          });
+          // Colisión lateral: si la oveja está "dentro" de la altura de un bloque, el bloque la empuja
+          st.suelos.forEach(s => {
+            const dentroAltura = pieY > s.top + 6 && cabezaY < H;   // su cuerpo pisa el nivel del bloque
+            if (!dentroAltura) return;
+            // Choca contra la cara izquierda del bloque → la oveja es empujada hacia la izquierda (scroll)
+            if (sR > s.x && sL < s.x && st.y + SH > s.top + 4) {
+              st.sx = s.x - (SH - 8);   // pegada a la cara izquierda; el scroll la arrastra
+            }
+          });
+
+          // Recuperar posición X poco a poco hacia el centro-izquierda cuando puede
+          if (st.sx > SX) st.sx = Math.max(SX, st.sx - st.vel * 0.6);
+          else if (st.sx < SX && st.enSuelo) st.sx = Math.min(SX, st.sx + 1.0);   // tras el empujón de un bloque, recuperas tu posición poco a poco
+
+          // Recoger monedas
+          st.monedas.forEach(m => {
+            if (!m.cogida && st.sx + SH > m.x && st.sx < m.x + 24 && st.y + SH > m.y && st.y < m.y + 24) {
+              m.cogida = true; st.score += 3; setScore(st.score);
+            }
+          });
+          // Muerte 1: caer por un hueco
+          if (st.y > H + 40) { st.vivo = false; setFin(true); setBest(b => Math.max(b, st.score)); }
+          // Muerte 2: comida por el borde izquierdo de la pantalla
+          if (st.sx + SH < 6) { st.vivo = false; setFin(true); setBest(b => Math.max(b, st.score)); }
+
+        } else if (tema.familia === "flappy") {
+          // ═══ FAMILIA FLAPPY (mar): toca para nadar hacia arriba; cruza los corales ═══
+          if (st.corales === undefined) st.corales = [];
+          // Física suave: gravedad ligera + velocidad terminal (caída controlable)
+          st.vy += 0.45; if (st.vy > 7) st.vy = 7;
+          st.y += st.vy;
+          if (st.y < 8) { st.y = 8; st.vy = 0; }
+          const ux = st.sx !== undefined ? st.sx : SX;
+          // El agua tiene su propio ritmo: apenas escala con la dificultad global
+          const velMar = Math.min(st.vel, 6.0) * 0.78;
+          const ult = st.corales[st.corales.length - 1];
+          if (st.graciaTransicion <= 0 && (!ult || ult.x < W - (240 - dif * 15 + Math.random() * 55))) {
+            const gapH = 186 - dif * 22;
+            // Anti-injusticia: el nuevo hueco queda a distancia alcanzable del anterior
+            // (subir cuesta más que bajar: máx. 120 hacia arriba, 200 hacia abajo)
+            const prevY = ult ? ult.gapY : H * 0.45;
+            const gapY = Math.max(110, Math.min(suelo - 110, prevY - 120 + Math.random() * 320));
+            st.corales.push({ x: W + 20, gapY, gapH, ok: false });
+            if (st.quiereConsumible) {
+              // El orbe ocupa el centro del hueco: el propio juego te lleva a él
+              st.quiereConsumible = false;
+              st.consumibles.push({ x: W + 24, y: gapY - 18, velX: velMar, to: otroModo(st.modo) });
+            } else if (Math.random() < 0.30) {
+              st.monedas.push({ x: W + 96, y: gapY - 12, cogida: false });
+            }
+          }
+          st.corales.forEach(c => { c.x -= velMar; });
+          st.corales = st.corales.filter(c => c.x > -70);
+          st.monedas.forEach(m => { m.x -= velMar; });
+          st.monedas = st.monedas.filter(m => m.x > -30 && !m.cogida);
+          st.corales.forEach(c => {
+            if (!c.ok && c.x + 44 < ux) { c.ok = true; st.score += 2; setScore(st.score); }
+            const sL = ux + 16, sR = ux + SH - 16, sT = st.y + 14, sB = st.y + SH - 10;
+            const solapaX = sR > c.x && sL < c.x + 44;
+            if (solapaX && (sT < c.gapY - c.gapH / 2 || sB > c.gapY + c.gapH / 2)) {
+              st.vivo = false; setFin(true); setBest(b => Math.max(b, st.score));
+            }
+          });
+          st.monedas.forEach(m => {
+            if (!m.cogida && ux + SH > m.x && ux < m.x + 24 && st.y + SH > m.y && st.y < m.y + 24) {
+              m.cogida = true; st.score += 5; setScore(st.score);
+            }
+          });
+          // El fondo marino es suelo firme: la oveja corre por él (los corales inferiores siguen matando)
+          if (st.y + SH > suelo) { st.y = suelo - SH; st.vy = 0; }
+
+        } else if (tema.familia === "shooter") {
+          // ═══ FAMILIA SHOOTER (guarida): la oveja dispara sola; salta para esquivar ═══
+          st.vy += 1.05; st.y = Math.min(st.y + st.vy, suelo - SH);
+          if (st.y === suelo - SH) st.vy = 0;
+          // En el duelo la oveja se coloca pegada al borde izquierdo (máxima distancia)
+          if (st.sx === undefined) st.sx = SX;
+          if (st.sx > 14) st.sx = Math.max(14, st.sx - 2.5);
+          const ux = st.sx;
+          if (!st.jefe) st.jefe = { t: 0, hp: 12 + st.jefeNivel * 3, max: 12 + st.jefeNivel * 3, herido: 0,
+            alto: Math.random() < 0.5, mora: 200 };
+          st.jefe.t++;
+          // DOS alturas fijas, como pájaros y vallas:
+          //  · ABAJO: su bola va a ras → SALTA para esquivar; tus disparos desde el suelo le dan
+          //  · ARRIBA: su bola pasa por encima → NO saltes para esquivar; salta si quieres acertarle
+          const J_BAJO = suelo - 84, J_ALTO = suelo - 232;
+          st.jefe.mora--;
+          if (st.jefe.mora <= 0) {
+            st.jefe.alto = !st.jefe.alto;
+            st.jefe.mora = 220 + Math.random() * 120 - dif * 60;
+          }
+          const objetivoJ = st.jefe.alto ? J_ALTO : J_BAJO;
+          if (st.jefeYPos === undefined) st.jefeYPos = objetivoJ;
+          const dj = objetivoJ - st.jefeYPos;
+          st.jefeYPos += Math.abs(dj) < 4 ? dj : Math.sign(dj) * 4;
+          const asentado = Math.abs(dj) < 12;
+          const jefeY = st.jefeYPos + Math.sin(st.jefe.t * 0.05) * 5;   // leve flotación en el sitio
+          st.jefeYDraw = jefeY;
+          const jefeX = W - 104;
+          // Disparo automático de bolas de lana
+          st.cad = (st.cad || 0) + 1;
+          if (st.cad >= 26) { st.cad = 0; st.balas.push({ x: ux + SH, y: st.y + SH * 0.42 }); }
+          st.balas.forEach(b => { b.x += 9.5; });
+          st.balas = st.balas.filter(b => b.x < W + 30);
+          // Impactos al jefe
+          st.balas = st.balas.filter(b => {
+            const da = b.x > jefeX && b.x < jefeX + 84 && b.y > jefeY - 10 && b.y < jefeY + 86;
+            if (da) {
+              st.jefe.hp--; st.score += 2; setScore(st.score); st.jefe.herido = 6;
+              if (st.jefe.hp <= 0) {
+                st.jefeNivel++; st.jefe = null; st.score += 20; setScore(st.score);
+                // Botín real: el rey suelta un orbe de transición hacia otro juego
+                if (st.consumibles.length === 0) {
+                  const oy = Math.min(Math.max(jefeY + 20, suelo - SH - 140), suelo - SH - 30);
+                  st.consumibles.push({ x: jefeX, y: oy, to: otroModo(st.modo) });
+                  st.desdeConsumible = 0;
+                }
+              }
+              return false;
+            }
+            return true;
+          });
+          if (st.jefe && st.jefe.herido > 0) st.jefe.herido--;
+          // Ataques del jefe: bajo (salta) o alto (no saltes)
+          if (asentado) st.jefeCad = (st.jefeCad || 0) + 1;   // en tránsito no carga: cada altura avisa desde cero
+          const umbralDisparo = 88 - dif * 24;
+          // Carga visible: la boca brilla los 26 frames previos al disparo (aviso justo)
+          st.jefeCarga = st.jefe && asentado && st.jefeCad > umbralDisparo - 26
+            ? (st.jefeCad - (umbralDisparo - 26)) / 26 : 0;
+          if (st.jefe && asentado && st.graciaTransicion <= 0 && st.jefeCad >= umbralDisparo) {
+            st.jefeCad = 0;
+            // La bola sale de la boca del rey: su altura depende de dónde esté flotando
+            st.balasJefe.push({ x: jefeX, y: jefeY + 50 });
+          }
+          st.balasJefe.forEach(b => { b.x -= 4.2 + dif * 1.2; });
+          st.balasJefe = st.balasJefe.filter(b => b.x > -30);
+          st.balasJefe.forEach(b => {
+            if (b.x + 20 > ux + 12 && b.x + 4 < ux + SH - 12 && b.y + 12 > st.y + 10 && b.y + 2 < st.y + SH - 4) {
+              st.vivo = false; setFin(true); setBest(bb => Math.max(bb, st.score));
+            }
+          });
+
+        } else if (tema.familia === "carriles") {
+          // ═══ FAMILIA CARRILES (prado 2D vertical): 3 caminos rectos; ◀ ▶ cambia; monedas sí, lobos no ═══
+          if (st.objetos === undefined) { st.objetos = []; st.carril = 1; st.olaCad = 0; st.faseCamino = 0; }
+          if (st.flotantes === undefined) st.flotantes = [];
+          const CARRIL_X = [62, 170, 278];        // centros de los 3 caminos
+          const OVEJA_Y = H - 190;                 // altura fija de la carrera
+          const velObj = st.vel * 1.15;            // caída recta de lobos y monedas
+          st.faseCamino = (st.faseCamino + velObj / H) % 1;
+          // La oveja se desliza hacia el centro de su camino
+          const objetivoX = CARRIL_X[st.carril === undefined ? 1 : st.carril] - SH / 2;
+          if (st.sx === undefined) st.sx = objetivoX;
+          const dx = objetivoX - st.sx;
+          st.sx += Math.abs(dx) < 15 ? dx : Math.sign(dx) * 15;
+          st.y = OVEJA_Y; st.vy = 0;
+          if (st.flechaFlash && st.flechaFlash.t > 0) st.flechaFlash.t--;
+          // Oleadas
+          st.olaCad++;
+          if (st.graciaTransicion <= 0 && st.olaCad >= 58 - dif * 16) {
+            st.olaCad = 0;
+            if (st.quiereConsumible) {
+              // Oleada portal: el orbe baja por UN camino y los lobos cierran los otros dos
+              st.quiereConsumible = false;
+              const libre = Math.floor(Math.random() * 3);
+              st.consumibles.push({ carril: libre, x: CARRIL_X[libre] - 18, y: -46, to: otroModo(st.modo), laneMode: true });
+              [0, 1, 2].forEach(c => {
+                if (c !== libre) st.objetos.push({ carril: c, tipo: "lobo", y: -46, fase: Math.random() * 6.28 });
+              });
+            } else {
+              const ola = [0, 1, 2].map(() => {
+                const r = Math.random();
+                return r < 0.30 + dif * 0.14 ? "lobo" : r < 0.62 ? "moneda" : null;
+              });
+              if (ola.every(o => o === "lobo")) ola[Math.floor(Math.random() * 3)] = "moneda";
+              if (ola.every(o => o === null)) ola[Math.floor(Math.random() * 3)] = "moneda";
+              let iLobo = 0;
+              ola.forEach((tipo, c) => {
+                if (!tipo) return;
+                if (tipo === "moneda" && Math.random() < 0.35) {
+                  // hilera de 3 monedas por el mismo camino
+                  [0, -46, -92].forEach(off => st.objetos.push({ carril: c, tipo, y: -46 + off, fase: Math.random() * 6.28 }));
+                } else if (tipo === "lobo") {
+                  // Zig-zag garantizado: el segundo lobo llega con ≥ ~0.9 s de margen
+                  const off = iLobo === 0 ? -Math.random() * 40 : -(260 + Math.random() * 120);
+                  iLobo++;
+                  st.objetos.push({ carril: c, tipo, y: -46 + off, fase: Math.random() * 6.28 });
+                } else {
+                  st.objetos.push({ carril: c, tipo, y: -46 - Math.random() * 50, fase: Math.random() * 6.28 });
+                }
+              });
+            }
+          }
+          // Caída recta + resolución de choques (lobo estricto y visual; moneda generosa)
+          st.objetos.forEach(o => { o.y += velObj; });
+          st.objetos = st.objetos.filter(o => {
+            const centroOveja = st.sx + SH / 2;
+            const distX = Math.abs(centroOveja - CARRIL_X[o.carril]);
+            if (o.tipo === "lobo") {
+              const choca = o.y > OVEJA_Y - 34 && o.y < OVEJA_Y + 56 && distX < 38;
+              if (choca) { st.vivo = false; setFin(true); setBest(b => Math.max(b, st.score)); return false; }
+            } else {
+              const coge = o.y > OVEJA_Y - 48 && o.y < OVEJA_Y + 72 && distX < 52;
+              if (coge) {
+                st.score += 4; setScore(st.score);
+                st.flotantes.push({ x: CARRIL_X[o.carril] - 7, y: o.y - 14, t: 0 });
+                return false;
+              }
+            }
+            return o.y < H + 60;
+          });
+          // Orbe portal: cae recto por su camino
+          st.consumibles.forEach(k => {
+            if (k.laneMode) { k.y += velObj; k.x = CARRIL_X[k.carril] - 18; }
+          });
+          st.flotantes.forEach(f => { f.t++; f.y -= 0.9; });
+          st.flotantes = st.flotantes.filter(f => f.t < 42);
+                }
+
+        // ═══ Consumible (común a todos los modos): lleva a OTRO modo al azar ═══
+        st.desdeConsumible++;
+        if (st.desdeConsumible > 900 && Math.random() < 0.004 && st.consumibles.length === 0
+            && !st.quiereConsumible && tema.familia !== "shooter") {
+          st.desdeConsumible = 0;
+          // El orbe NUNCA flota suelto: cada juego lo integra en su siguiente patrón
+          // (salto del lobo, tramo del banco, hueco del coral, camino libre entre lobos, botín del rey)
+          st.quiereConsumible = true;
+        }
+        st.consumibles.forEach(k => { if (k.laneMode) return; if (k.caida) k.y += 3.1; else k.x -= (k.velX || st.vel); });
+        st.consumibles = st.consumibles.filter(k => k.laneMode ? k.y < H + 60 : (k.x > -40 && k.y < H + 40));
+        st.consumibles = st.consumibles.filter(k => {
+          const ox = st.sx !== undefined ? st.sx : SX;
+          const cogido = ox + SH > k.x && ox < k.x + 40 && st.y + SH > k.y && st.y < k.y + 40;
+          if (cogido) {
+            st.modo = k.to; st.transicion = 1; st.score += 40; setScore(st.score);
+            st.vallas = []; st.monedas = []; st.suelos = [{ x: -20, w: W + 60, top: suelo }]; st.sx = SX;
+            st.corales = []; st.balas = []; st.balasJefe = []; st.jefe = null; st.jefeNivel = 0;
+            st.cad = 0; st.jefeCad = 0; st.flotantes = [];
+            st.jefeYPos = undefined; st.jefeCarga = 0;
+            st.carril = 1; st.objetos = []; st.olaCad = 0; st.faseCamino = 0; st.flechaFlash = null;
+            st.quiereConsumible = false;
+            st.desdeConsumible = -400; st.graciaTransicion = 90;
+            // Recolocar a la oveja según el juego destino
+            st.y = TEMAS[k.to].familia === "flappy" ? H * 0.4 : suelo - SH;
+            st.vy = 0; st.enSuelo = true;
+            return false;
+          }
+          return true;
+        });
+        st.nubes.forEach(n => { n.x -= st.vel * 0.25; if (n.x < -30) n.x = W + 20; });
+      }
+      const tema = TEMAS[st.modo];
+      // ── dibujo del fondo ──
+      if (tema.familia === "plataformas") {
+        // Interior de banco: pared de piedra + relieves de billetes 💶
+        ctx.fillStyle = "#4A4E58"; ctx.fillRect(0, 0, W, H);
+        // sillería de piedra (ladrillos grandes desfasados) con scroll lento
+        const off = (performance.now() / 22) % 96;
+        ctx.strokeStyle = "rgba(0,0,0,0.22)"; ctx.lineWidth = 2;
+        for (let ry = 0; ry < suelo; ry += 44) {
+          const fila = Math.floor(ry / 44);
+          ctx.beginPath(); ctx.moveTo(0, ry); ctx.lineTo(W, ry); ctx.stroke();
+          for (let rx = -off + (fila % 2 ? 48 : 0); rx < W; rx += 96) {
+            ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx, ry + 44); ctx.stroke();
+          }
+        }
+        // sombreado suave de piedra
+        ctx.fillStyle = "rgba(255,255,255,0.03)";
+        for (let ry = 4; ry < suelo; ry += 44) ctx.fillRect(0, ry, W, 3);
+        // Columnas de piedra en paralaje (sensación de avance)
+        const colOff = (performance.now() / 9) % 200;
+        for (let cxx = -colOff; cxx < W + 60; cxx += 200) {
+          ctx.fillStyle = "rgba(0,0,0,0.20)"; ctx.fillRect(cxx, 0, 30, suelo);
+          ctx.fillStyle = "rgba(255,255,255,0.05)"; ctx.fillRect(cxx + 3, 0, 5, suelo);
+          ctx.fillStyle = "rgba(0,0,0,0.28)";
+          ctx.fillRect(cxx - 5, 0, 40, 12);            // capitel
+          ctx.fillRect(cxx - 5, suelo - 12, 40, 12);   // base
+        }
+      } else if (tema.familia === "flappy") {
+        // Fondo marino: agua en degradado + rayos de luz + burbujas ambientales
+        const g = ctx.createLinearGradient(0, 0, 0, H);
+        g.addColorStop(0, tema.cielo); g.addColorStop(1, tema.cieloBottom);
+        ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+        // Lámina de luz en la superficie del agua
+        const lg = ctx.createLinearGradient(0, 0, 0, 34);
+        lg.addColorStop(0, "rgba(255,255,255,0.18)"); lg.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = lg; ctx.fillRect(0, 0, W, 34);
+        ctx.fillStyle = "rgba(255,255,255,0.05)";
+        ctx.beginPath(); ctx.moveTo(W*0.20, 0); ctx.lineTo(W*0.32, 0); ctx.lineTo(W*0.14, H); ctx.lineTo(W*0.04, H); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(W*0.62, 0); ctx.lineTo(W*0.72, 0); ctx.lineTo(W*0.56, H); ctx.lineTo(W*0.48, H); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.18)";
+        for (let i = 0; i < 8; i++) {
+          const by = H - ((performance.now() / 18 + i * 133) % (H + 40));
+          const bx = (i * 83 + 40) % W;
+          ctx.beginPath(); ctx.arc(bx, by, 3 + (i % 3) * 2, 0, 7); ctx.fill();
+        }
+      } else if (tema.familia === "shooter") {
+        // Guarida del jefe: cueva oscura con antorchas parpadeantes
+        const g = ctx.createLinearGradient(0, 0, 0, H);
+        g.addColorStop(0, tema.cielo); g.addColorStop(1, tema.cieloBottom);
+        ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = "rgba(0,0,0,0.25)";
+        for (let rx = 0; rx < W; rx += 60) {
+          ctx.beginPath(); ctx.arc(rx + 30, 0, 34 + (rx % 3) * 8, 0, 7); ctx.fill();
+        }
+        [W * 0.22, W * 0.62].forEach((tx, ti) => {
+          ctx.fillStyle = "#5A4630"; ctx.fillRect(tx - 4, 96, 8, 34);
+          const fl = 10 + Math.abs(Math.sin(performance.now() / 130 + ti * 2)) * 7;
+          const fg = ctx.createRadialGradient(tx, 90, 2, tx, 90, fl + 12);
+          fg.addColorStop(0, "rgba(255,200,90,0.85)"); fg.addColorStop(1, "rgba(255,140,40,0)");
+          ctx.fillStyle = fg; ctx.beginPath(); ctx.arc(tx, 90, fl + 12, 0, 7); ctx.fill();
+          ctx.fillStyle = "#FFB030"; ctx.beginPath(); ctx.ellipse(tx, 90, 7, fl, 0, 0, 7); ctx.fill();
+          ctx.fillStyle = "#FFE080"; ctx.beginPath(); ctx.ellipse(tx, 92, 3.5, fl * 0.55, 0, 0, 7); ctx.fill();
+        });
+        // Ascuas que flotan en la penumbra
+        ctx.fillStyle = "rgba(255,150,60,0.5)";
+        for (let e = 0; e < 6; e++) {
+          const ey = H - ((performance.now() / 24 + e * 141) % (H + 30));
+          const ex = (e * 67 + 30) % W + Math.sin(performance.now() / 300 + e) * 8;
+          ctx.fillRect(ex, ey, 3, 3);
+        }
+      } else if (tema.familia === "carriles") {
+        // Pradera 2D a pantalla completa; los tres caminos van encima
+        const gp = ctx.createLinearGradient(0, 0, 0, H);
+        gp.addColorStop(0, tema.prado1); gp.addColorStop(1, tema.prado2);
+        ctx.fillStyle = gp; ctx.fillRect(0, 0, W, H);
+        // Hierba que baja por márgenes y separaciones (vende la carrera)
+        ctx.fillStyle = "rgba(137,226,25,0.4)";
+        const fase2 = st.faseCamino || 0;
+        [7, 112, 220, 328, 13, 118, 226, 333].forEach((gx, gi) => {
+          for (let fi = 0; fi < 5; fi++) {
+            const yy = ((fi / 5 + fase2 + gi * 0.13) % 1) * (H + 30) - 15;
+            ctx.fillRect(gx, yy, 3, 8);
+          }
+        });
+      } else {
+        // Atardecer del runner
+        const g = ctx.createLinearGradient(0, 0, 0, suelo);
+        g.addColorStop(0, tema.cielo); g.addColorStop(1, tema.cieloBottom || tema.cielo);
+        ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+        if (tema.sol) {
+          ctx.fillStyle = tema.sol;
+          ctx.beginPath(); ctx.arc(W * 0.5, suelo - 20, 46, 0, 7); ctx.fill();
+        }
+        // Colinas en silueta: profundidad contra el atardecer
+        ctx.fillStyle = "rgba(30,15,38,0.45)";
+        ctx.beginPath(); ctx.ellipse(W * 0.22, suelo + 26, 190, 66, 0, Math.PI, 0); ctx.fill();
+        ctx.fillStyle = "rgba(24,12,30,0.55)";
+        ctx.beginPath(); ctx.ellipse(W * 0.82, suelo + 30, 210, 78, 0, Math.PI, 0); ctx.fill();
+        ctx.fillStyle = tema.nubeColor;
+        st.nubes.forEach(n => { ctx.fillRect(n.x, n.y, 44, 12); ctx.fillRect(n.x + 9, n.y - 8, 26, 10); });
+      }
+
+      if (tema.familia === "plataformas") {
+        // ── Bloques de suelo macizos (cemento) a distintos niveles, con caras laterales ──
+        (st.suelos || []).forEach(s => {
+          // cuerpo de cemento
+          ctx.fillStyle = "#8E9299"; ctx.fillRect(s.x, s.top, s.w, H - s.top);
+          // cara superior más clara
+          ctx.fillStyle = "#B4B8BF"; ctx.fillRect(s.x, s.top, s.w, 7);
+          ctx.fillStyle = "#6E727A"; ctx.fillRect(s.x, s.top + 7, s.w, 2);
+          // caras laterales (para que se lean como bloques sólidos)
+          ctx.fillStyle = "#767A82"; ctx.fillRect(s.x, s.top, 3, H - s.top);
+          ctx.fillStyle = "#5E626A"; ctx.fillRect(s.x + s.w - 3, s.top, 3, H - s.top);
+          // junta de cemento en rejilla
+          ctx.fillStyle = "rgba(0,0,0,0.14)";
+          for (let bx = s.x + 34; bx < s.x + s.w - 4; bx += 34) ctx.fillRect(bx, s.top + 10, 2, H - s.top - 10);
+          for (let byy = s.top + 30; byy < H; byy += 30) ctx.fillRect(s.x + 3, byy, s.w - 6, 2);
+        });
+        // ── Monedas 🪙 doradas con símbolo € ──
+        (st.monedas || []).forEach(m => {
+          if (m.cogida) return;
+          const cx = m.x + 12, cy = m.y + 12;
+          const ancho = 5 + Math.abs(Math.sin(performance.now() / 220 + m.x)) * 9;  // giro
+          // canto
+          ctx.fillStyle = "#9A6E12"; ctx.beginPath(); ctx.ellipse(cx, cy, ancho + 2.5, 14, 0, 0, 7); ctx.fill();
+          // cara
+          const cg = ctx.createLinearGradient(cx - ancho, cy, cx + ancho, cy);
+          cg.addColorStop(0, "#E0A800"); cg.addColorStop(0.5, "#FFE066"); cg.addColorStop(1, "#D89A00");
+          ctx.fillStyle = cg; ctx.beginPath(); ctx.ellipse(cx, cy, ancho, 12, 0, 0, 7); ctx.fill();
+          // borde interior
+          ctx.strokeStyle = "#B8860B"; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.ellipse(cx, cy, ancho * 0.72, 8.5, 0, 0, 7); ctx.stroke();
+          // símbolo € si la moneda está de frente
+          if (ancho > 9) {
+            ctx.fillStyle = "#8A6508"; ctx.font = "bold 13px system-ui";
+            ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.fillText("€", cx, cy + 1);
+            ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+          }
+          // brillo
+          ctx.fillStyle = "rgba(255,255,255,0.6)";
+          ctx.beginPath(); ctx.ellipse(cx - ancho * 0.4, cy - 4, ancho * 0.18, 3, 0, 0, 7); ctx.fill();
+        });
+      } else if (tema.familia === "flappy") {
+        // ── Lecho marino: arena, algas ondulantes y burbujas de puntos ──
+        ctx.fillStyle = "#C9B37A"; ctx.fillRect(0, suelo, W, H - suelo);
+        ctx.fillStyle = "rgba(0,0,0,0.12)";
+        for (let gx = 12; gx < W; gx += 34) ctx.fillRect(gx, suelo + 12 + (gx % 3) * 4, 5, 3);
+        for (let ax = 40; ax < W; ax += 150) {
+          const sway = Math.sin(performance.now() / 400 + ax) * 6;
+          ctx.strokeStyle = "rgba(60,160,90,0.7)"; ctx.lineWidth = 5;
+          ctx.beginPath(); ctx.moveTo(ax, suelo + 4);
+          ctx.quadraticCurveTo(ax + sway, suelo - 22, ax + sway * 1.6, suelo - 44);
+          ctx.stroke();
+        }
+        (st.monedas || []).forEach(m => {
+          if (m.cogida) return;
+          const bs = 10 + Math.sin(performance.now() / 300 + m.x) * 1.5;
+          ctx.fillStyle = "rgba(255,255,255,0.25)";
+          ctx.beginPath(); ctx.arc(m.x + 12, m.y + 12, bs, 0, 7); ctx.fill();
+          ctx.strokeStyle = "rgba(255,255,255,0.8)"; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(m.x + 12, m.y + 12, bs, 0, 7); ctx.stroke();
+          ctx.fillStyle = "rgba(255,255,255,0.9)";
+          ctx.beginPath(); ctx.arc(m.x + 8, m.y + 8, 2.5, 0, 7); ctx.fill();
+        });
+      } else if (tema.familia === "shooter") {
+        // ── Suelo de la guarida ──
+        ctx.fillStyle = "#241A2E"; ctx.fillRect(0, suelo + 3, W, H - suelo);
+        ctx.fillStyle = tema.suelo; ctx.fillRect(0, suelo, W, 5);
+        ctx.fillStyle = tema.hierba;
+        for (let gx = (performance.now() / 7) % 44; gx < W; gx += 44) ctx.fillRect(gx, suelo + 10, 4, 4);
+      } else if (tema.familia !== "carriles") {
+        // ── Suelo pradera continuo (runner) ──
+        ctx.fillStyle = "#1A3D12"; ctx.fillRect(0, suelo + 3, W, H - suelo);
+        ctx.fillStyle = tema.suelo; ctx.fillRect(0, suelo, W, 5);
+        ctx.fillStyle = tema.hierba;
+        for (let gx = (performance.now() / 5) % 40; gx < W; gx += 40) ctx.fillRect(gx, suelo + 10, 5, 5);
+      }
+      const aleteo = Math.floor(performance.now() / 140) % 2 === 0;
+      st.vallas.forEach(v => {
+        if (v.tipo === "aguila" || v.tipo === "cuervo") {
+          const esCuervo = v.tipo === "cuervo";
+          const cuerpo = esCuervo ? "#101014" : "#8A5A2E";   // águila marrón
+          const ala = esCuervo ? "#26262E" : "#6B4423";
+          const cabeza = esCuervo ? "#101014" : "#E8DCC0";   // águila cabeza clara
+          if (esCuervo) {  // contorno claro para despegarlo del cielo
+            ctx.fillStyle = "rgba(255,255,255,0.25)";
+            ctx.fillRect(v.x - 2, v.y + 11, 37, 15);
+          }
+          ctx.fillStyle = cuerpo;
+          ctx.fillRect(v.x, v.y + 13, 30, 11);                     // cuerpo
+          ctx.fillRect(v.x - 7, v.y + 15, 8, 6);                   // cola
+          ctx.fillStyle = cabeza;
+          ctx.fillRect(v.x + 26, v.y + 12, 9, 9);                  // cabeza
+          ctx.fillStyle = esCuervo ? "#3A2A0A" : "#F5B800";
+          ctx.fillRect(v.x + 34, v.y + 15, 9, 5);                  // pico
+          ctx.fillStyle = esCuervo ? "#E04545" : "#111111";
+          ctx.fillRect(v.x + 29, v.y + 15, 4, 4);                  // ojo
+          ctx.fillStyle = ala;
+          if (aleteo) ctx.fillRect(v.x + 6, v.y, 18, 13);
+          else ctx.fillRect(v.x + 6, v.y + 21, 18, 10);
+        } else if (v.tipo === "lobo") {
+          // Lobo estilo emoji 🐺: cabeza frontal grande sobre una base de cuerpo
+          const ch = v.h;
+          const cw = v.w + 34;
+          const bx = v.x - 14, by = suelo - ch;
+          const mx = bx + cw / 2;            // centro X de la cara
+          const P = (x, y, w, h, col) => { ctx.fillStyle = col; ctx.fillRect(x, y, w, h); };
+          const GRIS = "#5B6470", GRISC = "#7B8493", OSC = "#3E4550", BLANCO = "#EDEFF2", ROSA = "#D98C9A";
+          // base del cuerpo (a ras de suelo)
+          P(bx + 8, suelo - 18, cw - 16, 18, GRIS);
+          // orejas
+          ctx.fillStyle = GRIS;
+          ctx.beginPath(); ctx.moveTo(bx + 4, by + 14); ctx.lineTo(bx + 14, by - 14); ctx.lineTo(bx + 30, by + 6); ctx.closePath(); ctx.fill();
+          ctx.beginPath(); ctx.moveTo(bx + cw - 4, by + 14); ctx.lineTo(bx + cw - 14, by - 14); ctx.lineTo(bx + cw - 30, by + 6); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = ROSA;
+          ctx.beginPath(); ctx.moveTo(bx + 12, by + 8); ctx.lineTo(bx + 16, by - 6); ctx.lineTo(bx + 24, by + 6); ctx.closePath(); ctx.fill();
+          ctx.beginPath(); ctx.moveTo(bx + cw - 12, by + 8); ctx.lineTo(bx + cw - 16, by - 6); ctx.lineTo(bx + cw - 24, by + 6); ctx.closePath(); ctx.fill();
+          // cabeza (redondeada)
+          ctx.fillStyle = GRIS;
+          ctx.beginPath(); ctx.ellipse(mx, by + ch * 0.5, cw * 0.42, ch * 0.5, 0, 0, 7); ctx.fill();
+          // frente/entrecejo más claro
+          ctx.fillStyle = GRISC;
+          ctx.beginPath(); ctx.ellipse(mx, by + ch * 0.36, cw * 0.18, ch * 0.24, 0, 0, 7); ctx.fill();
+          // mejillas de pelaje blanco (a los lados del hocico)
+          ctx.fillStyle = BLANCO;
+          ctx.beginPath(); ctx.ellipse(mx, by + ch * 0.72, cw * 0.30, ch * 0.28, 0, 0, 7); ctx.fill();
+          // ojos
+          P(mx - 16, by + ch * 0.34, 11, 8, "#FFFFFF");
+          P(mx + 5, by + ch * 0.34, 11, 8, "#FFFFFF");
+          P(mx - 12, by + ch * 0.35, 5, 6, "#1A1A1A");
+          P(mx + 9, by + ch * 0.35, 5, 6, "#1A1A1A");
+          // nariz + boca
+          P(mx - 5, by + ch * 0.60, 10, 7, "#161616");
+          P(mx - 1, by + ch * 0.67, 2, 9, "#161616");
+          // colmillos
+          P(mx - 7, by + ch - 8, 3, 6, "#FFFFFF");
+          P(mx + 4, by + ch - 8, 3, 6, "#FFFFFF");
+        } else {
+          // Valla de madera
+          ctx.fillStyle = "#8B5A2B";
+          ctx.fillRect(v.x, suelo - v.h, 6, v.h);
+          ctx.fillRect(v.x + v.w - 6, suelo - v.h, 6, v.h);
+          ctx.fillStyle = "#A9713B";
+          ctx.fillRect(v.x - 5, suelo - v.h + 5, v.w + 10, 6);
+          ctx.fillRect(v.x - 5, suelo - Math.floor(v.h / 2), v.w + 10, 6);
+        }
+      });
+      // ── Entidades de los juegos nuevos ──
+      if (tema.familia === "flappy") {
+        (st.corales || []).forEach((c, ci) => {
+          const col1 = ci % 2 === 0 ? "#E8707A" : "#5FB878";
+          const col2 = ci % 2 === 0 ? "#B84A56" : "#3E8A54";
+          const topH = c.gapY - c.gapH / 2;
+          const botY = c.gapY + c.gapH / 2;
+          ctx.fillStyle = col1; ctx.fillRect(c.x, 0, 44, topH);
+          ctx.fillStyle = col2; ctx.fillRect(c.x, 0, 7, topH); ctx.fillRect(c.x + 37, 0, 7, topH);
+          ctx.fillStyle = col1;
+          [10, 24, 36].forEach(o => { ctx.beginPath(); ctx.arc(c.x + o, topH, 9, 0, 7); ctx.fill(); });
+          ctx.fillStyle = col1; ctx.fillRect(c.x, botY, 44, suelo - botY);
+          ctx.fillStyle = col2; ctx.fillRect(c.x, botY, 7, suelo - botY); ctx.fillRect(c.x + 37, botY, 7, suelo - botY);
+          ctx.fillStyle = col1;
+          [10, 24, 36].forEach(o => { ctx.beginPath(); ctx.arc(c.x + o, botY, 9, 0, 7); ctx.fill(); });
+          // Contorno oscuro: separa el coral del agua con nitidez
+          ctx.strokeStyle = "rgba(0,0,0,0.25)"; ctx.lineWidth = 2;
+          ctx.strokeRect(c.x + 1, -2, 42, topH + 2);
+          ctx.strokeRect(c.x + 1, botY, 42, suelo - botY + 2);
+        });
+      }
+      if (tema.familia === "shooter") {
+        if (st.jefe) {
+          const jx = W - 130, jy = st.jefeYDraw || H * 0.30;
+          const P2 = (x, y, w, h, col) => { ctx.fillStyle = col; ctx.fillRect(x, y, w, h); };
+          // Rey Lobo: orejas, cabeza, hocico, corona y barra de vida
+          ctx.fillStyle = "#5B6470";
+          ctx.beginPath(); ctx.moveTo(jx + 6, jy + 16); ctx.lineTo(jx + 18, jy - 14); ctx.lineTo(jx + 36, jy + 8); ctx.closePath(); ctx.fill();
+          ctx.beginPath(); ctx.moveTo(jx + 78, jy + 16); ctx.lineTo(jx + 66, jy - 14); ctx.lineTo(jx + 48, jy + 8); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = st.jefe.herido > 0 ? "#A86A6A" : "#6B7480";
+          ctx.beginPath(); ctx.ellipse(jx + 42, jy + 42, 40, 42, 0, 0, 7); ctx.fill();
+          ctx.fillStyle = "#E8EAED";
+          ctx.beginPath(); ctx.ellipse(jx + 42, jy + 60, 22, 20, 0, 0, 7); ctx.fill();
+          P2(jx + 22, jy + 28, 12, 9, "#FFC800"); P2(jx + 50, jy + 28, 12, 9, "#FFC800");
+          P2(jx + 26, jy + 30, 5, 6, "#111"); P2(jx + 54, jy + 30, 5, 6, "#111");
+          P2(jx + 37, jy + 52, 10, 7, "#161616");
+          P2(jx + 30, jy + 72, 4, 7, "#FFFFFF"); P2(jx + 50, jy + 72, 4, 7, "#FFFFFF");
+          ctx.fillStyle = "#FFC800";
+          ctx.beginPath(); ctx.moveTo(jx + 20, jy + 2); ctx.lineTo(jx + 26, jy - 16); ctx.lineTo(jx + 34, jy);
+          ctx.lineTo(jx + 42, jy - 18); ctx.lineTo(jx + 50, jy); ctx.lineTo(jx + 58, jy - 16);
+          ctx.lineTo(jx + 64, jy + 2); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(jx - 2, jy - 36, 88, 10);
+          ctx.fillStyle = "#FF4B4B"; ctx.fillRect(jx, jy - 34, 84, 6);
+          ctx.fillStyle = "#58CC02"; ctx.fillRect(jx, jy - 34, 84 * (st.jefe.hp / st.jefe.max), 6);
+          // Aviso de disparo: brillo naranja creciente en la boca
+          if (st.jefeCarga > 0) {
+            const cr2 = 5 + st.jefeCarga * 11;
+            const cg = ctx.createRadialGradient(jx + 42, jy + 64, 2, jx + 42, jy + 64, cr2 + 8);
+            cg.addColorStop(0, `rgba(255,170,60,${0.5 + st.jefeCarga * 0.5})`);
+            cg.addColorStop(1, "rgba(255,120,40,0)");
+            ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(jx + 42, jy + 64, cr2 + 8, 0, 7); ctx.fill();
+          }
+        }
+        (st.balas || []).forEach(b => {
+          ctx.fillStyle = "#FDF6E3"; ctx.beginPath(); ctx.arc(b.x, b.y, 6, 0, 7); ctx.fill();
+          ctx.fillStyle = "rgba(0,0,0,0.15)"; ctx.beginPath(); ctx.arc(b.x + 1.5, b.y + 1.5, 3, 0, 7); ctx.fill();
+        });
+        (st.balasJefe || []).forEach(b => {
+          ctx.fillStyle = "rgba(255,120,40,0.4)"; ctx.beginPath(); ctx.arc(b.x + 16, b.y + 7, 11, 0, 7); ctx.fill();
+          ctx.fillStyle = "#FF6A1E"; ctx.beginPath(); ctx.arc(b.x + 12, b.y + 7, 8, 0, 7); ctx.fill();
+          ctx.fillStyle = "#FFC04D"; ctx.beginPath(); ctx.arc(b.x + 10, b.y + 6, 4, 0, 7); ctx.fill();
+        });
+      }
+      if (tema.familia === "carriles") {
+        const rr = (x, y, w, h, r) => { ctx.beginPath();
+          ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+          ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
+        const CARRIL_X = [62, 170, 278], laneW = 88, OVEJA_Y = H - 190;
+        if (!st.iniCarriles2D) {
+          // Primera pasada (cuenta atrás congelada): colocar a la oveja en su camino
+          st.iniCarriles2D = true;
+          if (st.carril === undefined) st.carril = 1;
+          st.sx = CARRIL_X[st.carril] - SH / 2;
+          st.y = OVEJA_Y;
+        }
+        // ── Tres caminos rectos de madera ──
+        CARRIL_X.forEach(cx3 => {
+          const lx = cx3 - laneW / 2;
+          // sombra proyectada sobre la hierba
+          ctx.fillStyle = "rgba(0,0,0,0.16)"; ctx.fillRect(lx + 6, 0, laneW, H);
+          // madera con luz desde la derecha
+          const gw = ctx.createLinearGradient(lx, 0, lx + laneW, 0);
+          gw.addColorStop(0, "#6E4E24"); gw.addColorStop(0.5, tema.madera); gw.addColorStop(1, "#B08A50");
+          ctx.fillStyle = gw; ctx.fillRect(lx, 0, laneW, H);
+          // Vetas de la madera (textura sutil)
+          ctx.strokeStyle = "rgba(60,38,14,0.18)"; ctx.lineWidth = 2;
+          [0.3, 0.55, 0.78].forEach(f => {
+            const vx = lx + laneW * f;
+            ctx.beginPath(); ctx.moveTo(vx, 0); ctx.lineTo(vx, H); ctx.stroke();
+          });
+          // raíles: oscuro a la izquierda, iluminado a la derecha
+          ctx.fillStyle = tema.maderaBorde; ctx.fillRect(lx, 0, 4, H);
+          ctx.fillStyle = "#C89858"; ctx.fillRect(lx + laneW - 3, 0, 3, H);
+          // tablones que bajan, con bisel
+          for (let li = 0; li < 10; li++) {
+            const yy = (((li / 10) + st.faseCamino) % 1) * (H + 40) - 20;
+            ctx.strokeStyle = tema.maderaLinea; ctx.lineWidth = 2.6;
+            ctx.beginPath(); ctx.moveTo(lx + 4, yy); ctx.lineTo(lx + laneW - 4, yy); ctx.stroke();
+            ctx.strokeStyle = "rgba(255,230,180,0.14)"; ctx.lineWidth = 1.6;
+            ctx.beginPath(); ctx.moveTo(lx + 4, yy + 3); ctx.lineTo(lx + laneW - 4, yy + 3); ctx.stroke();
+          }
+        });
+        // ── Objetos a tamaño fijo (funden al entrar por arriba) ──
+        st.objetos.forEach(o => {
+          const ox2 = CARRIL_X[o.carril];
+          if (o.y < -40) return;
+          ctx.globalAlpha = Math.max(0.15, Math.min(1, (o.y + 46) / 90));
+          const vaiven = Math.sin(performance.now() / (o.tipo === "moneda" ? 260 : 120) + (o.fase || 0))
+            * (o.tipo === "moneda" ? 3 : 1.8);
+          const oy2 = o.y + vaiven;
+          if (o.tipo === "moneda") {
+            ctx.fillStyle = "rgba(0,0,0,0.22)";
+            ctx.beginPath(); ctx.ellipse(ox2, oy2 + 24, 14, 5, 0, 0, 7); ctx.fill();
+            ctx.fillStyle = "#B8860B"; ctx.beginPath(); ctx.arc(ox2, oy2 + 8, 16, 0, 7); ctx.fill();
+            ctx.fillStyle = "#FFD84D"; ctx.beginPath(); ctx.arc(ox2, oy2 + 6, 14, 0, 7); ctx.fill();
+            ctx.fillStyle = "#8A6508"; ctx.font = "bold 17px system-ui";
+            ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.fillText("€", ox2, oy2 + 7);
+            ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+          } else {
+            // Lobo frontal a tamaño completo
+            const wsc = 52, lx2 = ox2 - wsc / 2, ly2 = oy2;
+            ctx.fillStyle = "rgba(0,0,0,0.25)";
+            ctx.beginPath(); ctx.ellipse(ox2, ly2 + wsc + 4, 30, 6, 0, 0, 7); ctx.fill();
+            ctx.fillStyle = "#5B6470";
+            ctx.beginPath(); ctx.moveTo(lx2 + 5, ly2 + 14); ctx.lineTo(lx2 + 13, ly2 - 5); ctx.lineTo(lx2 + 23, ly2 + 9); ctx.closePath(); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(lx2 + wsc - 5, ly2 + 14); ctx.lineTo(lx2 + wsc - 13, ly2 - 5); ctx.lineTo(lx2 + wsc - 23, ly2 + 9); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = "#6B7480";
+            ctx.beginPath(); ctx.ellipse(ox2, ly2 + 29, 26, 27, 0, 0, 7); ctx.fill();
+            ctx.fillStyle = "#E8EAED";
+            ctx.beginPath(); ctx.ellipse(ox2, ly2 + 41, 14, 12, 0, 0, 7); ctx.fill();
+            const P3 = (x, y, w, h, col) => { ctx.fillStyle = col; ctx.fillRect(x, y, w, h); };
+            P3(ox2 - 12, ly2 + 20, 9, 7, "#FFC800");
+            P3(ox2 + 3,  ly2 + 20, 9, 7, "#FFC800");
+            P3(ox2 - 9, ly2 + 22, 4, 5, "#111");
+            P3(ox2 + 6, ly2 + 22, 4, 5, "#111");
+            P3(ox2 - 4, ly2 + 35, 8, 6, "#161616");
+            P3(ox2 - 8, ly2 + 48, 3, 6, "#FFF");
+            P3(ox2 + 5, ly2 + 48, 3, 6, "#FFF");
+          }
+        });
+        ctx.globalAlpha = 1;
+        // Sombra de la oveja sobre su camino
+        ctx.fillStyle = "rgba(0,0,0,0.28)";
+        ctx.beginPath();
+        ctx.ellipse((st.sx || 0) + SH / 2, (st.y || 0) + SH - 1, 34, 8, 0, 0, 7);
+        ctx.fill();
+        // "+2" flotantes
+        (st.flotantes || []).forEach(f => {
+          const a = Math.max(0, 1 - f.t / 42);
+          ctx.font = "bold 17px system-ui"; ctx.textAlign = "center";
+          ctx.lineWidth = 4; ctx.strokeStyle = `rgba(247,240,224,${a})`;
+          ctx.strokeText("+4", f.x + 7, f.y);
+          ctx.fillStyle = `rgba(43,122,0,${a})`;
+          ctx.fillText("+4", f.x + 7, f.y);
+          ctx.textAlign = "left";
+        });
+        // ── Flechas ◀ ▶ abajo, donde descansan los pulgares ──
+        [[-1, 12], [1, W - 64]].forEach(([d, bx]) => {
+          const activo = st.flechaFlash && st.flechaFlash.d === d && st.flechaFlash.t > 0;
+          const by = H - 112 + (activo ? 3 : 0);
+          ctx.fillStyle = "#A07800";
+          rr(bx, by + 4, 52, 84, 14); ctx.fill();
+          const gb = ctx.createLinearGradient(0, by, 0, by + 84);
+          if (activo) { gb.addColorStop(0, "#89E219"); gb.addColorStop(1, "#58CC02"); }
+          else { gb.addColorStop(0, "#2E7A0A"); gb.addColorStop(1, "#1C4D05"); }
+          ctx.fillStyle = gb; rr(bx, by, 52, 84, 14); ctx.fill();
+          ctx.strokeStyle = "#FFC800"; ctx.lineWidth = activo ? 3 : 2.5;
+          rr(bx, by, 52, 84, 14); ctx.stroke();
+          ctx.fillStyle = activo ? "#0A1A0F" : "#FFC800";
+          ctx.beginPath();
+          if (d < 0) { ctx.moveTo(bx + 35, by + 20); ctx.lineTo(bx + 15, by + 42); ctx.lineTo(bx + 35, by + 64); }
+          else       { ctx.moveTo(bx + 17, by + 20); ctx.lineTo(bx + 37, by + 42); ctx.lineTo(bx + 17, by + 64); }
+          ctx.closePath(); ctx.fill();
+        });
+      }
+
+      // Consumible: orbe brillante; disco + icono según el juego destino
+      st.consumibles.forEach(k => {
+        const fy = k.y + (k.caida ? 0 : Math.sin(performance.now() / 250) * 5);
+        const cx = k.x + 18, cy = fy + 18, r = 23;
+        const CFG = {
+          noche:  { halo: "rgba(150,180,255,0.95)", g: ["#3A4A80", "#1E2A55", "#0E1638"], borde: "#8FA8E8" },
+          oro:    { halo: "rgba(120,240,160,0.95)", g: ["#3BE07A", "#1E9E52", "#0E6B34"], borde: "#7DF5A8" },
+          mar:    { halo: "rgba(120,230,255,0.95)", g: ["#4FD8E8", "#1E9AB8", "#0A5E78"], borde: "#9AEFF8" },
+          jefe:   { halo: "rgba(255,130,130,0.95)", g: ["#F56A6A", "#C42A2A", "#7E0E0E"], borde: "#FF9A9A" },
+          prado:  { halo: "rgba(232,192,136,0.95)", g: ["#C89858", "#8A6432", "#5A3E1C"], borde: "#E8C088" },
+        }[k.to] || { halo: "rgba(255,224,120,0.95)", g: ["#FFF3B0", "#FFD84D", "#E0A000"], borde: "#B8860B" };
+        const glow = ctx.createRadialGradient(cx, cy, 4, cx, cy, r + 14);
+        glow.addColorStop(0, CFG.halo); glow.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(cx, cy, r + 14, 0, 7); ctx.fill();
+        const grad = ctx.createRadialGradient(cx - 6, cy - 6, 2, cx, cy, r);
+        grad.addColorStop(0, CFG.g[0]); grad.addColorStop(0.6, CFG.g[1]); grad.addColorStop(1, CFG.g[2]);
+        ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fill();
+        ctx.strokeStyle = CFG.borde; ctx.lineWidth = 3; ctx.stroke();
+        // Icono de alto contraste
+        if (k.to === "noche") {
+          ctx.fillStyle = "#FFFFFF"; ctx.beginPath(); ctx.arc(cx - 1, cy, 12, 0, 7); ctx.fill();
+          ctx.fillStyle = CFG.g[1]; ctx.beginPath(); ctx.arc(cx + 5, cy - 3, 11, 0, 7); ctx.fill();
+          ctx.fillStyle = "#FFFFFF"; ctx.fillRect(cx + 8, cy + 6, 3, 3);
+        } else if (k.to === "oro") {
+          ctx.fillStyle = "#FFFFFF"; ctx.font = "bold 30px system-ui";
+          ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.fillText("$", cx, cy + 1);
+          ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+        } else if (k.to === "mar") {
+          ctx.strokeStyle = "#FFFFFF"; ctx.lineWidth = 2.5;
+          ctx.beginPath(); ctx.arc(cx - 4, cy + 3, 7, 0, 7); ctx.stroke();
+          ctx.beginPath(); ctx.arc(cx + 7, cy - 6, 4.5, 0, 7); ctx.stroke();
+          ctx.fillStyle = "#FFFFFF"; ctx.beginPath(); ctx.arc(cx + 4, cy + 9, 2.5, 0, 7); ctx.fill();
+        } else if (k.to === "jefe") {
+          ctx.strokeStyle = "#FFFFFF"; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.arc(cx, cy, 9, 0, 7); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(cx - 14, cy); ctx.lineTo(cx + 14, cy); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(cx, cy - 14); ctx.lineTo(cx, cy + 14); ctx.stroke();
+          ctx.fillStyle = "#FFFFFF"; ctx.beginPath(); ctx.arc(cx, cy, 2.5, 0, 7); ctx.fill();
+        } else if (k.to === "prado") {
+          // Tres caminos que convergen en el horizonte
+          ctx.strokeStyle = "#FFFFFF"; ctx.lineWidth = 3; ctx.lineCap = "round";
+          [[-9, -2], [0, 0], [9, 2]].forEach(([bx2, tx2]) => {
+            ctx.beginPath(); ctx.moveTo(cx + bx2, cy + 12); ctx.lineTo(cx + tx2, cy - 11); ctx.stroke();
+          });
+          ctx.lineCap = "butt";
+        }
+      });
+
+      // Sombra de la oveja (runner y guarida): se encoge y aclara al saltar
+      if (tema.familia === "runner" || tema.familia === "shooter") {
+        const alt = (suelo - SH) - st.y;
+        const k2 = Math.max(0, 1 - alt / 160);
+        ctx.fillStyle = `rgba(0,0,0,${(0.28 * k2).toFixed(3)})`;
+        ctx.beginPath();
+        ctx.ellipse((st.sx !== undefined ? st.sx : SX) + SH / 2, suelo - 2,
+          30 * (0.6 + 0.4 * k2), 7 * k2 + 2, 0, 0, 7);
+        ctx.fill();
+      }
+
+      const ovejaX = st.sx !== undefined ? st.sx : SX;
+      px.forEach(([x, y, c]) => { ctx.fillStyle = c; ctx.fillRect(ovejaX + x * S, st.y + y * S, S, S); });
+      // Flash de transición al coger el consumible
+      if (st.transicion > 0) {
+        ctx.fillStyle = `rgba(255,255,255,${st.transicion * 0.6})`;
+        ctx.fillRect(0, 0, W, H);
+      }
+      ctx.fillStyle = st.modo === "noche" ? "#DDE4F5" : "#F7F0E0";
+      ctx.font = "bold 20px monospace";
+      ctx.lineWidth = 3.5; ctx.strokeStyle = "rgba(0,0,0,0.55)";
+      ctx.strokeText(String(st.score).padStart(4, "0"), W - 76, 32);
+      ctx.fillText(String(st.score).padStart(4, "0"), W - 76, 32);
+      if (cuentaRef.current > 0) {
+        ctx.fillStyle = "rgba(10,26,15,0.5)"; ctx.fillRect(0, 0, W, H);
+        ctx.textAlign = "center";
+        ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.font = "bold 22px system-ui";
+        ctx.fillText("¡Prepárate!", W / 2, H / 2 - 76);
+        ctx.fillStyle = "#89E219"; ctx.font = "bold 120px system-ui";
+        ctx.fillText(String(cuentaRef.current), W / 2, H / 2 + 38);
+
+        ctx.textAlign = "left";
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => {
+      cancelAnimationFrame(raf);
+      tapRef.current = null;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [jugando, color, equipados]);
+
+  // Cuenta atrás de preparación: 5,4,3,2,1 -> arranca
+  useEffect(() => {
+    if (!jugando || cuenta <= 0) return;
+    const t = setTimeout(() => setCuenta(c => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [jugando, cuenta]);
+
+  const cuentaRef = useRef(5);
+  useEffect(() => { cuentaRef.current = cuenta; }, [cuenta]);
+
+  const arrancar = () => { setFin(false); setScore(0); cuentaRef.current = 5; setCuenta(5); setJugando(true); };
+  useEffect(() => { if (arrancarRef) arrancarRef.current = arrancar; }, []);
+
+  return (
+    <div style={{ position: "relative", display: "flex", flexDirection: "column", height: "100%",
+      overflowY: jugando ? "hidden" : "auto" }}>
+      {/* Pantalla previa: marco con info de partidas y botón Jugar */}
+      {!jugando && !fin && (
+        <div style={{ display: "flex", justifyContent: "center", padding: "12px 6px" }}>
+          <div style={{ position: "relative", width: "100%", maxWidth: 340, margin: "auto",
+            background: "linear-gradient(160deg, rgba(88,204,2,0.10), rgba(21,34,16,0.6))",
+            border: `2.5px solid ${T.g1}`, borderRadius: 24, padding: "26px 22px 28px",
+            textAlign: "center", boxShadow: "0 8px 30px rgba(0,0,0,0.4)" }}>
+            {/* esquinas decorativas */}
+            <div style={{ position: "absolute", top: 10, left: 10, fontSize: 16 }}>🐑</div>
+            <div style={{ position: "absolute", top: 10, right: 10, fontSize: 16 }}>🎮</div>
+
+            <div style={{ fontSize: 13, color: T.au1, fontWeight: 900, letterSpacing: 1.5,
+              textTransform: "uppercase", marginBottom: 14 }}>Zona de juego</div>
+
+            <div style={{ fontSize: 14, color: T.cr, fontWeight: 700, lineHeight: 1.55, marginBottom: 14 }}>
+              Puedes jugar un total de<br/><b style={{ color: T.g2, fontSize: 17 }}>3 partidas al día</b>
+            </div>
+
+            <div style={{ fontSize: 15, color: T.t2, fontWeight: 700, marginBottom: 8 }}>
+              Cada partida cuesta un diamante 💎
+            </div>
+            <div style={{ fontSize: 26, letterSpacing: 6, marginBottom: 6 }}>
+              {"💎".repeat(partidasProp)}{"▫️".repeat(3 - partidasProp)}
+            </div>
+            <div style={{ fontSize: 12, color: T.t3, fontWeight: 700, marginBottom: 20 }}>
+              {partidasProp > 0 ? `Te quedan ${partidasProp} hoy` : "Sin partidas por hoy — ¡vuelve mañana!"}
+            </div>
+
+            <div style={{ margin: "10px auto 14px", display: "inline-flex", gap: 16,
+              background: "rgba(255,255,255,0.06)", border: "1.5px solid rgba(255,255,255,0.12)",
+              borderRadius: 12, padding: "8px 16px", fontSize: 12, fontWeight: 800 }}>
+              <span style={{ color: T.t2 }}>Hoy: <b style={{ color: T.cr }}>{puntosHoy} pts</b></span>
+              <span style={{ color: T.t2 }}>Semana: <b style={{ color: T.au1 }}>{puntosSemana} pts</b></span>
+            </div>
+            <button onClick={onPagarYJugar} disabled={partidasProp === 0}
+              style={{ background: partidasProp > 0 ? "linear-gradient(180deg,#89E219,#58CC02)" : "rgba(255,255,255,0.1)",
+                border: "none", borderRadius: 18, color: partidasProp > 0 ? "#0A1A0F" : T.t3,
+                fontWeight: 900, fontSize: 18, padding: "15px 40px",
+                cursor: partidasProp > 0 ? "pointer" : "not-allowed", fontFamily: "inherit",
+                boxShadow: partidasProp > 0 ? "0 5px 0 #2B7A00" : "none",
+                display: "inline-flex", alignItems: "center", gap: 10 }}>
+              ▶ Jugar <span style={{ fontSize: 19 }}>💎</span>
+            </button>
+
+            {/* ── Selector de juego: las 5 esferas ── */}
+            {(() => {
+              const JUEGOS = [
+                { id: "noche", nombre: "El Salto del Rebaño", icono: "🌙",
+                  desc: "Toca para saltar lobos al atardecer. Los cuervos no matan: te empujan hacia atrás.",
+                  css: "radial-gradient(circle at 35% 30%, #3A4A80, #1E2A55 60%, #0E1638)", borde: "#8FA8E8" },
+                { id: "oro", nombre: "La Cámara del Banco", icono: "💲",
+                  desc: "Salta entre bloques y recoge monedas €. Si caes al hueco o te come el borde, fin.",
+                  css: "radial-gradient(circle at 35% 30%, #3BE07A, #1E9E52 60%, #0E6B34)", borde: "#7DF5A8" },
+                { id: "mar", nombre: "Buceo entre Corales", icono: "🫧",
+                  desc: "Toca para flotar hacia arriba; sin tocar, bajas y corres por el fondo. Cruza los huecos.",
+                  css: "radial-gradient(circle at 35% 30%, #4FD8E8, #1E9AB8 60%, #0A5E78)", borde: "#9AEFF8" },
+                { id: "jefe", nombre: "El Rey Lobo", icono: "🎯",
+                  desc: "Disparas sola. Jefe abajo: salta su bola y acierta desde el suelo. Jefe arriba: no saltes… salvo para darle.",
+                  css: "radial-gradient(circle at 35% 30%, #F56A6A, #C42A2A 60%, #7E0E0E)", borde: "#FF9A9A" },
+                { id: "prado", nombre: "Los Tres Caminos", icono: "🐺",
+                  desc: "◀ ▶ cambia de camino. Caza todas las monedas que puedas y esquiva a los lobos.",
+                  css: "radial-gradient(circle at 35% 30%, #C89858, #8A6432 60%, #5A3E1C)", borde: "#E8C088" },
+              ];
+              const sel = JUEGOS.find(jj => jj.id === modoElegido) || JUEGOS[0];
+              return (
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 900, letterSpacing: 1.2, textTransform: "uppercase",
+                    color: T.t2, marginBottom: 9 }}>Elige tu juego</div>
+                  <div style={{ display: "flex", justifyContent: "center", gap: 9 }}>
+                    {JUEGOS.map(jj => (
+                      <button key={jj.id} onClick={() => setModoElegido(jj.id)}
+                        style={{ width: 46, height: 46, borderRadius: "50%", padding: 0, cursor: "pointer",
+                          background: jj.css, fontFamily: "inherit",
+                          border: `2.5px solid ${modoElegido === jj.id ? "#FFC800" : jj.borde}`,
+                          boxShadow: modoElegido === jj.id
+                            ? "0 0 12px rgba(255,200,0,0.65), 0 3px 0 #A07800"
+                            : "0 3px 6px rgba(0,0,0,0.4)",
+                          transform: modoElegido === jj.id ? "scale(1.12)" : "scale(1)",
+                          transition: "all 0.15s",
+                          display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <span style={{ fontSize: 21, lineHeight: 1,
+                          filter: "drop-shadow(0 1px 1px rgba(0,0,0,0.5))" }}>{jj.icono}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: 11, minHeight: 58, background: "rgba(255,255,255,0.05)",
+                    border: "1.5px solid rgba(255,255,255,0.1)", borderRadius: 12, padding: "9px 12px" }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 900, color: T.g2, marginBottom: 3 }}>
+                      {sel.icono} {sel.nombre}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: T.t2, lineHeight: 1.45, fontWeight: 600 }}>
+                      {sel.desc}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Escena del juego (la cuenta atrás 5-4-3-2-1 se dibuja DENTRO del canvas) */}
+      {jugando && (
+        <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
+          <canvas ref={canvasRef} width={340} height={680}
+            onPointerDown={(e) => { e.preventDefault(); tapRef.current && tapRef.current(e); }}
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%",
+              display: "block", touchAction: "none" }} />
+        </div>
+      )}
+
+      {/* Fin de partida */}
+      {jugando && fin && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center", gap: 8, background: "rgba(10,26,15,0.85)",
+          borderRadius: 14, animation: "popIn .2s ease-out", padding: "0 16px" }}>
+          <div style={{ fontWeight: 900, fontSize: 16 }}>💥 ¡{nombre} ha tropezado!</div>
+          <div style={{ fontSize: 13, color: "#FFC800", fontWeight: 800 }}>Puntos: {score} · Récord: {best}</div>
+          <div style={{ fontSize: 12, color: "#89E219", fontWeight: 800 }}>
+            +{score} pts a tu marcador → esta semana llevas {puntosSemana}
+          </div>
+          <button onClick={() => { setJugando(false); setFin(false); onSalir && onSalir(); }}
+            style={{ background: "linear-gradient(180deg,#89E219,#58CC02)", border: "none",
+              borderRadius: 14, color: "#0A1A0F", fontWeight: 900, fontSize: 13.5, padding: "10px 20px",
+              cursor: "pointer", fontFamily: "inherit", boxShadow: "0 3px 0 #2B7A00" }}>
+            Volver
+          </button>
+          <div style={{ fontSize: 10.5, color: "rgba(255,255,255,0.4)", textAlign: "center" }}>
+            Para jugar otra vez, paga una gema 💎 desde el botón de la oveja
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ─── 🎨 Personalización de Bo (modal a pantalla completa) ────────────────────
+function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setEquipados, nivel, onCerrar }) {
+  const [borrador, setBorrador] = useState(nombre);
+  const [verConjuntos, setVerConjuntos] = useState(false);
+  const [abiertos, setAbiertos] = useState({});
+  const [personalidad, setPersonalidad] = useState("normal");
+  return (
+
+            <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:60,
+              display:"flex", justifyContent:"center", alignItems:"flex-start",
+              overflowY:"auto", padding:"0" }}>
+              <div style={{ background:T.bg, width:"100%", maxWidth:420, minHeight:"100%",
+                animation:"popIn .2s ease-out", paddingBottom:32 }}>
+                {/* Cabecera fija del modal */}
+                <div style={{ position:"sticky", top:0, zIndex:2, background:T.bg,
+                  display:"flex", justifyContent:"space-between", alignItems:"center",
+                  padding:"16px 18px", borderBottom:`1px solid rgba(255,255,255,0.08)` }}>
+                  <div style={{ fontWeight:900, fontSize:17, color:T.g2 }}>🎨 Personalizar a {nombre}</div>
+                  <button onClick={() => onCerrar()}
+                    style={{ background:"rgba(255,255,255,0.08)", border:"none", color:T.wh,
+                      fontSize:18, cursor:"pointer", fontFamily:"inherit", fontWeight:900,
+                      borderRadius:12, width:38, height:38 }}>✕</button>
+                </div>
+
+                {/* Vista previa de la oveja en el modal */}
+                <div style={{ display:"flex", justifyContent:"center", padding:"14px 0 4px" }}>
+                  <Sheep estado="feliz" equipados={equipados} color={color} size={150} />
+                </div>
+
+                <div style={{ padding:"0 18px" }}>
+              {/* Nombre (siempre visible) */}
+              <div style={seccion}>Nombre</div>
+              <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+                <input value={nombre} maxLength={12}
+                  onChange={e => setNombre(e.target.value)}
+                  style={{ flex:1, background:"rgba(255,255,255,0.08)", border:`2px solid ${T.bG}`,
+                    borderRadius:12, color:T.wh, fontWeight:900, fontSize:15, padding:"9px 12px",
+                    fontFamily:"inherit", outline:"none", minWidth:0 }} />
+                <div style={{ display:"flex", alignItems:"center", fontSize:11.5, color:T.t3, fontWeight:700 }}>
+                  máx. 12
+                </div>
+              </div>
+
+              {/* Carácter (desplegable) */}
+              <Desple id="caracter" titulo="🎭 Carácter"
+                resumen={(PERSONALIDADES.find(p => p.id === personalidad) || {}).nombre}>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
+                  {PERSONALIDADES.map(p => {
+                    const locked = nivel < p.nivel;
+                    const on = personalidad === p.id;
+                    return (
+                      <button key={p.id} onClick={() => cambiarPersonalidad(p)}
+                        style={{ ...btn(on), opacity: locked ? 0.45 : 1,
+                          cursor: locked ? "not-allowed" : "pointer", padding:"8px 10px" }}>
+                        {p.emoji} {p.nombre}
+                        <span style={{ fontSize:10, marginLeft:5, fontWeight:900,
+                          color: locked ? T.red : on ? T.g2 : T.au1 }}>
+                          {locked ? `🔒 ${p.nivel}` : p.nivel > 1 ? `Nv ${p.nivel}` : ""}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {personalidad !== "normal" && (
+                  <div style={{ fontSize:11, color:T.t3, marginTop:6, fontStyle:"italic" }}>
+                    El carácter añade coletillas a los mensajes de {nombre} — toca el bocadillo para probarlo.
+                  </div>
+                )}
+              </Desple>
+
+              {/* Color y skins (desplegable) */}
+              <Desple id="color" titulo="🎨 Color y skins"
+                resumen={(COLORES.find(c => c.id === color) || {}).nombre}>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                  {COLORES.map(c => {
+                    const locked = nivel < c.nivel;
+                    const on = color === c.id;
+                    return (
+                      <button key={c.id} onClick={() => !locked && setColor(c.id)}
+                        title={c.nombre}
+                        style={{ width:52, borderRadius:14, border:`2.5px solid ${on ? T.au1 : "rgba(255,255,255,0.15)"}`,
+                          background:"rgba(255,255,255,0.04)", padding:"6px 0 4px", cursor: locked ? "not-allowed" : "pointer",
+                          opacity: locked ? 0.4 : 1, fontFamily:"inherit" }}>
+                        <div style={{ width:24, height:24, borderRadius:8, margin:"0 auto",
+                          background: c.patron === "arcoiris"
+                            ? "linear-gradient(180deg,#FF5555,#FFD84D,#7ED957,#4FA8F5,#B57EDC)"
+                            : c.W,
+                          border:`2px solid ${c.w}`, display:"flex", alignItems:"center",
+                          justifyContent:"center", fontSize:13 }}>{c.emoji || ""}</div>
+                        <div style={{ fontSize:9.5, fontWeight:800, color: locked ? T.red : on ? T.au1 : T.t2, marginTop:3 }}>
+                          {locked ? `🔒 ${c.nivel}` : c.nombre.split(" ")[0]}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </Desple>
+
+              {/* Accesorios: una zona = un desplegable */}
+              {ZONAS.map(z => {
+                const items = ACCESORIOS.filter(a => a.zona === z.id);
+                if (!items.length) return null;
+                const equipado = items.find(a => equipados.includes(a.id));
+                return (
+                  <Desple key={z.id} id={"z-" + z.id} titulo={`${z.emoji} ${z.nombre}`}
+                    resumen={equipado ? `${equipado.emoji} ${equipado.nombre}` : "— libre —"}>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                      {items.map(a => {
+                        const locked = nivel < a.nivel;
+                        const on = equipados.includes(a.id);
+                        return (
+                          <button key={a.id} onClick={() => toggleAcc(a)} style={{
+                            ...btn(on), opacity: locked ? 0.45 : 1, textAlign:"left",
+                            display:"flex", justifyContent:"space-between", alignItems:"center",
+                            cursor: locked ? "not-allowed" : "pointer", padding:"9px 10px",
+                          }}>
+                            <span style={{ fontSize:12.5 }}>{a.emoji} {a.nombre}</span>
+                            <span style={{ fontSize:10.5, color: locked ? T.red : T.au1, fontWeight:900 }}>
+                              {locked ? `🔒 ${a.nivel}` : on ? "✓" : `Nv ${a.nivel}`}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </Desple>
+                );
+              })}
+
+              {/* Conjuntos temáticos (desplegable, al final) */}
+              <button onClick={() => setVerConjuntos(v => !v)}
+                style={{ width:"100%", marginTop:16, background: verConjuntos ? "rgba(206,130,255,0.12)" : "rgba(255,255,255,0.05)",
+                  border:`2px solid ${verConjuntos ? "rgba(206,130,255,0.4)" : "rgba(255,255,255,0.12)"}`,
+                  borderRadius:14, color: verConjuntos ? "#CE82FF" : T.cr, fontWeight:900, fontSize:13.5,
+                  padding:"10px 0", cursor:"pointer", fontFamily:"inherit" }}>
+                🎭 Conjuntos completos {verConjuntos ? "▲" : "▼"}
+              </button>
+              {verConjuntos && (<div style={{ animation:"popIn .2s ease-out", marginTop:2 }}>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                {CONJUNTOS.map(c => {
+                  const piezas = c.piezas.map(id => ACCESORIOS.find(a => a.id === id)).filter(Boolean);
+                  const desbloq = piezas.filter(p => nivel >= p.nivel).length;
+                  const completo = desbloq === piezas.length;
+                  const puesto = completo && piezas.every(p => equipados.includes(p.id));
+                  return (
+                    <button key={c.id} onClick={() => equiparConjunto(c)}
+                      style={{ ...btn(puesto), opacity: desbloq === 0 ? 0.4 : 1, textAlign:"left",
+                        display:"flex", justifyContent:"space-between", alignItems:"center",
+                        cursor: desbloq === 0 ? "not-allowed" : "pointer", padding:"9px 10px" }}>
+                      <span style={{ fontSize:12.5 }}>{c.emoji} {c.nombre}</span>
+                      <span style={{ fontSize:10.5, fontWeight:900,
+                        color: completo ? T.au1 : T.t3 }}>
+                        {desbloq}/{piezas.length}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize:11, color:T.t3, marginTop:6, marginBottom:4, fontStyle:"italic" }}>
+                Tocar un conjunto equipa sus piezas desbloqueadas. Todas son combinables entre sets.
+              </div>
+              </div>)}
+
+              {/* Reseteo a la oveja original */}
+              <button onClick={resetear}
+                style={{ width:"100%", marginTop:10, background:"rgba(255,75,75,0.08)",
+                  border:"2px solid rgba(255,75,75,0.3)", borderRadius:13, color:"#FF8A8A",
+                  fontWeight:900, fontSize:12.5, padding:"10px 0", cursor:"pointer",
+                  fontFamily:"inherit" }}>
+                ↺ Restablecer oveja original
+              </button>
+
+              {/* Botón Listo: guarda y vuelve al inicio */}
+              <button onClick={() => onCerrar()}
+                style={{ width:"100%", marginTop:12, background:`linear-gradient(180deg,#89E219,#58CC02)`,
+                  border:"none", borderRadius:16, color:"#0A1A0F", fontWeight:900, fontSize:16,
+                  padding:"14px 0", cursor:"pointer", fontFamily:"inherit", boxShadow:"0 4px 0 #2B7A00" }}>
+                ✓ Listo
+              </button>
+                </div>
+              </div>
+            </div>
+          
+  );
+}
+
 // ─── AvatarDisplay usa directamente el Mascot SVG ──────────────────────────
 function AvatarDisplay({expr="idle", size=200}){
   return <Mascot expr={expr} size={size}/>;
@@ -4789,6 +6663,59 @@ function GBHApp(){
     setAvisoRacha(null);
   };
   const expr=getExpr(streak,tLog.diet,allDone,tLog.sleep);
+  const boEstado = (expr==="celebrating"||expr==="legend"||expr==="excited"||expr==="happy") ? "feliz"
+    : expr==="sleeping" ? "dormida" : expr==="sad" ? "triste" : "normal";
+  // ─── 🐑 Bo: estado persistido en profiles + Zona de juego ───
+  const [boNombre,setBoNombre]=useState("Bo");
+  const [boColor,setBoColor]=useState("blanca");
+  const [boEquipados,setBoEquipados]=useState([]);
+  const [zonaJuego,setZonaJuego]=useState(false);
+  const [panelBo,setPanelBo]=useState(false);
+  const [partidasRestantes,setPartidasRestantes]=useState(3);
+  const [ptsHoy,setPtsHoy]=useState(0);
+  const [ptsSemana,setPtsSemana]=useState(0);
+  const arrancarJuegoRef=useRef(null);
+  const boNivel=(getLevel(xp||0)||{}).l||1;
+  useEffect(()=>{ if(!profile) return;
+    if(profile.bo_nombre) setBoNombre(profile.bo_nombre);
+    if(profile.bo_color) setBoColor(profile.bo_color);
+    if(profile.bo_equipados) setBoEquipados(Array.isArray(profile.bo_equipados)?profile.bo_equipados:[]);
+  },[profile?.bo_nombre,profile?.bo_color,profile?.bo_equipados]);
+  const guardarBo=()=>{ if(!profile?.id) return;
+    setProfile(p=>p?{...p,bo_nombre:boNombre,bo_color:boColor,bo_equipados:boEquipados}:p);
+    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{bo_nombre:boNombre,bo_color:boColor,bo_equipados:boEquipados});
+  };
+  const hoyMadrid=()=>new Date().toLocaleDateString("sv-SE",{timeZone:"Europe/Madrid"});
+  const cargarPartidasHoy=async()=>{ if(!profile?.id) return;
+    try{
+      const rows=await sbReq("GET",`juego_partidas?profile_id=eq.${profile.id}&fecha=eq.${hoyMadrid()}&select=puntos`)||[];
+      const arr=Array.isArray(rows)?rows:[];
+      setPartidasRestantes(Math.max(0,3-arr.length));
+      const hoyPts=arr.reduce((s,r)=>s+(r.puntos||0),0);
+      setPtsHoy(hoyPts);
+      const sem=await sbReq("GET",`v_ranking_juego_semanal?profile_id=eq.${profile.id}&select=puntos_semana`);
+      setPtsSemana(Array.isArray(sem)&&sem[0]?(sem[0].puntos_semana||0):hoyPts);
+    }catch{}
+  };
+  const pagarYJugar=()=>{
+    if(partidasRestantes<=0) return;
+    const g=profile?.gems||0;
+    if(g<1) return;                                        // sin gemas no hay partida
+    setProfile(p=>p?{...p,gems:(p.gems||0)-1}:p);
+    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:g-1});  // fire & forget (patrón ruleta)
+    setPartidasRestantes(r=>Math.max(0,r-1));
+    arrancarJuegoRef.current&&arrancarJuegoRef.current();
+  };
+  const finPartida=async(pts)=>{ if(!profile?.id) return;
+    try{
+      const res=await sbReq("POST","rpc/registrar_partida_juego",{p_profile_id:profile.id,p_puntos:pts});
+      if(res&&res.ok){
+        setPtsHoy(res.puntos_hoy||0);
+        setPtsSemana(res.puntos_semana||0);
+        setPartidasRestantes(res.partidas_restantes!=null?res.partidas_restantes:0);
+      }
+    }catch{}
+  };
   const fn=profile?.name?.split(" ")[0]||"";
 
   const chartData=useMemo(()=>{
@@ -5207,7 +7134,7 @@ function GBHApp(){
     // ── Refrescar SIEMPRE desde Supabase los campos que controla el nutricionista
     if(navigator.onLine){
       try{
-        const fresh=await sbReq("GET",`profiles?id=eq.${p.id}&select=plan,gems,xp,shields,name,target_kcal,avatar_b64&limit=1`);
+        const fresh=await sbReq("GET",`profiles?id=eq.${p.id}&select=plan,gems,xp,shields,name,target_kcal,avatar_b64,bo_nombre,bo_color,bo_equipados&limit=1`);
         if(fresh&&fresh.length){
           const f=fresh[0];
           const merged={
@@ -5806,8 +7733,11 @@ function GBHApp(){
         return r.json();
       } catch { return null; }
     };
-    let data = await rankFetch("profiles?select=id,name,xp,gems,streak,initial_weight&order=xp.desc&limit=50");
-    // Si la select falla (p.ej. columna 'streak' inexistente → 400), reintentar sin ella
+    let data = await rankFetch("profiles?select=id,name,xp,gems,streak,initial_weight,bo_nombre,bo_color,bo_equipados&order=xp.desc&limit=50");
+    // Fallbacks: sin columnas de Bo (SQL aún no ejecutado) → sin streak
+    if(data===null){
+      data = await rankFetch("profiles?select=id,name,xp,gems,streak,initial_weight&order=xp.desc&limit=50");
+    }
     if(data===null){
       data = await rankFetch("profiles?select=id,name,xp,gems,initial_weight&order=xp.desc&limit=50");
     }
@@ -5833,6 +7763,10 @@ function GBHApp(){
         const weightAbs=weightDiff!==null?Math.abs(weightDiff):0;
         return {...p, streak, weightDiff, weightAbs};
       });
+      // 🎮 Puntos de juego de la semana en curso (vista v_ranking_juego_semanal)
+      const jr = await rankFetch("v_ranking_juego_semanal?select=profile_id,puntos_semana")||[];
+      const jMap = {}; (Array.isArray(jr)?jr:[]).forEach(r=>{ jMap[r.profile_id]=r.puntos_semana||0; });
+      enriched.forEach(p=>{ p.juegoPts = jMap[p.id]||0; });
       enriched.sort((a,b)=>b.weightAbs-a.weightAbs||(b.xp||0)-(a.xp||0));
       setRanking(enriched);
     } else {
@@ -6848,6 +8782,30 @@ function GBHApp(){
 
       {showQuiz&&<QuizModal onClose={()=>setShowQuiz(false)} onComplete={onQuizComplete} todayKey={toKey()} lang={lang} onGoHome={()=>{setShowQuiz(false);setTab("home");}}/>}
       {showChest&&<ChestOpenModal streak={streak} onClose={()=>setShowChest(false)} onCollect={onChestCollect} onGoHome={()=>{setShowChest(false);setTab("home");}}/>}
+      {/* ── 🐑 Zona de juego + Personalización de Bo ── */}
+      {zonaJuego&&(
+        <div style={{position:"fixed",inset:0,zIndex:9000,background:T.bg,display:"flex",flexDirection:"column"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 16px 8px"}}>
+            <div style={{fontWeight:900,fontSize:16,color:T.g2}}>🐑 Zona de juego</div>
+            <button onClick={()=>setZonaJuego(false)} style={{width:38,height:38,borderRadius:12,background:"rgba(255,255,255,0.07)",border:"1.5px solid rgba(255,255,255,0.12)",color:T.cr,fontSize:16,cursor:"pointer"}}>✕</button>
+          </div>
+          <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}>
+            <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,width:"100%"}}>
+              <JuegoOveja color={boColor} equipados={boEquipados} nombre={boNombre}
+                partidasProp={partidasRestantes} puntosHoy={ptsHoy} puntosSemana={ptsSemana}
+                onFinPartida={finPartida} onPagarYJugar={pagarYJugar}
+                onSalir={()=>setZonaJuego(false)} arrancarRef={arrancarJuegoRef}/>
+            </div>
+          </div>
+        </div>
+      )}
+      {panelBo&&(
+        <PersonalizacionBo nombre={boNombre} setNombre={setBoNombre}
+          color={boColor} setColor={setBoColor}
+          equipados={boEquipados} setEquipados={setBoEquipados}
+          nivel={boNivel}
+          onCerrar={()=>{ setPanelBo(false); guardarBo(); }}/>
+      )}
       {showWeekChest&&<ChestOpenModal streak={7} onClose={()=>setShowWeekChest(false)} onCollect={onWeekChestCollect} onGoHome={()=>{setShowWeekChest(false);setTab("home");}}/>}
       {showRuleta&&<RuletaModal
         onClose={()=>{
@@ -7274,9 +9232,33 @@ function GBHApp(){
 
             </div>
 
-            {/* Avatar */}
-            <div onClick={tapSheep} style={{cursor:"pointer"}}>
-              <AvatarDisplay expr={expr} size={200}/>
+            {/* 🐑 Bo — la mascota personalizable sustituye al avatar genérico */}
+            <style>{`
+        @keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-7px)} }
+        @keyframes idle { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-2px)} }
+        @keyframes wiggle { 0%,100%{transform:rotate(-2deg)} 50%{transform:rotate(2deg)} }
+        @keyframes droop { 0%,100%{transform:translateY(2px) rotate(-1.5deg)} 50%{transform:translateY(3px) rotate(-1.5deg)} }
+        @keyframes breathe { 0%,100%{transform:scale(1)} 50%{transform:scale(1.03)} }
+        @keyframes floaty { 0%{transform:translateY(0);opacity:.9} 100%{transform:translateY(-14px);opacity:0} }
+        @keyframes popIn { from{transform:scale(.92);opacity:0} to{transform:scale(1);opacity:1} }
+        .float-fx { position:absolute; font-size:20px; animation:floaty 1.8s ease-out infinite; }
+        @media (prefers-reduced-motion: reduce){ svg,.float-fx{animation:none!important} }
+      `}</style>
+            <div style={{position:"relative"}}>
+              <button onClick={()=>{ cargarPartidasHoy(); setZonaJuego(true); }} title="Zona de juego"
+                style={{position:"absolute",left:"2%",top:"24%",zIndex:2,width:44,height:44,borderRadius:16,background:"rgba(255,255,255,0.07)",border:"1.5px solid rgba(255,255,255,0.12)",boxShadow:"0 3px 0 rgba(0,0,0,0.4)",cursor:"pointer",fontFamily:"inherit",padding:0,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s"}}>
+                <span style={{fontSize:20,lineHeight:1}}>🎮</span>
+              </button>
+              <button onClick={()=>setPanelBo(true)} title="Personalizar a tu oveja"
+                style={{position:"absolute",right:"2%",top:"24%",zIndex:2,width:44,height:44,borderRadius:16,background:"rgba(255,255,255,0.07)",border:"1.5px solid rgba(255,255,255,0.12)",boxShadow:"0 3px 0 rgba(0,0,0,0.4)",cursor:"pointer",fontFamily:"inherit",padding:0,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s"}}>
+                <span style={{fontSize:20,lineHeight:1}}>🎨</span>
+              </button>
+              <div onClick={tapSheep} style={{cursor:"pointer",display:"flex",justifyContent:"center"}}>
+                <Sheep estado={boEstado} equipados={boEquipados} color={boColor} size={200}/>
+              </div>
+              <div style={{textAlign:"center",marginTop:2}}>
+                <span style={{fontSize:12,fontWeight:900,color:T.t2}}>🐑 {boNombre}</span>
+              </div>
             </div>
           </div>
 
@@ -7447,13 +9429,14 @@ function GBHApp(){
 
           // ── Construir los 3 rankings ordenados ───────────────────────────
           const byStreak = [...ranking].sort((a,b)=>(b.streak||0)-(a.streak||0));
-          const byXP     = [...ranking].sort((a,b)=>(b.xp||0)-(a.xp||0));
           const byWeight = [...ranking].sort((a,b)=>(b.weightAbs||0)-(a.weightAbs||0));
+          // 🎮 Juego sustituye a ⚡ XP en el ranking (la XP sigue viva para los niveles)
+          const byJuego  = [...ranking].sort((a,b)=>(b.juegoPts||0)-(a.juegoPts||0));
 
           const tables=[
             {key:"streak", icon:"🔥", title:t("rankStreak"), subtitle:t("rankStreakSub"),  list:byStreak,  statFn:p=>`${p.streak||0}🔥`,  statLabel:t("rankDays")},
-            {key:"xp",     icon:"⚡", title:t("rankXP"),     subtitle:t("rankXPSub"),       list:byXP,      statFn:p=>`${p.xp||0} XP`,     statLabel:"XP"},
             {key:"weight", icon:"⚖️", title:t("rankWeight"), subtitle:t("rankWeightSub"),   list:byWeight,  statFn:p=>p.weightDiff!==null?`${p.weightDiff>=0?"+":""}${p.weightDiff}kg`:"—", statLabel:"kg"},
+            {key:"juego",  icon:"🎮", title:"Juego", subtitle:"Puntos de juego · se reinicia cada lunes", list:byJuego, statFn:p=>`${p.juegoPts||0} pts`, statLabel:"pts"},
           ];
 
           const curTable = tables[rankTab];
@@ -7528,8 +9511,13 @@ function GBHApp(){
                             <span style={{fontSize:15,fontWeight:900,color:T.t2}}>{i+1}</span>
                           )}
                         </div>
-                        {/* Avatar con marco de nivel */}
-                        {(()=>{
+                        {/* Avatar con marco de nivel (en 🎮 Juego: la mini-Bo de cada paciente) */}
+                        {curTable.key==="juego"&&p.bo_color?(
+                          <div style={{width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                            <Sheep estado="feliz" mini size={38} color={p.bo_color}
+                              equipados={Array.isArray(p.bo_equipados)?p.bo_equipados:[]}/>
+                          </div>
+                        ):(()=>{
                           const pFrame = Math.floor(Math.min(lv2.l,500)/100)||0;
                           const fr2 = FRAMES[pFrame];
                           return(
@@ -7556,7 +9544,7 @@ function GBHApp(){
                         </div>
                         {/* Stat principal */}
                         <div style={{textAlign:"right",flexShrink:0}}>
-                          <div style={{fontSize:16,fontWeight:900,color:rankTab===0?"#FF8040":rankTab===1?T.xp:T.t1}}>{curTable.statFn(p)}</div>
+                          <div style={{fontSize:16,fontWeight:900,color:rankTab===0?"#FF8040":rankTab===2?T.au1:T.t1}}>{curTable.statFn(p)}</div>
                           <div style={{fontSize:9,color:T.t2,textTransform:"uppercase",letterSpacing:"0.06em"}}>{curTable.statLabel}</div>
                         </div>
                       </div>
