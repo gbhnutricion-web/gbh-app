@@ -767,7 +767,10 @@ const escalarIngredientesJS = (texto, factor) => {
   return String(texto).split(",").map(tr=>{
     const trNorm = tr.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
     if(NO_ESCALAR.some(k=>trNorm.includes(k))) return tr;
-    let t = tr.replace(/½/g,"0.5").replace(/¼/g,"0.25").replace(/¾/g,"0.75").replace(/⅓/g,"0.33").replace(/⅔/g,"0.67");
+    // entero+fracción unicode → decimal correcto ("1½"→1.5, no "10.5"): captura
+    // el entero pegado a la fracción. El replace ingenuo inflaba las cantidades.
+    const _FR={"½":0.5,"¼":0.25,"¾":0.75,"⅓":1/3,"⅔":2/3,"⅛":0.125};
+    let t = tr.replace(/(\d+)?\s*([½¼¾⅓⅔⅛])/g,(m,e,f)=>String(Math.round(((e?+e:0)+_FR[f])*1000)/1000));
     t = t.replace(/\b(\d+)\s*\/\s*(\d+)\b/g,(m,a,b)=>String(Math.round(a/b*100)/100));
     t = t.replace(/(\d+(?:[.,]\d+)?)(\s*)(g|gr|ml|kg|l)?\b/g,(m,num,sep,un)=>{
       const v = parseFloat(num.replace(",","."))*factor;
