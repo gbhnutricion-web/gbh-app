@@ -2802,12 +2802,36 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
 
 
 // ─── 🎨 Personalización de Bo (modal a pantalla completa) ────────────────────
-function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setEquipados, nivel, onCerrar }) {
+function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setEquipados, nivel, personalidad, setPersonalidad, onCerrar }) {
   const [borrador, setBorrador] = useState(nombre);
   const [verConjuntos, setVerConjuntos] = useState(false);
   const [abiertos, setAbiertos] = useState({});
-  const [personalidad, setPersonalidad] = useState("normal");
   const nuevoMensaje = () => {};
+
+  const Desple = ({ id, titulo, resumen, children }) => (
+    <div style={{ marginTop:8 }}>
+      <button onClick={() => setAbiertos(a => ({ ...a, [id]: !a[id] }))}
+        style={{ width:"100%", background: abiertos[id] ? "rgba(88,204,2,0.10)" : "rgba(255,255,255,0.04)",
+          border:`2px solid ${abiertos[id] ? T.bG : "rgba(255,255,255,0.10)"}`, borderRadius:13,
+          color:T.cr, fontWeight:900, fontSize:12.5, padding:"10px 12px", cursor:"pointer",
+          fontFamily:"inherit", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+        <span>{titulo}</span>
+        <span style={{ fontSize:10.5, color:T.t3, fontWeight:800, display:"flex", gap:7, alignItems:"center" }}>
+          <span>{resumen}</span><span>{abiertos[id] ? "▲" : "▼"}</span>
+        </span>
+      </button>
+      {abiertos[id] && <div style={{ animation:"popIn .18s ease-out", marginTop:8, marginBottom:4 }}>{children}</div>}
+    </div>
+  );
+
+  const seccion = { fontSize:11.5, fontWeight:900, color:T.t3, letterSpacing:1, textTransform:"uppercase", margin:"14px 0 8px" };
+
+  const btn = (active) => ({
+    padding:"8px 12px", borderRadius:14, border:`2px solid ${active ? T.g1 : "rgba(255,255,255,0.12)"}`,
+    background: active ? "rgba(88,204,2,0.18)" : "rgba(255,255,255,0.04)",
+    color: active ? T.g2 : T.t2, fontWeight:700, fontSize:13, cursor:"pointer",
+    fontFamily:"inherit", transition:"all .15s",
+  });
 
   const resetear = () => {
     setEquipados([]);
@@ -2816,20 +2840,18 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
     setMensaje(nuevoMensaje(estado, "normal"));
   };
 
-  const toggleAcc = (a) => {
-    if (nivel < a.nivel) return;
-    setEquipados(eq => eq.includes(a.id)
-      ? eq.filter(x => x !== a.id)                                    // desequipar
-      : [...eq.filter(id => ACCESORIOS.find(x => x.id === id)?.zona !== a.zona), a.id]); // swap en su zona
-  };
-
   const cambiarPersonalidad = (p) => {
     if (nivel < p.nivel) return;
     setPersonalidad(p.id);
     setMensaje(nuevoMensaje(estado, p.id));
   };
 
-  const seccion = { fontSize:11.5, fontWeight:900, color:T.t3, letterSpacing:1, textTransform:"uppercase", margin:"14px 0 8px" };
+  const toggleAcc = (a) => {
+    if (nivel < a.nivel) return;
+    setEquipados(eq => eq.includes(a.id)
+      ? eq.filter(x => x !== a.id)                                    // desequipar
+      : [...eq.filter(id => ACCESORIOS.find(x => x.id === id)?.zona !== a.zona), a.id]); // swap en su zona
+  };
 
   const equiparConjunto = (c) => {
     const piezas = c.piezas
@@ -2854,29 +2876,6 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
     });
     if (c.color && nivel >= (COLORES.find(x => x.id === c.color)?.nivel || 999)) setColor(c.color);
   };
-
-  const btn = (active) => ({
-    padding:"8px 12px", borderRadius:14, border:`2px solid ${active ? T.g1 : "rgba(255,255,255,0.12)"}`,
-    background: active ? "rgba(88,204,2,0.18)" : "rgba(255,255,255,0.04)",
-    color: active ? T.g2 : T.t2, fontWeight:700, fontSize:13, cursor:"pointer",
-    fontFamily:"inherit", transition:"all .15s",
-  });
-
-  const Desple = ({ id, titulo, resumen, children }) => (
-    <div style={{ marginTop:8 }}>
-      <button onClick={() => setAbiertos(a => ({ ...a, [id]: !a[id] }))}
-        style={{ width:"100%", background: abiertos[id] ? "rgba(88,204,2,0.10)" : "rgba(255,255,255,0.04)",
-          border:`2px solid ${abiertos[id] ? T.bG : "rgba(255,255,255,0.10)"}`, borderRadius:13,
-          color:T.cr, fontWeight:900, fontSize:12.5, padding:"10px 12px", cursor:"pointer",
-          fontFamily:"inherit", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-        <span>{titulo}</span>
-        <span style={{ fontSize:10.5, color:T.t3, fontWeight:800, display:"flex", gap:7, alignItems:"center" }}>
-          <span>{resumen}</span><span>{abiertos[id] ? "▲" : "▼"}</span>
-        </span>
-      </button>
-      {abiertos[id] && <div style={{ animation:"popIn .18s ease-out", marginTop:8, marginBottom:4 }}>{children}</div>}
-    </div>
-  );
   return (
 
             <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:60,
@@ -3047,7 +3046,7 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
                 style={{ width:"100%", marginTop:12, background:`linear-gradient(180deg,#89E219,#58CC02)`,
                   border:"none", borderRadius:16, color:"#0A1A0F", fontWeight:900, fontSize:16,
                   padding:"14px 0", cursor:"pointer", fontFamily:"inherit", boxShadow:"0 4px 0 #2B7A00" }}>
-                ✓ Listo
+                ✓ Aplicar cambios
               </button>
                 </div>
               </div>
@@ -6806,6 +6805,7 @@ function GBHApp(){
   const [boNombre,setBoNombre]=useState("Bo");
   const [boColor,setBoColor]=useState("blanca");
   const [boEquipados,setBoEquipados]=useState([]);
+  const [boPersonalidad,setBoPersonalidad]=useState("normal");
   const [zonaJuego,setZonaJuego]=useState(false);
   const [panelBo,setPanelBo]=useState(false);
   const [partidasRestantes,setPartidasRestantes]=useState(3);
@@ -6826,10 +6826,11 @@ function GBHApp(){
     if(profile.bo_nombre) setBoNombre(profile.bo_nombre);
     if(profile.bo_color) setBoColor(profile.bo_color);
     if(profile.bo_equipados) setBoEquipados(Array.isArray(profile.bo_equipados)?profile.bo_equipados:[]);
-  },[profile?.bo_nombre,profile?.bo_color,profile?.bo_equipados]);
+    if(profile.bo_personalidad) setBoPersonalidad(profile.bo_personalidad);
+  },[profile?.bo_nombre,profile?.bo_color,profile?.bo_equipados,profile?.bo_personalidad]);
   const guardarBo=()=>{ if(!profile?.id) return;
-    setProfile(p=>p?{...p,bo_nombre:boNombre,bo_color:boColor,bo_equipados:boEquipados}:p);
-    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{bo_nombre:boNombre,bo_color:boColor,bo_equipados:boEquipados});
+    setProfile(p=>p?{...p,bo_nombre:boNombre,bo_color:boColor,bo_equipados:boEquipados,bo_personalidad:boPersonalidad}:p);
+    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{bo_nombre:boNombre,bo_color:boColor,bo_equipados:boEquipados,bo_personalidad:boPersonalidad});
   };
   const hoyMadrid=()=>new Date().toLocaleDateString("sv-SE",{timeZone:"Europe/Madrid"});
   const cargarPartidasHoy=async()=>{ if(!profile?.id) return;
@@ -7280,7 +7281,7 @@ function GBHApp(){
     // ── Refrescar SIEMPRE desde Supabase los campos que controla el nutricionista
     if(navigator.onLine){
       try{
-        const fresh=await sbReq("GET",`profiles?id=eq.${p.id}&select=plan,gems,xp,shields,name,target_kcal,avatar_b64,bo_nombre,bo_color,bo_equipados,trial_ends_at,plan_until&limit=1`);
+        const fresh=await sbReq("GET",`profiles?id=eq.${p.id}&select=plan,gems,xp,shields,name,target_kcal,avatar_b64,bo_nombre,bo_color,bo_equipados,bo_personalidad,trial_ends_at,plan_until&limit=1`);
         if(fresh&&fresh.length){
           const f=fresh[0];
           const merged={
@@ -8950,6 +8951,7 @@ function GBHApp(){
         <PersonalizacionBo nombre={boNombre} setNombre={setBoNombre}
           color={boColor} setColor={setBoColor}
           equipados={boEquipados} setEquipados={setBoEquipados}
+          personalidad={boPersonalidad} setPersonalidad={setBoPersonalidad}
           nivel={boNivel}
           onCerrar={()=>{ setPanelBo(false); guardarBo(); }}/>
       )}
@@ -9332,9 +9334,9 @@ function GBHApp(){
                           ?'linear-gradient(135deg,'+T.au1+','+T.au2+')'
                           :allClaimed
                             ?"rgba(88,204,2,0.18)"
-                            :"rgba(255,255,255,0.07)",
-                        border:anyDone?`2px solid ${T.au3}`:allClaimed?`1.5px solid ${T.g3}`:`1.5px solid rgba(255,255,255,0.12)`,
-                        boxShadow:anyDone?`0 4px 0 ${T.au3},0 0 14px ${T.au1}60`:allClaimed?`0 3px 0 ${T.g3}`:"0 3px 0 rgba(0,0,0,0.4)",
+                            :"linear-gradient(180deg, rgba(255,208,60,0.38), rgba(150,105,0,0.34))",
+                        border:anyDone?`2px solid ${T.au3}`:allClaimed?`1.5px solid ${T.g3}`:`1.5px solid rgba(255,200,0,0.55)`,
+                        boxShadow:anyDone?`0 4px 0 ${T.au3},0 0 14px ${T.au1}60`:allClaimed?`0 3px 0 ${T.g3}`:"0 3px 0 rgba(110,78,0,0.9)",
                         cursor:"pointer",
                         display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:1,
                         animation:anyDone?"pulse 1.5s ease-in-out infinite":"none",
@@ -9358,7 +9360,13 @@ function GBHApp(){
 
               {/* Bocadillo centrado */}
               <div style={{flex:1,display:"flex",justifyContent:"center"}}>
-                <Bubble msg={getBubbleMsg(profile?.name||"",streak,expr,lang)}/>
+                <Bubble msg={(()=>{
+                  const base = getBubbleMsg(profile?.name||"",streak,expr,lang);
+                  const pj = PERSONALIDADES.find(q=>q.id===boPersonalidad);
+                  const cs = (pj && pj.coletillas) || [];
+                  // Coletilla del carácter de Bo, estable durante el día (sin parpadeos)
+                  return cs.length ? base + "  " + cs[new Date().getDate() % cs.length] : base;
+                })()}/>
               </div>
 
               {/* ── Mute (derecha) ── */}
@@ -9367,11 +9375,11 @@ function GBHApp(){
                 style={{
                   flexShrink:0,
                   width:44,height:44,borderRadius:16,
-                  background:"rgba(255,255,255,0.07)",
-                  border:`1.5px solid rgba(255,255,255,0.12)`,
+                  background:"linear-gradient(180deg, rgba(255,208,60,0.38), rgba(150,105,0,0.34))",
+                  border:`1.5px solid rgba(255,200,0,0.55)`,
                   cursor:"pointer",fontSize:20,
                   display:"flex",alignItems:"center",justifyContent:"center",
-                  boxShadow:"0 3px 0 rgba(0,0,0,0.4)",
+                  boxShadow:"0 3px 0 rgba(110,78,0,0.9)",
                   transition:"all 0.2s",
                 }}>
                 {muted?"🔇":"🔊"}
@@ -9391,12 +9399,13 @@ function GBHApp(){
         .float-fx { position:absolute; font-size:20px; animation:floaty 1.8s ease-out infinite; }
         @media (prefers-reduced-motion: reduce){ svg,.float-fx{animation:none!important} }
       `}</style>
-            <div style={{position:"relative"}}>
+            <div style={{position:"relative",width:"100%"}}>
               {/* 🎮 bajo el botón de la diana (misma columna izquierda) */}
               <button onClick={()=>{ cargarPartidasHoy(); setZonaJuego(true); }} title="Zona de juego"
-                style={{position:"absolute",left:0,top:0,zIndex:2,width:44,height:44,borderRadius:16,
-                  background:"rgba(255,255,255,0.07)",border:"1.5px solid rgba(255,255,255,0.12)",
-                  boxShadow:"0 3px 0 rgba(0,0,0,0.4)",cursor:"pointer",fontFamily:"inherit",padding:0,
+                style={{position:"absolute",left:0,top:2,zIndex:2,width:44,height:44,borderRadius:16,
+                  background:"linear-gradient(180deg, rgba(255,208,60,0.38), rgba(150,105,0,0.34))",
+                  border:"1.5px solid rgba(255,200,0,0.55)",
+                  boxShadow:"0 3px 0 rgba(110,78,0,0.9)",cursor:"pointer",fontFamily:"inherit",padding:0,
                   display:"flex",alignItems:"center",justifyContent:"center"}}>
                 <span style={{fontSize:20,lineHeight:1}}>🎮</span>
               </button>
@@ -9407,8 +9416,9 @@ function GBHApp(){
               <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:7,marginTop:2}}>
                 <span style={{fontSize:12.5,fontWeight:900,color:T.t2}}>🐑 {boNombre}</span>
                 <button onClick={()=>setPanelBo(true)} title="Personalizar a tu oveja"
-                  style={{width:26,height:26,borderRadius:9,background:"rgba(255,255,255,0.07)",
-                    border:"1.5px solid rgba(255,255,255,0.12)",boxShadow:"0 2px 0 rgba(0,0,0,0.4)",
+                  style={{width:26,height:26,borderRadius:9,
+                    background:"linear-gradient(180deg, rgba(255,208,60,0.38), rgba(150,105,0,0.34))",
+                    border:"1.5px solid rgba(255,200,0,0.55)",boxShadow:"0 2px 0 rgba(110,78,0,0.9)",
                     cursor:"pointer",padding:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
                   <span style={{fontSize:13,lineHeight:1}}>🎨</span>
                 </button>
