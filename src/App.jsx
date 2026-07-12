@@ -2808,6 +2808,28 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
   const [abiertos, setAbiertos] = useState({});
   const nuevoMensaje = () => {};
 
+  const seccion = { fontSize:11.5, fontWeight:900, color:T.t3, letterSpacing:1, textTransform:"uppercase", margin:"14px 0 8px" };
+
+  const cambiarPersonalidad = (p) => {
+    if (nivel < p.nivel) return;
+    setPersonalidad(p.id);
+    setMensaje(nuevoMensaje(estado, p.id));
+  };
+
+  const resetear = () => {
+    setEquipados([]);
+    setColor("blanca");
+    setPersonalidad("normal");
+    setMensaje(nuevoMensaje(estado, "normal"));
+  };
+
+  const btn = (active) => ({
+    padding:"8px 12px", borderRadius:14, border:`2px solid ${active ? T.g1 : "rgba(255,255,255,0.12)"}`,
+    background: active ? "rgba(88,204,2,0.18)" : "rgba(255,255,255,0.04)",
+    color: active ? T.g2 : T.t2, fontWeight:700, fontSize:13, cursor:"pointer",
+    fontFamily:"inherit", transition:"all .15s",
+  });
+
   const Desple = ({ id, titulo, resumen, children }) => (
     <div style={{ marginTop:8 }}>
       <button onClick={() => setAbiertos(a => ({ ...a, [id]: !a[id] }))}
@@ -2823,35 +2845,6 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
       {abiertos[id] && <div style={{ animation:"popIn .18s ease-out", marginTop:8, marginBottom:4 }}>{children}</div>}
     </div>
   );
-
-  const seccion = { fontSize:11.5, fontWeight:900, color:T.t3, letterSpacing:1, textTransform:"uppercase", margin:"14px 0 8px" };
-
-  const btn = (active) => ({
-    padding:"8px 12px", borderRadius:14, border:`2px solid ${active ? T.g1 : "rgba(255,255,255,0.12)"}`,
-    background: active ? "rgba(88,204,2,0.18)" : "rgba(255,255,255,0.04)",
-    color: active ? T.g2 : T.t2, fontWeight:700, fontSize:13, cursor:"pointer",
-    fontFamily:"inherit", transition:"all .15s",
-  });
-
-  const resetear = () => {
-    setEquipados([]);
-    setColor("blanca");
-    setPersonalidad("normal");
-    setMensaje(nuevoMensaje(estado, "normal"));
-  };
-
-  const cambiarPersonalidad = (p) => {
-    if (nivel < p.nivel) return;
-    setPersonalidad(p.id);
-    setMensaje(nuevoMensaje(estado, p.id));
-  };
-
-  const toggleAcc = (a) => {
-    if (nivel < a.nivel) return;
-    setEquipados(eq => eq.includes(a.id)
-      ? eq.filter(x => x !== a.id)                                    // desequipar
-      : [...eq.filter(id => ACCESORIOS.find(x => x.id === id)?.zona !== a.zona), a.id]); // swap en su zona
-  };
 
   const equiparConjunto = (c) => {
     const piezas = c.piezas
@@ -2875,6 +2868,13 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
       return [...resto, ...piezas.map(p => p.id)];
     });
     if (c.color && nivel >= (COLORES.find(x => x.id === c.color)?.nivel || 999)) setColor(c.color);
+  };
+
+  const toggleAcc = (a) => {
+    if (nivel < a.nivel) return;
+    setEquipados(eq => eq.includes(a.id)
+      ? eq.filter(x => x !== a.id)                                    // desequipar
+      : [...eq.filter(id => ACCESORIOS.find(x => x.id === id)?.zona !== a.zona), a.id]); // swap en su zona
   };
   return (
 
@@ -6053,7 +6053,13 @@ function GBHApp(){
   }); // 0=racha 1=xp 2=peso
   const [weightBannerDismissed, setWeightBannerDismissed] = useState(false);
   const [pwaPrompt,    setPwaPrompt]    = useState(null);
-  const [pwaDismissed, setPwaDismissed] = useState(()=>lsGet("gbh:pwaDismissed",false));
+  const [pwaDismissed, setPwaDismissed] = useState(()=>{
+    // Pausa de 14 días en vez de descarte permanente: quien cierra el banner en su
+    // primera semana es justo quien instala en la tercera. (true legado = caducado)
+    const v = lsGet("gbh:pwaDismissed", false);
+    if(typeof v === "number") return (Date.now() - v) < 14*24*60*60*1000;
+    return false;
+  });
   const [pwaInstalled, setPwaInstalled] = useState(()=>{try{return window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone===true;}catch{return false;}});
   // Flag: viene de Instagram via redirect → mostrar modal PWA prominente al cargar
   const [showInstallModal, setShowInstallModal] = useState(()=>{
@@ -8270,9 +8276,9 @@ function GBHApp(){
       { title: "Escape from Instagram! 🏃", sub: "One tap and your sheep is free." },
     ] : [
       { title: "Instagram, hoy no 🐑", sub: "Mi oveja se niega a vivir dentro de una red social." },
-      { title: "¡Puerta equivocada! 🚪", sub: "Tus datos te esperan en un navegador de verdad. Vamos." },
-      { title: "Houston, tenemos un navegador 🚀", sub: "Instagram mola, pero tu progreso vive en otro sitio." },
-      { title: "¡Escapa de Instagram! 🏃", sub: "Un toque y tu oveja es libre." },
+      { title: "Tu objetivo está a un solo clic ✨", sub: "Toca el botón y tu navegador abrirá la app completa: tu programación, tus recetas y tu progreso." },
+      { title: "¡Ya casi estás dentro! 🌱", sub: "Un último paso: entra desde tu navegador y tendrás tu plan de nutrición al completo." },
+      { title: "Bo ya te está esperando 🐑", sub: "Tu plan semanal, tus recetas y tu propia mascota viven en la app. Toca y entra." },
     ];
     const joke = jokes[new Date().getSeconds() % jokes.length];
 
@@ -8288,7 +8294,7 @@ function GBHApp(){
         }}>
           <style>{CSS}</style>
 
-          <Mascot expr="sad" size={140} />
+          <Sheep estado="feliz" equipados={[]} color="blanca" size={140} />
 
           <div style={{ marginTop: 24, marginBottom: 10, fontSize: 26, fontWeight: 900, color: T.wh, lineHeight: 1.3 }}>
             {joke.title}
@@ -8320,7 +8326,7 @@ function GBHApp(){
             <span style={{ fontSize: 22 }}>{isIOS ? "🧭" : "🌐"}</span>
             {lang === "en"
               ? (isIOS ? "Open in Safari" : "Open in Chrome")
-              : (isIOS ? "Abrir en Safari" : "Abrir en Chrome")}
+              : "🚀 Entrar en GBH Nutrición"}
           </button>
         </div>
       </LangCtx.Provider>
@@ -9213,7 +9219,7 @@ function GBHApp(){
                   Instalar
                 </button>
               )}
-              <button onClick={()=>{setPwaDismissed(true);lsSet("gbh:pwaDismissed",true);}} style={{background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:"50%",width:28,height:28,color:"rgba(255,255,255,0.5)",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
+              <button onClick={()=>{setPwaDismissed(true);lsSet("gbh:pwaDismissed",Date.now());}} style={{background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:"50%",width:28,height:28,color:"rgba(255,255,255,0.5)",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
             </div>
           </div>
         );
