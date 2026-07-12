@@ -2806,8 +2806,77 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
   const [borrador, setBorrador] = useState(nombre);
   const [verConjuntos, setVerConjuntos] = useState(false);
   const [abiertos, setAbiertos] = useState({});
-  const seccion = { fontSize:11.5, fontWeight:900, color:T.t3, letterSpacing:1, textTransform:"uppercase", margin:"14px 0 8px" };
   const [personalidad, setPersonalidad] = useState("normal");
+  const nuevoMensaje = () => {};
+
+  const resetear = () => {
+    setEquipados([]);
+    setColor("blanca");
+    setPersonalidad("normal");
+    setMensaje(nuevoMensaje(estado, "normal"));
+  };
+
+  const toggleAcc = (a) => {
+    if (nivel < a.nivel) return;
+    setEquipados(eq => eq.includes(a.id)
+      ? eq.filter(x => x !== a.id)                                    // desequipar
+      : [...eq.filter(id => ACCESORIOS.find(x => x.id === id)?.zona !== a.zona), a.id]); // swap en su zona
+  };
+
+  const cambiarPersonalidad = (p) => {
+    if (nivel < p.nivel) return;
+    setPersonalidad(p.id);
+    setMensaje(nuevoMensaje(estado, p.id));
+  };
+
+  const seccion = { fontSize:11.5, fontWeight:900, color:T.t3, letterSpacing:1, textTransform:"uppercase", margin:"14px 0 8px" };
+
+  const equiparConjunto = (c) => {
+    const piezas = c.piezas
+      .map(id => ACCESORIOS.find(a => a.id === id))
+      .filter(a => a && nivel >= a.nivel);
+    if (!piezas.length) return;
+    const yaPuesto = piezas.every(p => equipados.includes(p.id));
+    if (yaPuesto) {
+      // Segundo clic: desequipar el conjunto completo
+      setEquipados(eq => eq.filter(id => !piezas.some(p => p.id === id)));
+      return;
+    }
+    setEquipados(eq => {
+      const zonasNuevas = piezas.map(p => p.zona);
+      const resto = eq.filter(id => {
+        const a = ACCESORIOS.find(x => x.id === id);
+        if (!a) return false;
+        if (a.set) return false;               // fuera TODAS las piezas de conjuntos anteriores
+        return !zonasNuevas.includes(a.zona);  // piezas sueltas: swap normal por zona
+      });
+      return [...resto, ...piezas.map(p => p.id)];
+    });
+    if (c.color && nivel >= (COLORES.find(x => x.id === c.color)?.nivel || 999)) setColor(c.color);
+  };
+
+  const btn = (active) => ({
+    padding:"8px 12px", borderRadius:14, border:`2px solid ${active ? T.g1 : "rgba(255,255,255,0.12)"}`,
+    background: active ? "rgba(88,204,2,0.18)" : "rgba(255,255,255,0.04)",
+    color: active ? T.g2 : T.t2, fontWeight:700, fontSize:13, cursor:"pointer",
+    fontFamily:"inherit", transition:"all .15s",
+  });
+
+  const Desple = ({ id, titulo, resumen, children }) => (
+    <div style={{ marginTop:8 }}>
+      <button onClick={() => setAbiertos(a => ({ ...a, [id]: !a[id] }))}
+        style={{ width:"100%", background: abiertos[id] ? "rgba(88,204,2,0.10)" : "rgba(255,255,255,0.04)",
+          border:`2px solid ${abiertos[id] ? T.bG : "rgba(255,255,255,0.10)"}`, borderRadius:13,
+          color:T.cr, fontWeight:900, fontSize:12.5, padding:"10px 12px", cursor:"pointer",
+          fontFamily:"inherit", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+        <span>{titulo}</span>
+        <span style={{ fontSize:10.5, color:T.t3, fontWeight:800, display:"flex", gap:7, alignItems:"center" }}>
+          <span>{resumen}</span><span>{abiertos[id] ? "▲" : "▼"}</span>
+        </span>
+      </button>
+      {abiertos[id] && <div style={{ animation:"popIn .18s ease-out", marginTop:8, marginBottom:4 }}>{children}</div>}
+    </div>
+  );
   return (
 
             <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:60,
@@ -6087,17 +6156,31 @@ function GBHApp(){
   const trialDowngradeRef = useRef(false);
   useEffect(()=>{
     if(!profile?.id) return;
-    if(profile.plan!=="standard" || !profile.trial_ends_at) return;
+    // Si hay plan_until, es cliente de pago: el trial huérfano NO puede degradarla
+    if(profile.plan!=="standard" || !profile.trial_ends_at || profile.plan_until) return;
     const fin = Date.parse(profile.trial_ends_at);
     if(isNaN(fin) || fin > Date.now()) return;
     if(trialDowngradeRef.current) return;
     trialDowngradeRef.current = true;
-    const u = {...profile, plan:"free"};
-    setProfile(u); lsSet(`gbh:p:${u.id}`, u);
-    sbReq("PATCH", `profiles?id=eq.${profile.id}`, { plan:"free" });
-    showT&&showT({icon:"🌱",
-      title: lang==="en" ? "Your free week has ended" : "Tu semana de prueba ha terminado",
-      sub:   lang==="en" ? "Subscribe to keep your weekly plan 💚" : "Suscríbete (7€/mes) para seguir con tu programación 💚"});
+    // Verificación contra el servidor: NUNCA degradar por datos cacheados obsoletos
+    (async()=>{ try{
+      const rows = await sbReq("GET",`profiles?id=eq.${profile.id}&select=plan,trial_ends_at,plan_until&limit=1`);
+      const srv = rows && rows[0];
+      if(!srv) return;
+      if(srv.plan!=="standard" || !srv.trial_ends_at || srv.plan_until){
+        // El servidor manda (p.ej. ya es de pago): sincronizar campos frescos y no tocar nada
+        setProfile(p=>{ if(!p) return p; const u={...p, plan:srv.plan, trial_ends_at:srv.trial_ends_at||null, plan_until:srv.plan_until||null}; try{lsSet(`gbh:p:${u.id}`,u);}catch{} return u; });
+        return;
+      }
+      const finSrv = Date.parse(srv.trial_ends_at);
+      if(isNaN(finSrv) || finSrv > Date.now()) return;
+      const u = {...profile, plan:"free"};
+      setProfile(u); lsSet(`gbh:p:${u.id}`, u);
+      sbReq("PATCH", `profiles?id=eq.${profile.id}`, { plan:"free" });
+      showT&&showT({icon:"🌱",
+        title: lang==="en" ? "Your free week has ended" : "Tu semana de prueba ha terminado",
+        sub:   lang==="en" ? "Subscribe to keep your weekly plan 💚" : "Suscríbete (7€/mes) para seguir con tu programación 💚"});
+    }catch{} })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[profile?.id, profile?.plan, profile?.trial_ends_at]);
 
@@ -6152,12 +6235,27 @@ function GBHApp(){
     if(isNaN(fin) || fin + 5*24*60*60*1000 > Date.now()) return;
     if(planUntilDowngradeRef.current) return;
     planUntilDowngradeRef.current = true;
-    const u = {...profile, plan:"free"};
-    setProfile(u); lsSet(`gbh:p:${u.id}`, u);
-    sbReq("PATCH", `profiles?id=eq.${profile.id}`, { plan:"free" });
-    showT&&showT({icon:"💳",
-      title: lang==="en" ? "Your subscription has expired" : "Tu suscripción ha caducado",
-      sub:   lang==="en" ? "Renew (€7/mo) to keep your weekly plan 💚" : "Renueva (7€/mes) para seguir con tu programación 💚"});
+    // Verificación contra el servidor: el webhook puede haber renovado plan_until aunque
+    // este dispositivo tenga cacheada una fecha vieja (era la causa del bucle de degradación)
+    (async()=>{ try{
+      const rows = await sbReq("GET",`profiles?id=eq.${profile.id}&select=plan,trial_ends_at,plan_until&limit=1`);
+      const srv = rows && rows[0];
+      if(!srv) return;
+      const finSrv = srv.plan_until ? Date.parse(srv.plan_until) : NaN;
+      const srvVencido = srv.plan==="standard" && !srv.trial_ends_at && srv.plan_until
+        && !isNaN(finSrv) && (finSrv + 5*24*60*60*1000) <= Date.now();
+      if(!srvVencido){
+        // El servidor está al día: sincronizar los campos frescos y no tocar nada
+        setProfile(p=>{ if(!p) return p; const u={...p, plan:srv.plan, trial_ends_at:srv.trial_ends_at||null, plan_until:srv.plan_until||null}; try{lsSet(`gbh:p:${u.id}`,u);}catch{} return u; });
+        return;
+      }
+      const u = {...profile, plan:"free", plan_until:srv.plan_until};
+      setProfile(u); lsSet(`gbh:p:${u.id}`, u);
+      sbReq("PATCH", `profiles?id=eq.${profile.id}`, { plan:"free" });
+      showT&&showT({icon:"💳",
+        title: lang==="en" ? "Your subscription has expired" : "Tu suscripción ha caducado",
+        sub:   lang==="en" ? "Renew (€7/mo) to keep your weekly plan 💚" : "Renueva (7€/mes) para seguir con tu programación 💚"});
+    }catch{} })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[profile?.id, profile?.plan, profile?.plan_until]);
 
@@ -6748,9 +6846,9 @@ function GBHApp(){
   const pagarYJugar=()=>{
     if(partidasRestantes<=0) return;
     const g=profile?.gems||0;
-    if(g<1) return;                                        // sin gemas no hay partida
+    if(g<1) return;
     setProfile(p=>p?{...p,gems:(p.gems||0)-1}:p);
-    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:g-1});  // fire & forget (patrón ruleta)
+    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:g-1});
     setPartidasRestantes(r=>Math.max(0,r-1));
     arrancarJuegoRef.current&&arrancarJuegoRef.current();
   };
@@ -7080,7 +7178,7 @@ function GBHApp(){
         const localP = lsGet(`gbh:p:${profileId}`, null);
         if(localP?.id && localP?.email){
           console.warn("[reconciliación] perfil ausente en Supabase — re-creando:", localP.email);
-          const {plan:_pl, trial_ends_at:_tr, ...sinTrial} = localP;
+          const {plan:_pl, trial_ends_at:_tr, plan_until:_pu, ...sinTrial} = localP;
           const nucleo = {id:localP.id, name:localP.name, email:localP.email,
                           auth_id:localP.auth_id||null, xp:localP.xp||0,
                           gems:localP.gems||0, shields:localP.shields||0};
@@ -7182,7 +7280,7 @@ function GBHApp(){
     // ── Refrescar SIEMPRE desde Supabase los campos que controla el nutricionista
     if(navigator.onLine){
       try{
-        const fresh=await sbReq("GET",`profiles?id=eq.${p.id}&select=plan,gems,xp,shields,name,target_kcal,avatar_b64,bo_nombre,bo_color,bo_equipados&limit=1`);
+        const fresh=await sbReq("GET",`profiles?id=eq.${p.id}&select=plan,gems,xp,shields,name,target_kcal,avatar_b64,bo_nombre,bo_color,bo_equipados,trial_ends_at,plan_until&limit=1`);
         if(fresh&&fresh.length){
           const f=fresh[0];
           const merged={
@@ -7811,7 +7909,7 @@ function GBHApp(){
         const weightAbs=weightDiff!==null?Math.abs(weightDiff):0;
         return {...p, streak, weightDiff, weightAbs};
       });
-      // 🎮 Puntos de juego de la semana en curso (vista v_ranking_juego_semanal)
+      // 🎮 Puntos de juego de la semana en curso
       const jr = await rankFetch("v_ranking_juego_semanal?select=profile_id,puntos_semana")||[];
       const jMap = {}; (Array.isArray(jr)?jr:[]).forEach(r=>{ jMap[r.profile_id]=r.puntos_semana||0; });
       enriched.forEach(p=>{ p.juegoPts = jMap[p.id]||0; });
@@ -9294,19 +9392,26 @@ function GBHApp(){
         @media (prefers-reduced-motion: reduce){ svg,.float-fx{animation:none!important} }
       `}</style>
             <div style={{position:"relative"}}>
+              {/* 🎮 bajo el botón de la diana (misma columna izquierda) */}
               <button onClick={()=>{ cargarPartidasHoy(); setZonaJuego(true); }} title="Zona de juego"
-                style={{position:"absolute",left:0,top:"24%",zIndex:2,width:44,height:44,borderRadius:16,background:"rgba(255,255,255,0.07)",border:"1.5px solid rgba(255,255,255,0.12)",boxShadow:"0 3px 0 rgba(0,0,0,0.4)",cursor:"pointer",fontFamily:"inherit",padding:0,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s"}}>
+                style={{position:"absolute",left:0,top:0,zIndex:2,width:44,height:44,borderRadius:16,
+                  background:"rgba(255,255,255,0.07)",border:"1.5px solid rgba(255,255,255,0.12)",
+                  boxShadow:"0 3px 0 rgba(0,0,0,0.4)",cursor:"pointer",fontFamily:"inherit",padding:0,
+                  display:"flex",alignItems:"center",justifyContent:"center"}}>
                 <span style={{fontSize:20,lineHeight:1}}>🎮</span>
-              </button>
-              <button onClick={()=>setPanelBo(true)} title="Personalizar a tu oveja"
-                style={{position:"absolute",right:0,top:"24%",zIndex:2,width:44,height:44,borderRadius:16,background:"rgba(255,255,255,0.07)",border:"1.5px solid rgba(255,255,255,0.12)",boxShadow:"0 3px 0 rgba(0,0,0,0.4)",cursor:"pointer",fontFamily:"inherit",padding:0,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s"}}>
-                <span style={{fontSize:20,lineHeight:1}}>🎨</span>
               </button>
               <div onClick={tapSheep} style={{cursor:"pointer",display:"flex",justifyContent:"center"}}>
                 <Sheep estado={boEstado} equipados={boEquipados} color={boColor} size={200}/>
               </div>
-              <div style={{textAlign:"center",marginTop:2}}>
-                <span style={{fontSize:12,fontWeight:900,color:T.t2}}>🐑 {boNombre}</span>
+              {/* Nombre de Bo + 🎨 pequeñito al lado */}
+              <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:7,marginTop:2}}>
+                <span style={{fontSize:12.5,fontWeight:900,color:T.t2}}>🐑 {boNombre}</span>
+                <button onClick={()=>setPanelBo(true)} title="Personalizar a tu oveja"
+                  style={{width:26,height:26,borderRadius:9,background:"rgba(255,255,255,0.07)",
+                    border:"1.5px solid rgba(255,255,255,0.12)",boxShadow:"0 2px 0 rgba(0,0,0,0.4)",
+                    cursor:"pointer",padding:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <span style={{fontSize:13,lineHeight:1}}>🎨</span>
+                </button>
               </div>
             </div>
           </div>
