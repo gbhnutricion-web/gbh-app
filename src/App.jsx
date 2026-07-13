@@ -1142,7 +1142,39 @@ const COLORES = [
   { id:"esqueleto", nombre:"Esqueleto", W:"#3E3E3E", w:"#2A2A2A", nivel:230, patron:"esqueleto", emoji:"💀", caraPropia:true },
   { id:"arcoiris", nombre:"Arcoíris", W:"#FDF6E3", w:"#E3D5B3", nivel:310, patron:"arcoiris", emoji:"🌈" },
   { id:"dorada",  nombre:"Dorada",    W:"#FFD84D", w:"#E0B000", nivel:400 },
+  // ── 🏆 Selecciones Mundial 2026 (skins de bandera, disponibles desde Nv 1) ──
+  // Se pintan como bandas horizontales sobre la lana (mismo mecanismo que Arcoíris).
+  { id:"sel_arg", nombre:"Argentina",      emoji:"🇦🇷", nivel:1, mundial:true, W:"#75AADB", w:"#5E92C4", bandas:["#75AADB","#FFFFFF","#75AADB"] },
+  { id:"sel_bra", nombre:"Brasil",         emoji:"🇧🇷", nivel:1, mundial:true, W:"#009C3B", w:"#00812F", bandas:["#009C3B","#FFDF00","#002776"] },
+  { id:"sel_fra", nombre:"Francia",        emoji:"🇫🇷", nivel:1, mundial:true, W:"#0055A4", w:"#004488", bandas:["#0055A4","#FFFFFF","#EF4135"] },
+  { id:"sel_esp", nombre:"España",         emoji:"🇪🇸", nivel:1, mundial:true, W:"#AA151B", w:"#8E1116", bandas:["#AA151B","#F1BF00","#AA151B"] },
+  { id:"sel_ing", nombre:"Inglaterra",     emoji:"🏴", nivel:1, mundial:true, W:"#FFFFFF", w:"#E6E6E6", bandas:["#FFFFFF","#CF142B","#FFFFFF"] },
+  { id:"sel_ale", nombre:"Alemania",       emoji:"🇩🇪", nivel:1, mundial:true, W:"#222222", w:"#111111", bandas:["#1A1A1A","#DD0000","#FFCE00"] },
+  { id:"sel_por", nombre:"Portugal",       emoji:"🇵🇹", nivel:1, mundial:true, W:"#046A38", w:"#03502B", bandas:["#046A38","#DA291C","#FFD34D"] },
+  { id:"sel_ned", nombre:"Países Bajos",   emoji:"🇳🇱", nivel:1, mundial:true, W:"#AE1C28", w:"#921520", bandas:["#AE1C28","#FFFFFF","#21468B"] },
+  { id:"sel_bel", nombre:"Bélgica",        emoji:"🇧🇪", nivel:1, mundial:true, W:"#F31830", w:"#CE1428", bandas:["#1A1A1A","#FFD90C","#F31830"] },
+  { id:"sel_cro", nombre:"Croacia",        emoji:"🇭🇷", nivel:1, mundial:true, W:"#FF0000", w:"#CC0000", bandas:["#FF0000","#FFFFFF","#171796"] },
+  { id:"sel_nor", nombre:"Noruega",        emoji:"🇳🇴", nivel:1, mundial:true, W:"#BA0C2F", w:"#9A0A27", bandas:["#BA0C2F","#FFFFFF","#00205B"] },
+  { id:"sel_uru", nombre:"Uruguay",        emoji:"🇺🇾", nivel:1, mundial:true, W:"#0038A8", w:"#002E8A", bandas:["#0038A8","#FFFFFF","#FCD116"] },
+  { id:"sel_col", nombre:"Colombia",       emoji:"🇨🇴", nivel:1, mundial:true, W:"#FCD116", w:"#E0B900", bandas:["#FCD116","#003893","#CE1126"] },
+  { id:"sel_mex", nombre:"México",         emoji:"🇲🇽", nivel:1, mundial:true, W:"#006847", w:"#00543A", bandas:["#006847","#FFFFFF","#CE1126"] },
+  { id:"sel_usa", nombre:"EE. UU.",        emoji:"🇺🇸", nivel:1, mundial:true, W:"#3C3B6E", w:"#2E2D57", bandas:["#3C3B6E","#FFFFFF","#B22234"] },
+  { id:"sel_can", nombre:"Canadá",         emoji:"🇨🇦", nivel:1, mundial:true, W:"#D80621", w:"#B4051B", bandas:["#D80621","#FFFFFF","#D80621"] },
+  { id:"sel_mar", nombre:"Marruecos",      emoji:"🇲🇦", nivel:1, mundial:true, W:"#C1272D", w:"#9F2025", bandas:["#C1272D","#006233","#C1272D"] },
+  { id:"sel_jpn", nombre:"Japón",          emoji:"🇯🇵", nivel:1, mundial:true, W:"#FFFFFF", w:"#E6E6E6", bandas:["#FFFFFF","#BC002D","#FFFFFF"] },
 ];
+
+// Fondo de la muestra del selector: bandera (bandas nítidas), arcoíris o color plano
+const swatchBg = (c) => {
+  if (c.bandas) {
+    const n = c.bandas.length;
+    return `linear-gradient(180deg,${c.bandas
+      .map((col, i) => `${col} ${Math.round((i * 100) / n)}%,${col} ${Math.round(((i + 1) * 100) / n)}%`)
+      .join(",")})`;
+  }
+  if (c.patron === "arcoiris") return "linear-gradient(180deg,#FF5555,#FFD84D,#7ED957,#4FA8F5,#B57EDC)";
+  return c.W;
+};
 
 // Overlays y transformaciones de los patrones especiales
 const ARCOIRIS_FILAS = ["#FF5555","#FF9944","#FFD84D","#7ED957","#4FA8F5","#B57EDC"];
@@ -1229,7 +1261,7 @@ const ACCESORIOS = [
     [3,2,"r"],[4,2,"R"],[5,2,"r"],[6,2,"R"],[7,2,"R"],[8,2,"R"],[9,2,"r"],[10,2,"R"],[11,2,"r"],[12,2,"R"] ]},
   { id:"corbata", zona:"cuello", nombre:"Corbata", emoji:"👔", nivel:20, px:[
     [7,11,"R"],[8,11,"R"],[7,12,"r"],[8,12,"r"] ]},
-  { id:"gafas", zona:"cara", nombre:"Gafas de sol", emoji:"🕶️", nivel:35, px:[
+  { id:"gafas", zona:"cara", nombre:"Gafas de sol", emoji:"🕶️", nivel:14, px:[
     [3,7,"K"],[4,7,"K"],[5,7,"k"],[6,7,"k"],[7,7,"K"],[8,7,"K"],[9,7,"k"],[10,7,"k"],[11,7,"K"],[12,7,"K"],
     [5,8,"K"],[6,8,"K"],[9,8,"K"],[10,8,"K"] ]},
   // ── Set Chef 👨‍🍳 ──
@@ -1252,7 +1284,7 @@ const ACCESORIOS = [
     [2,2,"C"],[3,2,"C"],[4,2,"C"],[5,2,"C"],[6,2,"c"],[7,2,"c"],[8,2,"c"],[9,2,"c"],[10,2,"C"],[11,2,"C"],[12,2,"C"],[13,2,"C"] ]},
   { id:"bandana", zona:"cuello", set:"vaquero", nombre:"Bandana", emoji:"🪢", nivel:78, px:[
     [5,11,"C"],[6,11,"C"],[7,11,"C"],[8,11,"C"],[9,11,"C"],[10,11,"C"],[7,12,"c"],[8,12,"c"] ]},
-  { id:"cuernos", zona:"cuernos", nombre:"Cuernos de demonio", emoji:"😈", nivel:85, px:[
+  { id:"cuernos", zona:"cuernos", nombre:"Cuernos de demonio", emoji:"😈", nivel:20, px:[
     [2,0,"R"],[3,0,"r"],[3,1,"R"],[13,0,"R"],[12,0,"r"],[12,1,"R"] ]},
   { id:"cinta", zona:"cabeza", nombre:"Cinta deportiva", emoji:"🏃", nivel:95, px:[
     [3,4,"R"],[4,4,"R"],[5,4,"r"],[6,4,"R"],[7,4,"E"],[8,4,"E"],[9,4,"R"],[10,4,"r"],[11,4,"R"],[12,4,"R"] ]},
@@ -1286,7 +1318,7 @@ const ACCESORIOS = [
     [5,0,"G"],[6,0,"G"],[7,0,"G"],[8,0,"G"],[9,0,"G"],[10,0,"G"] ]},
   { id:"fonendo", zona:"cuello", set:"enfermeria", nombre:"Fonendoscopio", emoji:"🩺", nivel:160, px:[
     [5,11,"k"],[6,11,"k"],[7,11,"k"],[8,11,"k"],[9,11,"k"],[10,11,"k"],[8,12,"E"],[8,13,"G"] ]},
-  { id:"capa", zona:"espalda", nombre:"Capa de héroe", emoji:"🦸", nivel:180, px:[
+  { id:"capa", zona:"espalda", nombre:"Capa de héroe", emoji:"🦸", nivel:24, px:[
     [1,9,"R"],[1,10,"R"],[1,11,"r"],[1,12,"R"],[2,10,"r"],[2,11,"R"],[2,12,"r"],[2,13,"R"],[1,13,"r"] ]},
   // ── Set Pirata 🏴‍☠️ ──
   { id:"parche", zona:"cara", set:"pirata", nombre:"Parche pirata", emoji:"🏴‍☠️", nivel:190, px:[
@@ -1327,10 +1359,10 @@ const ACCESORIOS = [
     [5,0,"G"],[7,0,"G"],[8,0,"G"],[10,0,"G"],
     [5,1,"G"],[6,1,"G"],[7,1,"G"],[8,1,"G"],[9,1,"G"],[10,1,"G"] ]},
   // ── Sets de animales ──
-  { id:"orejasburro", zona:"orejas", set:"burro", nombre:"Orejas de burro", emoji:"🫏", nivel:25, px:[
+  { id:"orejasburro", zona:"orejas", set:"burro", nombre:"Orejas de burro", emoji:"🫏", nivel:16, px:[
     [1,0,"D"],[2,0,"D"],[1,1,"D"],[2,1,"P"],[1,2,"D"],[2,2,"D"],[2,3,"d"],
     [13,0,"D"],[14,0,"D"],[14,1,"D"],[13,1,"P"],[13,2,"D"],[14,2,"D"],[13,3,"d"] ]},
-  { id:"colaburro", zona:"cola", set:"burro", nombre:"Cola de burro", emoji:"🪢", nivel:60, px:[
+  { id:"colaburro", zona:"cola", set:"burro", nombre:"Cola de burro", emoji:"🪢", nivel:18, px:[
     [0,10,"D"],[0,11,"D"],[0,12,"D"],[0,13,"k"],[1,13,"k"] ]},
   { id:"orejasconejo", zona:"orejas", set:"conejo", nombre:"Orejas de conejo", emoji:"🐰", nivel:90, px:[
     [1,0,"E"],[2,0,"E"],[1,1,"E"],[2,1,"P"],[1,2,"E"],[2,2,"E"],
@@ -1565,9 +1597,14 @@ function Sheep({ estado, equipados, color, size = 200, mini = false }) {
   BASE.forEach((row, y) => {
     [...row].forEach((c, x) => {
       if (c === ".") return;
-      // Arcoíris: la lana se pinta por bandas horizontales
+      // Arcoíris: la lana se pinta por bandas horizontales repetidas
       if (col.patron === "arcoiris" && (c === "W" || c === "w")) {
         pixels.push([x, y, null, ARCOIRIS_FILAS[y % ARCOIRIS_FILAS.length]]);
+      } else if (col.bandas && (c === "W" || c === "w")) {
+        // Bandera: bandas horizontales contiguas (franja según la fila)
+        const n = col.bandas.length;
+        const band = Math.min(n - 1, Math.floor((y / 16) * n));
+        pixels.push([x, y, null, col.bandas[band]]);
       } else {
         pixels.push([x, y, c]);
       }
@@ -1613,6 +1650,10 @@ function buildPixels(colorId, equipados) {
     if (c === ".") return;
     if (col.patron === "arcoiris" && (c === "W" || c === "w")) {
       px.push([x, y, ARCOIRIS_FILAS[y % ARCOIRIS_FILAS.length]]);
+    } else if (col.bandas && (c === "W" || c === "w")) {
+      const n = col.bandas.length;
+      const band = Math.min(n - 1, Math.floor((y / 16) * n));
+      px.push([x, y, col.bandas[band]]);
     } else {
       px.push([x, y, pal[c]]);
     }
@@ -2804,6 +2845,28 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
 }
 
 
+// ─── Desplegable reutilizable del modal de personalización ───────────────────
+// Definido a nivel de módulo (NO dentro del componente) para que React no lo
+// desmonte/remonte en cada render: antes eso causaba parpadeo y podía "comerse"
+// un toque rápido en móviles lentos. El estado abierto/cerrado vive en el padre.
+function Desple({ titulo, resumen, open, onToggle, children }) {
+  return (
+    <div style={{ marginTop:8 }}>
+      <button onClick={onToggle}
+        style={{ width:"100%", background: open ? "rgba(88,204,2,0.10)" : "rgba(255,255,255,0.04)",
+          border:`2px solid ${open ? T.bG : "rgba(255,255,255,0.10)"}`, borderRadius:13,
+          color:T.cr, fontWeight:900, fontSize:12.5, padding:"10px 12px", cursor:"pointer",
+          fontFamily:"inherit", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+        <span>{titulo}</span>
+        <span style={{ fontSize:10.5, color:T.t3, fontWeight:800, display:"flex", gap:7, alignItems:"center" }}>
+          <span>{resumen}</span><span>{open ? "▲" : "▼"}</span>
+        </span>
+      </button>
+      {open && <div style={{ animation:"popIn .18s ease-out", marginTop:8, marginBottom:4 }}>{children}</div>}
+    </div>
+  );
+}
+
 // ─── 🎨 Personalización de Bo (modal a pantalla completa) ────────────────────
 function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setEquipados, nivel, personalidad, setPersonalidad, onCerrar }) {
   const [borrador, setBorrador] = useState(nombre);
@@ -2833,21 +2896,7 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
     fontFamily:"inherit", transition:"all .15s",
   });
 
-  const Desple = ({ id, titulo, resumen, children }) => (
-    <div style={{ marginTop:8 }}>
-      <button onClick={() => setAbiertos(a => ({ ...a, [id]: !a[id] }))}
-        style={{ width:"100%", background: abiertos[id] ? "rgba(88,204,2,0.10)" : "rgba(255,255,255,0.04)",
-          border:`2px solid ${abiertos[id] ? T.bG : "rgba(255,255,255,0.10)"}`, borderRadius:13,
-          color:T.cr, fontWeight:900, fontSize:12.5, padding:"10px 12px", cursor:"pointer",
-          fontFamily:"inherit", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-        <span>{titulo}</span>
-        <span style={{ fontSize:10.5, color:T.t3, fontWeight:800, display:"flex", gap:7, alignItems:"center" }}>
-          <span>{resumen}</span><span>{abiertos[id] ? "▲" : "▼"}</span>
-        </span>
-      </button>
-      {abiertos[id] && <div style={{ animation:"popIn .18s ease-out", marginTop:8, marginBottom:4 }}>{children}</div>}
-    </div>
-  );
+  const toggle = (id) => setAbiertos(a => ({ ...a, [id]: !a[id] }));
 
   const equiparConjunto = (c) => {
     const piezas = c.piezas
@@ -2881,11 +2930,11 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
   };
   return (
 
-            <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:60,
+            <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:9000,
               display:"flex", justifyContent:"center", alignItems:"flex-start",
               overflowY:"auto", padding:"0" }}>
               <div style={{ background:T.bg, width:"100%", maxWidth:420, minHeight:"100%",
-                animation:"popIn .2s ease-out", paddingBottom:32 }}>
+                animation:"popIn .2s ease-out", paddingBottom:0, display:"flex", flexDirection:"column" }}>
                 {/* Cabecera fija del modal */}
                 <div style={{ position:"sticky", top:0, zIndex:2, background:T.bg,
                   display:"flex", justifyContent:"space-between", alignItems:"center",
@@ -2902,7 +2951,7 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
                   <Sheep estado="feliz" equipados={equipados} color={color} size={150} />
                 </div>
 
-                <div style={{ padding:"0 18px" }}>
+                <div style={{ padding:"0 18px", flex:1 }}>
               {/* Nombre (siempre visible) */}
               <div style={seccion}>Nombre</div>
               <div style={{ display:"flex", gap:8, marginBottom:12 }}>
@@ -2917,7 +2966,7 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
               </div>
 
               {/* Carácter (desplegable) */}
-              <Desple id="caracter" titulo="🎭 Carácter"
+              <Desple titulo="🎭 Carácter" open={!!abiertos.caracter} onToggle={() => toggle("caracter")}
                 resumen={(PERSONALIDADES.find(p => p.id === personalidad) || {}).nombre}>
                 <div style={{ display:"flex", flexWrap:"wrap", gap:7 }}>
                   {PERSONALIDADES.map(p => {
@@ -2944,10 +2993,10 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
               </Desple>
 
               {/* Color y skins (desplegable) */}
-              <Desple id="color" titulo="🎨 Color y skins"
+              <Desple titulo="🎨 Color y skins" open={!!abiertos.color} onToggle={() => toggle("color")}
                 resumen={(COLORES.find(c => c.id === color) || {}).nombre}>
-                <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
-                  {COLORES.map(c => {
+                {(() => {
+                  const swatch = (c) => {
                     const locked = nivel < c.nivel;
                     const on = color === c.id;
                     return (
@@ -2957,18 +3006,32 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
                           background:"rgba(255,255,255,0.04)", padding:"6px 0 4px", cursor: locked ? "not-allowed" : "pointer",
                           opacity: locked ? 0.4 : 1, fontFamily:"inherit" }}>
                         <div style={{ width:24, height:24, borderRadius:8, margin:"0 auto",
-                          background: c.patron === "arcoiris"
-                            ? "linear-gradient(180deg,#FF5555,#FFD84D,#7ED957,#4FA8F5,#B57EDC)"
-                            : c.W,
-                          border:`2px solid ${c.w}`, display:"flex", alignItems:"center",
-                          justifyContent:"center", fontSize:13 }}>{c.emoji || ""}</div>
-                        <div style={{ fontSize:9.5, fontWeight:800, color: locked ? T.red : on ? T.au1 : T.t2, marginTop:3 }}>
-                          {locked ? `🔒 ${c.nivel}` : c.nombre.split(" ")[0]}
+                          background: swatchBg(c),
+                          border:`2px solid ${c.bandas ? "rgba(0,0,0,0.25)" : c.w}`, display:"flex", alignItems:"center",
+                          justifyContent:"center", fontSize:13 }}>{!c.bandas ? (c.emoji || "") : ""}</div>
+                        <div style={{ fontSize:9.5, fontWeight:800, color: locked ? T.red : on ? T.au1 : T.t2, marginTop:3,
+                          maxWidth:50, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                          {locked ? `🔒 ${c.nivel}` : (c.mundial ? `${c.emoji} ${c.nombre}` : c.nombre.split(" ")[0])}
                         </div>
                       </button>
                     );
-                  })}
-                </div>
+                  };
+                  return (<>
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                      {COLORES.filter(c => !c.mundial).map(swatch)}
+                    </div>
+                    <div style={{ fontSize:11, fontWeight:900, color:T.au1, letterSpacing:0.5,
+                      margin:"14px 0 8px", display:"flex", alignItems:"center", gap:6 }}>
+                      🏆 Selecciones · Mundial 2026
+                    </div>
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                      {COLORES.filter(c => c.mundial).map(swatch)}
+                    </div>
+                    <div style={{ fontSize:11, color:T.t3, marginTop:8, fontStyle:"italic" }}>
+                      Viste a {nombre} con los colores de tu selección durante el Mundial. ⚽
+                    </div>
+                  </>);
+                })()}
               </Desple>
 
               {/* Accesorios: una zona = un desplegable */}
@@ -2976,9 +3039,26 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
                 const items = ACCESORIOS.filter(a => a.zona === z.id);
                 if (!items.length) return null;
                 const equipado = items.find(a => equipados.includes(a.id));
+                const desbloq = items.filter(a => nivel >= a.nivel).length;
+                const minNivel = Math.min(...items.map(a => a.nivel));
+                // Resumen de cabecera: si hay algo puesto, se muestra; si no, progreso
+                // de desbloqueo (para que NO parezca desactivado/roto cuando aún no toca).
+                const resumen = equipado
+                  ? `${equipado.emoji} ${equipado.nombre}`
+                  : desbloq > 0
+                    ? `${desbloq}/${items.length} · libre`
+                    : `🔒 desde Nv ${minNivel}`;
                 return (
-                  <Desple key={z.id} id={"z-" + z.id} titulo={`${z.emoji} ${z.nombre}`}
-                    resumen={equipado ? `${equipado.emoji} ${equipado.nombre}` : "— libre —"}>
+                  <Desple key={z.id} titulo={`${z.emoji} ${z.nombre}`}
+                    open={!!abiertos["z-" + z.id]} onToggle={() => toggle("z-" + z.id)}
+                    resumen={resumen}>
+                    {desbloq === 0 && (
+                      <div style={{ fontSize:11.5, color:T.t3, background:"rgba(255,255,255,0.04)",
+                        border:"1px dashed rgba(255,255,255,0.14)", borderRadius:10, padding:"8px 10px",
+                        marginBottom:8 }}>
+                        Aún no hay nada desbloqueado aquí. La primera pieza llega al <b style={{color:T.au1}}>Nv {minNivel}</b> — sigue registrando para subir de nivel. 💪
+                      </div>
+                    )}
                     <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
                       {items.map(a => {
                         const locked = nivel < a.nivel;
@@ -3037,20 +3117,27 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
 
               {/* Reseteo a la oveja original */}
               <button onClick={resetear}
-                style={{ width:"100%", marginTop:10, background:"rgba(255,75,75,0.08)",
+                style={{ width:"100%", marginTop:10, marginBottom:8, background:"rgba(255,75,75,0.08)",
                   border:"2px solid rgba(255,75,75,0.3)", borderRadius:13, color:"#FF8A8A",
                   fontWeight:900, fontSize:12.5, padding:"10px 0", cursor:"pointer",
                   fontFamily:"inherit" }}>
                 ↺ Restablecer oveja original
               </button>
+                </div>
 
-              {/* Botón Listo: guarda y vuelve al inicio */}
-              <button onClick={() => onCerrar()}
-                style={{ width:"100%", marginTop:12, background:`linear-gradient(180deg,#89E219,#58CC02)`,
-                  border:"none", borderRadius:16, color:"#0A1A0F", fontWeight:900, fontSize:16,
-                  padding:"14px 0", cursor:"pointer", fontFamily:"inherit", boxShadow:"0 4px 0 #2B7A00" }}>
-                ✓ Aplicar cambios
-              </button>
+                {/* Footer fijo: el botón de aplicar queda SIEMPRE visible y por encima
+                    del área segura de iOS (home indicator / barra inferior de Safari),
+                    para que en iPhone no se corte y se pueda pulsar siempre. */}
+                <div style={{ position:"sticky", bottom:0, zIndex:3, background:T.bg,
+                  padding:"12px 18px calc(12px + env(safe-area-inset-bottom, 0px))",
+                  borderTop:"1px solid rgba(255,255,255,0.08)",
+                  boxShadow:"0 -10px 22px -10px rgba(0,0,0,0.55)" }}>
+                  <button onClick={() => onCerrar()}
+                    style={{ width:"100%", background:`linear-gradient(180deg,#89E219,#58CC02)`,
+                      border:"none", borderRadius:16, color:"#0A1A0F", fontWeight:900, fontSize:16,
+                      padding:"14px 0", cursor:"pointer", fontFamily:"inherit", boxShadow:"0 4px 0 #2B7A00" }}>
+                    ✓ Aplicar cambios
+                  </button>
                 </div>
               </div>
             </div>
