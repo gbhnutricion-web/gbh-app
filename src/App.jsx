@@ -1100,15 +1100,7 @@ const sbReq = async(method, path, body=null) => {
       method, headers, body: body ? JSON.stringify(body) : null,
     });
     if(!r.ok) throw new Error(`${r.status}`);
-    if(method==="DELETE") return true;
-    // PATCH/POST sin `Prefer: return=representation` responden 204/205 o cuerpo
-    // vacío. Antes `r.json()` petaba con cuerpo vacío y el catch lo trataba como
-    // FALLO: encolaba una escritura que en realidad SÍ había persistido. Ahora un
-    // 204/205 o cuerpo vacío se considera éxito.
-    if(r.status===204 || r.status===205) return true;
-    const _txt = await r.text();
-    if(!_txt) return true;
-    try{ return JSON.parse(_txt); }catch{ return true; }
+    return method==="DELETE" ? true : r.json();
   } catch(e) {
     // Sin red o error — encolar si es escritura
     if(method !== "GET" && body){
@@ -2817,17 +2809,21 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
   const [borrador, setBorrador] = useState(nombre);
   const [verConjuntos, setVerConjuntos] = useState(false);
   const [abiertos, setAbiertos] = useState({});
+  const nuevoMensaje = () => {};
+
   const seccion = { fontSize:11.5, fontWeight:900, color:T.t3, letterSpacing:1, textTransform:"uppercase", margin:"14px 0 8px" };
 
   const cambiarPersonalidad = (p) => {
     if (nivel < p.nivel) return;
     setPersonalidad(p.id);
+    setMensaje(nuevoMensaje(estado, p.id));
   };
 
   const resetear = () => {
     setEquipados([]);
     setColor("blanca");
     setPersonalidad("normal");
+    setMensaje(nuevoMensaje(estado, "normal"));
   };
 
   const btn = (active) => ({
@@ -2885,12 +2881,13 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
   };
   return (
 
-            <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:9000,
-              display:"flex", justifyContent:"center", alignItems:"stretch", padding:"0" }}>
-              <div style={{ background:T.bg, width:"100%", maxWidth:420, height:"100%",
-                display:"flex", flexDirection:"column", animation:"popIn .2s ease-out" }}>
-                {/* Cabecera (fija arriba) */}
-                <div style={{ flexShrink:0, background:T.bg,
+            <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:60,
+              display:"flex", justifyContent:"center", alignItems:"flex-start",
+              overflowY:"auto", padding:"0" }}>
+              <div style={{ background:T.bg, width:"100%", maxWidth:420, minHeight:"100%",
+                animation:"popIn .2s ease-out", paddingBottom:32 }}>
+                {/* Cabecera fija del modal */}
+                <div style={{ position:"sticky", top:0, zIndex:2, background:T.bg,
                   display:"flex", justifyContent:"space-between", alignItems:"center",
                   padding:"16px 18px", borderBottom:`1px solid rgba(255,255,255,0.08)` }}>
                   <div style={{ fontWeight:900, fontSize:17, color:T.g2 }}>🎨 Personalizar a {nombre}</div>
@@ -2900,16 +2897,12 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
                       borderRadius:12, width:38, height:38 }}>✕</button>
                 </div>
 
-                {/* ZONA CON SCROLL: vista previa + todos los controles.
-                    flex:1 + minHeight:0 + overflowY:auto garantizan scroll fiable en
-                    móvil, de modo que el footer (guardar) quede SIEMPRE alcanzable. */}
-                <div style={{ flex:1, minHeight:0, overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
                 {/* Vista previa de la oveja en el modal */}
                 <div style={{ display:"flex", justifyContent:"center", padding:"14px 0 4px" }}>
                   <Sheep estado="feliz" equipados={equipados} color={color} size={150} />
                 </div>
 
-                <div style={{ padding:"0 18px 16px" }}>
+                <div style={{ padding:"0 18px" }}>
               {/* Nombre (siempre visible) */}
               <div style={seccion}>Nombre</div>
               <div style={{ display:"flex", gap:8, marginBottom:12 }}>
@@ -3050,20 +3043,14 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
                   fontFamily:"inherit" }}>
                 ↺ Restablecer oveja original
               </button>
-                </div>
-                </div>
 
-                {/* Footer FIJO: el botón de guardar siempre visible, sin depender
-                    del scroll. onCerrar() ya persiste los cambios (guardarBo).
-                    El padding inferior respeta la barra del móvil (safe-area). */}
-                <div style={{ flexShrink:0, borderTop:"1px solid rgba(255,255,255,0.08)",
-                  background:T.bg, padding:"10px 18px calc(12px + env(safe-area-inset-bottom))" }}>
-                  <button onClick={() => onCerrar()}
-                    style={{ width:"100%", background:`linear-gradient(180deg,#89E219,#58CC02)`,
-                      border:"none", borderRadius:16, color:"#0A1A0F", fontWeight:900, fontSize:16,
-                      padding:"14px 0", cursor:"pointer", fontFamily:"inherit", boxShadow:"0 4px 0 #2B7A00" }}>
-                    ✓ Aplicar cambios
-                  </button>
+              {/* Botón Listo: guarda y vuelve al inicio */}
+              <button onClick={() => onCerrar()}
+                style={{ width:"100%", marginTop:12, background:`linear-gradient(180deg,#89E219,#58CC02)`,
+                  border:"none", borderRadius:16, color:"#0A1A0F", fontWeight:900, fontSize:16,
+                  padding:"14px 0", cursor:"pointer", fontFamily:"inherit", boxShadow:"0 4px 0 #2B7A00" }}>
+                ✓ Aplicar cambios
+              </button>
                 </div>
               </div>
             </div>
@@ -6841,7 +6828,6 @@ function GBHApp(){
     setBoBienvenida(false);
     setBoNombre(n);
     setProfile(p=>p?{...p,bo_nombre:n}:p);
-    if(profile?.id) lsSet(`gbh:p:${profile.id}`, {...profile,bo_nombre:n});   // caché local en sync
     sbReq("PATCH",`profiles?id=eq.${profile.id}`,{bo_nombre:n});
   };
   const boNivel=(getLevel(xp||0)||{}).l||1;
@@ -6852,10 +6838,7 @@ function GBHApp(){
     if(profile.bo_personalidad) setBoPersonalidad(profile.bo_personalidad);
   },[profile?.bo_nombre,profile?.bo_color,profile?.bo_equipados,profile?.bo_personalidad]);
   const guardarBo=()=>{ if(!profile?.id) return;
-    const upd={...profile,bo_nombre:boNombre,bo_color:boColor,bo_equipados:boEquipados,bo_personalidad:boPersonalidad};
-    setProfile(upd);
-    lsSet(`gbh:p:${profile.id}`, upd);   // ← CLAVE: la caché local es lo que lee loadP al reentrar;
-                                         //    sin esto, al volver se recargaba el perfil viejo y se perdía el cambio.
+    setProfile(p=>p?{...p,bo_nombre:boNombre,bo_color:boColor,bo_equipados:boEquipados,bo_personalidad:boPersonalidad}:p);
     sbReq("PATCH",`profiles?id=eq.${profile.id}`,{bo_nombre:boNombre,bo_color:boColor,bo_equipados:boEquipados,bo_personalidad:boPersonalidad});
   };
   const hoyMadrid=()=>new Date().toLocaleDateString("sv-SE",{timeZone:"Europe/Madrid"});
@@ -7255,13 +7238,6 @@ function GBHApp(){
           if(s>0) sbReq("PATCH",`profiles?id=eq.${profileId}`,{streak:s});
         }
         const merged = { ...localP, ...rp, streak: streakVal };
-        // Cosméticos de Bo: el CLIENTE manda. No dejar que `...rp` (servidor) pise
-        // la última elección local; si el servidor va por detrás (o el PATCH aún no
-        // ha persistido), esto era lo que revertía la skin ~1s después de aplicarla.
-        merged.bo_nombre       = localP.bo_nombre       ?? rp.bo_nombre;
-        merged.bo_color        = localP.bo_color        ?? rp.bo_color;
-        merged.bo_equipados    = localP.bo_equipados    ?? rp.bo_equipados;
-        merged.bo_personalidad = localP.bo_personalidad ?? rp.bo_personalidad;
         lsSet(`gbh:p:${profileId}`, merged);
         setProfile({...merged});
         _activeProfileId = profileId;  // cola de sincronización scoped a este usuario
@@ -7325,16 +7301,6 @@ function GBHApp(){
             shields:    (f.shields ?? p.shields),
             name:       f.name || p.name,
             target_kcal:f.target_kcal ?? p.target_kcal,
-            // Cosméticos de Bo: manda el CLIENTE (última elección en este móvil).
-            // Solo se toma del servidor si en local no hay nada (sesión nueva),
-            // para no revertir un cambio recién aplicado que aún se sincroniza.
-            bo_nombre:       p.bo_nombre       ?? f.bo_nombre,
-            bo_color:        p.bo_color        ?? f.bo_color,
-            bo_equipados:    p.bo_equipados    ?? f.bo_equipados,
-            bo_personalidad: p.bo_personalidad ?? f.bo_personalidad,
-            // Campos que controla el nutricionista: manda el SERVIDOR.
-            trial_ends_at:   f.trial_ends_at   ?? p.trial_ends_at,
-            plan_until:      f.plan_until      ?? p.plan_until,
           };
           setProfile(merged);
           lsSet(`gbh:p:${p.id}`, merged);
@@ -7958,15 +7924,6 @@ function GBHApp(){
       const jMap = {}; (Array.isArray(jr)?jr:[]).forEach(r=>{ jMap[r.profile_id]=r.puntos_semana||0; });
       enriched.forEach(p=>{ p.juegoPts = jMap[p.id]||0; });
       enriched.sort((a,b)=>b.weightAbs-a.weightAbs||(b.xp||0)-(a.xp||0));
-      // La fila del PROPIO usuario refleja su elección LOCAL (cliente autoritativo
-      // para cosméticos): el servidor puede ir por detrás si aún no se sincronizó.
-      if(profile?.id){
-        enriched.forEach(p=>{ if(p.id===profile.id){
-          p.bo_nombre    = profile.bo_nombre    ?? p.bo_nombre;
-          p.bo_color     = profile.bo_color     ?? p.bo_color;
-          p.bo_equipados = profile.bo_equipados ?? p.bo_equipados;
-        }});
-      }
       setRanking(enriched);
     } else {
       // Fallback: solo perfiles en localStorage
@@ -10459,8 +10416,8 @@ function ConsultaTab({profile,lang,sfx}){
   // Mensaje pre-rellenado para que un usuario free/estándar SOLICITE pasar a
   // Premium directamente por WhatsApp (mismo patrón que el CTA del plan).
   const waMsgPremium = encodeURIComponent(lang==='en'
-    ? `Hi! I'm ${profile?.name||''} and I'd like to upgrade to the GBH Premium plan for personalized follow-up and direct consultation 👑`
-    : `¡Hola! Soy ${profile?.name||''} y me gustaría pasar al plan Premium de GBH para tener seguimiento personalizado y consulta directa con el nutricionista 👑`);
+    ? `Hi! I'm ${profile?.name||''} and I'd like to go Premium (weekly follow-up and direct WhatsApp). Do you have a spot? 👑`
+    : `¡Hola! Soy ${profile?.name||''} y quiero pasar a Premium (seguimiento semanal y WhatsApp directo). ¿Tienes plaza? 👑`);
 
   if(!isPremium) return(
     <div style={{padding:'48px 24px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:18}}>
@@ -10470,16 +10427,46 @@ function ConsultaTab({profile,lang,sfx}){
       </div>
       <div style={{fontSize:14,color:T.t2,lineHeight:1.7,maxWidth:300,fontFamily:"'DM Sans',sans-serif"}}>
         {lang==='en'
-          ? 'Direct consultation with your nutritionist is exclusive to Premium members. Upgrade your plan to chat directly and book appointments.'
-          : 'La consulta directa con tu nutricionista es exclusiva para clientes Premium. Eleva tu suscripción para escribir directamente y agendar citas.'}
+          ? 'Direct consultation with your nutritionist is Premium-only.'
+          : 'La consulta directa con tu nutricionista es solo para Premium.'}
       </div>
-      <div style={{marginTop:8,background:'linear-gradient(135deg,rgba(255,200,0,0.12),rgba(255,160,0,0.08))',border:'1.5px solid '+T.au1,borderRadius:18,padding:'18px 22px',maxWidth:300}}>
-        <div style={{fontSize:30,marginBottom:6}}>👑</div>
-        <div style={{fontSize:14,fontWeight:900,color:T.au1,fontFamily:"'Nunito',sans-serif",marginBottom:4}}>
-          {lang==='en'?'Go Premium':'Hazte Premium'}
+      <div style={{marginTop:8,width:'100%',maxWidth:300,boxSizing:'border-box',textAlign:'left',
+        background:'linear-gradient(135deg,rgba(255,200,0,0.12),rgba(255,160,0,0.08))',
+        border:'1.5px solid '+T.au1,borderRadius:18,padding:'18px 20px'}}>
+        <div style={{textAlign:'center',marginBottom:12}}>
+          <div style={{fontSize:30,marginBottom:4}}>👑</div>
+          <div style={{fontSize:15,fontWeight:900,color:T.au1,fontFamily:"'Nunito',sans-serif"}}>
+            {lang==='en'?'Go Premium':'Hazte Premium'}
+          </div>
+          <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:2}}>
+            {lang==='en'?'I handle your nutrition, with you every week.':'Yo llevo tu nutrición, contigo cada semana.'}
+          </div>
         </div>
-        <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>
-          {lang==='en'?'Personalized follow-up and direct support':'Seguimiento personalizado y soporte directo'}
+        {(lang==='en'
+          ? ['Your week of meals, sorted and tailored to you',
+             'Weekly check-in and adjustment — not just the scale',
+             'Direct WhatsApp with me whenever a doubt comes up',
+             'Adapts to real life: shifts, eating out, a bad weekend',
+             'When you slip, we adjust it — no guilt']
+          : ['Tu semana de comidas, resuelta y ajustada a ti',
+             'Medición y ajuste cada semana — no dependes de la báscula',
+             'WhatsApp directo conmigo cuando surja la duda',
+             'Se adapta a tu vida real: turnos, cenas fuera, un finde malo',
+             'Cuando te saltes el plan, lo ajustamos sin culpa']
+        ).map((linea,i)=>(
+          <div key={i} style={{display:'flex',gap:8,alignItems:'flex-start',marginBottom:7}}>
+            <span style={{fontSize:13,flexShrink:0}}>✅</span>
+            <span style={{fontSize:12.5,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.45}}>{linea}</span>
+          </div>
+        ))}
+        <div style={{marginTop:10,paddingTop:10,borderTop:'1px solid rgba(255,200,0,0.25)',
+          fontSize:11.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>
+          {lang==='en'
+            ? 'A one-off consultation runs €40-50. Premium: €35/month with follow-up all week. Just over €1 a day.'
+            : 'Una consulta suelta ronda los 40-50 €. Premium: 35 €/mes con seguimiento toda la semana. Poco más de 1 € al día.'}
+        </div>
+        <div style={{marginTop:6,fontSize:11.5,fontWeight:800,color:T.au1,fontFamily:"'DM Sans',sans-serif"}}>
+          {lang==='en'?'Limited spots — first come, first served.':'Plazas limitadas — voy por orden.'}
         </div>
       </div>
       {/* CTA: solicitar pasar a Premium por WhatsApp (mismo estilo que el del plan) */}
@@ -11227,30 +11214,14 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
   // (Declarado ANTES de puedeRegistrar porque este depende de él.)
   const idxActual = React.useMemo(()=>{
     if(!Array.isArray(planes) || !planes.length) return 0;
-    // Índice del plan MÁS RECIENTE por fecha_gen. Además de respaldo, es el
-    // DETECTOR DE DESFASE: si el generador publicó una semana nueva pero no
-    // reescribió semana_actual, este apunta a la semana buena.
-    let iNew=-1, bestT=-Infinity;
-    planes.forEach((p,i)=>{ const t=p.fecha_gen?Date.parse(p.fecha_gen):NaN; if(!isNaN(t)&&t>bestT){bestT=t;iNew=i;} });
     const sa = config?.semana_actual;
     if(sa!=null){
-      const iCfg = planes.findIndex(p=>String(p.semana)===String(sa));
-      if(iCfg>=0){
-        // semana_actual es la señal principal… salvo que esté OBSOLETA: si existe
-        // otro plan con fecha_gen ESTRICTAMENTE posterior, el generador ya publicó
-        // una semana más nueva sin refrescar el config. Antes eso dejaba la semana
-        // vieja como "vigente" y bloqueaba el registro de comidas (idx!==idxActual).
-        // Nos quedamos con la realmente vigente (fecha_gen más reciente). No rompe
-        // el reinicio de ciclo S12→S1: allí la semana nueva ES la de fecha_gen más
-        // reciente, así que iNew===iCfg y no se toca nada.
-        if(iNew>=0 && iNew!==iCfg){
-          const tCfg = planes[iCfg].fecha_gen ? Date.parse(planes[iCfg].fecha_gen) : NaN;
-          if(!isNaN(bestT) && (isNaN(tCfg) || bestT>tCfg)) return iNew;
-        }
-        return iCfg;
-      }
+      const i = planes.findIndex(p=>String(p.semana)===String(sa));
+      if(i>=0) return i;
     }
-    return iNew>=0 ? iNew : 0;
+    let best=-1, bestT=-Infinity;
+    planes.forEach((p,i)=>{ const t=p.fecha_gen?Date.parse(p.fecha_gen):NaN; if(!isNaN(t)&&t>bestT){bestT=t;best=i;} });
+    return best>=0 ? best : 0;
   },[planes, config?.semana_actual]);
   // El registro de platos se ancla a la SEMANA VIGENTE (idxActual), no a la de
   // número más alto (idx===0). Con idx===0, un reinicio de ciclo (S12 → S1) o
