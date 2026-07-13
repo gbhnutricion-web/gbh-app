@@ -1100,7 +1100,15 @@ const sbReq = async(method, path, body=null) => {
       method, headers, body: body ? JSON.stringify(body) : null,
     });
     if(!r.ok) throw new Error(`${r.status}`);
-    return method==="DELETE" ? true : r.json();
+    if(method==="DELETE") return true;
+    // PATCH/POST sin `Prefer: return=representation` responden 204/205 o cuerpo
+    // vacío. Antes `r.json()` petaba con cuerpo vacío y el catch lo trataba como
+    // FALLO: encolaba una escritura que en realidad SÍ había persistido. Ahora un
+    // 204/205 o cuerpo vacío se considera éxito.
+    if(r.status===204 || r.status===205) return true;
+    const _txt = await r.text();
+    if(!_txt) return true;
+    try{ return JSON.parse(_txt); }catch{ return true; }
   } catch(e) {
     // Sin red o error — encolar si es escritura
     if(method !== "GET" && body){
@@ -7247,6 +7255,13 @@ function GBHApp(){
           if(s>0) sbReq("PATCH",`profiles?id=eq.${profileId}`,{streak:s});
         }
         const merged = { ...localP, ...rp, streak: streakVal };
+        // Cosméticos de Bo: el CLIENTE manda. No dejar que `...rp` (servidor) pise
+        // la última elección local; si el servidor va por detrás (o el PATCH aún no
+        // ha persistido), esto era lo que revertía la skin ~1s después de aplicarla.
+        merged.bo_nombre       = localP.bo_nombre       ?? rp.bo_nombre;
+        merged.bo_color        = localP.bo_color        ?? rp.bo_color;
+        merged.bo_equipados    = localP.bo_equipados    ?? rp.bo_equipados;
+        merged.bo_personalidad = localP.bo_personalidad ?? rp.bo_personalidad;
         lsSet(`gbh:p:${profileId}`, merged);
         setProfile({...merged});
         _activeProfileId = profileId;  // cola de sincronización scoped a este usuario
@@ -7943,6 +7958,15 @@ function GBHApp(){
       const jMap = {}; (Array.isArray(jr)?jr:[]).forEach(r=>{ jMap[r.profile_id]=r.puntos_semana||0; });
       enriched.forEach(p=>{ p.juegoPts = jMap[p.id]||0; });
       enriched.sort((a,b)=>b.weightAbs-a.weightAbs||(b.xp||0)-(a.xp||0));
+      // La fila del PROPIO usuario refleja su elección LOCAL (cliente autoritativo
+      // para cosméticos): el servidor puede ir por detrás si aún no se sincronizó.
+      if(profile?.id){
+        enriched.forEach(p=>{ if(p.id===profile.id){
+          p.bo_nombre    = profile.bo_nombre    ?? p.bo_nombre;
+          p.bo_color     = profile.bo_color     ?? p.bo_color;
+          p.bo_equipados = profile.bo_equipados ?? p.bo_equipados;
+        }});
+      }
       setRanking(enriched);
     } else {
       // Fallback: solo perfiles en localStorage
