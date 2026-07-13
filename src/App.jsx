@@ -2877,7 +2877,7 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
   };
   return (
 
-            <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:60,
+            <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:9000,
               display:"flex", justifyContent:"center", alignItems:"stretch", padding:"0" }}>
               <div style={{ background:T.bg, width:"100%", maxWidth:420, height:"100%",
                 display:"flex", flexDirection:"column", animation:"popIn .2s ease-out" }}>
