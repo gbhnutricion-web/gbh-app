@@ -6833,6 +6833,7 @@ function GBHApp(){
     setBoBienvenida(false);
     setBoNombre(n);
     setProfile(p=>p?{...p,bo_nombre:n}:p);
+    if(profile?.id) lsSet(`gbh:p:${profile.id}`, {...profile,bo_nombre:n});   // caché local en sync
     sbReq("PATCH",`profiles?id=eq.${profile.id}`,{bo_nombre:n});
   };
   const boNivel=(getLevel(xp||0)||{}).l||1;
@@ -6843,7 +6844,10 @@ function GBHApp(){
     if(profile.bo_personalidad) setBoPersonalidad(profile.bo_personalidad);
   },[profile?.bo_nombre,profile?.bo_color,profile?.bo_equipados,profile?.bo_personalidad]);
   const guardarBo=()=>{ if(!profile?.id) return;
-    setProfile(p=>p?{...p,bo_nombre:boNombre,bo_color:boColor,bo_equipados:boEquipados,bo_personalidad:boPersonalidad}:p);
+    const upd={...profile,bo_nombre:boNombre,bo_color:boColor,bo_equipados:boEquipados,bo_personalidad:boPersonalidad};
+    setProfile(upd);
+    lsSet(`gbh:p:${profile.id}`, upd);   // ← CLAVE: la caché local es lo que lee loadP al reentrar;
+                                         //    sin esto, al volver se recargaba el perfil viejo y se perdía el cambio.
     sbReq("PATCH",`profiles?id=eq.${profile.id}`,{bo_nombre:boNombre,bo_color:boColor,bo_equipados:boEquipados,bo_personalidad:boPersonalidad});
   };
   const hoyMadrid=()=>new Date().toLocaleDateString("sv-SE",{timeZone:"Europe/Madrid"});
@@ -7306,6 +7310,16 @@ function GBHApp(){
             shields:    (f.shields ?? p.shields),
             name:       f.name || p.name,
             target_kcal:f.target_kcal ?? p.target_kcal,
+            // Cosméticos de Bo: manda el CLIENTE (última elección en este móvil).
+            // Solo se toma del servidor si en local no hay nada (sesión nueva),
+            // para no revertir un cambio recién aplicado que aún se sincroniza.
+            bo_nombre:       p.bo_nombre       ?? f.bo_nombre,
+            bo_color:        p.bo_color        ?? f.bo_color,
+            bo_equipados:    p.bo_equipados    ?? f.bo_equipados,
+            bo_personalidad: p.bo_personalidad ?? f.bo_personalidad,
+            // Campos que controla el nutricionista: manda el SERVIDOR.
+            trial_ends_at:   f.trial_ends_at   ?? p.trial_ends_at,
+            plan_until:      f.plan_until      ?? p.plan_until,
           };
           setProfile(merged);
           lsSet(`gbh:p:${p.id}`, merged);
