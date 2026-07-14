@@ -2938,7 +2938,7 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
                 {/* Cabecera fija del modal */}
                 <div style={{ position:"sticky", top:0, zIndex:2, background:T.bg,
                   display:"flex", justifyContent:"space-between", alignItems:"center",
-                  padding:"16px 18px", borderBottom:`1px solid rgba(255,255,255,0.08)` }}>
+                  padding:"calc(16px + env(safe-area-inset-top, 0px)) 18px 16px", borderBottom:`1px solid rgba(255,255,255,0.08)` }}>
                   <div style={{ fontWeight:900, fontSize:17, color:T.g2 }}>🎨 Personalizar a {nombre}</div>
                   <button onClick={() => onCerrar()}
                     style={{ background:"rgba(255,255,255,0.08)", border:"none", color:T.wh,
@@ -9029,7 +9029,7 @@ function GBHApp(){
       {boBienvenida&&(<BienvenidaBo onAdoptar={adoptarBo}/>)}
       {zonaJuego&&(
         <div style={{position:"fixed",inset:0,zIndex:9000,background:T.bg,display:"flex",flexDirection:"column"}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 16px 8px"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"calc(14px + env(safe-area-inset-top, 0px)) 16px 8px"}}>
             <div style={{fontWeight:900,fontSize:16,color:T.g2}}>🐑 Zona de juego</div>
             <button onClick={()=>setZonaJuego(false)} style={{width:38,height:38,borderRadius:12,background:"rgba(255,255,255,0.07)",border:"1.5px solid rgba(255,255,255,0.12)",color:T.cr,fontSize:16,cursor:"pointer"}}>✕</button>
           </div>
@@ -11291,24 +11291,30 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
   const finDeHoy   = (()=>{ const d=new Date(); d.setHours(23,59,59,999); return d; })();
   const esFuturo   = fechaDeDia(selDay) > finDeHoy;             // no se registran días futuros
   // ── Semana vigente ──────────────────────────────────────────────────────────
-  // Se identifica por la semana que el generador marca como actual
-  // (patient_config.semana_actual, que se reescribe en CADA publicación), con la
-  // fecha de publicación (fecha_gen) como respaldo y, en último término, la
-  // primera de la lista. Tomarla por el nº de semana más alto fallaba si el
-  // paciente reinicia el ciclo a la semana 1 tras la 12; y la fecha por sí sola
-  // tampoco basta, porque al reusar un nº de semana el upsert ACTUALIZA la fila
-  // y no refresca fecha_gen. Por eso la señal principal es semana_actual.
+  // La semana en curso es la MÁS RECIENTE EN FECHA DE PUBLICACIÓN (fecha_gen).
+  // Es lo que el nutricionista espera: al publicar una semana nueva, esa pasa a
+  // ser la actual del paciente. Así el arranque queda coherente con lo que ya
+  // hace la generación (que salta a planes[0], la recién publicada).
+  // Respaldos, por si faltara fecha_gen: (1) patient_config.semana_actual, y
+  // (2) la primera de la lista (planes viene ordenado semana.desc → idx 0 = nº
+  // más alto). Antes se priorizaba semana_actual, y si el generador no la
+  // refrescaba (se quedaba en 6), el paciente veía una semana vieja aunque
+  // hubiera un plan más nuevo publicado.
   // (Declarado ANTES de puedeRegistrar porque este depende de él.)
   const idxActual = React.useMemo(()=>{
     if(!Array.isArray(planes) || !planes.length) return 0;
+    // 1) Prioridad: la de fecha de publicación más reciente.
+    let best=-1, bestT=-Infinity;
+    planes.forEach((p,i)=>{ const t=p.fecha_gen?Date.parse(p.fecha_gen):NaN; if(!isNaN(t)&&t>bestT){bestT=t;best=i;} });
+    if(best>=0) return best;
+    // 2) Respaldo: la que el config marca como actual.
     const sa = config?.semana_actual;
     if(sa!=null){
       const i = planes.findIndex(p=>String(p.semana)===String(sa));
       if(i>=0) return i;
     }
-    let best=-1, bestT=-Infinity;
-    planes.forEach((p,i)=>{ const t=p.fecha_gen?Date.parse(p.fecha_gen):NaN; if(!isNaN(t)&&t>bestT){bestT=t;best=i;} });
-    return best>=0 ? best : 0;
+    // 3) Último recurso: la de número más alto (planes va en semana.desc).
+    return 0;
   },[planes, config?.semana_actual]);
   // El registro de platos se ancla a la SEMANA VIGENTE (idxActual), no a la de
   // número más alto (idx===0). Con idx===0, un reinicio de ciclo (S12 → S1) o
