@@ -7377,7 +7377,7 @@ function GBHApp(){
     // ── Refrescar SIEMPRE desde Supabase los campos que controla el nutricionista
     if(navigator.onLine){
       try{
-        const fresh=await sbReq("GET",`profiles?id=eq.${p.id}&select=plan,gems,xp,shields,name,target_kcal,avatar_b64,bo_nombre,bo_color,bo_equipados,bo_personalidad,trial_ends_at,plan_until&limit=1`);
+        const fresh=await sbReq("GET",`profiles?id=eq.${p.id}&select=plan,gems,xp,shields,streak,name,target_kcal,avatar_b64,bo_nombre,bo_color,bo_equipados,bo_personalidad,trial_ends_at,plan_until&limit=1`);
         if(fresh&&fresh.length){
           const f=fresh[0];
           const merged={
@@ -7386,6 +7386,7 @@ function GBHApp(){
             gems:       (f.gems ?? p.gems),
             xp:         (f.xp ?? p.xp),
             shields:    (f.shields ?? p.shields),
+            streak:     (f.streak ?? p.streak),
             name:       f.name || p.name,
             target_kcal:f.target_kcal ?? p.target_kcal,
           };
@@ -7626,10 +7627,20 @@ function GBHApp(){
     if(idx>=0)l[idx]=e;else l.push(e);
     setLogs(l);lsSet(`gbh:logs:${profile.id}`,l);
     await sbReq("POST","daily_logs?on_conflict=profile_id,log_date",{profile_id:profile.id,log_date:today,diet_followed:nl.diet,steps_done:nl.steps,hydration_done:nl.hydration,sleep_done:nl.sleep,sc:sc||0});
-    // ── Sincronizar racha actual a Supabase para que el ranking sea global ──
+    // ── Racha: la fuente de verdad es Supabase (trigger sobre daily_logs, que
+    //    respeta las restauraciones manuales del nutricionista). El cliente NO
+    //    la escribe: muestra un valor optimista al instante y, si hay red, lo
+    //    sustituye por el que acaba de recalcular el servidor. Así una acción
+    //    manual en Supabase nunca puede ser deshecha por la app. ──
     let _s=0;const _d=new Date();
     while(true){if(l.find(x=>x.date===toKey(_d)&&x.diet)){_s++;_d.setDate(_d.getDate()-1);}else break;}
-    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{streak:_s}); // fire & forget
+    setProfile(pp=>{ if(!pp) return pp; const up={...pp,streak:Math.max(_s, pp.streak||0)}; lsSet(`gbh:p:${up.id}`,up); return up; });
+    if(navigator.onLine){
+      sbReq("GET",`profiles?id=eq.${profile.id}&select=streak&limit=1`).then(r=>{
+        const sv=Array.isArray(r)&&r[0]?r[0].streak:null;
+        if(sv!=null) setProfile(pp=>{ if(!pp) return pp; const up={...pp,streak:sv}; lsSet(`gbh:p:${up.id}`,up); return up; });
+      }).catch(()=>{});
+    }
     setPendingSync(lsGet(getQueueKey(),[]).length);
   },[profile,logs]);
 
