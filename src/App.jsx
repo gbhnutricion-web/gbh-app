@@ -989,10 +989,27 @@ const migrateQueue = (pid) => {
 
 function enqueue(op){
   // op = { id, method, path, body, ts }
+  if(!op || !op.path) return;
   const q = lsGet(getQueueKey(), []);
-  // Si ya existe la misma path+method, reemplazar (evita duplicados de PATCH)
-  const idx = q.findIndex(x => x.path === op.path && x.method === op.method);
-  if(idx >= 0) q[idx] = op; else q.push(op);
+  const esPatchPerfil = op.method === "PATCH" && op.path.indexOf("profiles?id=eq.") === 0;
+  const esLogFechado  = op.method === "POST" && /^(daily_logs|weight_logs)\?/.test(op.path);
+  if(esPatchPerfil){
+    // PATCH de perfil (valores absolutos): FUSIONAR campos para no perder
+    // ninguno (antes un PATCH de otro campo pisaba xp/gems/etc. sin querer).
+    const idx = q.findIndex(x => x.method === "PATCH" && x.path === op.path);
+    if(idx >= 0) q[idx] = { ...q[idx], ...op, body: { ...(q[idx].body||{}), ...(op.body||{}) } };
+    else q.push(op);
+  } else if(esLogFechado){
+    // Logs/pesos: deduplicar POR DÍA (log_date en el cuerpo). Antes todos
+    // compartían path y el último día pisaba a los anteriores -> se perdían
+    // días registrados sin conexión (y con ello se rompían rachas).
+    const dia = op.body && op.body.log_date;
+    const idx = q.findIndex(x => x.method === "POST" && x.path === op.path && x.body && x.body.log_date === dia);
+    if(idx >= 0) q[idx] = op; else q.push(op);
+  } else {
+    // RPC (incrementos), DELETE y demás: NUNCA fusionar.
+    q.push(op);
+  }
   lsSet(getQueueKey(), q);
 }
 
@@ -7273,7 +7290,14 @@ function GBHApp(){
       //  re-suben el peso y el día de hoy para no perder al paciente.
       if(Array.isArray(remoteProfile) && remoteProfile.length===0){
         const localP = lsGet(`gbh:p:${profileId}`, null);
-        if(localP?.id && localP?.email){
+        // GUARDA anti-duplicados: si ya existe una fila con este email (p. ej.
+        // "split-brain" tras un login en dispositivo nuevo), NO re-crear un
+        // perfil vacío. Solo re-crear si el email de verdad no existe.
+        const _dupChk = (localP?.id && localP?.email)
+          ? await sbReq("GET", `profiles?email=eq.${encodeURIComponent(localP.email)}&select=id&limit=1`).catch(()=>null)
+          : null;
+        const _emailLibre = !(Array.isArray(_dupChk) && _dupChk.length);
+        if(localP?.id && localP?.email && _emailLibre){
           console.warn("[reconciliación] perfil ausente en Supabase — re-creando:", localP.email);
           const {plan:_pl, trial_ends_at:_tr, plan_until:_pu, ...sinTrial} = localP;
           const nucleo = {id:localP.id, name:localP.name, email:localP.email,
@@ -7534,13 +7558,29 @@ function GBHApp(){
     if(authMode==="returning"){
       const localId = lsGet(`gbh:em:${email}`, null);
       let perfil = localId ? lsGet(`gbh:p:${localId}`, null) : null;
-      if(!perfil?.id){
+      // Copia local COMPLETA = perfil real (tiene las claves xp y gems). Un stub
+      // id+name (de checkEmail) o nada = móvil nuevo / caché borrada: hay que
+      // traer SIEMPRE el perfil real del servidor ANTES de entrar. Sabemos que
+      // la cuenta existe (authMode==="returning"); si la red falla NO fabricamos
+      // un perfil vacío (eso borraba el progreso al cambiar de móvil):
+      // reintentamos y, si el servidor no devuelve fila, abortamos con aviso.
+      const localCompleto = perfil?.id && ("xp" in perfil) && ("gems" in perfil);
+      if(!localCompleto){
         const conTimeout = (p,ms)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error("timeout")),ms))]);
-        const byEmail = await conTimeout(sbReq("GET", `profiles?email=eq.${email}&select=*`), 6000).catch(()=>null);
-        perfil = byEmail?.[0] || null;
-      }
-      if(!perfil?.id){
-        perfil = { id: crypto.randomUUID(), name: aName||email.split("@")[0], email, xp:0, gems:0, shields:0 };
+        let byEmail = null;
+        for(let intento=0; intento<3 && !byEmail?.[0]?.id; intento++){
+          if(intento) await new Promise(r=>setTimeout(r,1200));
+          byEmail = await conTimeout(sbReq("GET", `profiles?email=eq.${email}&select=*`), 9000).catch(()=>null);
+        }
+        if(byEmail?.[0]?.id){
+          perfil = byEmail[0];   // fila real del servidor: válida aunque xp sea 0/null
+        } else {
+          setAuthErr(lang==="en"
+            ? "We couldn't load your profile. Check your connection and try again."
+            : "No hemos podido cargar tu perfil. Revisa tu conexión e inténtalo de nuevo.");
+          setLoading(false);
+          return;
+        }
       }
       await enterApp(perfil);
       return;
