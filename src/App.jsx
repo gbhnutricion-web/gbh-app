@@ -5835,6 +5835,18 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
               )}
             </div>
           </div>
+          {/* Entrenador (rol) */}
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 0",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
+            <div style={{flex:1,paddingRight:10}}>
+              <div style={{fontSize:14,fontWeight:800,color:T.wh}}>🧑‍🏫 {lang==="en"?"Coach":"Entrenador"}</div>
+              <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:2,lineHeight:1.4}}>
+                {lang==="en"?"Enables the Follow-up view in Performance to track your athletes.":"Activa la vista Seguimiento en Rendimiento para seguir a tus deportistas."}</div>
+            </div>
+            <div onClick={()=>onSaveProfile("entrenador", !profile?.es_entrenador)}
+              style={{width:46,height:26,borderRadius:13,background:profile?.es_entrenador?T.blue:"rgba(255,255,255,0.15)",position:"relative",cursor:"pointer",flexShrink:0,transition:"background 0.2s"}}>
+              <div style={{position:"absolute",top:3,left:profile?.es_entrenador?23:3,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left 0.2s"}}/>
+            </div>
+          </div>
           {/* Notificaciones */}
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 0",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
             <div>
@@ -7401,7 +7413,7 @@ function GBHApp(){
     // ── Refrescar SIEMPRE desde Supabase los campos que controla el nutricionista
     if(navigator.onLine){
       try{
-        const fresh=await sbReq("GET",`profiles?id=eq.${p.id}&select=plan,gems,xp,shields,streak,name,target_kcal,avatar_b64,bo_nombre,bo_color,bo_equipados,bo_personalidad,trial_ends_at,plan_until&limit=1`);
+        const fresh=await sbReq("GET",`profiles?id=eq.${p.id}&select=plan,gems,xp,shields,streak,name,target_kcal,avatar_b,es_entrenador64,bo_nombre,bo_color,bo_equipados,bo_personalidad,trial_ends_at,plan_until&limit=1`);
         if(fresh&&fresh.length){
           const f=fresh[0];
           const merged={
@@ -8008,6 +8020,13 @@ function GBHApp(){
         lsSet(`gbh:weights:${profile.id}`, nw);
         await sbReq("POST","weight_logs?on_conflict=profile_id,log_date",{profile_id:profile.id,log_date:existingInitDate,weight_kg:w});
       }
+    }
+    if(field==="entrenador"){
+      updated.es_entrenador = !!val;
+      setProfile(updated);
+      lsSet(`gbh:p:${updated.id}`, updated);
+      await sbReq("PATCH",`profiles?id=eq.${profile.id}`,{es_entrenador: !!val});
+      return;
     }
     setProfile(updated);
     lsSet(`gbh:p:${updated.id}`, updated);
@@ -10473,13 +10492,14 @@ function GBHApp(){
           </div>
         )}
         {tab==="plan"&&<PlanTab profile={profile} lang={lang} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} showT={showT} sfx={sfx} t={t} setTab={setTab} onMealRegistered={onMealRegistered}/>}
+        {tab==="rendimiento"&&<RendimientoTab profile={profile} setProfile={setProfile} lang={lang} sfx={sfx} showT={showT} addXG={addXG} setTab={setTab} weights={weights} logs={logs}/>}
         {tab==="consulta"&&<ConsultaTab profile={profile} lang={lang} sfx={sfx}/>}
       </div>
 
       {/* ── BOTTOM NAV ────────────────────────────────────────────────────── */}
       <div className="nav-scroll" style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:420,background:"rgba(8,18,8,0.97)",backdropFilter:"blur(30px)",borderTop:`3px solid ${T.bW}`,zIndex:100,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
         <div style={{display:"flex",padding:"10px 4px 10px",minWidth:"min-content",width:"100%"}}>
-          {[{id:"home",icon:"🏠",l:t("tabHome")},{id:"progreso",icon:"🚀",l:t("tabCalc")},{id:"plan",icon:"📆",l:"Plan"},{id:"weight",icon:"⚖️",l:t("tabWeight")},{id:"receta",icon:"🍰",l:t("tabRecipe")},{id:"consulta",icon:"📩",l:lang==="en"?"Consult":"Consulta"},{id:"ranking",icon:"👑",l:t("tabRanking")}].map(({id,icon,l})=>(
+          {[{id:"home",icon:"🏠",l:t("tabHome")},{id:"progreso",icon:"🚀",l:t("tabCalc")},{id:"plan",icon:"📆",l:"Plan"},{id:"weight",icon:"⚖️",l:t("tabWeight")},{id:"rendimiento",icon:"📈",l:lang==="en"?"Perform.":"Rendimiento"},{id:"receta",icon:"🍰",l:t("tabRecipe")},{id:"consulta",icon:"📩",l:lang==="en"?"Consult":"Consulta"},{id:"ranking",icon:"👑",l:t("tabRanking")}].map(({id,icon,l})=>(
             <button key={id} onClick={()=>{ sfx("tap"); setTab(id); }} style={{...tabSt(tab===id),flex:"1 0 60px",minWidth:60,padding:"8px 6px"}}>
               <span style={{fontSize:24,filter:tab===id?"none":"grayscale(0.6)",transition:"all 0.2s"}}>{icon}</span>
               <span style={{fontSize:9,whiteSpace:"nowrap"}}>{l}</span>
@@ -10549,6 +10569,502 @@ function TarjetaInvitarAmigo({profile,lang,sfx}){
 }
 
 // ─── ConsultaTab — contacto con el nutricionista (exclusivo premium) ────────
+// ═══════════════════════════════════════════════════════════════════════════
+// GBH · Rendimiento deportivo (multi-deporte, registro fin de semana, informe,
+// vista de entrenador). Integrado el 2026-07-13. Requiere GBH_Rendimiento.sql.
+// ═══════════════════════════════════════════════════════════════════════════
+const REND_MIN_R = 8;                                  // decisión 6
+const rendEpley = (kg, r) => (r <= 1 ? Math.round(kg) : Math.round(kg * (1 + r / 30)));
+const rendPearson = (a, b) => {
+  const n = a.length, ma = a.reduce((s,v)=>s+v,0)/n, mb = b.reduce((s,v)=>s+v,0)/n;
+  let num=0, da=0, db=0;
+  for (let i=0;i<n;i++){ num+=(a[i]-ma)*(b[i]-mb); da+=(a[i]-ma)**2; db+=(b[i]-mb)**2; }
+  const den = Math.sqrt(da*db);
+  return den === 0 ? 0 : num/den;
+};
+const rendLinreg = (x, y) => {
+  const n=x.length, mx=x.reduce((s,v)=>s+v,0)/n, my=y.reduce((s,v)=>s+v,0)/n;
+  let num=0, den=0;
+  for (let i=0;i<n;i++){ num+=(x[i]-mx)*(y[i]-my); den+=(x[i]-mx)**2; }
+  const m = den===0?0:num/den;
+  return { m, b: my - m*mx };
+};
+const rendQuart = (a) => {
+  const s=[...a].sort((x,y)=>x-y), q=p=>{const i=(s.length-1)*p,lo=Math.floor(i),hi=Math.ceil(i);return s[lo]+(s[hi]-s[lo])*(i-lo);};
+  return { min:s[0], q1:q(0.25), med:q(0.5), q3:q(0.75), max:s[s.length-1] };
+};
+// Claves L-D de la semana de una fecha (para cruzar registros con weights/logs)
+const rendWeekKeys = (dateStr) => {
+  const d = new Date(dateStr+"T00:00:00"); const dow = d.getDay();
+  const monOff = dow===0?6:dow-1;
+  const mon = new Date(d); mon.setDate(d.getDate()-monOff);
+  const ks=[]; for(let i=0;i<7;i++){ const x=new Date(mon); x.setDate(mon.getDate()+i); ks.push(toKey(x)); }
+  return ks;
+};
+// Enriquecer un registro con las variables automáticas de SU semana
+const rendEnrich = (reg, weights, logs, tdee) => {
+  const wk = rendWeekKeys(reg.log_date);
+  const wsem = (weights||[]).filter(w=>!w.isInitial && wk.includes(w.date)).map(w=>w.weight);
+  const __peso = wsem.length ? +(wsem.reduce((a,b)=>a+b,0)/wsem.length).toFixed(1) : null;
+  const dsem = (logs||[]).filter(l=>wk.includes(l.date));
+  const nSleep = dsem.filter(l=>l.sleep).length;
+  const nHydr  = dsem.filter(l=>l.hydration).length;
+  const __sueno = dsem.length ? Math.round(nSleep/7*100) : null;
+  const __agua  = dsem.length ? +(1.0 + (nHydr/7)*1.2).toFixed(1) : null;
+  const __deficit = (tdee && reg.__target) ? Math.round(reg.__target - tdee) : null;
+  return { ...reg, __peso, __sueno, __agua, __deficit };
+};
+
+function RendimientoTab({ profile, setProfile, lang, sfx, showT, addXG, setTab, weights, logs }){
+  const [instancias, setInstancias] = React.useState(null);
+  const [activa, setActiva]         = React.useState(null);
+  const [ddOpen, setDdOpen]         = React.useState(false);
+  const [registros, setRegistros]   = React.useState({});
+  const [xKey, setXKey]             = React.useState("time");
+  const [tView, setTView]           = React.useState("reg");
+  const [addOpen, setAddOpen]       = React.useState(false);
+  // ¿Primera vez en Rendimiento? Preguntamos aquí (no en el onboarding) para que
+  // también lo vean los pacientes ya registrados. Se pregunta una vez a TODO el
+  // mundo (solo depende del flag local), independientemente del valor por defecto
+  // de la columna es_entrenador.
+  const [preguntarRol, setPreguntarRol] = React.useState(
+    () => !lsGet(`gbh:rendRolAsked:${profile?.id}`, false)
+  );
+  const canvasRef = React.useRef(null);
+
+  const esEntrenador = !!profile?.es_entrenador;
+  const isWE = isWeekend();
+  const tdee = profile?.tdee || profile?.target_kcal || null;
+
+  React.useEffect(()=>{
+    if(!profile?.id) return; let cancel=false;
+    (async()=>{
+      const inst = await sbReq("GET",
+        `rendimiento_instancias?profile_id=eq.${profile.id}&archivada=eq.false&select=*,rendimiento_deportes(*)&order=creada_en.asc`) || [];
+      if(cancel) return;
+      setInstancias(inst);
+      if(inst.length){
+        setActiva(a => a || inst[0].id);
+        const regs={};
+        for(const i of inst){
+          const r = await sbReq("GET",
+            `rendimiento_registros?instancia_id=eq.${i.id}&select=*&order=log_date.asc`) || [];
+          regs[i.id] = r.map(x=>rendEnrich({...x, __target: profile?.target_kcal||null}, weights, logs, tdee));
+        }
+        if(!cancel) setRegistros(regs);
+      }
+    })();
+    return ()=>{cancel=true;};
+  },[profile?.id]);
+
+  const inst = (instancias||[]).find(i=>i.id===activa) || null;
+  const dep  = inst?.rendimiento_deportes || null;
+  const regs = (activa && registros[activa]) || [];
+
+  React.useEffect(()=>{ drawChart(); },[activa, xKey, registros, tView]);
+
+  function drawChart(){
+    const cv = canvasRef.current; if(!cv || !regs.length) return;
+    const dpr = window.devicePixelRatio||1;
+    const W = cv.clientWidth, H = 280;
+    cv.width = W*dpr; cv.height = H*dpr; cv.style.height = H+"px";
+    const ctx = cv.getContext("2d"); ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,W,H);
+    const ys = regs.map(r=>Number(r.valor));
+    const P = {l:44,r:10,t:16,b:34};
+    const lowerBetter = !!dep?.menor_es_mejor;
+    const yLab = dep?.metrica || "Rendimiento";
+    const seriesX = {
+      time:     regs.map((_,i)=>i+1),
+      feel:     regs.map(r=>r.sensaciones),
+      entrenos: regs.map(r=>r.entrenos),
+      peso:     regs.map(r=>r.__peso),
+      sueno:    regs.map(r=>r.__sueno),
+      agua:     regs.map(r=>r.__agua),
+      deficit:  regs.map(r=>r.__deficit),
+    };
+    const drawYAxisLabel = () => { ctx.save(); ctx.translate(11,P.t+(H-P.t-P.b)/2); ctx.rotate(-Math.PI/2);
+      ctx.textAlign="center"; ctx.fillStyle=T.g2; ctx.font="800 10.5px 'Nunito'"; ctx.fillText(yLab,0,0); ctx.restore(); };
+
+    if(xKey==="entrenos" || xKey==="deficit"){
+      let groups;
+      if(xKey==="entrenos"){
+        const uniq=[...new Set(regs.map(r=>r.entrenos).filter(v=>v!=null))].sort((a,b)=>a-b);
+        groups=uniq.map(u=>({lab:u+" entr.", vals: regs.filter(r=>r.entrenos===u).map(r=>Number(r.valor))}));
+      } else {
+        if(regs.every(r=>r.__deficit==null)){ ctx.fillStyle=T.t2;ctx.font="12px 'DM Sans'";ctx.textAlign="center";ctx.fillText("Déficit no disponible (calcula tu objetivo)",W/2,H/2);return; }
+        groups=[
+          {lab:"📉 Déficit",   vals: regs.filter(r=>r.__deficit<=-300).map(r=>Number(r.valor))},
+          {lab:"⚖️ Normo",     vals: regs.filter(r=>r.__deficit>-300&&r.__deficit<300).map(r=>Number(r.valor))},
+          {lab:"📈 Superávit", vals: regs.filter(r=>r.__deficit>=300).map(r=>Number(r.valor))},
+        ];
+      }
+      const all=groups.flatMap(g=>g.vals); if(!all.length) return;
+      const gmin=Math.min(...all), gmax=Math.max(...all), gp=(gmax-gmin)*.12||1;
+      const Yb=v=>H-P.b-(v-(gmin-gp))/((gmax+gp)-(gmin-gp))*(H-P.t-P.b);
+      ctx.font="10px 'DM Sans'";
+      for(let i=0;i<=4;i++){const v=gmin-gp+((gmax+gp)-(gmin-gp))*i/4,y=Yb(v);
+        ctx.strokeStyle="rgba(255,255,255,.07)";ctx.beginPath();ctx.moveTo(P.l,y);ctx.lineTo(W-P.r,y);ctx.stroke();
+        ctx.fillStyle="rgba(255,255,255,.45)";ctx.textAlign="right";ctx.fillText(v.toFixed(0),P.l-6,y+3);}
+      const slotW=(W-P.l-P.r)/groups.length, boxW=Math.min(54,slotW*.42);
+      groups.forEach((g,gi)=>{
+        const cx=P.l+slotW*gi+slotW/2;
+        ctx.fillStyle="rgba(255,255,255,.6)";ctx.textAlign="center";ctx.font="800 10.5px 'Nunito'";ctx.fillText(g.lab,cx,H-P.b+15);
+        ctx.fillStyle="rgba(255,255,255,.3)";ctx.font="9px 'DM Sans'";ctx.fillText("n="+g.vals.length,cx,H-P.b+27);
+        if(!g.vals.length) return;
+        if(g.vals.length<3){ g.vals.forEach(v=>{ctx.beginPath();ctx.arc(cx,Yb(v),5,0,7);ctx.fillStyle="rgba(88,204,2,.8)";ctx.fill();}); return; }
+        const q=rendQuart(g.vals);
+        ctx.strokeStyle="rgba(137,226,25,.7)";ctx.lineWidth=2;
+        ctx.beginPath();ctx.moveTo(cx,Yb(q.min));ctx.lineTo(cx,Yb(q.q1));ctx.stroke();
+        ctx.beginPath();ctx.moveTo(cx,Yb(q.q3));ctx.lineTo(cx,Yb(q.max));ctx.stroke();
+        ctx.fillStyle="rgba(88,204,2,.22)";ctx.strokeStyle="#58CC02";ctx.lineWidth=2.5;
+        const bx=cx-boxW/2,by=Yb(q.q3),bh=Math.max(Yb(q.q1)-Yb(q.q3),3);
+        ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx,by,boxW,bh,5) : ctx.rect(bx,by,boxW,bh); ctx.fill();ctx.stroke();
+        ctx.strokeStyle="#FFC800";ctx.lineWidth=3.5;ctx.beginPath();ctx.moveTo(bx,Yb(q.med));ctx.lineTo(bx+boxW,Yb(q.med));ctx.stroke();
+      });
+      drawYAxisLabel(); return;
+    }
+
+    if(xKey==="feel"){
+      const ts=regs.map((_,i)=>i+1), fs=regs.map(r=>r.sensaciones||0);
+      const tmax=Math.max(ts.length,2);
+      const Xf=v=>P.l+(v-1)/((tmax-1)||1)*(W-P.l-P.r);
+      const Yf=v=>H-P.b-(v-0)/(10.8)*(H-P.t-P.b);
+      [{a:0,b:4.5,c:"rgba(255,75,75,.08)",e:"😫"},{a:4.5,b:7.5,c:"rgba(255,200,0,.06)",e:"😐"},{a:7.5,b:10.8,c:"rgba(88,204,2,.08)",e:"💪"}]
+        .forEach(z=>{ctx.fillStyle=z.c;ctx.fillRect(P.l,Yf(z.b),W-P.l-P.r,Yf(z.a)-Yf(z.b));
+          ctx.font="14px 'DM Sans'";ctx.textAlign="right";ctx.fillStyle="rgba(255,255,255,.45)";ctx.fillText(z.e,W-P.r-4,Yf((z.a+Math.min(z.b,10))/2)+5);});
+      ctx.font="10px 'DM Sans'";
+      [0,2,4,6,8,10].forEach(v=>{const y=Yf(v);ctx.strokeStyle="rgba(255,255,255,.07)";ctx.beginPath();ctx.moveTo(P.l,y);ctx.lineTo(W-P.r,y);ctx.stroke();
+        ctx.fillStyle="rgba(255,255,255,.45)";ctx.textAlign="right";ctx.fillText(v,P.l-6,y+3);});
+      ctx.strokeStyle="#CE82FF";ctx.lineWidth=3;ctx.beginPath();
+      ts.forEach((x,i)=>{i?ctx.lineTo(Xf(x),Yf(fs[i])):ctx.moveTo(Xf(x),Yf(fs[i]));});ctx.stroke();
+      ts.forEach((x,i)=>{ctx.beginPath();ctx.arc(Xf(x),Yf(fs[i]),4.5,0,7);ctx.fillStyle="#CE82FF";ctx.fill();
+        ctx.beginPath();ctx.arc(Xf(x),Yf(fs[i]),2,0,7);ctx.fillStyle="#0A1A0F";ctx.fill();});
+      ctx.save();ctx.translate(11,P.t+(H-P.t-P.b)/2);ctx.rotate(-Math.PI/2);ctx.textAlign="center";
+      ctx.fillStyle="#CE82FF";ctx.font="800 10.5px 'Nunito'";ctx.fillText("Sensaciones (1-10)",0,0);ctx.restore();
+      return;
+    }
+
+    const xs = seriesX[xKey];
+    if(!xs.every(v=>v!=null && !isNaN(v))){
+      ctx.fillStyle=T.t2;ctx.font="12px 'DM Sans'";ctx.textAlign="center";
+      ctx.fillText("Datos de esta variable aún no disponibles",W/2,H/2); return;
+    }
+    const xmin=Math.min(...xs),xmax=Math.max(...xs),ymin=Math.min(...ys),ymax=Math.max(...ys);
+    const xp=(xmax-xmin)*.06||1,yp=(ymax-ymin)*.12||1;
+    const X=v=>P.l+(v-(xmin-xp))/((xmax+xp)-(xmin-xp))*(W-P.l-P.r);
+    const Y=v=>H-P.b-(v-(ymin-yp))/((ymax+yp)-(ymin-yp))*(H-P.t-P.b);
+    ctx.font="10px 'DM Sans'";
+    for(let i=0;i<=4;i++){const v=ymin-yp+((ymax+yp)-(ymin-yp))*i/4,y=Y(v);
+      ctx.strokeStyle="rgba(255,255,255,.07)";ctx.beginPath();ctx.moveTo(P.l,y);ctx.lineTo(W-P.r,y);ctx.stroke();
+      ctx.fillStyle="rgba(255,255,255,.45)";ctx.textAlign="right";ctx.fillText(v.toFixed(0),P.l-6,y+3);}
+    drawYAxisLabel();
+    if(xKey==="time"){
+      const grad=ctx.createLinearGradient(0,P.t,0,H-P.b);
+      grad.addColorStop(0,"rgba(88,204,2,.28)");grad.addColorStop(1,"rgba(88,204,2,0)");
+      ctx.beginPath();xs.forEach((x,i)=>{i?ctx.lineTo(X(x),Y(ys[i])):ctx.moveTo(X(x),Y(ys[i]));});
+      ctx.strokeStyle="#58CC02";ctx.lineWidth=3;ctx.stroke();
+      ctx.lineTo(X(xs[xs.length-1]),H-P.b);ctx.lineTo(X(xs[0]),H-P.b);ctx.closePath();ctx.fillStyle=grad;ctx.fill();
+      regs.forEach((r,i)=>{const x=X(xs[i]),y=Y(ys[i]);
+        ctx.beginPath();ctx.arc(x,y,4.5,0,7);ctx.fillStyle="#58CC02";ctx.fill();
+        ctx.beginPath();ctx.arc(x,y,2,0,7);ctx.fillStyle="#0A1A0F";ctx.fill();
+        if(r.es_competicion){ctx.beginPath();ctx.arc(x,y,8,0,7);ctx.strokeStyle="#FFC800";ctx.lineWidth=2.5;ctx.stroke();}});
+      const bi=lowerBetter?ys.indexOf(Math.min(...ys)):ys.indexOf(Math.max(...ys));
+      ctx.fillStyle="#FFC800";ctx.font="900 9.5px 'Nunito'";ctx.textAlign="center";ctx.fillText("PR",X(xs[bi]),Y(ys[bi])-14);
+      return;
+    }
+    if(ys.length < REND_MIN_R){
+      xs.forEach((x,i)=>{ctx.beginPath();ctx.arc(X(x),Y(ys[i]),5,0,7);ctx.fillStyle="rgba(88,204,2,.8)";ctx.fill();
+        ctx.lineWidth=1.5;ctx.strokeStyle="#0A1A0F";ctx.stroke();});
+      ctx.fillStyle=T.au1;ctx.font="800 10px 'Nunito'";ctx.textAlign="center";
+      ctx.fillText(`🛡️ Correlación con ${REND_MIN_R} registros (${ys.length}/${REND_MIN_R})`,W/2,P.t+4);
+      return;
+    }
+    const {m,b}=rendLinreg(xs,ys);
+    ctx.strokeStyle="#FFC800";ctx.lineWidth=2;ctx.setLineDash([6,5]);
+    ctx.beginPath();ctx.moveTo(X(xmin),Y(m*xmin+b));ctx.lineTo(X(xmax),Y(m*xmax+b));ctx.stroke();ctx.setLineDash([]);
+    xs.forEach((x,i)=>{ctx.beginPath();ctx.arc(X(x),Y(ys[i]),5,0,7);ctx.fillStyle="rgba(88,204,2,.8)";ctx.fill();
+      ctx.lineWidth=1.5;ctx.strokeStyle="#0A1A0F";ctx.stroke();});
+    const r=rendPearson(xs,ys);
+    ctx.fillStyle=T.g2;ctx.font="800 10px 'Nunito'";ctx.textAlign="center";ctx.fillText(`r = ${r.toFixed(2)}`,W/2,P.t+4);
+  }
+
+  const [rM,setRM]=React.useState(""), [rKg,setRKg]=React.useState(""), [rReps,setRReps]=React.useState("");
+  const [rT,setRT]=React.useState(""), [rF,setRF]=React.useState(7), [rComp,setRComp]=React.useState(false);
+  const esGym = dep?.requiere_ejercicio && !inst?.reps_directas;
+
+  const guardar = async () => {
+    if(!isWE || !inst) return;
+    let valor;
+    if(esGym){ const kg=parseFloat(rKg), rp=parseFloat(rReps); if(!kg||!rp) return; valor=rendEpley(kg,rp); }
+    else { valor=parseFloat(rM); if(isNaN(valor)) return; }
+    const ks=weekendKeys(); const log_date=ks[new Date().getDay()===6?0:1];
+    const yaExiste = regs.find(r=> ks.includes(r.log_date));
+    const row = { instancia_id: inst.id, profile_id: profile.id, log_date, valor,
+      gym_kg: esGym?parseFloat(rKg):null, gym_reps: esGym?parseFloat(rReps):null,
+      entrenos: rT?parseInt(rT,10):null, sensaciones: rF, es_competicion: rComp };
+    await sbReq("POST","rendimiento_registros?on_conflict=instancia_id,log_date",row);
+    setRegistros(prev=>{ const arr=(prev[inst.id]||[]).filter(r=>r.log_date!==log_date);
+      arr.push(rendEnrich({...row,__target:profile?.target_kcal||null}, weights, logs, tdee));
+      arr.sort((a,b)=>a.log_date>b.log_date?1:-1); return {...prev,[inst.id]:arr}; });
+    setRM("");setRKg("");setRReps("");setRT("");setRF(7);setRComp(false);
+    if(!yaExiste){ sfx("coin"); await addXG(30,8); showT({icon:"💎",title:"¡Registro semanal completado!",sub:"+8 gemas · tu informe se ha actualizado"}); }
+  };
+
+  if(instancias===null) return <Card style={{textAlign:"center",padding:24}}><div style={{color:T.t2}}>Cargando…</div></Card>;
+
+  // ── Pregunta de primera vez: ¿eres entrenador? ────────────────────────────
+  const setRol = async (val) => {
+    lsSet(`gbh:rendRolAsked:${profile.id}`, true);
+    setPreguntarRol(false);
+    const updated = {...profile, es_entrenador: val};
+    setProfile && setProfile(updated);
+    lsSet(`gbh:p:${profile.id}`, updated);
+    await sbReq("PATCH",`profiles?id=eq.${profile.id}`,{es_entrenador: val});
+    sfx("tap");
+  };
+  if(preguntarRol) return (
+    <Card style={{textAlign:"center",padding:"26px 20px"}}>
+      <div style={{display:"flex",justifyContent:"center",marginBottom:12}}><Mascot expr="happy" size={120}/></div>
+      <div style={{fontSize:18,fontWeight:900,color:T.wh}}>¿Entrenas a otros deportistas?</div>
+      <div style={{fontSize:13,color:T.t2,marginTop:8,lineHeight:1.55,fontFamily:"'DM Sans',sans-serif"}}>
+        Si eres entrenador o preparador, activamos una vista extra para seguir el rendimiento de tus deportistas. Podrás cambiarlo cuando quieras en tu perfil.</div>
+      <div style={{display:"flex",gap:10,marginTop:18}}>
+        <button onClick={()=>setRol(false)} style={{flex:1,padding:14,borderRadius:14,border:`2px solid rgba(255,255,255,.14)`,background:"none",color:T.t2,fontSize:14,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>No, solo entreno yo</button>
+        <button onClick={()=>setRol(true)} style={{flex:1,padding:14,borderRadius:14,border:0,background:T.blue,color:"#04202e",fontSize:14,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>🧑‍🏫 Sí, soy entrenador</button>
+      </div>
+    </Card>
+  );
+
+  const emojiFeel = v => v<=4?"😫":v<=7?"😐":"💪";
+  const modeSwitch = esEntrenador ? (
+    <div style={{display:"flex",background:"rgba(0,0,0,.3)",borderRadius:16,padding:4,gap:4,marginBottom:13}}>
+      {[["reg","📈 Registro"],["seg","📝 Seguimiento"]].map(([k,l])=>(
+        <button key={k} onClick={()=>{sfx("tap");setTView(k);}} style={{flex:1,border:0,borderRadius:12,padding:"11px 4px",fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",background:tView===k?T.blue:"none",color:tView===k?"#04202e":T.t2}}>{l}</button>
+      ))}
+    </div>
+  ) : null;
+
+  if(esEntrenador && tView==="seg") return <RendimientoSeguimiento profile={profile} sfx={sfx} showT={showT} modeSwitch={modeSwitch}/>;
+
+  const sportHead = (
+    <>
+      <div onClick={()=>{sfx("tap");setDdOpen(o=>!o);}} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:T.bgCard,border:"2px solid rgba(255,255,255,.09)",borderRadius:18,padding:"13px 15px",marginBottom:10,cursor:"pointer"}}>
+        <div>
+          <div style={{fontSize:17,fontWeight:900,display:"flex",alignItems:"center",gap:7}}>
+            {dep?.icono} {inst? (dep?.nombre + (inst.ejercicio_ref? " · "+inst.ejercicio_ref:"")) : "Elige tu deporte"} <span style={{color:T.g2,fontSize:14}}>{ddOpen?"▲":"▼"}</span>
+          </div>
+          <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:2}}>{dep?.metrica} · cambia con la flecha</div>
+        </div>
+      </div>
+      {ddOpen && (
+        <div style={{background:T.bgCard,border:"2px solid rgba(255,255,255,.09)",borderRadius:18,margin:"-4px 0 12px",overflow:"hidden"}}>
+          {(instancias||[]).filter(i=>i.id!==activa).map(i=>(
+            <div key={i.id} onClick={()=>{sfx("tap");setActiva(i.id);setDdOpen(false);setXKey("time");}} style={{display:"flex",alignItems:"center",gap:11,padding:"12px 15px",cursor:"pointer",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
+              <span style={{fontSize:21}}>{i.rendimiento_deportes?.icono}</span>
+              <div><div style={{fontSize:13.5,fontWeight:900}}>{i.rendimiento_deportes?.nombre}{i.ejercicio_ref?" · "+i.ejercicio_ref:""}</div>
+              <div style={{fontSize:10.5,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>{i.compartir_entrenador?"compartido 🧑‍🏫":"privado 🔒"}</div></div>
+            </div>
+          ))}
+          <div onClick={()=>{sfx("tap");setDdOpen(false);setAddOpen(true);}} style={{display:"flex",alignItems:"center",gap:11,padding:"12px 15px",cursor:"pointer"}}>
+            <span style={{fontSize:21}}>＋</span>
+            <div><div style={{fontSize:13.5,fontWeight:900,color:T.g2}}>Añadir deporte</div>
+            <div style={{fontSize:10.5,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>Varias métricas en paralelo</div></div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  const sinDatos = !inst || !regs.length;
+
+  return (
+    <div style={{paddingBottom:8}}>
+      {modeSwitch}
+      {sportHead}
+      {inst && isWE && (
+        <Card>
+          <div style={{fontSize:15,fontWeight:900,marginBottom:10,display:"flex",alignItems:"center",gap:7}}>✏️ Registro semanal
+            <span style={{fontSize:10,color:T.t3,fontWeight:800}}>📅 FECHA AUTOMÁTICA</span></div>
+          {esGym ? (
+            <>
+              <label style={rendLbl}>💪 {inst.ejercicio_ref} — mejor serie</label>
+              <div style={{display:"flex",gap:9}}>
+                <input type="number" value={rKg} onChange={e=>setRKg(e.target.value)} placeholder="kg" style={{...rendInput,flex:1}}/>
+                <input type="number" value={rReps} onChange={e=>setRReps(e.target.value)} placeholder="reps (1-10)" style={{...rendInput,flex:1}}/>
+              </div>
+              <div style={{marginTop:7,fontWeight:800,color:T.g2,fontSize:12}}>
+                e1RM ≈ {(rKg&&rReps)?rendEpley(parseFloat(rKg),parseFloat(rReps)):"—"} kg · sin ir al fallo</div>
+            </>
+          ) : inst.reps_directas ? (
+            <>
+              <label style={rendLbl}>💪 {inst.ejercicio_ref} — máximo de repeticiones</label>
+              <input type="number" value={rM} onChange={e=>setRM(e.target.value)} placeholder="p. ej. 12" style={rendInput}/>
+            </>
+          ) : (
+            <>
+              <label style={rendLbl}>{dep?.icono} {dep?.metrica}</label>
+              <input type="number" value={rM} onChange={e=>setRM(e.target.value)} placeholder="p. ej. 292" style={rendInput}/>
+            </>
+          )}
+          <label style={rendLbl}>🏋️ Entrenos esta semana</label>
+          <input type="number" value={rT} onChange={e=>setRT(e.target.value)} placeholder="5" style={rendInput}/>
+          <label style={rendLbl}>🧘 ¿Cómo te has sentido esta semana?</label>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <input type="range" min="1" max="10" value={rF} onChange={e=>setRF(+e.target.value)} style={{flex:1,accentColor:T.g1,height:30}}/>
+            <div style={{fontSize:19,fontWeight:900,color:T.g2,minWidth:44,textAlign:"center",background:"rgba(88,204,2,.15)",border:`1.5px solid ${T.bG}`,borderRadius:11,padding:"5px 0"}}>{emojiFeel(rF)} {rF}</div>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",padding:"4px 6px 0",fontSize:11,color:T.t3,fontWeight:800}}><span>😫 1-4</span><span>😐 5-7</span><span>💪 8-10</span></div>
+          <div onClick={()=>{sfx("tap");setRComp(c=>!c);}} style={{display:"flex",alignItems:"center",gap:10,marginTop:14,background:"rgba(255,200,0,.08)",border:`2px solid ${T.bA}`,borderRadius:14,padding:"11px 13px",cursor:"pointer"}}>
+            <span style={{width:24,height:24,borderRadius:8,border:`2px solid ${T.au1}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:T.au1}}>{rComp?"✓":""}</span>
+            <span style={{fontSize:13,fontWeight:800,color:T.au1}}>🏆 Esta semana hubo competición</span>
+          </div>
+          <button onClick={guardar} style={{width:"100%",marginTop:14,padding:15,borderRadius:16,border:0,fontSize:15,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",background:T.g1,color:"#08300a",boxShadow:`0 4px 0 ${T.g3}`}}>💪 Guardar registro semanal</button>
+        </Card>
+      )}
+      {sinDatos ? (
+        <Card style={{textAlign:"center",padding:"28px 20px"}}>
+          <div style={{display:"flex",justifyContent:"center",marginBottom:10}}><Mascot expr={isWE?"happy":"sleeping"} size={120}/></div>
+          <div style={{fontSize:17,fontWeight:900,color:T.g2}}>{inst?"Aún no hay registros en este deporte":"Crea tu primer deporte"}</div>
+          <div style={{fontSize:13,color:T.t2,marginTop:8,fontFamily:"'DM Sans',sans-serif"}}>
+            {inst? (isWE?"La ventana está abierta — registra arriba. 💎 +8 gemas.":"La ventana de registro abre el fin de semana.") : "Toca el selector de arriba para añadir tu deporte."}</div>
+          <div style={{fontSize:11.5,color:T.t3,marginTop:10}}>Con 2 registros verás tu evolución · con {REND_MIN_R} se desbloquean las correlaciones</div>
+          {!inst && <button onClick={()=>{sfx("tap");setAddOpen(true);}} style={{marginTop:14,padding:"12px 24px",borderRadius:14,border:0,fontWeight:900,fontSize:14,cursor:"pointer",background:T.g1,color:"#08300a",boxShadow:`0 4px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif"}}>➕ Añadir deporte</button>}
+        </Card>
+      ) : (
+        <Card>
+          <div style={{fontSize:15,fontWeight:900,marginBottom:10}}>📊 Tu evolución</div>
+          <div style={{fontSize:12,fontWeight:800,color:T.t2,margin:"2px 0 5px"}}>Comparar con…</div>
+          <div style={{display:"flex",background:"rgba(0,0,0,.3)",borderRadius:13,padding:3,gap:3,flexWrap:"wrap"}}>
+            {[["time","📈 Rend."],["feel","🧘 Sens."],["peso","⚖️ Peso"],["sueno","😴 Desc."],["agua","💧 Agua"],["entrenos","🏋️ Entr."],["deficit","📉 Défi."]].map(([k,l])=>(
+              <button key={k} onClick={()=>{sfx("tap");setXKey(k);}} style={{flex:1,minWidth:56,border:0,borderRadius:10,padding:"8px 2px",fontSize:11,fontWeight:800,cursor:"pointer",fontFamily:"'Nunito',sans-serif",background:xKey===k?T.g1:"none",color:xKey===k?"#08300a":T.t2}}>{l}</button>
+            ))}
+          </div>
+          <canvas ref={canvasRef} style={{width:"100%",display:"block",marginTop:12}}/>
+          <div style={{marginTop:14,background:"rgba(0,0,0,.22)",border:"1.5px solid rgba(255,255,255,.08)",borderRadius:16,padding:"12px 13px"}}>
+            <div style={{fontSize:12.5,fontWeight:900,display:"flex",alignItems:"center",gap:6}}>📄 Tu informe HTML
+              <span style={{fontSize:9.5,color:T.g2,fontWeight:800,background:"rgba(88,204,2,.14)",border:`1px solid ${T.bG}`,borderRadius:8,padding:"2px 7px"}}>SE ACTUALIZA SOLO</span></div>
+            <div style={{display:"flex",gap:8,marginTop:11}}>
+              <button onClick={()=>showT({icon:"📄",title:"Informe",sub:"Se abriría tu informe HTML"})} style={{flex:1,padding:12,borderRadius:12,border:0,fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",background:T.g1,color:"#08300a"}}>👀 Ver</button>
+              <button onClick={()=>showT({icon:"🟢",title:"WhatsApp",sub:"Con mensaje predefinido"})} style={{flex:1,padding:12,borderRadius:12,border:0,fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",background:"#25D366",color:"#06210d"}}>🟢 WhatsApp</button>
+              <button onClick={()=>showT({icon:"📲",title:"Compartir",sub:"En redes sociales"})} style={{flex:"0 0 52px",padding:12,borderRadius:12,fontSize:16,cursor:"pointer",background:"rgba(206,130,255,.18)",border:`1.5px solid rgba(206,130,255,.4)`,color:T.pur}}>📲</button>
+            </div>
+          </div>
+        </Card>
+      )}
+      {addOpen && <RendimientoAddModal profile={profile} sfx={sfx} onClose={()=>setAddOpen(false)}
+        onAdded={(nueva)=>{ setInstancias(prev=>[...(prev||[]),nueva]); setActiva(nueva.id); setRegistros(prev=>({...prev,[nueva.id]:[]})); setXKey("time"); setAddOpen(false); }}/>}
+    </div>
+  );
+}
+
+const rendLbl   = { display:"block", fontSize:12, fontWeight:800, color:T.t2, margin:"12px 0 5px" };
+const rendInput = { width:"100%", padding:13, border:"2px solid rgba(255,255,255,.12)", borderRadius:14, fontSize:16, fontWeight:800, background:"rgba(0,0,0,.25)", color:T.wh, fontFamily:"'Nunito',sans-serif" };
+
+function RendimientoSeguimiento({ profile, sfx, showT, modeSwitch }){
+  const [roster,setRoster]=React.useState(null);
+  const [code,setCode]=React.useState("");
+  React.useEffect(()=>{
+    if(!profile?.id) return; let cancel=false;
+    (async()=>{ const rows = await sbReq("GET",`rendimiento_seguimiento?entrenador_id=eq.${profile.id}&select=*`) || [];
+      if(!cancel) setRoster(rows); })();
+    return ()=>{cancel=true;};
+  },[profile?.id]);
+  const pedir = async (deportistaId) => {
+    const ok = await sbReq("POST","rpc/rend_pedir_registro",{p_entrenador:profile.id,p_deportista:deportistaId});
+    if(ok===false) showT({icon:"⏳",title:"Ya solicitado",sub:"Una solicitud por semana y deportista"});
+    else { sfx("tap"); showT({icon:"📨",title:"Solicitud enviada",sub:"Se le avisará el fin de semana"}); }
+  };
+  const vincular = async () => {
+    const c=code.trim().toUpperCase();
+    if(!/^GBH-[A-Z0-9]{5}$/.test(c)){ showT({icon:"⚠️",title:"Formato",sub:"GBH-XXXXX"}); return; }
+    const res = await sbReq("POST","rpc/rend_vincular_por_codigo",{p_entrenador:profile.id,p_codigo:c});
+    if(res==="codigo_no_encontrado") showT({icon:"⚠️",title:"Código no encontrado",sub:""});
+    else { setCode(""); showT({icon:"✅",title:"Solicitud enviada",sub:"El deportista debe aceptar"}); }
+  };
+  return (
+    <div style={{paddingBottom:8}}>
+      {modeSwitch}
+      <div style={{background:`linear-gradient(135deg,#123e57,${T.blue})`,color:"#fff",borderRadius:14,padding:"13px 14px",marginBottom:12}}>
+        <div style={{fontSize:15,fontWeight:900}}>🧑‍🏫 Mis deportistas</div>
+        <div style={{fontSize:12,color:"#cfe6f5",marginTop:4,fontFamily:"'DM Sans',sans-serif"}}>Solo ves rendimiento — nunca datos nutricionales.</div>
+      </div>
+      <Card>
+        <label style={rendLbl}>Vincular por código GBH</label>
+        <div style={{display:"flex",gap:9}}>
+          <input value={code} onChange={e=>setCode(e.target.value)} placeholder="GBH-XXXXX" maxLength={9} style={{...rendInput,flex:1,textTransform:"uppercase",letterSpacing:2}}/>
+          <button onClick={vincular} style={{border:0,borderRadius:14,padding:"0 16px",fontWeight:900,fontSize:14,cursor:"pointer",background:T.blue,color:"#04202e",fontFamily:"'Nunito',sans-serif"}}>➕</button>
+        </div>
+      </Card>
+      {roster===null ? <Card style={{textAlign:"center",padding:20,color:T.t2}}>Cargando…</Card>
+       : !roster.length ? <Card style={{textAlign:"center",padding:20,color:T.t2}}>Aún no tienes deportistas vinculados.</Card>
+       : roster.map(a=>(
+        <Card key={a.instancia_id} style={{marginTop:9}}>
+          <div style={{display:"flex",alignItems:"center",gap:11}}>
+            <div style={{width:44,height:44,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0,border:"2.5px solid rgba(255,255,255,.15)",background:"rgba(28,176,246,.22)"}}>🐑</div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:13.5,fontWeight:900}}>{a.deportista_nombre}</div>
+              <div style={{fontSize:10.5,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>{a.deporte}{a.ejercicio_ref?" · "+a.ejercicio_ref:""} · {a.codigo}</div>
+              {a.racha_sensaciones!=null && a.racha_sensaciones<=4.5 && <div style={{fontSize:11,fontWeight:800,color:T.red,marginTop:1}}>😫 racha baja ({a.racha_sensaciones})</div>}
+            </div>
+            <button onClick={()=>pedir(a.deportista_id)} style={{border:`1.5px solid rgba(28,176,246,.4)`,borderRadius:11,padding:"8px 11px",fontSize:11,fontWeight:900,cursor:"pointer",background:"rgba(28,176,246,.18)",color:"#8fd6f8",fontFamily:"'Nunito',sans-serif"}}>📨 Pedir</button>
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function RendimientoAddModal({ profile, sfx, onClose, onAdded }){
+  const [deportes,setDeportes]=React.useState(null); // null=cargando, []=vacío/error
+  const [step,setStep]=React.useState(1);
+  const [gymSlug,setGymSlug]=React.useState(null);
+  const GYM_EX=["Press banca","Sentadilla","Peso muerto","Press militar","Remo con barra","Dominadas lastradas","Dominadas (reps)","Flexiones (reps)"];
+  const cargar = React.useCallback(async()=>{
+    setDeportes(null);
+    const d = await sbReq("GET","rendimiento_deportes?select=*&order=orden.asc");
+    setDeportes(Array.isArray(d)?d:[]);
+  },[]);
+  React.useEffect(()=>{ cargar(); },[cargar]);
+  const crear = async (slug, ejercicio=null, repsDirectas=false) => {
+    const res = await sbReq("POST","rendimiento_instancias",{ profile_id:profile.id, deporte_slug:slug, ejercicio_ref:ejercicio, reps_directas:repsDirectas });
+    const row = Array.isArray(res)?res[0]:res;
+    if(row){ const dep = (deportes||[]).find(d=>d.slug===slug); sfx("tap"); onAdded({...row, rendimiento_deportes:dep}); }
+  };
+  const pick = (d) => { if(d.requiere_ejercicio){ setGymSlug(d.slug); setStep(2); } else crear(d.slug); };
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.72)",zIndex:220,display:"flex",alignItems:"center",justifyContent:"center",padding:22}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:T.bgCard,border:`2.5px solid ${T.bG}`,borderRadius:24,maxWidth:360,width:"100%",padding:"20px 18px",maxHeight:"82vh",overflowY:"auto"}}>
+        <div style={{fontSize:16,fontWeight:900,color:T.wh}}>{step===1?"➕ Añadir deporte":"💪 Ejercicio de referencia"}</div>
+        <div style={{fontSize:12,color:T.t2,marginTop:5,fontFamily:"'DM Sans',sans-serif"}}>{step===1?"Cada deporte lleva su propia serie histórica.":"Queda ligado a esta serie para siempre — para otro ejercicio, añade otra instancia."}</div>
+        <div style={{marginTop:10}}>
+          {step===1 ? (
+            deportes===null ? (
+              <div style={{textAlign:"center",padding:"24px 0",color:T.t2,fontSize:13}}>Cargando deportes…</div>
+            ) : deportes.length===0 ? (
+              <div style={{textAlign:"center",padding:"18px 6px"}}>
+                <div style={{fontSize:13,color:T.t2,lineHeight:1.5,fontFamily:"'DM Sans',sans-serif"}}>No se pudo cargar el catálogo de deportes. Revisa tu conexión e inténtalo de nuevo.</div>
+                <button onClick={()=>{sfx("tap");cargar();}} style={{marginTop:12,padding:"10px 20px",borderRadius:12,border:0,fontWeight:900,fontSize:13,cursor:"pointer",background:T.g1,color:"#08300a",fontFamily:"'Nunito',sans-serif"}}>🔄 Reintentar</button>
+              </div>
+            ) : deportes.map(d=>(
+              <div key={d.slug} onClick={()=>pick(d)} style={{display:"flex",alignItems:"center",gap:11,padding:"12px 4px",cursor:"pointer",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
+                <span style={{fontSize:21}}>{d.icono}</span>
+                <div><div style={{fontSize:13.5,fontWeight:900}}>{d.nombre}</div><div style={{fontSize:10.5,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>{d.metrica}</div></div>
+              </div>
+            ))
+          ) : GYM_EX.map(ex=>(
+            <div key={ex} onClick={()=>crear(gymSlug, ex.replace(" (reps)",""), ex.includes("(reps)"))} style={{display:"flex",alignItems:"center",gap:11,padding:"12px 4px",cursor:"pointer",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
+              <span style={{fontSize:21}}>{ex.includes("(reps)")?"🔢":"🏋️"}</span>
+              <div><div style={{fontSize:13.5,fontWeight:900}}>{ex.replace(" (reps)","")}</div><div style={{fontSize:10.5,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>{ex.includes("(reps)")?"Máximo de repeticiones":"Mejor serie → e1RM (Epley)"}</div></div>
+            </div>
+          ))}
+        </div>
+        <button onClick={onClose} style={{width:"100%",marginTop:14,padding:12,borderRadius:12,border:0,fontWeight:900,fontSize:13,cursor:"pointer",background:"rgba(255,255,255,.08)",color:T.t2,fontFamily:"'Nunito',sans-serif"}}>Cancelar</button>
+      </div>
+    </div>
+  );
+}
+
 function ConsultaTab({profile,lang,sfx}){
   const isPremium=profile?.plan==='premium';
   // Mensaje pre-rellenado para que un usuario free/estándar SOLICITE pasar a
