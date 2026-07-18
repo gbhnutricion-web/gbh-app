@@ -10893,15 +10893,32 @@ function RendimientoTab({ profile, setProfile, lang, sfx, showT, addXG, setTab, 
   };
 
   // ── Informe: ver, WhatsApp y compartir nativo (funcionales) ───────────────
+  // Emojis como secuencias Unicode escapadas: inmunes a problemas de
+  // codificación del archivo en el camino editor→GitHub→Vercel.
+  const E={oveja:"\uD83D\uDC11",biceps:"\uD83D\uDCAA",cal:"\uD83D\uDCC5",graf:"\uD83D\uDCC8",copa:"\uD83C\uDFC6",ojos:"\uD83D\uDC40",regalo:"\uD83C\uDF81"};
+  const informeURL = () => window.location.origin + "/?informe=" + inst.id;
   const textoResumen = () => {
     const vals=regs.map(r=>Number(r.valor)); if(!vals.length) return "";
     const lower=!!dep?.menor_es_mejor;
     const pr=lower?Math.min(...vals):Math.max(...vals);
     const last=vals[vals.length-1];
-    return "💪 Mi progreso en "+(dep?.nombre||"mi deporte")+(inst?.ejercicio_ref?" · "+inst.ejercicio_ref:"")+" con GBH Nutrición:\n"
-      +"📈 "+(dep?.metrica||"Métrica")+": "+last+" (PR "+pr+")\n"
-      +"🗓️ "+regs.length+(regs.length===1?" semana registrada":" semanas registradas")+"\n"
-      +(profile?.referral_code?"🐑 Únete con mi código "+profile.referral_code:"🐑 Nutrición + rendimiento en una sola app");
+    const fecha=((regs[regs.length-1]||{}).log_date||"").split("-").reverse().join("/");
+    return E.oveja+" *GBH Nutrici\u00F3n* \u00B7 Informe de rendimiento\n"
+      + E.biceps+" "+(dep?.nombre||"Mi deporte")+(inst?.ejercicio_ref?" \u00B7 "+inst.ejercicio_ref:"")+"\n"
+      + E.cal+" "+fecha+"\n\n"
+      + E.graf+" "+(dep?.metrica||"M\u00E9trica")+": *"+last+"*\n"
+      + E.copa+" PR: "+pr+"\n"
+      + "\u2705 "+regs.length+(regs.length===1?" semana registrada":" semanas registradas")+"\n\n"
+      + E.ojos+" Informe completo:\n"+informeURL()
+      + (profile?.referral_code?"\n\n"+E.regalo+" C\u00F3digo de invitaci\u00F3n: *"+profile.referral_code+"*":"");
+  };
+  // Asegura que el informe guardado está al día antes de compartir el enlace
+  const asegurarInforme = () => {
+    if(!regs.length) return;
+    sbReq("POST","rendimiento_informes?on_conflict=instancia_id",{
+      instancia_id: inst.id, profile_id: profile.id,
+      html: rendInformeHTML(profile, inst, dep, regs), n_registros: regs.length,
+    });
   };
   const verInforme = () => {
     try{
@@ -10914,11 +10931,13 @@ function RendimientoTab({ profile, setProfile, lang, sfx, showT, addXG, setTab, 
   };
   const compartirWA = () => {
     const txt=textoResumen(); if(!txt){ showT({icon:"⚠️",title:"Sin datos",sub:"Registra al menos una semana"}); return; }
+    asegurarInforme();
     window.open("https://wa.me/?text="+encodeURIComponent(txt),"_blank");
   };
   const compartirNativo = async () => {
     const txt=textoResumen(); if(!txt){ showT({icon:"⚠️",title:"Sin datos",sub:"Registra al menos una semana"}); return; }
-    if(navigator.share){ try{ await navigator.share({title:"Mi progreso · GBH Nutrición", text:txt}); }catch(e){} }
+    asegurarInforme();
+    if(navigator.share){ try{ await navigator.share({title:"Mi progreso \u00B7 GBH Nutrici\u00F3n", text:txt, url:informeURL()}); }catch(e){} }
     else compartirWA();
   };
 
@@ -13655,6 +13674,23 @@ function BotonCompartirReceta({rec,lang,sfx,style}){
 // (constante de sesión) para no violar las reglas de hooks; volver al registro
 // es navegación completa (location.href), no pushState.
 const RUTA_PUBLICA = typeof window!=='undefined' && /^\/recetas(\/|$)/.test(window.location.pathname);
+// Ruta pública del informe de rendimiento: /?informe=<instancia_id>
+// El entrenador (o cualquiera con el enlace) lo ve sin cuenta ni login.
+const INFORME_PUBLICO = typeof window!=='undefined' ? new URLSearchParams(window.location.search).get("informe") : null;
+
+function InformePublicoView({ id }){
+  const [html,setHtml]=useState(null);          // null=cargando · ""=no encontrado
+  useEffect(()=>{
+    (async()=>{
+      const r = await sbReq("GET",`rendimiento_informes?instancia_id=eq.${encodeURIComponent(id)}&select=html`);
+      setHtml(r && r[0] && r[0].html ? r[0].html : "");
+    })();
+  },[id]);
+  const base={minHeight:"100vh",background:"#0A1A0F",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Nunito',sans-serif",textAlign:"center",padding:20,fontSize:15,fontWeight:800};
+  if(html===null) return <div style={base}>🐑 Cargando informe…</div>;
+  if(html==="")   return <div style={base}>Informe no disponible.<br/>Puede que aún no haya registros esta semana. 🐑</div>;
+  return <iframe title="Informe GBH" srcDoc={html} style={{border:0,width:"100vw",height:"100vh",display:"block",background:"#0A1A0F"}}/>;
+}
 
 function RecetasPublicas(){
   const [recetas,setRecetas]=useState(null);          // null=cargando · []=error/vacío
@@ -13827,6 +13863,7 @@ function RecetasPublicas(){
 }
 
 export default function App(){
+  if(INFORME_PUBLICO) return <ErrorBoundary><InformePublicoView id={INFORME_PUBLICO}/></ErrorBoundary>;
   if(RUTA_PUBLICA) return <ErrorBoundary><RecetasPublicas/></ErrorBoundary>;
   return <ErrorBoundary><GBHApp/></ErrorBoundary>;
 }
