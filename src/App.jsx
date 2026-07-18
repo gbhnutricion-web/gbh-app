@@ -10614,6 +10614,74 @@ const rendEnrich = (reg, weights, logs, tdee) => {
   const __deficit = (tdee && reg.__target) ? Math.round(reg.__target - tdee) : null;
   return { ...reg, __peso, __sueno, __agua, __deficit };
 };
+// ─── Informe HTML autocontenido (se guarda en rendimiento_informes; botón "Ver") ──
+// Respeta la línea roja: fase nutricional SOLO cualitativa, peso SOLO si
+// inst.compartir_peso. Incluye el código de referido (bucle de captación).
+const rendInformeHTML = (profile, inst, dep, regs) => {
+  const vals = regs.map(r=>Number(r.valor));
+  if(!vals.length) return "";
+  const lower = !!dep?.menor_es_mejor;
+  const pr = lower?Math.min(...vals):Math.max(...vals);
+  const last = vals[vals.length-1], first = vals[0];
+  const delta = +(last-first).toFixed(1);
+  const mejora = lower ? delta<0 : delta>0;
+  const ultimo = regs[regs.length-1]||{};
+  const fase = ultimo.__deficit==null?null:(ultimo.__deficit<=-300?"📉 Déficit":ultimo.__deficit>=300?"📈 Superávit":"⚖️ Mantenimiento");
+  const s3 = regs.slice(-3).map(r=>r.sensaciones).filter(v=>v!=null);
+  const sMed = s3.length? +(s3.reduce((a,b)=>a+b,0)/s3.length).toFixed(1):null;
+  const sEmo = sMed==null?"":(sMed<=4.5?"😫":sMed<=7.5?"😐":"💪");
+  const pesoUlt = inst?.compartir_peso && ultimo.__peso!=null ? ultimo.__peso : null;
+  const W=560,H=200,Pl=34,Prr=10,Pt=14,Pb=24;
+  const mn=Math.min(...vals),mx=Math.max(...vals),pad=(mx-mn)*0.12||1;
+  const X=i=>Pl+(vals.length<2?(W-Pl-Prr)/2:(i/(vals.length-1))*(W-Pl-Prr));
+  const Y=v=>H-Pb-((v-(mn-pad))/((mx+pad)-(mn-pad)))*(H-Pt-Pb);
+  const pts=vals.map((v,i)=>X(i).toFixed(1)+","+Y(v).toFixed(1)).join(" ");
+  const dots=regs.map((r,i)=>{
+    const cx=X(i).toFixed(1), cy=Y(Number(r.valor)).toFixed(1);
+    return `<circle cx="${cx}" cy="${cy}" r="4.5" fill="#58CC02"/>`+(r.es_competicion?`<circle cx="${cx}" cy="${cy}" r="8" fill="none" stroke="#FFC800" stroke-width="2.5"/>`:"");
+  }).join("");
+  const nombre=(profile?.name||"").split(" ")[0]||"Deportista";
+  const codigo=profile?.referral_code||"";
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Informe de rendimiento · GBH Nutrición</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0A1A0F;color:#fff;font-family:'Nunito',system-ui,sans-serif;padding:18px 14px 30px}
+.wrap{max-width:600px;margin:0 auto}
+.card{background:#152210;border:2px solid rgba(88,204,2,.3);border-radius:20px;padding:16px;margin-bottom:12px}
+.h{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+.h .logo{font-size:30px}.h .t{font-size:18px;font-weight:900}.h .s{font-size:11px;color:rgba(255,255,255,.6);font-family:'DM Sans'}
+.grid{display:flex;gap:8px;text-align:center}
+.stat{flex:1;background:rgba(0,0,0,.25);border-radius:14px;padding:10px 4px}
+.stat .v{font-size:21px;font-weight:900;color:#89E219}.stat .l{font-size:10px;color:rgba(255,255,255,.55);font-family:'DM Sans'}
+.gold{color:#FFC800!important}
+.chips{display:flex;flex-wrap:wrap;gap:7px}
+.chip{background:rgba(0,0,0,.25);border:1.5px solid rgba(255,255,255,.1);border-radius:11px;padding:7px 11px;font-size:12px;font-weight:800}
+.note{font-size:10.5px;color:rgba(255,255,255,.45);font-family:'DM Sans';margin-top:8px;line-height:1.5}
+.foot{background:linear-gradient(135deg,#123e57,#1CB0F6);border-radius:16px;padding:13px 15px;font-size:12.5px;line-height:1.55;font-family:'DM Sans'}
+.foot b{font-family:'Nunito'}
+svg{width:100%;height:auto;display:block}
+</style></head><body><div class="wrap">
+<div class="card"><div class="h"><span class="logo">🐑</span><div><div class="t">GBH Nutrición · Informe de rendimiento</div>
+<div class="s">${nombre} · ${dep?.nombre||""}${inst?.ejercicio_ref?" · "+inst.ejercicio_ref:""} · ${regs[0]?.log_date||""} → ${ultimo.log_date||""}</div></div></div></div>
+<div class="card"><div class="grid">
+<div class="stat"><div class="v">${last}</div><div class="l">${dep?.metrica||"Actual"}</div></div>
+<div class="stat"><div class="v gold">${pr} 🏆</div><div class="l">PR</div></div>
+<div class="stat"><div class="v" style="color:${mejora?"#89E219":"#FFC800"}">${delta>0?"+":""}${delta}</div><div class="l">desde el inicio</div></div>
+</div></div>
+<div class="card"><svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+<polyline points="${pts}" fill="none" stroke="#58CC02" stroke-width="3"/>${dots}</svg>
+<div class="note">Anillo dorado = semana de competición · ${regs.length} registro${regs.length===1?"":"s"} semanales</div></div>
+<div class="card"><div class="chips">
+${ultimo.entrenos!=null?`<span class="chip">🏋️ ${ultimo.entrenos} entrenos/sem</span>`:""}
+${sMed!=null?`<span class="chip">${sEmo} Sensaciones ${sMed}/10</span>`:""}
+${fase?`<span class="chip">${fase} <span style="opacity:.6">(fase nutricional)</span></span>`:""}
+${pesoUlt!=null?`<span class="chip">⚖️ ${pesoUlt} kg</span>`:""}
+</div>
+<div class="note">La fase nutricional es cualitativa: la pauta de calorías y los datos de dieta son confidenciales entre el deportista y su nutricionista.</div></div>
+<div class="foot">🧑‍🏫 <b>¿Entrenas o te entrenan?</b> Este informe se genera automáticamente cada semana con la app de GBH Nutrición — nutrición y rendimiento en un solo sitio.${codigo?` Empieza con el código <b>${codigo}</b> y llévate gemas de bienvenida. 🐑`:""}</div>
+</div></body></html>`;
+};
 
 function RendimientoTab({ profile, setProfile, lang, sfx, showT, addXG, setTab, weights, logs }){
   const [instancias, setInstancias] = React.useState(null);
@@ -10791,24 +10859,67 @@ function RendimientoTab({ profile, setProfile, lang, sfx, showT, addXG, setTab, 
 
   const [rM,setRM]=React.useState(""), [rKg,setRKg]=React.useState(""), [rReps,setRReps]=React.useState("");
   const [rT,setRT]=React.useState(""), [rF,setRF]=React.useState(7), [rComp,setRComp]=React.useState(false);
+  const [editandoReg,setEditandoReg]=React.useState(false);
   const esGym = dep?.requiere_ejercicio && !inst?.reps_directas;
+  // Registro YA existente este fin de semana (patrón del pesaje: 1 por semana,
+  // editar reutiliza la misma fila y su fecha original)
+  const regFinde = regs.find(r=>weekendKeys().includes(r.log_date)) || null;
 
   const guardar = async () => {
     if(!isWE || !inst) return;
     let valor;
     if(esGym){ const kg=parseFloat(rKg), rp=parseFloat(rReps); if(!kg||!rp) return; valor=rendEpley(kg,rp); }
     else { valor=parseFloat(rM); if(isNaN(valor)) return; }
-    const ks=weekendKeys(); const log_date=ks[new Date().getDay()===6?0:1];
-    const yaExiste = regs.find(r=> ks.includes(r.log_date));
+    // Como el pesaje: si ya hay registro este finde, se EDITA esa fila (misma
+    // fecha original); si no, se crea con la fecha de hoy (sáb o dom).
+    const ks=weekendKeys();
+    const log_date = regFinde ? regFinde.log_date : ks[new Date().getDay()===6?0:1];
+    const esEdicion = !!regFinde;
     const row = { instancia_id: inst.id, profile_id: profile.id, log_date, valor,
       gym_kg: esGym?parseFloat(rKg):null, gym_reps: esGym?parseFloat(rReps):null,
       entrenos: rT?parseInt(rT,10):null, sensaciones: rF, es_competicion: rComp };
     await sbReq("POST","rendimiento_registros?on_conflict=instancia_id,log_date",row);
-    setRegistros(prev=>{ const arr=(prev[inst.id]||[]).filter(r=>r.log_date!==log_date);
-      arr.push(rendEnrich({...row,__target:profile?.target_kcal||null}, weights, logs, tdee));
-      arr.sort((a,b)=>a.log_date>b.log_date?1:-1); return {...prev,[inst.id]:arr}; });
-    setRM("");setRKg("");setRReps("");setRT("");setRF(7);setRComp(false);
-    if(!yaExiste){ sfx("coin"); await addXG(30,8); showT({icon:"💎",title:"¡Registro semanal completado!",sub:"+8 gemas · tu informe se ha actualizado"}); }
+    const nuevo = rendEnrich({...row,__target:profile?.target_kcal||null}, weights, logs, tdee);
+    const arrNuevo = [...regs.filter(r=>r.log_date!==log_date), nuevo].sort((a,b)=>a.log_date>b.log_date?1:-1);
+    setRegistros(prev=>({...prev,[inst.id]:arrNuevo}));
+    setRM("");setRKg("");setRReps("");setRT("");setRF(7);setRComp(false);setEditandoReg(false);
+    // Informe HTML autogenerado con cada registro (disponible para el entrenador)
+    sbReq("POST","rendimiento_informes?on_conflict=instancia_id",{
+      instancia_id: inst.id, profile_id: profile.id,
+      html: rendInformeHTML(profile, inst, dep, arrNuevo), n_registros: arrNuevo.length,
+    });
+    if(!esEdicion){ sfx("coin"); await addXG(30,8); showT({icon:"💎",title:"¡Registro semanal completado!",sub:"+8 gemas · tu informe se ha actualizado"}); }
+    else showT({icon:"✏️",title:"Registro actualizado",sub:"Tu informe se ha regenerado"});
+  };
+
+  // ── Informe: ver, WhatsApp y compartir nativo (funcionales) ───────────────
+  const textoResumen = () => {
+    const vals=regs.map(r=>Number(r.valor)); if(!vals.length) return "";
+    const lower=!!dep?.menor_es_mejor;
+    const pr=lower?Math.min(...vals):Math.max(...vals);
+    const last=vals[vals.length-1];
+    return "💪 Mi progreso en "+(dep?.nombre||"mi deporte")+(inst?.ejercicio_ref?" · "+inst.ejercicio_ref:"")+" con GBH Nutrición:\n"
+      +"📈 "+(dep?.metrica||"Métrica")+": "+last+" (PR "+pr+")\n"
+      +"🗓️ "+regs.length+(regs.length===1?" semana registrada":" semanas registradas")+"\n"
+      +(profile?.referral_code?"🐑 Únete con mi código "+profile.referral_code:"🐑 Nutrición + rendimiento en una sola app");
+  };
+  const verInforme = () => {
+    try{
+      const html = rendInformeHTML(profile, inst, dep, regs);
+      if(!html){ showT({icon:"⚠️",title:"Sin datos",sub:"Registra al menos una semana"}); return; }
+      const url = URL.createObjectURL(new Blob([html],{type:"text/html"}));
+      window.open(url,"_blank");
+      setTimeout(()=>URL.revokeObjectURL(url), 60000);
+    }catch(e){ showT({icon:"⚠️",title:"No se pudo abrir",sub:"Inténtalo de nuevo"}); }
+  };
+  const compartirWA = () => {
+    const txt=textoResumen(); if(!txt){ showT({icon:"⚠️",title:"Sin datos",sub:"Registra al menos una semana"}); return; }
+    window.open("https://wa.me/?text="+encodeURIComponent(txt),"_blank");
+  };
+  const compartirNativo = async () => {
+    const txt=textoResumen(); if(!txt){ showT({icon:"⚠️",title:"Sin datos",sub:"Registra al menos una semana"}); return; }
+    if(navigator.share){ try{ await navigator.share({title:"Mi progreso · GBH Nutrición", text:txt}); }catch(e){} }
+    else compartirWA();
   };
 
   if(instancias===null) return <Card style={{textAlign:"center",padding:24}}><div style={{color:T.t2}}>Cargando…</div></Card>;
@@ -10882,9 +10993,25 @@ function RendimientoTab({ profile, setProfile, lang, sfx, showT, addXG, setTab, 
     <div style={{paddingBottom:8}}>
       {modeSwitch}
       {sportHead}
-      {inst && isWE && (
+      {inst && isWE && regFinde && !editandoReg && (
+        <Card style={{textAlign:"center"}}>
+          <div style={{fontSize:15,fontWeight:900,marginBottom:6}}>✅ Registro de este fin de semana</div>
+          <div style={{fontSize:30,fontWeight:900,color:T.g2,marginBottom:2}}>{regFinde.valor}</div>
+          <div style={{fontSize:11.5,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>
+            {dep?.metrica} · {regFinde.log_date}{regFinde.sensaciones?` · ${regFinde.sensaciones<=4?"😫":regFinde.sensaciones<=7?"😐":"💪"} ${regFinde.sensaciones}/10`:""}{regFinde.es_competicion?" · 🏆":""}</div>
+          <div style={{fontSize:11,color:T.t3,marginTop:8,fontFamily:"'DM Sans',sans-serif"}}>Un registro por fin de semana y deporte — como el pesaje.</div>
+          <button onClick={()=>{sfx("tap");
+            if(esGym){ setRKg(regFinde.gym_kg!=null?String(regFinde.gym_kg):""); setRReps(regFinde.gym_reps!=null?String(regFinde.gym_reps):""); }
+            else setRM(String(regFinde.valor));
+            setRT(regFinde.entrenos!=null?String(regFinde.entrenos):"");
+            setRF(regFinde.sensaciones||7); setRComp(!!regFinde.es_competicion);
+            setEditandoReg(true);
+          }} style={{marginTop:12,padding:"11px 22px",borderRadius:13,border:`2px solid rgba(255,255,255,.14)`,background:"none",color:T.t2,fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>✏️ Editar registro</button>
+        </Card>
+      )}
+      {inst && isWE && (!regFinde || editandoReg) && (
         <Card>
-          <div style={{fontSize:15,fontWeight:900,marginBottom:10,display:"flex",alignItems:"center",gap:7}}>✏️ Registro semanal
+          <div style={{fontSize:15,fontWeight:900,marginBottom:10,display:"flex",alignItems:"center",gap:7}}>✏️ {editandoReg?"Editar registro":"Registro semanal"}
             <span style={{fontSize:10,color:T.t3,fontWeight:800}}>📅 FECHA AUTOMÁTICA</span></div>
           {esGym ? (
             <>
@@ -10919,7 +11046,10 @@ function RendimientoTab({ profile, setProfile, lang, sfx, showT, addXG, setTab, 
             <span style={{width:24,height:24,borderRadius:8,border:`2px solid ${T.au1}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:T.au1}}>{rComp?"✓":""}</span>
             <span style={{fontSize:13,fontWeight:800,color:T.au1}}>🏆 Esta semana hubo competición</span>
           </div>
-          <button onClick={guardar} style={{width:"100%",marginTop:14,padding:15,borderRadius:16,border:0,fontSize:15,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",background:T.g1,color:"#08300a",boxShadow:`0 4px 0 ${T.g3}`}}>💪 Guardar registro semanal</button>
+          <button onClick={guardar} style={{width:"100%",marginTop:14,padding:15,borderRadius:16,border:0,fontSize:15,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",background:T.g1,color:"#08300a",boxShadow:`0 4px 0 ${T.g3}`}}>💪 {editandoReg?"Guardar cambios":"Guardar registro semanal"}</button>
+          {editandoReg && (
+            <button onClick={()=>{sfx("tap");setEditandoReg(false);setRM("");setRKg("");setRReps("");setRT("");setRF(7);setRComp(false);}} style={{width:"100%",marginTop:8,padding:10,borderRadius:12,border:0,background:"none",color:T.t3,fontSize:12.5,fontWeight:800,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>Cancelar edición</button>
+          )}
         </Card>
       )}
       {sinDatos ? (
@@ -10945,9 +11075,9 @@ function RendimientoTab({ profile, setProfile, lang, sfx, showT, addXG, setTab, 
             <div style={{fontSize:12.5,fontWeight:900,display:"flex",alignItems:"center",gap:6}}>📄 Tu informe HTML
               <span style={{fontSize:9.5,color:T.g2,fontWeight:800,background:"rgba(88,204,2,.14)",border:`1px solid ${T.bG}`,borderRadius:8,padding:"2px 7px"}}>SE ACTUALIZA SOLO</span></div>
             <div style={{display:"flex",gap:8,marginTop:11}}>
-              <button onClick={()=>showT({icon:"📄",title:"Informe",sub:"Se abriría tu informe HTML"})} style={{flex:1,padding:12,borderRadius:12,border:0,fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",background:T.g1,color:"#08300a"}}>👀 Ver</button>
-              <button onClick={()=>showT({icon:"🟢",title:"WhatsApp",sub:"Con mensaje predefinido"})} style={{flex:1,padding:12,borderRadius:12,border:0,fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",background:"#25D366",color:"#06210d"}}>🟢 WhatsApp</button>
-              <button onClick={()=>showT({icon:"📲",title:"Compartir",sub:"En redes sociales"})} style={{flex:"0 0 52px",padding:12,borderRadius:12,fontSize:16,cursor:"pointer",background:"rgba(206,130,255,.18)",border:`1.5px solid rgba(206,130,255,.4)`,color:T.pur}}>📲</button>
+              <button onClick={verInforme} style={{flex:1,padding:12,borderRadius:12,border:0,fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",background:T.g1,color:"#08300a"}}>👀 Ver</button>
+              <button onClick={compartirWA} style={{flex:1,padding:12,borderRadius:12,border:0,fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",background:"#25D366",color:"#06210d"}}>🟢 WhatsApp</button>
+              <button onClick={compartirNativo} style={{flex:1,padding:12,borderRadius:12,fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",background:"rgba(206,130,255,.18)",border:`1.5px solid rgba(206,130,255,.4)`,color:T.pur}}>📲 Compartir</button>
             </div>
           </div>
         </Card>
