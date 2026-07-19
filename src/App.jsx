@@ -9767,6 +9767,7 @@ function GBHApp(){
             {key:"streak", icon:"🔥", title:t("rankStreak"), subtitle:t("rankStreakSub"),  list:byStreak,  statFn:p=>`${p.streak||0}🔥`,  statLabel:t("rankDays")},
             {key:"weight", icon:"⚖️", title:t("rankWeight"), subtitle:t("rankWeightSub"),   list:byWeight,  statFn:p=>p.weightDiff!==null?`${p.weightDiff>=0?"+":""}${p.weightDiff}kg`:"—", statLabel:"kg"},
             {key:"juego",  icon:"🎮", title:"Juego", subtitle:"Puntos de juego · se reinicia cada lunes", list:byJuego, statFn:p=>`${p.juegoPts||0} pts`, statLabel:"pts"},
+            {key:"deporte", icon:"📈", title:"Deporte", subtitle:"Rendimiento normalizado por peso corporal", list:[], statFn:()=>"", statLabel:""},
           ];
 
           const curTable = tables[rankTab];
@@ -9806,7 +9807,9 @@ function GBHApp(){
               </div>
 
               {/* ── Lista ── */}
-              {rankLoading?(
+              {curTable.key==="deporte"?(
+                <RendimientoRanking profile={profile} sfx={sfx}/>
+              ):rankLoading?(
                 <div style={{textAlign:"center",padding:"40px 0",color:T.t2,fontSize:14}}>
                   <div style={{fontSize:32,marginBottom:12,animation:"spin 1s linear infinite",display:"inline-block"}}>🔄</div>
                   <div style={{fontFamily:"'DM Sans',sans-serif"}}>{t("rankLoading")}</div>
@@ -9916,11 +9919,13 @@ function GBHApp(){
               )}
 
               {/* Refresh */}
+              {curTable.key!=="deporte"&&(
               <div style={{textAlign:"center",marginTop:16,marginBottom:4}}>
                 <button onClick={loadRanking} style={{background:"rgba(255,255,255,0.07)",border:`1.5px solid ${T.bW}`,borderRadius:14,padding:"10px 24px",color:T.t2,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
                   {t("rankUpdateBtn")}
                 </button>
               </div>
+              )}
             </div>
           );
         })()}
@@ -11094,8 +11099,7 @@ function RendimientoTab({ profile, setProfile, lang, sfx, showT, addXG, setTab, 
             <div style={{fontSize:12.5,fontWeight:900,display:"flex",alignItems:"center",gap:6}}>📄 Tu informe HTML
               <span style={{fontSize:9.5,color:T.g2,fontWeight:800,background:"rgba(88,204,2,.14)",border:`1px solid ${T.bG}`,borderRadius:8,padding:"2px 7px"}}>SE ACTUALIZA SOLO</span></div>
             <div style={{display:"flex",gap:8,marginTop:11}}>
-              <button onClick={verInforme} style={{flex:1,padding:12,borderRadius:12,border:0,fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",background:T.g1,color:"#08300a"}}>👀 Ver</button>
-              <button onClick={compartirWA} style={{flex:1,padding:12,borderRadius:12,border:0,fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",background:"#25D366",color:"#06210d"}}>🟢 WhatsApp</button>
+              <button onClick={verInforme} style={{flex:1,padding:12,borderRadius:12,border:0,fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",background:T.g1,color:"#08300a"}}>📄 Informe</button>
               <button onClick={compartirNativo} style={{flex:1,padding:12,borderRadius:12,fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",background:"rgba(206,130,255,.18)",border:`1.5px solid rgba(206,130,255,.4)`,color:T.pur}}>📲 Compartir</button>
             </div>
           </div>
@@ -11210,6 +11214,111 @@ function RendimientoAddModal({ profile, sfx, onClose, onAdded }){
         </div>
         <button onClick={onClose} style={{width:"100%",marginTop:14,padding:12,borderRadius:12,border:0,fontWeight:900,fontSize:13,cursor:"pointer",background:"rgba(255,255,255,.08)",color:T.t2,fontFamily:"'Nunito',sans-serif"}}>Cancelar</button>
       </div>
+    </div>
+  );
+}
+
+/* ─── Ranking por deporte (segmento "Deporte" de la pestaña 👑) ──────────────
+   Solo aparecen los deportes que TÚ sigues (tus instancias); al cambiar de chip
+   cambia el ranking. La puntuación llega ya calculada desde la vista
+   rendimiento_ranking (Sinclair en halterofilia, valor/kg en normalizados,
+   valor bruto en el resto) — sin exponer el peso corporal de nadie. */
+function RendimientoRanking({ profile, sfx }){
+  const [insts,setInsts]=React.useState(null);
+  const [sel,setSel]=React.useState(null);
+  const [rows,setRows]=React.useState(null);
+  React.useEffect(()=>{ if(!profile?.id) return; let c=false;
+    (async()=>{
+      const inst=await sbReq("GET",`rendimiento_instancias?profile_id=eq.${profile.id}&archivada=eq.false&select=*,rendimiento_deportes(*)&order=creada_en.asc`)||[];
+      if(c) return; setInsts(inst); if(inst.length) setSel(s=>s||inst[0].id);
+    })();
+    return ()=>{c=true;};
+  },[profile?.id]);
+  const inst=(insts||[]).find(i=>i.id===sel)||null;
+  const dep=inst?.rendimiento_deportes||null;
+  React.useEffect(()=>{ if(!inst) return; let c=false;
+    (async()=>{
+      setRows(null);
+      let q=`rendimiento_ranking?deporte_slug=eq.${inst.deporte_slug}&select=*`;
+      if(dep?.requiere_ejercicio){
+        q+=`&reps_directas=eq.${inst.reps_directas?"true":"false"}`;
+        if(inst.ejercicio_ref) q+=`&ejercicio_ref=eq.${encodeURIComponent(inst.ejercicio_ref)}`;
+      }
+      const r=await sbReq("GET",q);
+      if(!c) setRows(Array.isArray(r)?r:[]);
+    })();
+    return ()=>{c=true;};
+  },[sel,insts]);
+  if(insts===null) return <div style={{textAlign:"center",padding:"30px 0",color:T.t2,fontSize:13}}>Cargando…</div>;
+  if(!insts.length) return (
+    <div style={{textAlign:"center",padding:"28px 20px",background:T.bgWood,borderRadius:22,border:`2px solid ${T.bW}`}}>
+      <div style={{fontSize:15,fontWeight:900,color:T.t1,marginBottom:6}}>Aún no sigues ningún deporte</div>
+      <div style={{fontSize:12.5,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>Crea el tuyo en la pestaña 📈 Rendimiento y compite en su ranking.</div>
+    </div>);
+  const lower=!!dep?.menor_es_mejor;
+  const best={};
+  (rows||[]).forEach(r=>{
+    if(r.score==null) return;
+    const prev=best[r.profile_id];
+    if(!prev || (lower ? Number(r.score)<Number(prev.score) : Number(r.score)>Number(prev.score))) best[r.profile_id]=r;
+  });
+  const list=Object.values(best).sort((a,b)=>lower?(a.score-b.score):(b.score-a.score));
+  const sinPeso=(rows||[]).filter(r=>r.score==null).length;
+  const myPos=list.findIndex(r=>r.profile_id===profile?.id);
+  const medalD=["🥇","🥈","🥉"];
+  const unidad=dep?.metrica_norm||dep?.metrica||"";
+  return (
+    <div>
+      {insts.length>1 && (
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12,justifyContent:"center"}}>
+          {insts.map(i2=>(
+            <button key={i2.id} onClick={()=>{sfx&&sfx("tap");setSel(i2.id);}} style={{border:`1.5px solid ${i2.id===sel?T.bG:"rgba(255,255,255,.14)"}`,borderRadius:12,padding:"7px 12px",fontSize:12,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",background:i2.id===sel?"rgba(88,204,2,.16)":"none",color:i2.id===sel?T.g2:T.t2}}>
+              {i2.rendimiento_deportes?.icono} {i2.rendimiento_deportes?.nombre}{i2.ejercicio_ref?" · "+i2.ejercicio_ref:""}
+            </button>
+          ))}
+        </div>
+      )}
+      <div style={{fontSize:11,color:T.t2,textAlign:"center",fontFamily:"'DM Sans',sans-serif",marginBottom:12}}>
+        {dep?.metrica_norm?`${dep.metrica_norm} — comparable entre pesos corporales`:(dep?.metrica||"")}
+      </div>
+      {rows===null?(
+        <div style={{textAlign:"center",padding:"30px 0",color:T.t2,fontSize:13}}>Cargando ranking…</div>
+      ):!list.length?(
+        <div style={{textAlign:"center",padding:"26px 20px",background:T.bgWood,borderRadius:22,border:`2px solid ${T.bW}`,color:T.t2,fontSize:13,fontFamily:"'DM Sans',sans-serif"}}>Todavía no hay marcas en este deporte. ¡Sé quien estrene el podio este fin de semana! 🏆</div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:7}}>
+          {list.slice(0,10).map((r,i)=>{
+            const isMe=r.profile_id===profile?.id;
+            return (
+              <div key={r.instancia_id} style={{
+                background:isMe?"linear-gradient(135deg,rgba(255,200,0,0.22),rgba(88,204,2,0.1))":i===0?"linear-gradient(135deg,rgba(255,200,0,0.1),rgba(255,160,0,0.05))":T.bgWood,
+                border:`2px solid ${isMe?T.au1:i===0?"rgba(255,200,0,0.35)":T.bW}`,
+                borderRadius:18,padding:"11px 14px",display:"flex",alignItems:"center",gap:10,
+                boxShadow:isMe?`0 4px 0 ${T.au3}`:"0 3px 0 rgba(0,0,0,0.35)"}}>
+                <div style={{width:34,textAlign:"center",flexShrink:0}}>
+                  {i<3?<span style={{fontSize:24}}>{medalD[i]}</span>:<span style={{fontSize:15,fontWeight:900,color:T.t2}}>{i+1}</span>}
+                </div>
+                <div style={{width:38,height:38,borderRadius:12,background:isMe?`linear-gradient(135deg,${T.au1},${T.au2})`:"linear-gradient(135deg,#2A5A2A,#1A3A10)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:`2px solid ${isMe?T.au3:T.bW}`}}>
+                  <span style={{fontSize:17,fontWeight:900,color:isMe?"#1A1000":"rgba(255,255,255,0.85)",fontFamily:"'Nunito',sans-serif"}}>{(r.nombre||"?")[0].toUpperCase()}</span>
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:14,fontWeight:900,color:isMe?T.au1:T.wh,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{(r.nombre||"—").split(" ")[0]}{isMe?" 👈":""}</div>
+                  <div style={{fontSize:10,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>{r.n_registros} sem. · {(r.fecha||"").split("-").reverse().join("/")}</div>
+                </div>
+                <div style={{textAlign:"right",flexShrink:0}}>
+                  <div style={{fontSize:16,fontWeight:900,color:T.g2}}>{r.score}</div>
+                  <div style={{fontSize:9,color:T.t2,textTransform:"uppercase",letterSpacing:"0.06em",maxWidth:86,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{unidad}</div>
+                </div>
+              </div>);
+          })}
+          {myPos>=10 && (
+            <div style={{textAlign:"center",fontSize:12,color:T.t2,marginTop:4,fontFamily:"'DM Sans',sans-serif"}}>Tu posición: <b style={{color:T.au1}}>#{myPos+1}</b> de {list.length}</div>
+          )}
+          {sinPeso>0 && dep?.metrica_norm && (
+            <div style={{textAlign:"center",fontSize:10.5,color:T.t3,marginTop:2,fontFamily:"'DM Sans',sans-serif"}}>{sinPeso} deportista{sinPeso===1?"":"s"} sin pesaje reciente aún no puntúa{sinPeso===1?"":"n"}</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
