@@ -9,7 +9,7 @@
 //  Requiere que OneSignal.init use serviceWorkerPath:"sw.js" en App.jsx.
 importScripts("https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js");
 
-const CACHE_VERSION = "gbh-v2026-07-16e";  // Login blindado (sin fabricar perfil vacio; no bloquea xp null), racha derivada de daily_logs, XP monotonica, cola offline sin perdida de dias/patches. Auditoria interna OK.
+const CACHE_VERSION = "gbh-v2026-07-18d";  // Ranking: 4o segmento Deporte (Sinclair/metrica normalizada por peso, chips de tus deportes, sin exponer peso corporal).
 const APP_SHELL = ["/", "/index.html", "/manifest.json"];
 
 // ── Install: precachea el app shell y activa la versión nueva de inmediato ─────
