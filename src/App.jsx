@@ -10620,8 +10620,10 @@ const rendEnrich = (reg, weights, logs, tdee) => {
   return { ...reg, __peso, __sueno, __agua, __deficit };
 };
 // ─── Informe HTML autocontenido (se guarda en rendimiento_informes; botón "Ver") ──
-// Respeta la línea roja: fase nutricional SOLO cualitativa, peso SOLO si
-// inst.compartir_peso. Incluye el código de referido (bucle de captación).
+// Multi-gráfica con pestañas interactivas, como el comparador de la app.
+// Cada pestaña incluye su lectura de correlación cuando n >= REND_MIN_R.
+// Líneas rojas: peso SOLO si inst.compartir_peso; fase nutricional SOLO
+// cualitativa. Emojis y acentos como entidades HTML (a prueba de encoding).
 const rendInformeHTML = (profile, inst, dep, regs) => {
   const vals = regs.map(r=>Number(r.valor));
   if(!vals.length) return "";
@@ -10629,26 +10631,122 @@ const rendInformeHTML = (profile, inst, dep, regs) => {
   const pr = lower?Math.min(...vals):Math.max(...vals);
   const last = vals[vals.length-1], first = vals[0];
   const delta = +(last-first).toFixed(1);
-  const mejora = lower ? delta<0 : delta>0;
   const ultimo = regs[regs.length-1]||{};
-  const fase = ultimo.__deficit==null?null:(ultimo.__deficit<=-300?"📉 Déficit":ultimo.__deficit>=300?"📈 Superávit":"⚖️ Mantenimiento");
-  const s3 = regs.slice(-3).map(r=>r.sensaciones).filter(v=>v!=null);
-  const sMed = s3.length? +(s3.reduce((a,b)=>a+b,0)/s3.length).toFixed(1):null;
-  const sEmo = sMed==null?"":(sMed<=4.5?"😫":sMed<=7.5?"😐":"💪");
-  const pesoUlt = inst?.compartir_peso && ultimo.__peso!=null ? ultimo.__peso : null;
-  const W=560,H=200,Pl=34,Prr=10,Pt=14,Pb=24;
-  const mn=Math.min(...vals),mx=Math.max(...vals),pad=(mx-mn)*0.12||1;
-  const X=i=>Pl+(vals.length<2?(W-Pl-Prr)/2:(i/(vals.length-1))*(W-Pl-Prr));
-  const Y=v=>H-Pb-((v-(mn-pad))/((mx+pad)-(mn-pad)))*(H-Pt-Pb);
-  const pts=vals.map((v,i)=>X(i).toFixed(1)+","+Y(v).toFixed(1)).join(" ");
-  const dots=regs.map((r,i)=>{
-    const cx=X(i).toFixed(1), cy=Y(Number(r.valor)).toFixed(1);
-    return `<circle cx="${cx}" cy="${cy}" r="4.5" fill="#58CC02"/>`+(r.es_competicion?`<circle cx="${cx}" cy="${cy}" r="8" fill="none" stroke="#FFC800" stroke-width="2.5"/>`:"");
-  }).join("");
-  const nombre=(profile?.name||"").split(" ")[0]||"Deportista";
-  const codigo=profile?.referral_code||"";
+  const esc = s => String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;");
+  // ── Geometría común de las gráficas SVG ──
+  const CW=560, CHh=230, PL=42, PR2=12, PT=18, PB=30;
+  const AX="rgba(255,255,255,.45)", GRD="rgba(255,255,255,.08)";
+  const sc=(a,p)=>{const mn=Math.min(...a),mx=Math.max(...a),q=(mx-mn)*p||1;return{lo:mn-q,hi:mx+q};};
+  const Yv=(v,s)=>CHh-PB-((v-s.lo)/(s.hi-s.lo))*(CHh-PT-PB);
+  const Xi=(i,n)=>PL+(n<2?(CW-PL-PR2)/2:(i/(n-1))*(CW-PL-PR2));
+  const Xv=(v,s)=>PL+((v-s.lo)/(s.hi-s.lo))*(CW-PL-PR2);
+  const fmtN=v=>Math.abs(s0.hi-s0.lo)<12?(+v.toFixed(1)).toString():String(Math.round(v));
+  let s0={lo:0,hi:100};
+  const frame=inner=>`<svg viewBox="0 0 ${CW} ${CHh}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">${inner}</svg>`;
+  const gridY=s=>{s0=s;let g="";for(let i=0;i<=4;i++){const v=s.lo+(s.hi-s.lo)*i/4,y=Yv(v,s);
+    g+=`<line x1="${PL}" y1="${y}" x2="${CW-PR2}" y2="${y}" stroke="${GRD}"/><text x="${PL-6}" y="${y+3}" text-anchor="end" font-size="10" fill="${AX}">${fmtN(v)}</text>`;}return g;};
+  const dot=(x,y,r2,fill)=>`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r2}" fill="${fill}"/>`;
+  // ── Gráfica 1: evolución temporal ──
+  const svgTime=()=>{
+    const s=sc(vals,.12);
+    const pts=vals.map((v,i)=>`${Xi(i,vals.length).toFixed(1)},${Yv(v,s).toFixed(1)}`).join(" ");
+    let d="";
+    regs.forEach((r,i)=>{const x=Xi(i,vals.length),y=Yv(Number(r.valor),s);
+      d+=dot(x,y,4.5,"#58CC02")+dot(x,y,2,"#0A1A0F");
+      if(r.es_competicion) d+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="8" fill="none" stroke="#FFC800" stroke-width="2.5"/>`;});
+    const bi=lower?vals.indexOf(Math.min(...vals)):vals.indexOf(Math.max(...vals));
+    d+=`<text x="${Xi(bi,vals.length).toFixed(1)}" y="${(Yv(vals[bi],s)-13).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="900" fill="#FFC800">PR</text>`;
+    return frame(gridY(s)+`<polyline points="${pts}" fill="none" stroke="#58CC02" stroke-width="3"/>`+d);
+  };
+  // ── Gráfica 2: sensaciones (serie 0-10 con bandas) ──
+  const svgFeel=()=>{
+    const fs=regs.map(r=>r.sensaciones==null?null:Number(r.sensaciones));
+    const s={lo:0,hi:10.8};
+    let g=[[0,4.5,"rgba(255,75,75,.08)","&#128555;"],[4.5,7.5,"rgba(255,200,0,.06)","&#128528;"],[7.5,10.8,"rgba(88,204,2,.08)","&#128170;"]]
+      .map(z=>`<rect x="${PL}" y="${Yv(z[1],s)}" width="${CW-PL-PR2}" height="${Yv(z[0],s)-Yv(z[1],s)}" fill="${z[2]}"/><text x="${CW-PR2-4}" y="${Yv((z[0]+Math.min(z[1],10))/2,s)+5}" text-anchor="end" font-size="13" fill="${AX}">${z[3]}</text>`).join("");
+    s0=s;let grid="";[0,2,4,6,8,10].forEach(v=>{const y=Yv(v,s);grid+=`<line x1="${PL}" y1="${y}" x2="${CW-PR2}" y2="${y}" stroke="${GRD}"/><text x="${PL-6}" y="${y+3}" text-anchor="end" font-size="10" fill="${AX}">${v}</text>`;});
+    const seq=fs.map((v,i)=>v==null?null:`${Xi(i,fs.length).toFixed(1)},${Yv(v,s).toFixed(1)}`).filter(Boolean).join(" ");
+    let d="";fs.forEach((v,i)=>{if(v==null)return;const x=Xi(i,fs.length),y=Yv(v,s);d+=dot(x,y,4.5,"#CE82FF")+dot(x,y,2,"#0A1A0F");});
+    return frame(g+grid+`<polyline points="${seq}" fill="none" stroke="#CE82FF" stroke-width="3"/>`+d);
+  };
+  // ── Dispersión genérica (peso / descanso / agua) ──
+  const svgScatter=(xs)=>{
+    const pares=xs.map((x,i)=>[x,vals[i]]).filter(p=>p[0]!=null&&!isNaN(p[0]));
+    const px=pares.map(p=>p[0]), py=pares.map(p=>p[1]);
+    const sx=sc(px,.06), sy=sc(py,.12);
+    let d="";
+    if(pares.length>=REND_MIN_R){
+      const {m,b}=rendLinreg(px,py);
+      d+=`<line x1="${Xv(sx.lo+(sx.hi-sx.lo)*.02,sx)}" y1="${Yv(m*(sx.lo+(sx.hi-sx.lo)*.02)+b,sy)}" x2="${Xv(sx.hi-(sx.hi-sx.lo)*.02,sx)}" y2="${Yv(m*(sx.hi-(sx.hi-sx.lo)*.02)+b,sy)}" stroke="#FFC800" stroke-width="2" stroke-dasharray="6 5"/>`;
+    }
+    pares.forEach(p=>{d+=dot(Xv(p[0],sx),Yv(p[1],sy),5,"rgba(88,204,2,.85)");});
+    return frame(gridY(sy)+d);
+  };
+  // ── Box plots (entrenos / fase nutricional) ──
+  const svgBox=(groups)=>{
+    const all=groups.flatMap(g=>g.vals); if(!all.length) return "";
+    const s=sc(all,.12);
+    const slot=(CW-PL-PR2)/groups.length, bw=Math.min(54,slot*.42);
+    let d="";
+    groups.forEach((g,gi)=>{
+      const cx=PL+slot*gi+slot/2;
+      d+=`<text x="${cx}" y="${CHh-PB+15}" text-anchor="middle" font-size="10.5" font-weight="800" fill="rgba(255,255,255,.6)">${g.lab}</text><text x="${cx}" y="${CHh-PB+27}" text-anchor="middle" font-size="9" fill="rgba(255,255,255,.3)">n=${g.vals.length}</text>`;
+      if(!g.vals.length) return;
+      if(g.vals.length<3){ g.vals.forEach(v=>{d+=dot(cx,Yv(v,s),5,"rgba(88,204,2,.8)");}); return; }
+      const q=rendQuart(g.vals);
+      d+=`<line x1="${cx}" y1="${Yv(q.min,s)}" x2="${cx}" y2="${Yv(q.q1,s)}" stroke="rgba(137,226,25,.7)" stroke-width="2"/>`
+        +`<line x1="${cx}" y1="${Yv(q.q3,s)}" x2="${cx}" y2="${Yv(q.max,s)}" stroke="rgba(137,226,25,.7)" stroke-width="2"/>`
+        +`<rect x="${cx-bw/2}" y="${Yv(q.q3,s)}" width="${bw}" height="${Math.max(Yv(q.q1,s)-Yv(q.q3,s),3)}" rx="5" fill="rgba(88,204,2,.22)" stroke="#58CC02" stroke-width="2.5"/>`
+        +`<line x1="${cx-bw/2}" y1="${Yv(q.med,s)}" x2="${cx+bw/2}" y2="${Yv(q.med,s)}" stroke="#FFC800" stroke-width="3.5"/>`;
+    });
+    return frame(gridY(s)+d);
+  };
+  // ── Lectura de correlación por variable ──
+  const corrTxt=(xs,nombreVar)=>{
+    const pares=xs.map((x,i)=>[x,vals[i]]).filter(p=>p[0]!=null&&!isNaN(p[0]));
+    if(pares.length<REND_MIN_R) return `&#128737;&#65039; La correlaci&oacute;n con el rendimiento se calcular&aacute; a partir de ${REND_MIN_R} registros (ahora ${pares.length}/${REND_MIN_R}).`;
+    const r=rendPearson(pares.map(p=>p[0]),pares.map(p=>p[1]));
+    const f=Math.abs(r), fuerza=f<0.25?"d&eacute;bil":f<0.5?"moderada":"fuerte", signo=r>=0?"positiva":"negativa";
+    return `r = ${r.toFixed(2)} &middot; correlaci&oacute;n ${fuerza} ${signo} entre ${nombreVar} y el rendimiento.`;
+  };
+  // ── Montaje de pestañas (solo las que tienen datos) ──
+  const tabs=[];
+  const nComp=regs.filter(r=>r.es_competicion).length;
+  tabs.push({k:"time",ic:"&#128200;",lab:"Evoluci&oacute;n",svg:svgTime(),
+    cap:`&#127942; PR ${pr}${nComp?` &middot; ${nComp} competici&oacute;n${nComp===1?"":"es"} en dorado`:""} &middot; ${delta>=0?"+":""}${delta} desde el inicio${lower?" (en este deporte, bajar es mejorar)":""}.`});
+  const s3=regs.slice(-3).map(r=>r.sensaciones).filter(v=>v!=null);
+  if(regs.some(r=>r.sensaciones!=null)){
+    const sMed=s3.length?+(s3.reduce((a,b)=>a+b,0)/s3.length).toFixed(1):null;
+    tabs.push({k:"feel",ic:"&#129496;",lab:"Sensaciones",svg:svgFeel(),
+      cap:sMed==null?"Registro de sensaciones semanales (1-10).":(sMed<=4.5?`&#128555; Media de las 3 &uacute;ltimas semanas: ${sMed}/10 &mdash; vigilar la fatiga.`:`Media de las 3 &uacute;ltimas semanas: ${sMed}/10.`)});
+  }
+  if(inst?.compartir_peso && regs.some(r=>r.__peso!=null))
+    tabs.push({k:"peso",ic:"&#9878;&#65039;",lab:"Peso",svg:svgScatter(regs.map(r=>r.__peso)),cap:corrTxt(regs.map(r=>r.__peso),"el peso corporal")});
+  if(regs.some(r=>r.__sueno!=null))
+    tabs.push({k:"sueno",ic:"&#128564;",lab:"Descanso",svg:svgScatter(regs.map(r=>r.__sueno)),cap:corrTxt(regs.map(r=>r.__sueno),"el descanso")});
+  if(regs.some(r=>r.__agua!=null))
+    tabs.push({k:"agua",ic:"&#128167;",lab:"Agua",svg:svgScatter(regs.map(r=>r.__agua)),cap:corrTxt(regs.map(r=>r.__agua),"la hidrataci&oacute;n")});
+  const conEntrenos=regs.filter(r=>r.entrenos!=null);
+  if(conEntrenos.length){
+    const uniq=[...new Set(conEntrenos.map(r=>r.entrenos))].sort((a,b)=>a-b);
+    tabs.push({k:"entrenos",ic:"&#127947;&#65039;",lab:"Entrenos",
+      svg:svgBox(uniq.map(u=>({lab:u+" entr.",vals:conEntrenos.filter(r=>r.entrenos===u).map(r=>Number(r.valor))}))),
+      cap:"L&iacute;nea dorada = mediana del rendimiento en cada volumen semanal de entrenos."});
+  }
+  if(regs.some(r=>r.__deficit!=null)){
+    tabs.push({k:"fase",ic:"&#128201;",lab:"Fase",
+      svg:svgBox([
+        {lab:"&#128201; D&eacute;ficit",vals:regs.filter(r=>r.__deficit!=null&&r.__deficit<=-300).map(r=>Number(r.valor))},
+        {lab:"&#9878;&#65039; Normo",vals:regs.filter(r=>r.__deficit!=null&&r.__deficit>-300&&r.__deficit<300).map(r=>Number(r.valor))},
+        {lab:"&#128200; Super&aacute;vit",vals:regs.filter(r=>r.__deficit!=null&&r.__deficit>=300).map(r=>Number(r.valor))},
+      ]),
+      cap:"Comparativa por fase nutricional (solo cualitativa): las cifras de la pauta son confidenciales entre paciente y nutricionista."});
+  }
+  const nombre=esc((profile?.name||"").split(" ")[0]||"Deportista");
+  const codigo=esc(profile?.referral_code||"");
+  const mejora = lower ? delta<0 : delta>0;
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Informe de rendimiento · GBH Nutrición</title>
+<title>Informe de rendimiento &middot; GBH Nutrici&oacute;n</title>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
 <style>
 body{margin:0;background:#0A1A0F;color:#fff;font-family:'Nunito',system-ui,sans-serif;padding:18px 14px 30px}
@@ -10660,34 +10758,31 @@ body{margin:0;background:#0A1A0F;color:#fff;font-family:'Nunito',system-ui,sans-
 .stat{flex:1;background:rgba(0,0,0,.25);border-radius:14px;padding:10px 4px}
 .stat .v{font-size:21px;font-weight:900;color:#89E219}.stat .l{font-size:10px;color:rgba(255,255,255,.55);font-family:'DM Sans'}
 .gold{color:#FFC800!important}
-.chips{display:flex;flex-wrap:wrap;gap:7px}
-.chip{background:rgba(0,0,0,.25);border:1.5px solid rgba(255,255,255,.1);border-radius:11px;padding:7px 11px;font-size:12px;font-weight:800}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.tabbtn{border:1.5px solid rgba(255,255,255,.14);background:none;color:rgba(255,255,255,.6);border-radius:11px;padding:7px 11px;font-size:12px;font-weight:900;font-family:'Nunito',sans-serif;cursor:pointer}
+.tabbtn.on{background:rgba(88,204,2,.16);border-color:rgba(88,204,2,.5);color:#89E219}
+.cap{font-size:11.5px;color:rgba(255,255,255,.6);font-family:'DM Sans';margin-top:9px;line-height:1.55}
 .note{font-size:10.5px;color:rgba(255,255,255,.45);font-family:'DM Sans';margin-top:8px;line-height:1.5}
 .foot{background:linear-gradient(135deg,#123e57,#1CB0F6);border-radius:16px;padding:13px 15px;font-size:12.5px;line-height:1.55;font-family:'DM Sans'}
 .foot b{font-family:'Nunito'}
-svg{width:100%;height:auto;display:block}
 </style></head><body><div class="wrap">
-<div class="card"><div class="h"><span class="logo">🐑</span><div><div class="t">GBH Nutrición · Informe de rendimiento</div>
-<div class="s">${nombre} · ${dep?.nombre||""}${inst?.ejercicio_ref?" · "+inst.ejercicio_ref:""} · ${regs[0]?.log_date||""} → ${ultimo.log_date||""}</div></div></div></div>
+<div class="card"><div class="h"><span class="logo">&#128017;</span><div><div class="t">GBH Nutrici&oacute;n &middot; Informe de rendimiento</div>
+<div class="s">${nombre} &middot; ${esc(dep?.nombre||"")}${inst?.ejercicio_ref?" &middot; "+esc(inst.ejercicio_ref):""} &middot; ${esc(regs[0]?.log_date||"")} &rarr; ${esc(ultimo.log_date||"")}</div></div></div></div>
 <div class="card"><div class="grid">
-<div class="stat"><div class="v">${last}</div><div class="l">${dep?.metrica||"Actual"}</div></div>
-<div class="stat"><div class="v gold">${pr} 🏆</div><div class="l">PR</div></div>
+<div class="stat"><div class="v">${last}</div><div class="l">${esc(dep?.metrica||"Actual")}</div></div>
+<div class="stat"><div class="v gold">${pr} &#127942;</div><div class="l">PR</div></div>
 <div class="stat"><div class="v" style="color:${mejora?"#89E219":"#FFC800"}">${delta>0?"+":""}${delta}</div><div class="l">desde el inicio</div></div>
 </div></div>
-<div class="card"><svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
-<polyline points="${pts}" fill="none" stroke="#58CC02" stroke-width="3"/>${dots}</svg>
-<div class="note">Anillo dorado = semana de competición · ${regs.length} registro${regs.length===1?"":"s"} semanales</div></div>
-<div class="card"><div class="chips">
-${ultimo.entrenos!=null?`<span class="chip">🏋️ ${ultimo.entrenos} entrenos/sem</span>`:""}
-${sMed!=null?`<span class="chip">${sEmo} Sensaciones ${sMed}/10</span>`:""}
-${fase?`<span class="chip">${fase} <span style="opacity:.6">(fase nutricional)</span></span>`:""}
-${pesoUlt!=null?`<span class="chip">⚖️ ${pesoUlt} kg</span>`:""}
+<div class="card">
+<div class="tabs">${tabs.map((t2,i)=>`<button type="button" class="tabbtn${i===0?" on":""}" id="t_${t2.k}" onclick="tb('${t2.k}')">${t2.ic} ${t2.lab}</button>`).join("")}</div>
+${tabs.map((t2,i)=>`<div class="pane" id="p_${t2.k}" style="display:${i===0?"block":"none"}">${t2.svg}<div class="cap">${t2.cap}</div></div>`).join("")}
+<div class="note">${regs.length} registro${regs.length===1?"":"s"} semanales &middot; anillo dorado = semana de competici&oacute;n.</div>
 </div>
-<div class="note">La fase nutricional es cualitativa: la pauta de calorías y los datos de dieta son confidenciales entre el deportista y su nutricionista.</div></div>
-<div class="foot">🧑‍🏫 <b>¿Entrenas o te entrenan?</b> Este informe se genera automáticamente cada semana con la app de GBH Nutrición — nutrición y rendimiento en un solo sitio.${codigo?` Empieza con el código <b>${codigo}</b> y llévate gemas de bienvenida. 🐑`:""}</div>
-</div></body></html>`;
+<div class="foot">&#129489;&#8205;&#127979; <b>&iquest;Entrenas o te entrenan?</b> Este informe se genera autom&aacute;ticamente cada semana con la app de GBH Nutrici&oacute;n &mdash; nutrici&oacute;n y rendimiento en un solo sitio.${codigo?` Empieza con el c&oacute;digo <b>${codigo}</b> y ll&eacute;vate gemas de bienvenida. &#128017;`:""}</div>
+</div>
+<script>function tb(k){var i,ps=document.querySelectorAll('.pane');for(i=0;i<ps.length;i++)ps[i].style.display='none';var bs=document.querySelectorAll('.tabbtn');for(i=0;i<bs.length;i++)bs[i].className='tabbtn';document.getElementById('p_'+k).style.display='block';document.getElementById('t_'+k).className='tabbtn on';}</script>
+</body></html>`;
 };
-
 function RendimientoTab({ profile, setProfile, lang, sfx, showT, addXG, setTab, weights, logs }){
   const [instancias, setInstancias] = React.useState(null);
   const [activa, setActiva]         = React.useState(null);
