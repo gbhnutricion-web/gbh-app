@@ -6124,7 +6124,12 @@ function MiniListaCompra({nombre, ingredientes, idReceta, t, onClose}){
   );
 }
 
-function SavedRecipeCard({rec, t, T, removeFromBook}){
+// Normalización de nombres de receta a nivel de módulo (la copia de PlanTab
+// es local a ese componente). Para comparar guardadas/descartadas por nombre
+// cuando el recipe_id no coincide (entradas 'plan_slug' creadas desde el plan).
+const normNombreG = (s)=>(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+
+function SavedRecipeCard({rec, t, T, removeFromBook, lang, gems, isSaved, isDiscarded, onSave, onDiscard}){
   const [expanded, setExpanded] = React.useState(false);
   const [showCompra, setShowCompra] = React.useState(false);  // popup 🛒 de esta receta
   const tipoColor = {
@@ -6180,6 +6185,33 @@ function SavedRecipeCard({rec, t, T, removeFromBook}){
             color:"#FF8C3C",fontSize:12.5,fontWeight:900,
             cursor:"pointer",fontFamily:"'Nunito',sans-serif",
           }}>{t("buyBtn")}</button>)}
+          {/* ── Acciones del RECETARIO COMPLETO (solo si vienen los handlers): ──
+              guardar en favoritas (20💎) y descartar (gratis, repositorio
+              oculto). En "Mi recetario" estas props no se pasan: ahí la acción
+              es eliminar de guardadas (removeFromBook), y una guardada no se
+              puede descartar directamente (regla de conflicto). */}
+          {(onSave||onDiscard)&&(
+            <div style={{display:"flex",gap:8,marginBottom:8}}>
+              {onSave&&(
+                <button onClick={()=>{ if(!isSaved) onSave(rec); }} style={{
+                  flex:1,padding:"10px 6px",borderRadius:12,
+                  background:isSaved?"rgba(88,204,2,0.15)":(gems<20?"rgba(255,255,255,0.05)":"rgba(255,200,0,0.12)"),
+                  border:isSaved?"1.5px solid rgba(88,204,2,0.5)":(gems<20?"1.5px solid rgba(255,255,255,0.08)":"1.5px solid rgba(255,200,0,0.35)"),
+                  color:isSaved?T.g1:(gems<20?T.t3:T.au1),fontSize:12,fontWeight:900,
+                  cursor:isSaved?"default":(gems<20?"default":"pointer"),fontFamily:"'Nunito',sans-serif",
+                }}>{isSaved?(lang==='en'?'✅ Saved':'✅ Guardada'):(lang==='en'?'📖 Save · 20 💎':'📖 Guardar · 20 💎')}</button>
+              )}
+              {onDiscard&&(
+                <button onClick={()=>onDiscard(rec)} style={{
+                  flex:1,padding:"10px 6px",borderRadius:12,
+                  background:isDiscarded?"rgba(255,90,90,0.18)":"rgba(255,90,90,0.08)",
+                  border:isDiscarded?"1.5px solid rgba(255,90,90,0.55)":"1.5px solid rgba(255,90,90,0.25)",
+                  color:"#FF6B6B",fontSize:12,fontWeight:900,
+                  cursor:"pointer",fontFamily:"'Nunito',sans-serif",
+                }}>{isDiscarded?(lang==='en'?'🚫 Discarded · undo':'🚫 Descartada · deshacer'):(lang==='en'?'🗑️ Dislike':'🗑️ No me gusta')}</button>
+              )}
+            </div>
+          )}
           {removeFromBook && (<button onClick={()=>removeFromBook(rec.recipe_id)} style={{
             width:"100%",padding:"9px",borderRadius:12,
             background:"rgba(255,75,75,0.07)",border:"1.5px solid rgba(255,75,75,0.2)",
@@ -6327,6 +6359,11 @@ function GBHApp(){
   const [forgotSent,  setForgotSent]  = useState(false);
   const [dailyRecipe,setDailyRecipe] = useState(null);
   const [savedRecipes,setSavedRecipes] = useState([]);
+  // ── Recetas DESCARTADAS (repositorio oculto): estado ÚNICO a nivel de app ──
+  // Fuente de verdad compartida entre el recetario completo (tarjetas con
+  // 🗑️) y el plan semanal (PlanTab la recibe por props, como savedRecipes).
+  // Así descartar en un sitio se refleja al instante en el otro.
+  const [descartadas,setDescartadas] = useState([]);
   const [recipeView, setRecipeView]  = useState("menu"); // "menu" | "daily" | "book" | "completo"
   const [completoCat,     setCompletoCat]     = useState(null);   // categoría elegida en recetario completo
   const [completoRecipes, setCompletoRecipes] = useState([]);
@@ -7509,6 +7546,14 @@ function GBHApp(){
             setSavedRecipes(remote);
           }
         });
+        // Descartadas: un [] remoto SÍ es fiable (el paciente pudo restaurar
+        // en otro dispositivo), así que se acepta siempre que sea array.
+        sbReq("GET",`discarded_recipes?profile_id=eq.${profileId}&select=recipe_id,nombre`).then(remote=>{
+          if(Array.isArray(remote)){
+            lsSet(`gbh:discarded:${profileId}`, remote);
+            setDescartadas(remote);
+          }
+        });
         if(rp.avatar_b64){
           setUserPhoto(rp.avatar_b64);
           lsSet("gbh:userPhoto", rp.avatar_b64);
@@ -7590,6 +7635,14 @@ function GBHApp(){
       if(remote?.length){
         lsSet(`gbh:saved_recipes:${p.id}`,remote);
         setSavedRecipes(remote);
+      }
+    });
+    // Descartadas: caché local primero, sync Supabase al fondo (mismo patrón)
+    setDescartadas(lsGet(`gbh:discarded:${p.id}`,[]));
+    sbReq("GET",`discarded_recipes?profile_id=eq.${p.id}&select=recipe_id,nombre`).then(remote=>{
+      if(Array.isArray(remote)){
+        lsSet(`gbh:discarded:${p.id}`,remote);
+        setDescartadas(remote);
       }
     });
     setWeightBannerDismissed(false);
@@ -8382,6 +8435,77 @@ function GBHApp(){
     setSavedRecipes(newSaved);
     lsSet(`gbh:saved_recipes:${profile.id}`, newSaved);
     await sbReq("DELETE", `saved_recipes?profile_id=eq.${profile.id}&recipe_id=eq.${recipeId}`);
+  };
+
+  // ── RECETARIO COMPLETO: guardar (20💎) y descartar (gratis) desde el catálogo ──
+  // El paciente que busca a mano ("carne de 500 kcal") puede cerrar el circuito
+  // sin esperar a que la receta caiga en su plan. Comparación por recipe_id Y
+  // por nombre normalizado: las entradas creadas desde el plan pueden llevar
+  // id 'plan_slug' en vez del 'REC###' del catálogo.
+  const _estaGuardada   = (rec)=>savedRecipes.some(s=>s.recipe_id===rec.id_receta
+                            || normNombreG(s.nombre)===normNombreG(rec.nombre));
+  const _estaDescartada = (rec)=>(descartadas||[]).some(d=>d.recipe_id===rec.id_receta
+                            || normNombreG(d.nombre)===normNombreG(rec.nombre));
+  const saveRecipeFromCatalog = async (rec) => {
+    if(!rec||!profile||_estaGuardada(rec)) return;
+    if(gems < 20){ sfx("error"); showT({icon:"💎",title:t("insufficientGems"),sub:lang==="en"?"You need 20 💎 to save a recipe":"Necesitas 20 💎 para guardar una receta"}); return; }
+    if(_estaDescartada(rec)){
+      // Guardar una descartada la RESTAURA primero (la señal nueva manda):
+      // nadie paga 20 💎 por una receta para que el generador siga excluyéndola.
+      await discardRecipeFromCatalog(rec, {silencioso:true});
+    }
+    const newGems = gems - 20;
+    const updP = {...profile, gems: newGems};
+    setProfile(updP); lsSet(`gbh:p:${profile.id}`, updP);
+    sbReq("PATCH", `profiles?id=eq.${profile.id}`, {gems: newGems});
+    const entry = {
+      profile_id: profile.id,
+      recipe_id: rec.id_receta,
+      nombre: rec.nombre, tipo: rec.tipo,
+      calorias: rec.calorias, proteinas_g: rec.proteinas_g,
+      hidratos_g: rec.hidratos_g, grasas_g: rec.grasas_g,
+      ingredientes: rec.ingredientes, instrucciones: rec.instrucciones,
+      raciones: rec.raciones||1,
+      saved_at: new Date().toISOString(),
+    };
+    const newSaved = [entry, ...savedRecipes];
+    setSavedRecipes(newSaved);
+    lsSet(`gbh:saved_recipes:${profile.id}`, newSaved);
+    await sbReq("POST", "saved_recipes", entry);
+    sfx("recipe");
+    showT({icon:"📖", title:t("recipeSavedToast"), sub:rec.nombre});
+  };
+  const discardRecipeFromCatalog = async (rec, opts) => {
+    if(!rec||!profile) return;
+    if(_estaDescartada(rec)){
+      // Toggle: restaurar (quitar del repositorio oculto)
+      const fuera = (descartadas||[]).filter(d=>d.recipe_id===rec.id_receta
+                      || normNombreG(d.nombre)===normNombreG(rec.nombre));
+      const resto = (descartadas||[]).filter(d=>!fuera.includes(d));
+      setDescartadas(resto); lsSet(`gbh:discarded:${profile.id}`,resto);
+      fuera.forEach(q=>sbReq("DELETE",`discarded_recipes?profile_id=eq.${profile.id}&recipe_id=eq.${encodeURIComponent(q.recipe_id)}`));
+      if(!opts?.silencioso){
+        sfx("step");
+        showT({icon:"↩️",title:lang==='en'?'Restored':'Restaurada',sub:lang==='en'?'It can appear in your plans again':'Podrá volver a aparecer en tus planes'});
+      }
+      return;
+    }
+    if(_estaGuardada(rec)){
+      sfx("error");
+      showT({icon:"📖",title:lang==='en'?'Saved recipe':'Está en tus guardadas',sub:lang==='en'?'Remove it from your recipe book first':'Quítala antes de tu recetario guardado'});
+      return;
+    }
+    const entry = {
+      profile_id: profile.id,
+      recipe_id:  rec.id_receta || ('plan_'+normNombreG(rec.nombre).replace(/\s+/g,'_')),
+      nombre:     rec.nombre,
+      discarded_at: new Date().toISOString(),
+    };
+    const nuevos = [entry, ...(descartadas||[])];
+    setDescartadas(nuevos); lsSet(`gbh:discarded:${profile.id}`,nuevos);
+    sbReq("POST","discarded_recipes",entry);
+    sfx("step");
+    showT({icon:"🗑️",title:lang==='en'?'Noted!':'¡Anotada!',sub:lang==='en'?'It won\'t appear in your future plans':'No volverá a aparecer en tus próximos planes'});
   };
 
   const deleteAccount = async () => {
@@ -10338,7 +10462,9 @@ function GBHApp(){
                         🔍 <b style={{color:T.wh}}>{busqResults.length}</b> {lang==='en'?`recipes with "${busqTexto.trim()}" · by calories`:`recetas con "${busqTexto.trim()}" · por calorías`}
                       </div>
                       <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                        {busqResults.slice(0,60).map(rec=>(<SavedRecipeCard key={rec.id_receta} rec={rec} t={t} T={T} />))}
+                        {busqResults.slice(0,60).map(rec=>(<SavedRecipeCard key={rec.id_receta} rec={rec} t={t} T={T} lang={lang} gems={gems}
+                          isSaved={_estaGuardada(rec)} isDiscarded={_estaDescartada(rec)}
+                          onSave={saveRecipeFromCatalog} onDiscard={discardRecipeFromCatalog}/>))}
                       </div>
                       {busqResults.length>60&&(
                         <div style={{textAlign:"center",padding:"14px 0",fontSize:12,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>
@@ -10386,7 +10512,9 @@ function GBHApp(){
                       </div>
                     ) : (
                       <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                        {completoRecipes.map(rec=>(<SavedRecipeCard key={rec.id_receta} rec={rec} t={t} T={T} />))}
+                        {completoRecipes.map(rec=>(<SavedRecipeCard key={rec.id_receta} rec={rec} t={t} T={T} lang={lang} gems={gems}
+                          isSaved={_estaGuardada(rec)} isDiscarded={_estaDescartada(rec)}
+                          onSave={saveRecipeFromCatalog} onDiscard={discardRecipeFromCatalog}/>))}
                       </div>
                     )}
                   </>
@@ -10630,7 +10758,7 @@ function GBHApp(){
             </div>
           </div>
         )}
-        {tab==="plan"&&<PlanTab profile={profile} lang={lang} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} showT={showT} sfx={sfx} t={t} setTab={setTab} onMealRegistered={onMealRegistered}/>}
+        {tab==="plan"&&<PlanTab profile={profile} lang={lang} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} descartadas={descartadas} setDescartadas={setDescartadas} showT={showT} sfx={sfx} t={t} setTab={setTab} onMealRegistered={onMealRegistered}/>}
         {tab==="rendimiento"&&<RendimientoTab profile={profile} setProfile={setProfile} lang={lang} sfx={sfx} showT={showT} addXG={addXG} setTab={setTab} weights={weights} logs={logs}/>}
         {tab==="consulta"&&<ConsultaTab profile={profile} lang={lang} sfx={sfx}/>}
       </div>
@@ -12279,7 +12407,7 @@ function OverlayGenerando({lang}){
   );
 }
 
-function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx,t,setTab,onMealRegistered}){
+function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartadas,setDescartadas,showT,sfx,t,setTab,onMealRegistered}){
   const isPremium=profile?.plan==='premium';
   const isStandard=profile?.plan==='standard';
   const tieneAcceso=isPremium||isStandard;
@@ -12329,6 +12457,11 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
   const [tomaReceta,setTomaReceta]=React.useState(null);
   const [loadingToma,setLoadingToma]=React.useState(false);
   const [generando,setGenerando]=React.useState(false);
+  // ── Recetas DESCARTADAS (repositorio OCULTO) ───────────────────────────────
+  // El estado ÚNICO vive en GBHApp (props descartadas/setDescartadas), igual
+  // que savedRecipes: así el descarte hecho desde el recetario completo y el
+  // hecho desde la ficha de una toma comparten fuente de verdad y caché
+  // (gbh:discarded:{id}). La carga inicial también la hace GBHApp en el login.
 
   // ── Registro de cumplimiento por comida (aditivo) ───────────────────────────
   // El paciente marca, por toma del día, qué hizo (seguida / menos / cambiada /
@@ -12810,43 +12943,89 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
     const okTipo   = (r)=>(r.tipo||'')===tipoActual;
     const okFranja = (r)=> !hayCategorias || catBucket(r)===bucketObj; // franja: restricción DURA (nunca se relaja)
     const okOtra   = (r)=>nomDe(r)!==nombreActual;
-    const okKcal   = (r)=>{const k=kcalDe(r);return kcalActual===0||(k>=kcalActual*0.8&&k<=kcalActual*1.2);};
+    // ── Objetivo calórico de la toma (el que fijó el generador) ─────────────
+    const kcalObjetivo = tomaReceta.kcal_objetivo || kcalActual || 0;
+    // COMPATIBILIDAD POR RACIÓN (restricción DURA, nunca se relaja): la
+    // candidata solo vale si escalando su ración dentro del MISMO rango que
+    // usa el generador (RACION_MIN/MAX = 0.70–1.40) clava el objetivo de la
+    // toma. Esto elimina de raíz el fallo del bizcocho→"2 naranjas y 2
+    // limones": una receta de 70 kcal jamás puede cubrir una merienda de 250
+    // (necesitaría ración ×3.6) y por tanto queda fuera del pool. Sustituye
+    // al antiguo ±20% en crudo, que además se ABANDONABA en los niveles 2 y 4
+    // de la cascada, dejando pasar cualquier kcal.
+    const F_MIN=0.70, F_MAX=1.40;
+    const okEscala = (r)=>{const k=kcalDe(r); if(!kcalObjetivo||!k) return false;
+      const f=kcalObjetivo/k; return f>=F_MIN&&f<=F_MAX;};
+    // PERFIL DE MACROS: la sustitución debe conservar las PROPORCIONES de
+    // macronutrientes, no solo las kcal. Se compara el reparto calórico
+    // (P×4, H×4, G×9 sobre el total) y se mide la distancia L1 entre
+    // perfiles: 0 = idéntico reparto, 2 = opuesto. Un bizcocho keto
+    // (43% grasa) nunca casará con fruta pura (0% grasa) en el nivel
+    // estricto, y como mucho en el laxo si no existe nada mejor.
+    const perfilDe = (p,h,g)=>{const kc=p*4+h*4+g*9;
+      return kc>0?[p*4/kc,h*4/kc,g*9/kc]:null;};
+    const perfilActual = perfilDe(parseFloat(tomaReceta.proteinas_g)||0,
+                                  parseFloat(tomaReceta.hidratos_g)||0,
+                                  parseFloat(tomaReceta.grasas_g)||0);
+    const distMacro = (r)=>{
+      const q = perfilDe(parseFloat(r.proteinas_g)||0,
+                         parseFloat(r.hidratos_g)||0,
+                         parseFloat(r.grasas_g)||0);
+      if(!perfilActual||!q) return 0.5;   // sin datos: ni premia ni descarta
+      return Math.abs(q[0]-perfilActual[0])+Math.abs(q[1]-perfilActual[1])+Math.abs(q[2]-perfilActual[2]);
+    };
+    const MACRO_ESTRICTO=0.35, MACRO_LAXO=0.60;
     // SEGURIDAD: alimentos rechazados/alergias del paciente (notas del perfil).
     // Filtro DURO en TODOS los niveles de relajación — nunca se sirve un rechazado.
     const rechPref = interpretarRechazados(profile?.notas);
     const okRech   = (r)=>!recetaRechazadaJS(r, rechPref);
-    // Prioridad de selección. La FRANJA se mantiene en los cuatro niveles; el
-    // tipo (carne/pescado/…) se prioriza y solo se relaja —siempre dentro de la
-    // misma franja— si no hay ninguna alternativa del mismo tipo.
-    //   1) mismo tipo + misma franja + kcal parecidas (±20%)
-    //   2) mismo tipo + misma franja
-    //   3) misma franja + kcal parecidas
-    //   4) misma franja
+    // DESCARTADAS: la receta que el paciente marcó con 🗑️ no puede volver a
+    // salirle tampoco al cambiar con gemas — filtro DURO como los rechazados.
+    const descSet = new Set((descartadas||[]).map(r=>normNombre(r.nombre||'')));
+    const okNoDesc = (r)=>!descSet.has(nomDe(r));
+    // Base común: franja + rechazados + descartadas + escala son SIEMPRE duras.
+    // Solo se relajan el tipo (carne/pescado/postre…) y el umbral de macros:
+    //   1) mismo tipo + macros muy parecidos
+    //   2) macros muy parecidos (otro tipo, misma franja)
+    //   3) mismo tipo + macros razonables
+    //   4) macros razonables
+    // Si ni así hay nada, se avisa "Sin alternativa" (y NO se cobran gemas):
+    // mejor no cambiar que servir un despropósito nutricional.
+    const baseCands = recetas.filter(r=>okRech(r)&&okNoDesc(r)&&okFranja(r)&&okOtra(r)&&okEscala(r));
     const pools = [
-      recetas.filter(r=>okRech(r)&&okTipo(r)&&okFranja(r)&&okOtra(r)&&okKcal(r)),
-      recetas.filter(r=>okRech(r)&&okTipo(r)&&okFranja(r)&&okOtra(r)),
-      recetas.filter(r=>okRech(r)&&okFranja(r)&&okOtra(r)&&okKcal(r)),
-      recetas.filter(r=>okRech(r)&&okFranja(r)&&okOtra(r)),
+      baseCands.filter(r=>okTipo(r)&&distMacro(r)<=MACRO_ESTRICTO),
+      baseCands.filter(r=>distMacro(r)<=MACRO_ESTRICTO),
+      baseCands.filter(r=>okTipo(r)&&distMacro(r)<=MACRO_LAXO),
+      baseCands.filter(r=>distMacro(r)<=MACRO_LAXO),
     ];
-    const pool = pools.find(p=>p.length) || [];
+    let pool = pools.find(p=>p.length) || [];
     if(!pool.length){
       showT&&showT({icon:"🚫",title:lang==='en'?'No alternative':'Sin alternativa',sub:lang==='en'?'No similar recipe available':'No hay receta similar disponible'});
       return;
     }
-    const elegida = pool[Math.floor(Math.random()*pool.length)];
+    // Sorteo entre las 8 candidatas de macros MÁS parecidos (variedad sin
+    // perder coherencia), ponderado ×4 hacia las FAVORITAS del paciente —
+    // mismo FAVORITO_BOOST que el generador: sus preferencias mandan.
+    pool = pool.slice().sort((a,b)=>distMacro(a)-distMacro(b)).slice(0,8);
+    const favSet = new Set((savedRecipes||[]).map(r=>normNombre(r.nombre||r.nombre_receta||'')));
+    const pesos = pool.map(r=>favSet.has(nomDe(r))?4:1);
+    const totPeso = pesos.reduce((s,x)=>s+x,0);
+    let rnd = Math.random()*totPeso, acc=0, elegida=pool[pool.length-1];
+    for(let i=0;i<pool.length;i++){ acc+=pesos[i]; if(rnd<=acc){ elegida=pool[i]; break; } }
     // Descontar gemas
     const newGems = gems - 10;
     const updP = {...profile, gems:newGems};
     setProfile(updP); lsSet(`gbh:p:${profile.id}`, updP);
     sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:newGems});
     sfx&&sfx("recipe");
-    // ── Escalar la nueva receta a las kcal de la toma (objetivo = kcal de la
-    //    receta actual, que ya venía ajustada por el generador) ──
-    const kcalObj = tomaReceta.kcal_objetivo || kcalActual || 0;
+    // ── Escalar la nueva receta a las kcal de la toma. El pool ya garantiza
+    //    que el factor cae en 0.70–1.40 (rango RACION_MIN/MAX del generador),
+    //    así que el clamp es solo un cinturón de seguridad. ──
+    const kcalObj = kcalObjetivo;
     const kcalBase = parseFloat(elegida.calorias||elegida.calorias_totales)||0;
     let f = 1;
     if(kcalObj>0 && kcalBase>0){
-      f = Math.max(0.5, Math.min(2, kcalObj/kcalBase));
+      f = Math.max(F_MIN, Math.min(F_MAX, kcalObj/kcalBase));
       f = Math.round(f*20)/20; // pasos de 0,05
       if(Math.abs(f-1)<0.05) f = 1;
     }
@@ -12893,6 +13072,44 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
 
   // ── Guardar la receta en el recetario personal (20 💎) ─────────────────────
   const recetaYaGuardada = tomaReceta && (savedRecipes||[]).some(r=>normNombre(r.nombre)===normNombre(tomaReceta?.nombre));
+  // ── Descartar la receta (🗑️, GRATIS): repositorio oculto ──────────────────
+  // Marca "no me gusta". Toggle: si ya está descartada, volver a pulsar la
+  // restaura (por si fue un toque accidental — el repositorio es invisible y
+  // no hay otra forma de deshacerlo). Regla de conflicto con favoritas: una
+  // receta GUARDADA (pagada con 20 💎) no se puede descartar directamente;
+  // primero hay que quitarla de guardadas — así nunca se borra en silencio
+  // algo que costó gemas.
+  const recetaDescartada = tomaReceta && (descartadas||[]).some(r=>normNombre(r.nombre)===normNombre(tomaReceta?.nombre));
+  async function descartarRecetaToma(){
+    if(!tomaReceta||!profile) return;
+    const nom = tomaReceta.nombre||'';
+    if(recetaDescartada){
+      // Restaurar: quitar del repositorio oculto
+      const resto = (descartadas||[]).filter(r=>normNombre(r.nombre)!==normNombre(nom));
+      setDescartadas(resto); lsSet(`gbh:discarded:${profile.id}`,resto);
+      const quitados = (descartadas||[]).filter(r=>normNombre(r.nombre)===normNombre(nom));
+      quitados.forEach(q=>sbReq("DELETE",`discarded_recipes?profile_id=eq.${profile.id}&recipe_id=eq.${encodeURIComponent(q.recipe_id)}`));
+      sfx&&sfx("step");
+      showT&&showT({icon:"↩️",title:lang==='en'?'Restored':'Restaurada',sub:lang==='en'?'It can appear in your plans again':'Podrá volver a aparecer en tus planes'});
+      return;
+    }
+    if(recetaYaGuardada){
+      sfx&&sfx("error");
+      showT&&showT({icon:"📖",title:lang==='en'?'Saved recipe':'Está en tus guardadas',sub:lang==='en'?'Remove it from your recipe book first':'Quítala antes de tu recetario guardado'});
+      return;
+    }
+    const entry = {
+      profile_id: profile.id,
+      recipe_id:  tomaReceta.id_receta || ('plan_'+normNombre(nom).replace(/\s+/g,'_')),
+      nombre:     nom,
+      discarded_at: new Date().toISOString(),
+    };
+    const nuevos = [entry, ...(descartadas||[])];
+    setDescartadas(nuevos); lsSet(`gbh:discarded:${profile.id}`,nuevos);
+    sbReq("POST","discarded_recipes",entry);
+    sfx&&sfx("step");
+    showT&&showT({icon:"🗑️",title:lang==='en'?'Noted!':'¡Anotada!',sub:lang==='en'?'It won\'t appear in your future plans':'No volverá a aparecer en tus próximos planes'});
+  }
   async function guardarRecetaToma(){
     if(!tomaReceta||!profile) return;
     if(recetaYaGuardada) return;
@@ -13515,7 +13732,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
           </div>
           <BotonCompartirReceta rec={tomaReceta} lang={lang} sfx={sfx}/>
 
-          {/* Botones: cambiar receta (10💎) y guardar (20💎) */}
+          {/* Botones: cambiar receta (10💎), guardar (20💎) y descartar (gratis) */}
           <div style={{display:'flex',gap:10,marginTop:12}}>
             <button onClick={cambiarRecetaToma}
               style={{flex:1,background:gems<10?'rgba(255,255,255,0.05)':'rgba(100,181,246,0.15)',
@@ -13538,6 +13755,17 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,showT,sfx
                 {recetaYaGuardada?(lang==='en'?'Saved':'Guardada'):(lang==='en'?'Save':'Guardar')}
               </span>
               <span style={{fontSize:10,color:T.t3}}>{recetaYaGuardada?'✓':'20 💎'}</span>
+            </button>
+            <button onClick={descartarRecetaToma}
+              style={{flex:1,background:recetaDescartada?'rgba(255,90,90,0.18)':'rgba(255,90,90,0.08)',
+                      border:recetaDescartada?'1.5px solid rgba(255,90,90,0.55)':'1.5px solid rgba(255,90,90,0.25)',
+                      borderRadius:16,padding:'14px 10px',cursor:'pointer',
+                      display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
+              <span style={{fontSize:20}}>{recetaDescartada?'🚫':'🗑️'}</span>
+              <span style={{fontSize:12,fontWeight:900,color:'#FF6B6B',fontFamily:"'Nunito',sans-serif"}}>
+                {recetaDescartada?(lang==='en'?'Discarded':'Descartada'):(lang==='en'?'Dislike':'No me gusta')}
+              </span>
+              <span style={{fontSize:10,color:T.t3}}>{recetaDescartada?(lang==='en'?'Tap to undo':'Toca para deshacer'):(lang==='en'?'Free':'Gratis')}</span>
             </button>
           </div>
         </>)}
