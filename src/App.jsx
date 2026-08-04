@@ -262,6 +262,7 @@ const TRANS = {
     admCaida:"En caída",
     admSinActivar:"Sin activar",
     admRiesgo:"Riesgo",
+    admGratis:"Gratis",
     admWspCopiado:"Mensaje copiado",
     admWspCopiadoSub:"Pégalo en WhatsApp para {n}",
     admWspError:"No se pudo copiar el mensaje",
@@ -521,6 +522,7 @@ const TRANS = {
     admCaida:"Dropping off",
     admSinActivar:"Never activated",
     admRiesgo:"At risk",
+    admGratis:"Free",
     admWspCopiado:"Message copied",
     admWspCopiadoSub:"Paste it in WhatsApp for {n}",
     admWspError:"Could not copy the message",
@@ -9355,7 +9357,11 @@ function GBHApp(){
     const lW=(id)=>{const w=lsGet(`gbh:weights:${id}`,[]);return w.length?w[w.length-1].weight:null;};
     const st=(a)=>a>=80?{t:"✅ En Objetivo",c:T.g1}:a>=50?{t:"⚠️ Riesgo",c:T.au1}:{t:"🔴 Inactivo",c:T.red};
     // ── Tier por paciente (profiles.plan): 💎 premium / ⭐ normal ──
-    const tierDe=(p)=>((planAdmin[p.id]||p.plan)==='premium'?'premium':'standard');
+    // ── Tier: 💎 premium / ⭐ normal (estándar de pago o trial) / 🆓 gratis ──
+    // El trial (plan='standard' + trial_ends_at) cuenta como Normal a propósito:
+    // un trial que cae en riesgo es una captación perdida y SÍ hay que verlo.
+    const tierDe=(p)=>{const pl=(planAdmin[p.id]||p.plan);return pl==='premium'?'premium':pl==='free'?'free':'standard';};
+    const esGratis=(p)=>tierDe(p)==='free';
     // ── Actividad real (vista patient_activity) ─────────────────────────────
     // NIVEL ≠ CAÍDA: quien nunca usó las misiones puede estar satisfecho (lee
     // el plan y ya). La señal que importa es la CAÍDA: registraba y ha parado.
@@ -9366,7 +9372,7 @@ function GBHApp(){
     const diasVisto=(p)=>{const d=fechaAct(p);return d?Math.max(0,Math.floor((Date.now()-d.getTime())/86400000)):null;};
     const enCaida=(p)=>{const a=actDe(p);return !!a&&(a.dias_30_60??0)>=5&&(a.dias_ult_30??0)<=1;};// patrón exacto de la baja del 2-ago
     const sinActivar=(p)=>{const a=actDe(p);if(!a)return false;const d=fechaAct(p);if(!d)return true;return a.created_at?d<new Date(a.created_at):false;};// paga y no ha recibido nada
-    const enRiesgo=(p)=>enCaida(p)||sinActivar(p);
+    const enRiesgo=(p)=>!esGratis(p)&&(enCaida(p)||sinActivar(p)); // los gratis no pagan: su riesgo no requiere control
     const copiarWsp=async(p)=>{
       const nombre=(p.name||"").split(" ")[0]||"";
       const msg=t(sinActivar(p)?"admWspMsgSinActivar":"admWspMsgCaida",{n:nombre});
@@ -9379,13 +9385,15 @@ function GBHApp(){
     const listaP=allP
       .filter(p=>filtroAdmin==='todos'?true
         :filtroAdmin==='premium'?tierDe(p)==='premium'
-        :filtroAdmin==='normal'?tierDe(p)!=='premium'
+        :filtroAdmin==='normal'?tierDe(p)==='standard'
+        :filtroAdmin==='gratis'?esGratis(p)
         :enRiesgo(p))
-      .sort((a,b)=>{const r=(p)=>enCaida(p)?0:sinActivar(p)?1:2;return r(a)-r(b);}); // estable: dentro de cada grupo conserva el orden original
+      .sort((a,b)=>{const r=(p)=>esGratis(p)?2:enCaida(p)?0:sinActivar(p)?1:2;return r(a)-r(b);}); // estable; los gratis nunca suben por riesgo
     const nPremT=allP.filter(p=>tierDe(p)==='premium').length;
-    const nNormT=allP.length-nPremT;
-    const nCaidaT=actReady?allP.filter(enCaida).length:null;
-    const nSinActT=actReady?allP.filter(sinActivar).length:null;
+    const nGratisT=allP.filter(esGratis).length;
+    const nNormT=allP.length-nPremT-nGratisT;
+    const nCaidaT=actReady?allP.filter(p=>!esGratis(p)&&enCaida(p)).length:null;
+    const nSinActT=actReady?allP.filter(p=>!esGratis(p)&&sinActivar(p)).length:null;
     const nRiesgoT=actReady?allP.filter(enRiesgo).length:null;
     return(
       <div style={{fontFamily:"'Nunito',sans-serif",background:`radial-gradient(ellipse at top,#1A3A10,${T.bg})`,minHeight:"100vh",maxWidth:420,margin:"0 auto",color:T.t1,paddingBottom:20}}>
@@ -9417,10 +9425,10 @@ function GBHApp(){
           <Card>
             <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:12}}>Listado de pacientes</div>
             {/* ── Filtro por servicio: Todos | Premium | Normal ── */}
-            <div style={{display:"flex",gap:6,marginBottom:12}}>
-              {[{id:'todos',l:`Todos · ${allP.length}`},{id:'premium',l:`💎 Premium · ${nPremT}`},{id:'normal',l:`⭐ Normal · ${nNormT}`},{id:'riesgo',l:`📉 ${t("admRiesgo")} · ${actReady?nRiesgoT:"—"}`}].map(f=>(
+            <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+              {[{id:'todos',l:`Todos · ${allP.length}`},{id:'premium',l:`💎 Premium · ${nPremT}`},{id:'normal',l:`⭐ Normal · ${nNormT}`},{id:'gratis',l:`🆓 ${t("admGratis")} · ${nGratisT}`},{id:'riesgo',l:`📉 ${t("admRiesgo")} · ${actReady?nRiesgoT:"—"}`}].map(f=>(
                 <button key={f.id} onClick={()=>setFiltroAdmin(f.id)}
-                  style={{flex:1,padding:"9px 2px",borderRadius:12,cursor:"pointer",whiteSpace:"nowrap",
+                  style={{flex:"1 1 30%",padding:"9px 2px",borderRadius:12,cursor:"pointer",whiteSpace:"nowrap",
                     fontWeight:900,fontSize:10.5,fontFamily:"'Nunito',sans-serif",
                     background:filtroAdmin===f.id?"rgba(88,204,2,0.18)":"rgba(255,255,255,0.05)",
                     border:filtroAdmin===f.id?`2px solid ${T.g1}`:"2px solid rgba(255,255,255,0.10)",
@@ -9435,12 +9443,12 @@ function GBHApp(){
               <div key={p.id} style={{borderBottom:"1px solid rgba(255,255,255,0.07)",padding:"12px 0"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:8}}>
                   <div style={{fontWeight:900,fontSize:14,flex:1,minWidth:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                    <span title={tierDe(p)==='premium'?"Premium":"Normal"} style={{marginRight:5}}>{tierDe(p)==='premium'?"💎":"⭐"}</span>{p.name}
-                    {enCaida(p)&&<span title={t("admCaida")} style={{marginLeft:5}}>📉</span>}
-                    {!enCaida(p)&&sinActivar(p)&&<span title={t("admSinActivar")} style={{marginLeft:5}}>🚫</span>}
+                    <span title={tierDe(p)==='premium'?"Premium":esGratis(p)?"Gratis":"Normal"} style={{marginRight:5}}>{tierDe(p)==='premium'?"💎":esGratis(p)?"🆓":"⭐"}</span>{p.name}
+                    {!esGratis(p)&&enCaida(p)&&<span title={t("admCaida")} style={{marginLeft:5}}>📉</span>}
+                    {!esGratis(p)&&!enCaida(p)&&sinActivar(p)&&<span title={t("admSinActivar")} style={{marginLeft:5}}>🚫</span>}
                   </div>
                   <div style={{fontSize:12,fontWeight:800,color:sc,flexShrink:0}}>{si}</div>
-                  {(enRiesgo(p)||(diasVisto(p)!=null&&diasVisto(p)>7))&&(
+                  {!esGratis(p)&&(enRiesgo(p)||(diasVisto(p)!=null&&diasVisto(p)>7))&&(
                     <button onClick={()=>copiarWsp(p)} title="Copiar mensaje para WhatsApp" style={{background:"rgba(37,211,102,0.14)",border:"1px solid rgba(37,211,102,0.35)",borderRadius:8,padding:"3px 9px",fontSize:11,fontWeight:800,color:"#25D366",cursor:"pointer",flexShrink:0,fontFamily:"'Nunito',sans-serif"}}>💬</button>
                   )}
                   <button onClick={()=>exportarSeguimientoCSV(p.id,p.name)} title="Descargar seguimiento (CSV)" style={{background:"rgba(206,130,255,0.14)",border:"1px solid rgba(206,130,255,0.35)",borderRadius:8,padding:"3px 9px",fontSize:11,fontWeight:800,color:T.pur,cursor:"pointer",flexShrink:0,fontFamily:"'Nunito',sans-serif"}}>⬇ CSV</button>
