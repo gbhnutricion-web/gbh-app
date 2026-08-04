@@ -8570,10 +8570,42 @@ function GBHApp(){
   };
   const loadAdmin=async()=>{
     const d=await sbReq("GET","admin_overview?select=*")||[];
-    // Plan de servicio por paciente (premium/standard) para el filtro del panel
+    // Plan de servicio por paciente para el filtro del panel. Se calcula el
+    // plan EFECTIVO: la degradación trial→free y plan_until→free vive en la
+    // sesión del paciente, así que quien caduca y no vuelve a abrir la app se
+    // queda en 'standard' en la BD para siempre. Aquí se detecta con los datos
+    // frescos del servidor y (a) se muestra ya como free, (b) se CURA la BD
+    // con un PATCH condicionado en servidor: los filtros del path repiten las
+    // condiciones, de modo que si algo cambió entre el GET y el PATCH (p.ej.
+    // el webhook de Stripe acaba de poner plan_until), el PATCH es un no-op.
+    // Espeja exactamente las reglas de la sesión del paciente, incluido el
+    // margen de 5 días de plan_until (reintentos de cobro de Stripe).
     try{
-      const pl=await sbReq("GET","profiles?select=id,plan");
-      if(Array.isArray(pl)) setPlanAdmin(Object.fromEntries(pl.map(x=>[x.id,x.plan||'standard'])));
+      const pl=await sbReq("GET","profiles?select=id,plan,trial_ends_at,plan_until");
+      if(Array.isArray(pl)){
+        const now=Date.now();
+        const ef={}, curar=[];
+        pl.forEach(x=>{
+          let e=x.plan||'standard';
+          if(x.plan==='standard'){
+            if(x.trial_ends_at && !x.plan_until){
+              const f=Date.parse(x.trial_ends_at);
+              if(!isNaN(f)&&f<=now){ e='free'; curar.push({id:x.id,tipo:'trial'}); }
+            } else if(!x.trial_ends_at && x.plan_until){
+              const f=Date.parse(x.plan_until);
+              if(!isNaN(f)&&f+5*86400000<=now){ e='free'; curar.push({id:x.id,tipo:'planuntil'}); }
+            }
+          }
+          ef[x.id]=e;
+        });
+        setPlanAdmin(ef);
+        curar.forEach(c=>{
+          const filtro = c.tipo==='trial'
+            ? `profiles?id=eq.${c.id}&plan=eq.standard&plan_until=is.null&trial_ends_at=lte.${encodeURIComponent(new Date().toISOString())}`
+            : `profiles?id=eq.${c.id}&plan=eq.standard&trial_ends_at=is.null&plan_until=lte.${encodeURIComponent(new Date(now-5*86400000).toISOString())}`;
+          try{ sbReq("PATCH", filtro, {plan:"free"}); }catch{}
+        });
+      }
     }catch(e){/* sin plan: todos salen como Normal */}
     // Actividad real (vista patient_activity). Si la vista aún no existe en
     // Supabase, el panel sigue funcionando exactamente igual que antes.
