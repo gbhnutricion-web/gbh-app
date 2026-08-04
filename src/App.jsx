@@ -8279,6 +8279,48 @@ function GBHApp(){
     if(tomasHoy.every(tm=>meals && meals[tm])) toggleM("diet");
   },[tomasHoy, tLog.diet, toggleM]);
 
+  // ── El espejo del día (Tarea B del brief): tras completar el registro ──────
+  // Misma condición que la racha: TODAS las tomas de la pauta registradas, sea
+  // cual sea el estado. La tarjeta aparece TRAS la celebración existente
+  // (racha 5000 ms + overlay de misiones 2800 ms si aplica → 5600 ms), una vez
+  // al día. Si en ese instante hay otro pop-up (en particular el paywall de
+  // victoria, que salta a los 2600 ms), el espejo CEDE EL PASO: no marca el día
+  // como mostrado y lo enseña la próxima vez.
+  const [espejoDia,setEspejoDia]=useState(null);          // [{id,texto,tono}] | null
+  const [planVista,setPlanVista]=useState(null);          // vista inicial que PlanTab debe abrir
+  // Ref y no deps: los pop-ups no deben reiniciar el temporizador del espejo,
+  // solo consultarse en el instante de mostrarlo (mismo criterio que avisoRacha).
+  const espejoPopupsRef=useRef(false);
+  espejoPopupsRef.current=!!(avisoNuevoPlan||avisoRegistro||avisoSupl||avisoTrial||hitoCard||avisoVictoria||avisoRacha);
+  const espejoLogsRef=useRef(logs); espejoLogsRef.current=logs;
+  const espejoDiaCompleto = !!(tomasHoy && tomasHoy.length && tomasHoy.every(tm=>mealsHoy[tm]));
+  useEffect(()=>{
+    if(!profile?.id || !espejoDiaCompleto) return;
+    const hoyK=toKey();
+    if(lsGet(`gbh:espejo:dia:${profile.id}`,'')===hoyK) return;
+    const tm=setTimeout(()=>{
+      try{
+        if(espejoPopupsRef.current) return;               // otro pop-up manda; sin marcar → próxima vez
+        const logsMap={}; (espejoLogsRef.current||[]).forEach(l=>{ if(l?.date) logsMap[l.date]=l.meals||{}; });
+        const hd=new Date(), y=hd.getFullYear(), m=hd.getMonth();
+        const dias=new Date(y,m+1,0).getDate();
+        const off=(new Date(y,m,1).getDay()+6)%7;
+        const fechas=[]; for(let d=1;d<=dias;d++) fechas.push(`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`);
+        const stats=espejoAgregar(k=>logsMap[k], fechas, (k,i)=>Math.floor((off+i)/7));
+        const frases=espejoFrases({stats, logs:logsMap, hoyKey:hoyK, lang});
+        if(!frases.length) return;
+        lsSet(`gbh:espejo:dia:${profile.id}`,hoyK);
+        setEspejoDia(frases.slice(0,2));
+      }catch{}
+    },5600);
+    return ()=>clearTimeout(tm);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.id, espejoDiaCompleto]);
+  const espejoAbrirSeguimiento=useCallback(()=>{
+    setEspejoDia(null); setPlanVista('seguimiento'); setTab('plan');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+
   // Tap en un mini-botón de toma desde Inicio:
   //  · toma sin registrar → se marca "seguida" (verde) al instante
   //  · toma ya registrada → abre el plan diario para ver/editar el registro
@@ -10128,6 +10170,10 @@ function GBHApp(){
 
           <WeeklyXPGoal logs={logs} xp={xp}/>
           <WeekPath logs={logs} onOpenChest={()=>{ sfx("chest"); setShowWeekChest(true); }}/>
+          {/* Tarjeta del lunes (espejo semanal): resumen lunes-domingo anterior.
+              Se auto-oculta si no toca, si se descartó esta semana o si la
+              semana pasada quedó en silencio. */}
+          <EspejoSemanaCard profile={profile} logs={logs} lang={lang} onVerSeguimiento={espejoAbrirSeguimiento}/>
           {allDone&&<TomorrowCard name={profile?.name||""} streak={streak}/>}
 
           {/* Section label */}
@@ -11040,7 +11086,12 @@ function GBHApp(){
             </div>
           </div>
         )}
-        {tab==="plan"&&<PlanTab profile={profile} lang={lang} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} descartadas={descartadas} setDescartadas={setDescartadas} showT={showT} sfx={sfx} t={t} setTab={setTab} onMealRegistered={onMealRegistered}/>}
+        {espejoDia&&!avisoNuevoPlan&&!avisoRegistro&&!avisoSupl&&!avisoTrial&&!hitoCard&&!avisoVictoria&&!avisoRacha&&(
+          <EspejoDiaCard frases={espejoDia} lang={lang}
+            onVerSeguimiento={espejoAbrirSeguimiento}
+            onClose={()=>{sfx("tap");setEspejoDia(null);}}/>
+        )}
+        {tab==="plan"&&<PlanTab profile={profile} lang={lang} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} descartadas={descartadas} setDescartadas={setDescartadas} showT={showT} sfx={sfx} t={t} setTab={setTab} onMealRegistered={onMealRegistered} vistaInicial={planVista} onVistaConsumida={()=>setPlanVista(null)}/>}
         {tab==="consulta"&&<ConsultaTab profile={profile} lang={lang} sfx={sfx}/>}
       </div>
 
@@ -11867,6 +11918,203 @@ async function exportarSeguimientoCSV(profileId, nombre){
   }catch(e){ console.warn('[export-csv] error', e); }
 }
 
+// ═══ EL ESPEJO: devolver los datos al paciente en frases ═════════════════════
+// El bucle de datos iba en una sola dirección: el paciente alimenta el dato y
+// recibe fichas de juego. SeguimientoView existe y está bien hecha, pero es
+// PULL (hay que ir a buscarla) y habla en gráficas. El espejo habla en FRASES
+// CON NÚMEROS PROPIOS y aparece solo, en el momento en que registrar tiene su
+// recompensa natural: al completar el día y al empezar la semana.
+// Regla ética heredada de la racha: celebra REGISTRAR, constata cumplir, no
+// reprocha nada. La culpa es motor de baja documentado.
+// Tests: tests/espejo.test.mjs (leen las funciones de ESTE fichero).
+
+// Agregación de cumplimiento — UN solo cálculo, dos consumidores (SeguimientoView
+// y el espejo). `mealsDe(key)` devuelve el meals_log de esa fecha; `fechas` es la
+// ventana (mes natural o lunes-domingo); `semanaDe(key,i)` agrupa en semanas
+// (opcional: sin él, todo cae en el grupo 0).
+function espejoAgregar(mealsDe, fechas, semanaDe){
+  const porEstado={seguida:0,menos:0,cambiada:0,fuera:0,saltada:0};
+  const porToma={}; PLAN_TOMAS.forEach(t=>porToma[t]={seguida:0,total:0});
+  const semanas={}; let totalReg=0;
+  fechas.forEach((k,i)=>{
+    const meals = mealsDe(k)||{};
+    const w = semanaDe? semanaDe(k,i) : 0;
+    PLAN_TOMAS.forEach(t=>{ const e=meals[t]; if(!e) return;
+      totalReg++;
+      if(porEstado[e]!==undefined) porEstado[e]++;
+      porToma[t].total++; if(e==='seguida') porToma[t].seguida++;
+      if(!semanas[w]) semanas[w]={seguida:0,total:0};
+      semanas[w].total++; if(e==='seguida') semanas[w].seguida++;
+    });
+  });
+  const cumpl = totalReg? Math.round(porEstado.seguida/totalReg*100):0;
+  return {porEstado,porToma,semanas,totalReg,cumpl};
+}
+
+// Redacción: números literales, nunca culpa. Estos términos NO pueden aparecer
+// en ninguna frase generada (hay test que lo comprueba).
+const ESPEJO_PROHIBIDO = ["solo","deberías","deberias","te has saltado","otra vez"];
+const ESPEJO_PLURAL = {
+  es:{Desayuno:'desayunos',Almuerzo:'almuerzos de media mañana',Comida:'comidas del mediodía',Merienda:'meriendas',Cena:'cenas'},
+  en:{Desayuno:'breakfasts',Almuerzo:'morning snacks',Comida:'lunches',Merienda:'afternoon snacks',Cena:'dinners'}};
+const ESPEJO_SING = {
+  es:{Desayuno:'el desayuno',Almuerzo:'el almuerzo de media mañana',Comida:'la comida del mediodía',Merienda:'la merienda',Cena:'la cena'},
+  en:{Desayuno:'breakfast',Almuerzo:'the morning snack',Comida:'lunch',Merienda:'the afternoon snack',Cena:'dinner'}};
+
+// Motor de frases del espejo. Función PURA: recibe los agregados que ya calcula
+// SeguimientoView (vía espejoAgregar) y un mapa fecha→meals, devuelve frases
+// ordenadas por prioridad. El consumidor pinta como MÁXIMO 2 (un espejo, no un
+// informe). Umbral de silencio: con <5 registros no se afirma nada.
+//   espejoFrases({stats, logs, hoyKey, lang}) → [{id, texto, tono}]
+function espejoFrases({stats, logs, hoyKey, lang}){
+  const EN = lang==='en';
+  if(!stats || stats.totalReg<5){
+    return [{id:'arranque', tono:'neutro',
+      texto: EN?'Log a few days and your patterns will start showing here.'
+              :'Registra unos días y aquí empezarás a ver tus patrones.'}];
+  }
+  const out=[];
+  // 1) Constancia de registro: lo que la regla ética premia. Un día cuenta como
+  //    registrado si tiene AL MENOS una toma anotada, sea cual sea el estado.
+  if(hoyKey && logs){
+    let n=0; const d=new Date(hoyKey+'T12:00:00');
+    while(!isNaN(d)){
+      const k=toKey(d); const m=logs[k];
+      if(!m || !PLAN_TOMAS.some(t=>m[t])) break;
+      n++; d.setDate(d.getDate()-1);
+      if(n>=999) break;
+    }
+    if(n>=2) out.push({id:'constancia', tono:'celebra',
+      texto: EN?`Including today, that's ${n} days in a row of logging.`
+              :`Con hoy, llevas ${n} días seguidos registrando.`});
+    else if(n===1) out.push({id:'constancia', tono:'celebra',
+      texto: EN?`Today's log is complete — this is your week as it really is.`
+              :`Hoy has registrado el día completo — así se ve tu semana de verdad.`});
+  }
+  // Tomas con base suficiente, con su % de "seguida"
+  const tomas = PLAN_TOMAS
+    .map(t=>({t, total:stats.porToma[t]?.total||0, p:stats.porToma[t]?.total? Math.round(stats.porToma[t].seguida/stats.porToma[t].total*100):0}))
+    .filter(x=>x.total>0);
+  // 2) La mejor toma con su % (refuerzo con dato; base mínima 5 registros)
+  const conBase5 = tomas.filter(x=>x.total>=5);
+  if(conBase5.length){
+    const mejor = conBase5.reduce((a,b)=>b.p>a.p?b:a);
+    out.push({id:'mejor', tono:'dato',
+      texto: EN?`Your ${ESPEJO_PLURAL.en[mejor.t]} are at ${mejor.p} % — your strongest meal.`
+              :`Tus ${ESPEJO_PLURAL.es[mejor.t]} van al ${mejor.p} % — tu toma más fuerte.`});
+    // 3) La toma más floja, neutra y con salida. Solo con ≥10 registros de ESA
+    //    toma: sin base, no se afirma. Y nunca la misma que la mejor.
+    const conBase10 = tomas.filter(x=>x.total>=10 && x.t!==mejor.t);
+    if(conBase10.length){
+      const floja = conBase10.reduce((a,b)=>b.p<a.p?b:a);
+      if(floja.p<mejor.p){
+        const S = EN?ESPEJO_SING.en[floja.t]:ESPEJO_SING.es[floja.t];
+        out.push({id:'floja', tono:'neutro',
+          texto: EN?`${S.charAt(0).toUpperCase()+S.slice(1)} is your trickiest meal (${floja.p} %). If it doesn't fit one day, swapping it counts too.`
+                  :`${S.charAt(0).toUpperCase()+S.slice(1)} es tu toma más difícil (${floja.p} %). Si un día no encaja, cambiarla también cuenta.`});
+      }
+    }
+  }
+  // 4) Tendencia entre semanas, solo si la dirección es clara (≥5 puntos y ≥10
+  //    registros en cada una de las dos últimas semanas con datos).
+  const sem = Object.keys(stats.semanas||{}).map(Number).sort((a,b)=>a-b)
+    .map(w=>stats.semanas[w]).filter(s=>s.total>=10);
+  if(sem.length>=2){
+    const a=Math.round(sem[sem.length-1].seguida/sem[sem.length-1].total*100);
+    const b=Math.round(sem[sem.length-2].seguida/sem[sem.length-2].total*100);
+    if(Math.abs(a-b)>=5) out.push({id:'tendencia', tono:'dato',
+      texto: EN?`This week you're at ${a} % versus ${b} % last week.`
+              :`Esta semana vas al ${a} % frente al ${b} % de la pasada.`});
+  }
+  return out;
+}
+
+// ── Tarjeta del espejo tras completar el día (Tarea B) ───────────────────────
+// Aparece TRAS la celebración existente (no la sustituye), una vez al día, y
+// cede el paso al paywall de victoria. Cierre con un toque: fricción 45+, nada
+// de pasos extra.
+function EspejoDiaCard({frases, lang, onVerSeguimiento, onClose}){
+  if(!frases?.length) return null;
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.72)",zIndex:2400,display:"flex",alignItems:"flex-end",justifyContent:"center",padding:"0 14px 26px"}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:380,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
+        border:`2px solid ${T.g1}`,borderRadius:22,padding:"18px 18px 14px",boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:"scaleIn 0.35s cubic-bezier(0.34,1.56,0.64,1)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+          <span style={{fontSize:22}}>🪞</span>
+          <div style={{fontWeight:900,fontSize:15,color:T.g2,fontFamily:"'Nunito',sans-serif",flex:1}}>
+            {lang==='en'?'Your mirror today':'Tu espejo de hoy'}
+          </div>
+          <button onClick={onClose} style={{background:"none",border:"none",color:T.t3,fontSize:16,cursor:"pointer",padding:"2px 6px",lineHeight:1}}>✕</button>
+        </div>
+        {frases.slice(0,2).map(f=>(
+          <div key={f.id} style={{fontSize:13.5,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.55,marginBottom:8}}>
+            {f.tono==='celebra'?'🔥 ':f.tono==='dato'?'📊 ':'🧭 '}{f.texto}
+          </div>
+        ))}
+        <button onClick={onVerSeguimiento} style={{background:"none",border:"none",color:T.g2,fontWeight:900,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif",padding:"6px 0 2px",textAlign:"left"}}>
+          {lang==='en'?'See my tracking →':'Ver mi seguimiento →'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Tarjeta del lunes: resumen de la semana anterior (Tarea C) ───────────────
+// Sale de los MISMOS agregados (espejoAgregar), sobre la ventana lunes-domingo
+// anterior. Descartable; descartada no vuelve hasta la semana siguiente. Con 0
+// registros previos NO aparece: no hay espejo vacío ni reproche por el
+// silencio — la reactivación es del operador por WhatsApp, no de la app.
+function EspejoSemanaCard({profile, logs, lang, onVerSeguimiento}){
+  const EN = lang==='en';
+  const [descartada,setDescartada]=React.useState(false);
+  const datos = React.useMemo(()=>{
+    if(!profile?.id) return null;
+    const hoy=new Date(); hoy.setHours(12,0,0,0);
+    const lunes=new Date(hoy); lunes.setDate(hoy.getDate()-((hoy.getDay()+6)%7));  // lunes de ESTA semana
+    const lunesKey=toKey(lunes);
+    const lsKey=`gbh:espejo:sem:${profile.id}:${lunesKey}`;
+    if(lsGet(lsKey,false)) return null;
+    const fechas=[]; for(let i=7;i>=1;i--){ const d=new Date(lunes); d.setDate(lunes.getDate()-i); fechas.push(toKey(d)); }
+    const logsMap={}; (logs||[]).forEach(l=>{ if(l?.date) logsMap[l.date]=l.meals||{}; });
+    const stats=espejoAgregar(k=>logsMap[k], fechas);
+    if(!stats.totalReg) return null;                    // semana en silencio → sin tarjeta
+    const tomas=PLAN_TOMAS
+      .map(t=>({t, total:stats.porToma[t]?.total||0, p:stats.porToma[t]?.total? Math.round(stats.porToma[t].seguida/stats.porToma[t].total*100):0}))
+      .filter(x=>x.total>=3);                           // en una semana, 3 registros de una toma ya son base
+    let mejor=null, vigilar=null;
+    if(tomas.length){ mejor=tomas.reduce((a,b)=>b.p>a.p?b:a); }
+    if(tomas.length>1){ const v=tomas.filter(x=>x.t!==mejor.t).reduce((a,b)=>b.p<a.p?b:a); if(v.p<mejor.p) vigilar=v; }
+    return {lsKey, cumpl:stats.cumpl, mejor, vigilar};
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.id, logs, descartada]);
+  if(!datos||descartada) return null;
+  const cerrar=()=>{ lsSet(datos.lsKey,true); setDescartada(true); };
+  return(
+    <Card style={{border:`2px solid rgba(88,204,2,0.35)`}}>
+      <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:900,fontSize:14.5,color:T.g2,fontFamily:"'Nunito',sans-serif",marginBottom:6}}>
+            📊 {EN?'Your last week':'Tu semana pasada'}
+          </div>
+          <div style={{fontSize:12.5,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6}}>
+            {EN?`${datos.cumpl} % of meals followed`:`${datos.cumpl} % de comidas seguidas`}
+            {datos.mejor&&<> · {EN?`Your best meal: ${ESPEJO_SING.en[datos.mejor.t]} (${datos.mejor.p} %)`:`Tu mejor toma: ${ESPEJO_SING.es[datos.mejor.t]} (${datos.mejor.p} %)`}</>}
+          </div>
+          {datos.vigilar&&(
+            <div style={{fontSize:12.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6}}>
+              {EN?`One to watch: ${ESPEJO_SING.en[datos.vigilar.t]} (${datos.vigilar.p} %)`:`A vigilar: ${ESPEJO_SING.es[datos.vigilar.t]} (${datos.vigilar.p} %)`}
+            </div>
+          )}
+          <button onClick={onVerSeguimiento} style={{background:"none",border:"none",color:T.g2,fontWeight:900,fontSize:12.5,cursor:"pointer",fontFamily:"'Nunito',sans-serif",padding:"6px 0 0",textAlign:"left"}}>
+            {EN?'See tracking →':'Ver seguimiento →'}
+          </button>
+        </div>
+        <button onClick={cerrar} style={{background:"none",border:"none",color:T.t3,fontSize:15,cursor:"pointer",padding:"0 2px",lineHeight:1,flexShrink:0}}>✕</button>
+      </div>
+    </Card>
+  );
+}
+
 // ── Vista de SEGUIMIENTO: calendario de cumplimiento por comida + gráficas ────
 // Se alimenta de los registros que el paciente marca en la Programación diaria
 // (daily_logs.meals_log). El paciente ve su cumplimiento; el nutricionista lo
@@ -11913,23 +12161,12 @@ function SeguimientoView({profile, lang}){
   const esFutura = (d)=>{ const dt=new Date(anio,mes,d); dt.setHours(0,0,0,0); const h=new Date(); h.setHours(0,0,0,0); return dt>h; };
   const esHoy = (d)=> enMesActual && d===hoy.getDate();
 
+  // Agregación delegada en espejoAgregar: ES el mismo cálculo que alimenta las
+  // frases del espejo. Si un día cambia la definición de "seguida" o el corte
+  // semanal, cambia en un único sitio para los dos consumidores.
   const stats = React.useMemo(()=>{
-    const porEstado={seguida:0,menos:0,cambiada:0,fuera:0,saltada:0};
-    const porToma={}; PLAN_TOMAS.forEach(t=>porToma[t]={seguida:0,total:0});
-    const semanas={}; let totalReg=0;
-    for(let d=1; d<=diasEnMes; d++){
-      const meals = logs[keyDe(d)]?.meals||{};
-      const w = Math.floor((offset+d-1)/7);
-      PLAN_TOMAS.forEach(t=>{ const e=meals[t]; if(!e) return;
-        totalReg++;
-        if(porEstado[e]!==undefined) porEstado[e]++;
-        porToma[t].total++; if(e==='seguida') porToma[t].seguida++;
-        if(!semanas[w]) semanas[w]={seguida:0,total:0};
-        semanas[w].total++; if(e==='seguida') semanas[w].seguida++;
-      });
-    }
-    const cumpl = totalReg? Math.round(porEstado.seguida/totalReg*100):0;
-    return {porEstado,porToma,semanas,totalReg,cumpl};
+    const fechas=[]; for(let d=1; d<=diasEnMes; d++) fechas.push(keyDe(d));
+    return espejoAgregar(k=>logs[k]?.meals, fechas, (k,i)=>Math.floor((offset+i)/7));
   },[logs,anio,mes,offset,diasEnMes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const mesAnt = ()=>{ if(mes===0){setMes(11);setAnio(a=>a-1);} else setMes(m=>m-1); };
@@ -12092,7 +12329,7 @@ function OverlayGenerando({lang}){
   );
 }
 
-function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartadas,setDescartadas,showT,sfx,t,setTab,onMealRegistered}){
+function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartadas,setDescartadas,showT,sfx,t,setTab,onMealRegistered,vistaInicial,onVistaConsumida}){
   const isPremium=profile?.plan==='premium';
   const isStandard=profile?.plan==='standard';
   const tieneAcceso=isPremium||isStandard;
@@ -12101,6 +12338,13 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
   const [idx,setIdx]=React.useState(0);
   const [loading,setLoading]=React.useState(true);
   const [view,setView]=React.useState(null);
+  // "Ver mi seguimiento →" del espejo llega desde Inicio con una vista inicial:
+  // se consume una vez y se limpia en el padre, para que la siguiente entrada
+  // manual a Programación arranque en el menú de siempre.
+  React.useEffect(()=>{
+    if(vistaInicial){ setView(vistaInicial); onVistaConsumida&&onVistaConsumida(); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[vistaInicial]);
   const [config,setConfig]=React.useState(null);       // fila patient_config
   const [configView,setConfigView]=React.useState(false); // pantalla de edición de plan
   // ── Candado del plan estándar ──────────────────────────────────────────────
