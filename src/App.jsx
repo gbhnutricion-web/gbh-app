@@ -256,6 +256,17 @@ const TRANS = {
     landingCTA:"Empezar gratis 🚀",
     landingLogin:"Ya tengo cuenta → Entrar",
     landingFree:"Gratis · Sin publicidad · Sin suscripción",
+    // ── Actividad real (panel admin) ──
+    admVistoHoy:"Visto hoy",
+    admVistoDias:"Visto hace {d}d",
+    admCaida:"En caída",
+    admSinActivar:"Sin activar",
+    admRiesgo:"Riesgo",
+    admWspCopiado:"Mensaje copiado",
+    admWspCopiadoSub:"Pégalo en WhatsApp para {n}",
+    admWspError:"No se pudo copiar el mensaje",
+    admWspMsgCaida:"¡Hola {n}! 👋 Soy Alejandro, de GBH Nutrición. He visto que llevas unos días sin pasarte por la app y quería saber qué tal estás. ¿Cómo va todo con el plan? Si algo no te encaja o esta etapa te viene mal, dímelo y lo ajustamos — para eso estoy. ¡Un abrazo! 💪",
+    admWspMsgSinActivar:"¡Hola {n}! 👋 Soy Alejandro, de GBH Nutrición. Quería asegurarme de que has podido entrar en la app y ver tu plan. Si tienes cualquier problema con el acceso o dudas para empezar, escríbeme y lo resolvemos en un minuto. ¡Un abrazo! 💪",
   },
   en:{
     tagline:"Your healthy habits companion 🌱",
@@ -504,6 +515,17 @@ const TRANS = {
     landingCTA:"Start for free 🚀",
     landingLogin:"I already have an account → Log in",
     landingFree:"Free · No ads · No subscription",
+    // ── Real activity (admin panel) ──
+    admVistoHoy:"Seen today",
+    admVistoDias:"Seen {d}d ago",
+    admCaida:"Dropping off",
+    admSinActivar:"Never activated",
+    admRiesgo:"At risk",
+    admWspCopiado:"Message copied",
+    admWspCopiadoSub:"Paste it in WhatsApp for {n}",
+    admWspError:"Could not copy the message",
+    admWspMsgCaida:"Hi {n}! 👋 It's Alejandro from GBH Nutrición. I noticed you haven't been in the app for a few days and wanted to check how you're doing. How is the plan going? If something isn't working for you or this phase feels off, tell me and we'll adjust it — that's what I'm here for. Big hug! 💪",
+    admWspMsgSinActivar:"Hi {n}! 👋 It's Alejandro from GBH Nutrición. I wanted to make sure you've been able to get into the app and see your plan. If you have any trouble accessing it or doubts getting started, message me and we'll sort it out in a minute. Big hug! 💪",
   }
 };
 
@@ -1212,6 +1234,25 @@ async function flushQueue(){
   lsSet(getQueueKey(), failed); // sólo quedan los que fallaron
   return failed.length === 0;
 }
+
+// ─── Actividad real: marcar que el paciente ha abierto la app ────────────────
+// UNA sola escritura por paciente y día (guard en localStorage), a través de la
+// cola de sincronización para que funcione sin cobertura. La fusión de PATCHes
+// por path que ya hace enqueue() evita pisar otros campos pendientes del perfil.
+// SOLO se llama desde sesiones de paciente: el panel de administrador nunca
+// escribe last_seen_at (mirar el panel no es actividad del paciente).
+const marcarVisto = (pid) => {
+  try{
+    if(!pid) return;
+    const hoy = new Date().toISOString().slice(0,10);
+    if(lsGet(`gbh:seen:${pid}`, null) === hoy) return;
+    lsSet(`gbh:seen:${pid}`, hoy);           // guard al encolar, como el resto de la app
+    enqueue({ id:`seen-${pid}-${hoy}`, method:"PATCH",
+              path:`profiles?id=eq.${pid}`,
+              body:{ last_seen_at: new Date().toISOString() }, ts:Date.now() });
+    if(navigator.onLine) flushQueue();
+  }catch{}
+};
 
 // ─── Estado semanal persistente (profiles.weekly_state) ──────────────────────
 // Desafíos reclamados, cofres y XP semanal vivían SOLO en localStorage: al
@@ -6498,6 +6539,7 @@ function GBHApp(){
   const [pinErr,  setPinErr]  = useState(false);   // último intento fallido
   const [filtroAdmin, setFiltroAdmin] = useState('todos');   // todos|premium|normal
   const [planAdmin, setPlanAdmin] = useState({});  // {profile_id: plan} para las insignias 💎/⭐
+  const [actAdmin,  setActAdmin]  = useState({});  // {profile_id: fila de patient_activity} — actividad real
   const [aName,    setAName]    = useState("");
   const [aEmail,   setAEmail]   = useState("");
   const [aWeight,  setAWeight]  = useState("");
@@ -6979,6 +7021,7 @@ function GBHApp(){
     setWeights(localWeights.sort((a,b)=>a.date>b.date?1:-1));
     setBadges(localBadges);
     window.__gbhUID = lp.id;
+    marcarVisto(lp.id);   // actividad real: el paciente ha abierto la app (1/día)
     const savedTLog = lsGet(`gbh:tlog:${lp.id}:${today}`, null);
     if(savedTLog){ setTLog(savedTLog); setSteps(localLogs.find(x=>x.date===today)?.sc||0); }
     else {
@@ -7778,6 +7821,7 @@ function GBHApp(){
     setBadges(lsGet(`gbh:badges:${p.id}`,[]) );
     // Exponer UID globalmente para widgets sin acceso a profile (HydrationWidget)
     window.__gbhUID = p.id;
+    marcarVisto(p.id);    // actividad real: sesión de paciente establecida (1/día)
     // Sobreescribir estados de día con claves scoped al usuario
     const todayKey2 = toKey();
     setQuizDone(lsGet("gbh:quiz:"+p.id+":"+todayKey2, false));
@@ -7870,6 +7914,7 @@ function GBHApp(){
       setWeights(localWeights.sort((a,b)=>a.date>b.date?1:-1));
       setBadges(localBadges);
       window.__gbhUID = ep.id;
+      marcarVisto(ep.id); // actividad real: login manual (1/día)
       const today = toKey();
       const savedTLog = lsGet(`gbh:tlog:${ep.id}:${today}`, null);
       if(savedTLog){ setTLog(savedTLog); setSteps(localLogs.find(x=>x.date===today)?.sc||0); }
@@ -8528,6 +8573,12 @@ function GBHApp(){
       const pl=await sbReq("GET","profiles?select=id,plan");
       if(Array.isArray(pl)) setPlanAdmin(Object.fromEntries(pl.map(x=>[x.id,x.plan||'standard'])));
     }catch(e){/* sin plan: todos salen como Normal */}
+    // Actividad real (vista patient_activity). Si la vista aún no existe en
+    // Supabase, el panel sigue funcionando exactamente igual que antes.
+    try{
+      const act=await sbReq("GET","patient_activity?select=*");
+      if(Array.isArray(act)&&act.length) setActAdmin(Object.fromEntries(act.map(x=>[x.id,x])));
+    }catch(e){/* sin vista: sin marcas de actividad, nada se rompe */}
     if(d.length){ setAllP(d); }
     else { setAllP(Object.keys(localStorage).filter(k=>k.startsWith("gbh:p:")).map(k=>lsGet(k,{})).filter(p=>p.id)); }
     // Cumplimiento por comida de hoy + última nota (de los últimos 8 días) por paciente
@@ -9305,9 +9356,37 @@ function GBHApp(){
     const st=(a)=>a>=80?{t:"✅ En Objetivo",c:T.g1}:a>=50?{t:"⚠️ Riesgo",c:T.au1}:{t:"🔴 Inactivo",c:T.red};
     // ── Tier por paciente (profiles.plan): 💎 premium / ⭐ normal ──
     const tierDe=(p)=>((planAdmin[p.id]||p.plan)==='premium'?'premium':'standard');
-    const listaP=allP.filter(p=>filtroAdmin==='todos'?true:(filtroAdmin==='premium'?tierDe(p)==='premium':tierDe(p)!=='premium'));
+    // ── Actividad real (vista patient_activity) ─────────────────────────────
+    // NIVEL ≠ CAÍDA: quien nunca usó las misiones puede estar satisfecho (lee
+    // el plan y ya). La señal que importa es la CAÍDA: registraba y ha parado.
+    // Se ordena y destaca por caída, NO por días inactivos absolutos.
+    const actReady=Object.keys(actAdmin).length>0;
+    const actDe=(p)=>actAdmin[p.id]||null;
+    const fechaAct=(p)=>{const a=actDe(p);if(!a?.ultima_actividad_real)return null;const d=new Date(a.ultima_actividad_real);return d.getFullYear()<2000?null:d;};// GREATEST con 'epoch' → 1970 ≡ sin actividad
+    const diasVisto=(p)=>{const d=fechaAct(p);return d?Math.max(0,Math.floor((Date.now()-d.getTime())/86400000)):null;};
+    const enCaida=(p)=>{const a=actDe(p);return !!a&&(a.dias_30_60??0)>=5&&(a.dias_ult_30??0)<=1;};// patrón exacto de la baja del 2-ago
+    const sinActivar=(p)=>{const a=actDe(p);if(!a)return false;const d=fechaAct(p);if(!d)return true;return a.created_at?d<new Date(a.created_at):false;};// paga y no ha recibido nada
+    const enRiesgo=(p)=>enCaida(p)||sinActivar(p);
+    const copiarWsp=async(p)=>{
+      const nombre=(p.name||"").split(" ")[0]||"";
+      const msg=t(sinActivar(p)?"admWspMsgSinActivar":"admWspMsgCaida",{n:nombre});
+      try{
+        if(navigator.clipboard?.writeText) await navigator.clipboard.writeText(msg);
+        else{const ta=document.createElement("textarea");ta.value=msg;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.focus();ta.select();document.execCommand("copy");document.body.removeChild(ta);}
+        sfx("pop");showT({icon:"💬",title:t("admWspCopiado"),sub:t("admWspCopiadoSub",{n:nombre})});
+      }catch{showT({icon:"⚠️",title:t("admWspError"),sub:""});}
+    };
+    const listaP=allP
+      .filter(p=>filtroAdmin==='todos'?true
+        :filtroAdmin==='premium'?tierDe(p)==='premium'
+        :filtroAdmin==='normal'?tierDe(p)!=='premium'
+        :enRiesgo(p))
+      .sort((a,b)=>{const r=(p)=>enCaida(p)?0:sinActivar(p)?1:2;return r(a)-r(b);}); // estable: dentro de cada grupo conserva el orden original
     const nPremT=allP.filter(p=>tierDe(p)==='premium').length;
     const nNormT=allP.length-nPremT;
+    const nCaidaT=actReady?allP.filter(enCaida).length:null;
+    const nSinActT=actReady?allP.filter(sinActivar).length:null;
+    const nRiesgoT=actReady?allP.filter(enRiesgo).length:null;
     return(
       <div style={{fontFamily:"'Nunito',sans-serif",background:`radial-gradient(ellipse at top,#1A3A10,${T.bg})`,minHeight:"100vh",maxWidth:420,margin:"0 auto",color:T.t1,paddingBottom:20}}>
         <style>{CSS}</style>
@@ -9326,14 +9405,23 @@ function GBHApp(){
               </Card>
             ))}
           </div>
+          {/* ── Actividad real: la señal que decide la acción es la CAÍDA ── */}
+          <div style={{display:"flex",gap:10,marginBottom:14}}>
+            {[{l:t("admCaida"),v:actReady?nCaidaT:"—",i:"📉",c:T.red},{l:t("admSinActivar"),v:actReady?nSinActT:"—",i:"🚫",c:T.au1}].map(({l,v,i,c})=>(
+              <Card key={l} style={{flex:1,margin:0,padding:"14px 10px",textAlign:"center",marginBottom:0}}>
+                <div style={{fontSize:22}}>{i}</div><div style={{fontSize:24,fontWeight:900,color:v===0?T.g1:c}}>{v}</div>
+                <div style={{fontSize:9,color:T.t2,textTransform:"uppercase",letterSpacing:"0.05em",marginTop:2}}>{l}</div>
+              </Card>
+            ))}
+          </div>
           <Card>
             <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:12}}>Listado de pacientes</div>
             {/* ── Filtro por servicio: Todos | Premium | Normal ── */}
             <div style={{display:"flex",gap:6,marginBottom:12}}>
-              {[{id:'todos',l:`Todos · ${allP.length}`},{id:'premium',l:`💎 Premium · ${nPremT}`},{id:'normal',l:`⭐ Normal · ${nNormT}`}].map(f=>(
+              {[{id:'todos',l:`Todos · ${allP.length}`},{id:'premium',l:`💎 Premium · ${nPremT}`},{id:'normal',l:`⭐ Normal · ${nNormT}`},{id:'riesgo',l:`📉 ${t("admRiesgo")} · ${actReady?nRiesgoT:"—"}`}].map(f=>(
                 <button key={f.id} onClick={()=>setFiltroAdmin(f.id)}
                   style={{flex:1,padding:"9px 2px",borderRadius:12,cursor:"pointer",whiteSpace:"nowrap",
-                    fontWeight:900,fontSize:11.5,fontFamily:"'Nunito',sans-serif",
+                    fontWeight:900,fontSize:10.5,fontFamily:"'Nunito',sans-serif",
                     background:filtroAdmin===f.id?"rgba(88,204,2,0.18)":"rgba(255,255,255,0.05)",
                     border:filtroAdmin===f.id?`2px solid ${T.g1}`:"2px solid rgba(255,255,255,0.10)",
                     color:filtroAdmin===f.id?T.g1:T.t2,
@@ -9348,11 +9436,16 @@ function GBHApp(){
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:8}}>
                   <div style={{fontWeight:900,fontSize:14,flex:1,minWidth:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
                     <span title={tierDe(p)==='premium'?"Premium":"Normal"} style={{marginRight:5}}>{tierDe(p)==='premium'?"💎":"⭐"}</span>{p.name}
+                    {enCaida(p)&&<span title={t("admCaida")} style={{marginLeft:5}}>📉</span>}
+                    {!enCaida(p)&&sinActivar(p)&&<span title={t("admSinActivar")} style={{marginLeft:5}}>🚫</span>}
                   </div>
                   <div style={{fontSize:12,fontWeight:800,color:sc,flexShrink:0}}>{si}</div>
+                  {(enRiesgo(p)||(diasVisto(p)!=null&&diasVisto(p)>7))&&(
+                    <button onClick={()=>copiarWsp(p)} title="Copiar mensaje para WhatsApp" style={{background:"rgba(37,211,102,0.14)",border:"1px solid rgba(37,211,102,0.35)",borderRadius:8,padding:"3px 9px",fontSize:11,fontWeight:800,color:"#25D366",cursor:"pointer",flexShrink:0,fontFamily:"'Nunito',sans-serif"}}>💬</button>
+                  )}
                   <button onClick={()=>exportarSeguimientoCSV(p.id,p.name)} title="Descargar seguimiento (CSV)" style={{background:"rgba(206,130,255,0.14)",border:"1px solid rgba(206,130,255,0.35)",borderRadius:8,padding:"3px 9px",fontSize:11,fontWeight:800,color:T.pur,cursor:"pointer",flexShrink:0,fontFamily:"'Nunito',sans-serif"}}>⬇ CSV</button>
                 </div>
-                <div style={{display:"flex",gap:14,marginBottom:6}}><span style={{fontSize:12,color:T.t2}}>🔥 <b style={{color:T.t1}}>{s}d</b></span><span style={{fontSize:12,color:T.t2}}>⚖️ <b style={{color:T.t1}}>{w?`${w}kg`:"—"}</b></span><span style={{fontSize:12,color:T.t2}}>7d: <b style={{color:a>=80?T.g1:a>=50?T.au1:T.red}}>{a}%</b></span><span style={{fontSize:12,color:T.t2}}>XP: <b style={{color:T.xp}}>{p.xp||0}</b></span></div>
+                <div style={{display:"flex",gap:14,marginBottom:6,flexWrap:"wrap"}}><span style={{fontSize:12,color:T.t2}}>🔥 <b style={{color:T.t1}}>{s}d</b></span><span style={{fontSize:12,color:T.t2}}>⚖️ <b style={{color:T.t1}}>{w?`${w}kg`:"—"}</b></span><span style={{fontSize:12,color:T.t2}}>7d: <b style={{color:a>=80?T.g1:a>=50?T.au1:T.red}}>{a}%</b></span><span style={{fontSize:12,color:T.t2}}>XP: <b style={{color:T.xp}}>{p.xp||0}</b></span>{actReady&&(()=>{const dv=diasVisto(p);const col=dv==null?T.red:dv<=7?T.g1:dv<=20?T.au1:T.red;const txt=dv==null?t("admSinActivar"):dv===0?t("admVistoHoy"):t("admVistoDias",{d:dv});return <span style={{fontSize:12,color:T.t2}}>👁 <b style={{color:col}}>{txt}</b></span>;})()}</div>
                 <div style={{background:"rgba(255,255,255,0.06)",borderRadius:6,height:6}}><div style={{height:"100%",width:`${a}%`,background:a>=80?T.g1:a>=50?T.au1:T.red,borderRadius:6,transition:"width 0.8s"}}/></div>
                 {li&&(li.hoyMeals||li.nota)&&(
                   <div style={{marginTop:8}}>
