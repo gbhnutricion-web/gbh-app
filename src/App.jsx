@@ -12015,18 +12015,43 @@ function espejoFrases({stats, logs, hoyKey, lang}){
       }
     }
   }
-  // 4) Tendencia entre semanas, solo si la dirección es clara (≥5 puntos y ≥10
-  //    registros en cada una de las dos últimas semanas con datos).
-  const sem = Object.keys(stats.semanas||{}).map(Number).sort((a,b)=>a-b)
-    .map(w=>stats.semanas[w]).filter(s=>s.total>=10);
-  if(sem.length>=2){
-    const a=Math.round(sem[sem.length-1].seguida/sem[sem.length-1].total*100);
-    const b=Math.round(sem[sem.length-2].seguida/sem[sem.length-2].total*100);
-    if(Math.abs(a-b)>=5) out.push({id:'tendencia', tono:'dato',
-      texto: EN?`This week you're at ${a} % versus ${b} % last week.`
-              :`Esta semana vas al ${a} % frente al ${b} % de la pasada.`});
+  // 4) Tendencia entre semanas: SIEMPRE la semana de hoy frente a la
+  //    inmediatamente anterior (índices adyacentes del mismo calendario), cada
+  //    una con ≥10 registros y ≥5 puntos de diferencia. Antes se comparaban
+  //    "las dos últimas semanas con ≥10", y un lunes o martes —cuando la semana
+  //    en curso aún no tiene base— la frase llamaba "esta semana" a la pasada.
+  //    Ahora, si la semana de hoy no tiene base, la tendencia no se muestra.
+  if(hoyKey && stats.semanas){
+    const dH=new Date(hoyKey+'T12:00:00');
+    if(!isNaN(dH)){
+      // Mismo índice semanal que usa espejoAgregar sobre el mes natural:
+      // floor((offset + día-1) / 7), con offset = día de la semana del día 1.
+      const offH=(new Date(dH.getFullYear(),dH.getMonth(),1).getDay()+6)%7;
+      const wHoy=Math.floor((offH+dH.getDate()-1)/7);
+      const sA=stats.semanas[wHoy], sB=stats.semanas[wHoy-1];
+      if(sA&&sB&&sA.total>=10&&sB.total>=10){
+        const a=Math.round(sA.seguida/sA.total*100);
+        const b=Math.round(sB.seguida/sB.total*100);
+        if(Math.abs(a-b)>=5) out.push({id:'tendencia', tono:'dato',
+          texto: EN?`This week you're at ${a} % versus ${b} % last week.`
+                  :`Esta semana vas al ${a} % frente al ${b} % de la pasada.`});
+      }
+    }
   }
-  return out;
+  // Rotación de la SEGUNDA frase: la tarjeta pinta máx. 2, y con el orden fijo
+  // de prioridad el paciente veía siempre el mismo par (constancia + mejor).
+  // La constancia se queda SIEMPRE primera (es lo que la regla ética premia);
+  // la acompañante rota por día del mes entre las candidatas disponibles
+  // (mejor / floja / tendencia), y el resto conserva su orden de prioridad.
+  const iConst = out.findIndex(f=>f.id==='constancia');
+  const cabeza = iConst>=0 ? [out[iConst]] : [];
+  const resto  = out.filter((_,i)=>i!==iConst);
+  if(resto.length>1 && hoyKey){
+    const diaMes = parseInt(String(hoyKey).slice(8,10),10)||0;
+    const rot = diaMes % resto.length;
+    resto.unshift(resto.splice(rot,1)[0]);
+  }
+  return [...cabeza, ...resto];
 }
 
 // ── Tarjeta del espejo tras completar el día (Tarea B) ───────────────────────
