@@ -4235,6 +4235,299 @@ const Card=({children,style={}})=>(
   <div style={{background:T.bgWood,borderRadius:22,padding:"16px 18px",border:`2px solid ${T.bW}`,boxShadow:"0 6px 0 rgba(0,0,0,0.4)",marginBottom:14,...style}}>{children}</div>
 );
 
+// ═══ JUICE FASE 1 — Tareas C, D y E ══════════════════════════════════════════
+// C: la racha con cuerpo temporal (fila L-D). D: meta de racha (compromiso
+// declarado). E: pausa declarada gratis ("Me voy unos días").
+// Todos los textos de cara al paciente viven en JUICE_TEXTOS para poder
+// pasarles el MISMO test de términos prohibidos que a las frases del espejo
+// (sin culpa, sin "solo", sin "deberías"): tests/juice_cde.test.mjs.
+
+const JUICE_TEXTOS = {
+  es: {
+    metaPregunta: "¿Te comprometes a una meta de racha?",
+    metaSub: "Declarar una meta ayuda a cumplirla. Y si un día se escapa, no pasa nada: la vuelves a elegir.",
+    metaAhoraNo: "Ahora no",
+    metaProgreso: "Meta de racha",
+    metaElegir: "🎯 Ponerme una meta de racha",
+    metaCambiar: "Cambiar meta",
+    metaLograda: "¡Meta de {n} días cumplida!",
+    metaLogradaSub: "Lo declaraste y lo has hecho. Esto es constancia de la de verdad.",
+    metaSiguiente: "¿Siguiente meta?",
+    metaSeguir: "Me quedo como estoy",
+    diasUnidad: "días",
+    pausaTitulo: "Me voy unos días",
+    pausaIntro: "¿Vacaciones, un viaje, una semana complicada? Decláralo por adelantado y esos días no rompen tu racha. Gratis, sin gemas: el descanso no se paga.",
+    pausaDesde: "Desde", pausaHasta: "Hasta",
+    pausaBoton: "Declarar pausa",
+    pausaActiva: "Pausa del {d} al {h}",
+    pausaEspera: "Tu racha te espera. Nos vemos a la vuelta. 🧳",
+    pausaCancelar: "Cancelar pausa",
+    pausaConfirmar: "Toca de nuevo para confirmar ↺",
+    pausaLimDias: "Las pausas duran hasta {n} días. Para ausencias más largas, escríbenos.",
+    pausaLimTrim: "Ya has usado las {n} pausas de este trimestre. Si necesitas otra, escríbenos.",
+    pausaFechas: "Revisa las fechas: el final tiene que ser igual o posterior al inicio, y el inicio no puede estar en el pasado.",
+    pausaNota: "El escudo (💎) cubre el despiste de un día. La pausa cubre la vida.",
+  },
+  en: {
+    metaPregunta: "Ready to commit to a streak goal?",
+    metaSub: "Declaring a goal helps you reach it. And if a day slips by, nothing happens: you simply pick it again.",
+    metaAhoraNo: "Not now",
+    metaProgreso: "Streak goal",
+    metaElegir: "🎯 Set a streak goal",
+    metaCambiar: "Change goal",
+    metaLograda: "{n}-day goal reached!",
+    metaLogradaSub: "You declared it and you did it. That's real consistency.",
+    metaSiguiente: "Next goal?",
+    metaSeguir: "I'm good for now",
+    diasUnidad: "days",
+    pausaTitulo: "I'll be away a few days",
+    pausaIntro: "Holidays, a trip, a tough week? Declare it in advance and those days won't break your streak. Free, no gems: rest is not something you pay for.",
+    pausaDesde: "From", pausaHasta: "To",
+    pausaBoton: "Declare pause",
+    pausaActiva: "Pause from {d} to {h}",
+    pausaEspera: "Your streak will be waiting. See you when you're back. 🧳",
+    pausaCancelar: "Cancel pause",
+    pausaConfirmar: "Tap again to confirm ↺",
+    pausaLimDias: "Pauses last up to {n} days. For longer absences, get in touch.",
+    pausaLimTrim: "You've used the {n} pauses for this quarter. If you need another one, get in touch.",
+    pausaFechas: "Check the dates: the end must be on or after the start, and the start can't be in the past.",
+    pausaNota: "The shield (💎) covers a one-day slip. The pause covers life.",
+  },
+};
+const jt=(lang,k,vars={})=>{
+  let s=(JUICE_TEXTOS[lang]||JUICE_TEXTOS.es)[k]||JUICE_TEXTOS.es[k]||k;
+  for(const [kk,v] of Object.entries(vars)) s=s.split(`{${kk}}`).join(String(v));
+  return s;
+};
+
+// ── Tarea E · helpers PUROS de pausa (testeables) ────────────────────────────
+// LÍMITES (decididos y documentados, §7 del brief): máximo 2 pausas por
+// TRIMESTRE NATURAL y 14 días por pausa. Suficiente para vacaciones de verano
+// + un puente sin vaciar la mecánica de racha; ausencias mayores son
+// conversación con el operador, no un botón.
+const PAUSA_MAX_DIAS = 14;
+const PAUSA_MAX_TRIMESTRE = 2;
+const pausaRangos = (profile)=>{
+  const r=[...(Array.isArray(profile?.pausas_hist)?profile.pausas_hist:[])];
+  if(profile?.pausa_desde&&profile?.pausa_hasta&&!r.some(x=>x.d===profile.pausa_desde&&x.h===profile.pausa_hasta))
+    r.push({d:profile.pausa_desde,h:profile.pausa_hasta});
+  return r.filter(x=>x&&x.d&&x.h);
+};
+// ¿La fecha (clave ISO) cae dentro de alguna pausa declarada? Comparación de
+// cadenas ISO: válida porque "YYYY-MM-DD" ordena igual que la fecha.
+const pausaCubre = (profile,k)=> pausaRangos(profile).some(r=>r.d<=k&&k<=r.h);
+const trimestreDe = (k)=> k.slice(0,4)+"T"+String(Math.floor((parseInt(k.slice(5,7),10)-1)/3)+1);
+const pausasEnTrimestre = (hist,k)=> (Array.isArray(hist)?hist:[]).filter(p=>p&&p.d&&trimestreDe(p.d)===trimestreDe(k)).length;
+
+// ── Tarea C · FilaSemanaRacha: la racha como semana, junto al contador ───────
+// L M X J V S D con el estado real de cada día. Reglas innegociables del brief:
+// el escudo SE VE (🛡️, no es un fallo), la pausa SE VE (🏖️, tampoco), y el día
+// en curso sin registrar es un hueco NEUTRO — un día en curso no es un fallo, y
+// un día pasado sin registrar tampoco se pinta de rojo ni con aspa: hueco vacío.
+function FilaSemanaRacha({logs, profile, streak, lang, onElegirMeta}){
+  const hoy=new Date(); hoy.setHours(12,0,0,0);
+  const lunes=new Date(hoy); lunes.setDate(hoy.getDate()-((hoy.getDay()+6)%7));
+  const hoyKey=toKey();
+  const meta=profile?.meta_racha||0;
+  const dias=Array.from({length:7},(_,i)=>{
+    const d=new Date(lunes); d.setDate(lunes.getDate()+i);
+    const k=toKey(d);
+    const reg=!!(logs||[]).find(l=>l.date===k&&l.diet);
+    const escudo=reg&&lsGet(`gbh:escudo:${profile?.id}:${k}`,false);
+    const pausa=pausaCubre(profile,k);
+    return {k,lbl:WLABELS[i],reg,escudo,pausa,esHoy:k===hoyKey,futuro:k>hoyKey};
+  });
+  return(
+    <Card style={{padding:"12px 16px 11px",marginBottom:12}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:9}}>
+        <span style={{fontSize:18,lineHeight:1}}>🔥</span>
+        <span style={{fontWeight:900,fontSize:14,color:T.t1,fontFamily:"'Nunito',sans-serif",flex:1}}>
+          {streak} {jt(lang,"diasUnidad")}
+        </span>
+        {meta>0&&(
+          <button onClick={onElegirMeta} title={jt(lang,"metaCambiar")} style={{background:"none",border:"none",cursor:"pointer",padding:0,display:"flex",alignItems:"center",gap:5,fontFamily:"'Nunito',sans-serif"}}>
+            <span style={{fontSize:11,fontWeight:900,color:Math.min(streak,meta)>=meta?T.au1:T.t2}}>🎯 {Math.min(streak,meta)}/{meta}</span>
+          </button>
+        )}
+      </div>
+      <div style={{display:"flex",gap:5}}>
+        {dias.map(d=>{
+          let icono="", bg="rgba(255,255,255,0.04)", borde="rgba(255,255,255,0.10)", op=1;
+          if(d.pausa&&!d.reg){ icono="🏖️"; bg=alpha(T.au1,0.10); borde=alpha(T.au1,0.35); }
+          else if(d.escudo){ icono="🛡️"; bg=alpha(T.platos,0.12); borde=alpha(T.platos,0.4); }
+          else if(d.reg){ icono="🔥"; bg=alpha(T.g1,0.14); borde=alpha(T.g1,0.5); }
+          else if(d.futuro){ op=0.35; }
+          // hoy sin registrar: hueco neutro con borde vivo — "en curso", jamás fallo
+          const bordeFinal=d.esHoy&&!d.reg?`2px dashed ${alpha(T.au1,0.55)}`:`1.5px solid ${borde}`;
+          return(
+            <div key={d.k} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,opacity:op}}>
+              <div style={{width:"100%",aspectRatio:"1",maxWidth:38,borderRadius:11,background:bg,border:bordeFinal,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,lineHeight:1}}>
+                {icono}
+              </div>
+              <span style={{fontSize:8.5,fontWeight:900,color:d.esHoy?T.au1:T.t3,fontFamily:"'Nunito',sans-serif"}}>{d.lbl}</span>
+            </div>
+          );
+        })}
+      </div>
+      {meta>0&&(
+        <div style={{marginTop:9,background:"rgba(255,255,255,0.07)",borderRadius:7,height:7,overflow:"hidden"}}>
+          <div style={{height:"100%",width:`${Math.min(100,Math.round(Math.min(streak,meta)/meta*100))}%`,background:`linear-gradient(90deg,${T.g1},${T.g2})`,borderRadius:7,transition:"width 0.5s ease"}}/>
+        </div>
+      )}
+      {!meta&&lsGet(`gbh:metaracha:ask:${profile?.id}`,false)&&(
+        <button onClick={onElegirMeta} style={{marginTop:8,background:"none",border:"none",color:T.t2,fontWeight:800,fontSize:11.5,cursor:"pointer",fontFamily:"'Nunito',sans-serif",padding:0}}>
+          {jt(lang,"metaElegir")}
+        </button>
+      )}
+    </Card>
+  );
+}
+
+// ── Tarea D · Selector de meta de racha ──────────────────────────────────────
+// Cialdini: el compromiso ACTIVO y VISIBLE es el que se cumple. Al fallar la
+// meta no pasa NADA (ni mensaje, ni penalización): el compromiso motiva por
+// haberlo declarado, no por el castigo.
+const METAS_RACHA=[7,14,30,50];
+function MetaRachaSelector({streak, metaActual, lang, onElegir, onCerrar}){
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+      <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
+        border:`2.5px solid ${T.au1}`,borderRadius:24,padding:"26px 22px 20px",textAlign:"center",
+        boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:REDUCED_MOTION()?"none":"popIn 0.25s ease"}}>
+        <div style={{fontSize:46,marginBottom:8}}>🎯</div>
+        <div style={{fontWeight:900,fontSize:18,color:T.au1,fontFamily:"'Nunito',sans-serif",marginBottom:8}}>
+          {jt(lang,"metaPregunta")}
+        </div>
+        <div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.55,marginBottom:16}}>
+          {jt(lang,"metaSub")}
+        </div>
+        <div style={{display:"flex",gap:8,marginBottom:12}}>
+          {METAS_RACHA.map(n=>{
+            const on=metaActual===n;
+            return(
+              <button key={n} onClick={()=>onElegir(n)} style={{flex:1,padding:"14px 0",borderRadius:14,cursor:"pointer",
+                background:on?alpha(T.g1,0.25):"rgba(255,255,255,0.07)",
+                border:on?`2px solid ${T.g1}`:"1.5px solid rgba(255,255,255,0.15)",
+                color:on?T.g2:T.t1,fontWeight:900,fontSize:16,fontFamily:"'Nunito',sans-serif"}}>
+                {n}<div style={{fontSize:9,fontWeight:800,color:T.t3,marginTop:2}}>{jt(lang,"diasUnidad")}</div>
+              </button>
+            );
+          })}
+        </div>
+        <button onClick={onCerrar} style={{background:"none",border:"none",color:T.t3,fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif",padding:"6px"}}>
+          {jt(lang,"metaAhoraNo")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Celebración PROPIA al alcanzar la meta — la protagoniza la oveja del paciente
+// (mismo punto de sustitución que la racha). Ofrece la siguiente meta sin
+// obligar: "me quedo como estoy" es una salida digna, no un fracaso.
+function MetaLogradaOverlay({meta, boColor, boEquipados, lang, onElegir, onCerrar}){
+  const siguientes=METAS_RACHA.filter(n=>n>meta);
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.82)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+      <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
+        border:`2.5px solid ${T.au1}`,borderRadius:24,padding:"24px 22px 20px",textAlign:"center",
+        boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:REDUCED_MOTION()?"none":"popIn 0.3s cubic-bezier(0.34,1.56,0.64,1)"}}>
+        <MascotaCelebracion color={boColor} equipados={boEquipados} size={92} style={{margin:"0 auto 4px"}}/>
+        <div style={{fontSize:34,lineHeight:1,marginBottom:6}}>🏆</div>
+        <div style={{fontWeight:900,fontSize:19,color:T.au1,fontFamily:"'Nunito',sans-serif",marginBottom:6}}>
+          {jt(lang,"metaLograda",{n:meta})}
+        </div>
+        <div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.55,marginBottom:16}}>
+          {jt(lang,"metaLogradaSub")}
+        </div>
+        {siguientes.length>0&&(<>
+          <div style={{fontSize:12,fontWeight:900,color:T.t2,fontFamily:"'Nunito',sans-serif",marginBottom:8}}>{jt(lang,"metaSiguiente")}</div>
+          <div style={{display:"flex",gap:8,marginBottom:12}}>
+            {siguientes.map(n=>(
+              <button key={n} onClick={()=>onElegir(n)} style={{flex:1,padding:"13px 0",borderRadius:14,cursor:"pointer",
+                background:"rgba(255,255,255,0.07)",border:"1.5px solid rgba(255,255,255,0.15)",
+                color:T.t1,fontWeight:900,fontSize:15,fontFamily:"'Nunito',sans-serif"}}>
+                {n}<div style={{fontSize:9,fontWeight:800,color:T.t3,marginTop:2}}>{jt(lang,"diasUnidad")}</div>
+              </button>
+            ))}
+          </div>
+        </>)}
+        <button onClick={onCerrar} style={{background:"none",border:"none",color:T.t3,fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif",padding:"6px"}}>
+          {jt(lang,"metaSeguir")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Tarea E · Tarjeta "Me voy unos días" ─────────────────────────────────────
+// EL punto del brief que no es de gráficos: la culpa anticipada es motivo de
+// baja documentado. El permiso es GRATIS y por adelantado. El escudo de 200 💎
+// se queda para el despiste de un día: son cosas distintas y van en tarjetas
+// distintas a propósito.
+function PausaCard({profile, lang, onDeclarar, onCancelar}){
+  const hoyKey=toKey();
+  const [desde,setDesde]=React.useState(hoyKey);
+  const [hasta,setHasta]=React.useState(hoyKey);
+  const [error,setError]=React.useState("");
+  const [conf,setConf]=React.useState(false);
+  const activa=profile?.pausa_desde&&profile?.pausa_hasta&&profile.pausa_hasta>=hoyKey;
+  const inp={background:"rgba(0,0,0,0.25)",border:"1.5px solid rgba(255,255,255,0.14)",borderRadius:12,
+    padding:"10px 12px",color:T.t1,fontSize:13,fontFamily:"'DM Sans',sans-serif",width:"100%",boxSizing:"border-box",colorScheme:"dark"};
+  const declarar=()=>{
+    setError("");
+    if(!desde||!hasta||hasta<desde||desde<hoyKey){ setError(jt(lang,"pausaFechas")); return; }
+    const dias=Math.round((new Date(hasta)-new Date(desde))/86400000)+1;
+    if(dias>PAUSA_MAX_DIAS){ setError(jt(lang,"pausaLimDias",{n:PAUSA_MAX_DIAS})); return; }
+    if(pausasEnTrimestre(profile?.pausas_hist,desde)>=PAUSA_MAX_TRIMESTRE){ setError(jt(lang,"pausaLimTrim",{n:PAUSA_MAX_TRIMESTRE})); return; }
+    onDeclarar(desde,hasta);
+  };
+  return(
+    <Card style={{marginTop:4}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+        <span style={{fontSize:18}}>🧳</span>
+        <div style={{fontSize:15,fontWeight:900,fontFamily:"'Nunito',sans-serif",color:T.t1}}>{jt(lang,"pausaTitulo")}</div>
+      </div>
+      {activa?(<>
+        <div style={{fontSize:13,fontWeight:900,color:T.au1,fontFamily:"'Nunito',sans-serif",marginBottom:4}}>
+          🏖️ {jt(lang,"pausaActiva",{d:profile.pausa_desde,h:profile.pausa_hasta})}
+        </div>
+        <div style={{fontSize:12.5,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.55,marginBottom:10}}>
+          {jt(lang,"pausaEspera")}
+        </div>
+        <button onClick={()=>{ if(!conf){ setConf(true); setTimeout(()=>setConf(false),2500); return; } setConf(false); onCancelar(); }}
+          style={{background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.15)",borderRadius:12,
+          padding:"9px 14px",color:T.t2,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
+          {conf?jt(lang,"pausaConfirmar"):jt(lang,"pausaCancelar")}
+        </button>
+      </>):(<>
+        <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.55,marginBottom:10}}>
+          {jt(lang,"pausaIntro")}
+        </div>
+        <div style={{display:"flex",gap:8,marginBottom:10}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:10,color:T.t3,fontWeight:800,marginBottom:4,fontFamily:"'DM Sans',sans-serif"}}>{jt(lang,"pausaDesde")}</div>
+            <input type="date" value={desde} min={hoyKey} onChange={e=>setDesde(e.target.value)} style={inp}/>
+          </div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:10,color:T.t3,fontWeight:800,marginBottom:4,fontFamily:"'DM Sans',sans-serif"}}>{jt(lang,"pausaHasta")}</div>
+            <input type="date" value={hasta} min={desde||hoyKey} onChange={e=>setHasta(e.target.value)} style={inp}/>
+          </div>
+        </div>
+        {error&&<div style={{fontSize:11.5,color:T.au1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,marginBottom:10}}>⚠️ {error}</div>}
+        <button onClick={declarar} style={{width:"100%",padding:"13px",borderRadius:14,border:"none",cursor:"pointer",
+          background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,fontWeight:900,fontSize:14,
+          fontFamily:"'Nunito',sans-serif",boxShadow:`0 4px 0 ${T.g3}`,marginBottom:8}}>
+          {jt(lang,"pausaBoton")}
+        </button>
+        <div style={{fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif",lineHeight:1.45}}>
+          {jt(lang,"pausaNota")}
+        </div>
+      </>)}
+    </Card>
+  );
+}
+
 
 // ─── Floating reward chip (+XP / +💎) ────────────────────────────────────────
 function FloatReward({items}){
@@ -7305,6 +7598,7 @@ function GBHApp(){
       const d1=new Date();d1.setDate(d1.getDate()-1);
       const d2=new Date();d2.setDate(d2.getDate()-2);
       const ayer=toKey(d1),anteayer=toKey(d2);
+      if(pausaCubre(profile,ayer)) return;                    // Tarea E: día en pausa → lo cubre la pausa, GRATIS
       if(logs.find(l=>l.date===ayer&&l.diet)) return;         // ayer cubierto
       if(!logs.find(l=>l.date===anteayer&&l.diet)) return;    // no había racha
       const k=`gbh:rachafix:${profile.id}:${ayer}`;
@@ -7318,6 +7612,7 @@ function GBHApp(){
         setProfile(u);lsSet(`gbh:p:${u.id}`,u);
         sbReq("PATCH",`profiles?id=eq.${profile.id}`,{shields:u.shields});
         repararDia(ayer);
+        lsSet(`gbh:escudo:${profile.id}:${ayer}`,true);   // Tarea C: el 🛡️ se ve en la fila semanal
         sfx("shield");
         showT({icon:"🛡️",title:lang==='en'?'Shield used!':'¡Escudo usado!',
           sub:lang==='en'?`Your ${per}-day streak is safe`:`Tu racha de ${per} días sigue viva`});
@@ -7346,6 +7641,7 @@ function GBHApp(){
     setProfile(u);lsSet(`gbh:p:${u.id}`,u);
     sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:u.gems});
     repararDia(avisoRacha.fecha);
+    lsSet(`gbh:escudo:${profile.id}:${avisoRacha.fecha}`,true);   // reparación 25💎 = protección: también se ve 🛡️
     sfx("streakCelebration");
     showT({icon:"💚",title:lang==='en'?'Streak repaired!':'¡Racha reparada!',
       sub:lang==='en'?`Your ${avisoRacha.perdida}-day streak lives on`:`Tu racha de ${avisoRacha.perdida} días sigue viva`});
@@ -7849,7 +8145,7 @@ function GBHApp(){
     // ── Refrescar SIEMPRE desde Supabase los campos que controla el nutricionista
     if(navigator.onLine){
       try{
-        const fresh=await sbReq("GET",`profiles?id=eq.${p.id}&select=plan,gems,xp,shields,streak,name,target_kcal,avatar_b64,bo_nombre,bo_color,bo_equipados,bo_personalidad,trial_ends_at,plan_until&limit=1`);
+        const fresh=await sbReq("GET",`profiles?id=eq.${p.id}&select=plan,gems,xp,shields,streak,name,target_kcal,avatar_b64,bo_nombre,bo_color,bo_equipados,bo_personalidad,trial_ends_at,plan_until,meta_racha,pausa_desde,pausa_hasta,pausas_hist&limit=1`);
         if(fresh&&fresh.length){
           const f=fresh[0];
           const merged={
@@ -8405,6 +8701,117 @@ function GBHApp(){
     setEspejoDia(null); setPlanVista('seguimiento'); setTab('plan');
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
+
+  // ── Tarea D · Meta de racha ────────────────────────────────────────────────
+  const [metaAsk,setMetaAsk]=useState(false);
+  const [metaLograda,setMetaLograda]=useState(null);   // nº de la meta cumplida | null
+  // Primera oferta: TRAS el overlay de racha (5 s), la primera vez que se
+  // alcanza racha ≥2. streakAnim solo se enciende dentro del gesto del usuario,
+  // así que la pregunta nunca aparece "de la nada" al abrir la app.
+  const metaAskTimerRef=useRef(null);
+  useEffect(()=>{
+    if(!streakAnim||!profile?.id) return;
+    if((profile?.meta_racha||0)>0||streak+1<2) return;
+    const k=`gbh:metaracha:ask:${profile.id}`;
+    if(lsGet(k,false)) return;
+    // ⚠️ SIN cleanup por dependencia a propósito: streakAnim se apaga a los
+    // 5 s y este temporizador dispara a los 5,3 s — un cleanup normal lo
+    // mataría justo antes de sonar y la pregunta no aparecería jamás.
+    if(metaAskTimerRef.current) clearTimeout(metaAskTimerRef.current);
+    metaAskTimerRef.current=setTimeout(()=>{
+      try{
+        if(espejoPopupsRef.current) return;   // otro pop-up manda; se reintenta en la siguiente racha
+        lsSet(k,true);
+        setMetaAsk(true);
+      }catch{}
+    },5300);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[streakAnim, profile?.id]);
+  useEffect(()=>()=>{ if(metaAskTimerRef.current) clearTimeout(metaAskTimerRef.current); },[]);
+  const elegirMeta=useCallback((n)=>{
+    if(!profile?.id) return;
+    const u={...profile,meta_racha:n};
+    setProfile(u); lsSet(`gbh:p:${u.id}`,u);
+    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{meta_racha:n});
+    // El fin de la meta anterior no invalida la nueva celebración
+    sfx("tap"); haptic("doble");
+    setMetaAsk(false); setMetaLograda(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile]);
+  // Meta cumplida → celebración propia, UNA vez por meta. Si la racha se cae
+  // después, NO pasa nada: ni mensaje, ni penalización (el progreso de Inicio
+  // simplemente vuelve a contar, y la meta se puede recolocar con un toque).
+  useEffect(()=>{
+    const meta=profile?.meta_racha||0;
+    if(!profile?.id||!meta||streak<meta) return;
+    const k=`gbh:metaracha:done:${profile.id}:${meta}`;
+    if(lsGet(k,false)) return;
+    const espera=streakAnim?5300:800;   // si hay celebración de racha en curso, después de ella
+    const tm=setTimeout(()=>{
+      try{
+        if(espejoPopupsRef.current) return;
+        lsSet(k,true);
+        sfx("badge");            // sin háptica: puede dispararse fuera de un gesto directo
+        setMetaLograda(meta);
+      }catch{}
+    },espera);
+    return ()=>clearTimeout(tm);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[streak, profile?.meta_racha, profile?.id]);
+
+  // La ref de pop-ups del espejo debe conocer también estos dos (segunda
+  // asignación A PROPÓSITO: en la primera, metaAsk/metaLograda aún no existen
+  // y meterlos allí sería la trampa TDZ que ya avisa el comentario de avisoRacha)
+  espejoPopupsRef.current = espejoPopupsRef.current || !!(metaAsk||metaLograda);
+
+  // ── Tarea E · Pausa declarada ("Me voy unos días") ─────────────────────────
+  const declararPausa=useCallback((d,h)=>{
+    if(!profile?.id) return;
+    const hist=[...(Array.isArray(profile.pausas_hist)?profile.pausas_hist:[]),{d,h}];
+    const u={...profile,pausa_desde:d,pausa_hasta:h,pausas_hist:hist};
+    setProfile(u); lsSet(`gbh:p:${u.id}`,u);
+    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{pausa_desde:d,pausa_hasta:h,pausas_hist:hist});
+    sfx("complete"); haptic("doble");
+    showT({icon:"🧳",title:jt(lang,"pausaActiva",{d,h}),sub:jt(lang,"pausaEspera")});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile, lang]);
+  const cancelarPausa=useCallback(()=>{
+    if(!profile?.id||!profile?.pausa_desde) return;
+    const hoyK=toKey();
+    // Si aún no había empezado, no cuenta contra el cupo del trimestre; si está
+    // a medias, sí cuenta (los días ya cubiertos se quedan cubiertos).
+    const hist=(Array.isArray(profile.pausas_hist)?profile.pausas_hist:[])
+      .filter(p=>!(p.d===profile.pausa_desde&&p.h===profile.pausa_hasta&&p.d>hoyK))          // sin empezar → no cuenta contra el cupo
+      .map(p=>(p.d===profile.pausa_desde&&p.h===profile.pausa_hasta&&p.d<=hoyK&&p.h>hoyK)
+        ?{...p,h:hoyK}:p);                                                                    // a medias → se trunca a hoy: los días futuros dejan de ser pausa
+    const u={...profile,pausa_desde:null,pausa_hasta:null,pausas_hist:hist};
+    setProfile(u); lsSet(`gbh:p:${u.id}`,u);
+    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{pausa_desde:null,pausa_hasta:null,pausas_hist:hist});
+    sfx("tap");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile]);
+  // Cobertura de los días en pausa: mismo mecanismo que el escudo (repararDia,
+  // que mantiene viva la racha calculada sobre l.diet) pero GRATIS y por
+  // adelantado. Cubre cada día del rango que ya ha pasado y quedó sin registro;
+  // si el paciente registró igualmente, su registro manda y no se toca nada.
+  useEffect(()=>{
+    if(!profile?.id||!profile?.pausa_desde||!profile?.pausa_hasta) return;
+    try{
+      const hoyK=toKey();
+      const d=new Date(profile.pausa_desde+"T12:00:00");
+      const fin=profile.pausa_hasta<hoyK?profile.pausa_hasta:hoyK;
+      while(toKey(d)<=fin){
+        const k=toKey(d);
+        const cub=`gbh:pausafix:${profile.id}:${k}`;
+        if(!lsGet(cub,false)&&!logs.find(l=>l.date===k&&l.diet)){
+          lsSet(cub,true);
+          repararDia(k);
+        }
+        d.setDate(d.getDate()+1);
+      }
+    }catch{}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.pausa_desde, profile?.pausa_hasta, profile?.id, logs.length]);
 
   // Tap en un mini-botón de toma desde Inicio:
   //  · toma sin registrar → se marca "seguida" (verde) al instante
@@ -10114,6 +10521,11 @@ function GBHApp(){
 
         {/* ── HOME ──────────────────────────────────────────────────────────── */}
         {tab==="home"&&<>
+          {/* ── Tarea C: la racha con cuerpo temporal (registro/🛡️/🏖️/pendiente).
+              El día en curso sin registrar es un hueco neutro con borde vivo,
+              JAMÁS un fallo. Incluye el progreso hacia la meta (Tarea D). ── */}
+          <FilaSemanaRacha logs={logs} profile={profile} streak={streak} lang={lang}
+            onElegirMeta={()=>{sfx("tap");setMetaAsk(true);}}/>
           {/* ── Countdown de semana de prueba (tap → checkout) ── */}
           {trialDiasRest&&!ES_IOS_NATIVO&&(
             <button onClick={()=>{sfx("tap");abrirCheckoutStripe(profile?.id);}} style={{
@@ -10301,6 +10713,10 @@ function GBHApp(){
               </button>
             </div>
           </Card>
+
+          {/* ── Tarea E: la pausa declarada, SEPARADA del escudo a propósito —
+              el escudo cubre el despiste, la pausa cubre la vida ── */}
+          <PausaCard profile={profile} lang={lang} onDeclarar={declararPausa} onCancelar={cancelarPausa}/>
         </>}
 
         {/* ── WEIGHT ────────────────────────────────────────────────────────── */}
@@ -11172,7 +11588,15 @@ function GBHApp(){
             </div>
           </div>
         )}
-        {espejoDia&&!avisoNuevoPlan&&!avisoRegistro&&!avisoSupl&&!avisoTrial&&!hitoCard&&!avisoVictoria&&!avisoRacha&&(
+        {metaAsk&&!avisoNuevoPlan&&!avisoRegistro&&!avisoSupl&&!avisoTrial&&!hitoCard&&!avisoVictoria&&!avisoRacha&&(
+          <MetaRachaSelector streak={streak} metaActual={profile?.meta_racha||0} lang={lang}
+            onElegir={elegirMeta} onCerrar={()=>{sfx("tap");setMetaAsk(false);}}/>
+        )}
+        {metaLograda&&!metaAsk&&!avisoNuevoPlan&&!avisoRegistro&&!avisoSupl&&!avisoTrial&&!hitoCard&&!avisoVictoria&&!avisoRacha&&(
+          <MetaLogradaOverlay meta={metaLograda} boColor={boColor} boEquipados={boEquipados} lang={lang}
+            onElegir={elegirMeta} onCerrar={()=>{sfx("tap");setMetaLograda(null);}}/>
+        )}
+        {espejoDia&&!metaAsk&&!metaLograda&&!avisoNuevoPlan&&!avisoRegistro&&!avisoSupl&&!avisoTrial&&!hitoCard&&!avisoVictoria&&!avisoRacha&&(
           <EspejoDiaCard frases={espejoDia} lang={lang}
             onVerSeguimiento={espejoAbrirSeguimiento}
             onClose={()=>{sfx("tap");setEspejoDia(null);}}/>
