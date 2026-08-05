@@ -3959,6 +3959,12 @@ function MealBtns({tomas, meals, done, lang, onTap}){
 
 // ─── Mission row ──────────────────────────────────────────────────────────────
 function MRow({num,icon,label,done,onToggle,xpR=5,children}){
+  // ⚠️ Hook SIEMPRE arriba e incondicional. Antes, React.useContext se llamaba
+  // DENTRO del template `{done?`…${React.useContext(...)}`:""}`: al completar la
+  // misión, el componente pasaba de 0 a 1 hooks y React lanzaba "Rendered more
+  // hooks than during the previous render" — el ErrorBoundary se tragaba el
+  // crash y la celebración nunca llegaba a pintarse en el móvil.
+  const lang=React.useContext(LangCtx);
   return(
     <div style={{background:done?`linear-gradient(135deg,rgba(43,122,0,0.45),rgba(88,204,2,0.2))`:T.bgCard,border:`2px solid ${done?T.g1:T.bW}`,borderRadius:20,padding:"14px 16px",marginBottom:10,boxShadow:done?`0 5px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)",transition:"all 0.2s",transform:done?"scale(1.01)":"scale(1)"}}>
       <div style={{display:"flex",alignItems:"center",gap:14}}>
@@ -3970,7 +3976,7 @@ function MRow({num,icon,label,done,onToggle,xpR=5,children}){
             <span style={{fontSize:22}}>{icon}</span>
             <div>
               <div style={{fontSize:14,fontWeight:800,color:done?T.t1:"rgba(255,255,255,0.55)"}}>{label}</div>
-              <div style={{fontSize:11,color:T.au1,fontWeight:700}}>+{xpR} XP{done?` · ${React.useContext(LangCtx)==="en"?"Completed!":"¡Completado!"}`:""}</div>
+              <div style={{fontSize:11,color:T.au1,fontWeight:700}}>+{xpR} XP{done?` · ${lang==="en"?"Completed!":"¡Completado!"}`:""}</div>
             </div>
           </div>
         </div>
@@ -4024,41 +4030,29 @@ const CTip=({active,payload})=>{
 };
 
 // ─── Streak overlay (Duolingo-style, negro) ───────────────────────────────────
-// ─── StreakCelebrationOverlay — oveja pixelart + llama que sube de nivel ──────
-function StreakOverlay({active, streak}){
-  if(!active) return null;
-  const t = useLang();
-  const lang = lsGet("gbh:lang","es");
+// ─── StreakCelebrationOverlay — LA OVEJA DEL PACIENTE + llama que sube ────────
 
-  // Pixel-art sheep SVG inline (la mascota GBH en verde)
-  const SheepPixel = ({style={}})=>(
-    <svg width="80" height="80" viewBox="0 0 16 16" style={{imageRendering:"pixelated",...style}}>
-      {/* cuerpo — verde oscuro */}
-      <rect x="3" y="7" width="10" height="7" fill="#2E7D32"/>
-      {/* barriga más clara */}
-      <rect x="5" y="9" width="6" height="4" fill="#43A047"/>
-      {/* cabeza */}
-      <rect x="4" y="3" width="8" height="6" fill="#2E7D32"/>
-      {/* orejas */}
-      <rect x="2" y="4" width="2" height="3" fill="#388E3C"/>
-      <rect x="12" y="4" width="2" height="3" fill="#388E3C"/>
-      {/* ojos — blancos con pupila */}
-      <rect x="6" y="5" width="2" height="2" fill="white"/>
-      <rect x="9" y="5" width="2" height="2" fill="white"/>
-      <rect x="7" y="5" width="1" height="1" fill="#1B5E20"/>
-      <rect x="10" y="5" width="1" height="1" fill="#1B5E20"/>
-      {/* hocico */}
-      <rect x="6" y="7" width="4" height="2" fill="#A5D6A7"/>
-      {/* patas */}
-      <rect x="4" y="14" width="2" height="2" fill="#1B5E20"/>
-      <rect x="10" y="14" width="2" height="2" fill="#1B5E20"/>
-      {/* cuernos */}
-      <rect x="5" y="1" width="1" height="3" fill="#6D4C41"/>
-      <rect x="10" y="1" width="1" height="3" fill="#6D4C41"/>
-      <rect x="4" y="1" width="2" height="1" fill="#6D4C41"/>
-      <rect x="10" y="1" width="2" height="1" fill="#6D4C41"/>
-    </svg>
+// ── Punto ÚNICO de sustitución de la mascota en celebraciones (Tarea F) ──────
+// La celebración la protagoniza la MISMA oveja que el paciente tiene en Inicio:
+// su color, sus accesorios equipados y su nombre (bo_color / bo_equipados /
+// bo_nombre del perfil). Es SU oveja la que celebra con él — no una genérica.
+// Cuando llegue el Bo riggeado de fase 2 (Rive), se cambia SOLO este
+// componente: los overlays no se tocan.
+function MascotaCelebracion({color, equipados, size=88, style={}}){
+  return(
+    <div style={{width:size,height:size,...style}}>
+      <Sheep estado="feliz" color={color||"blanca"}
+        equipados={Array.isArray(equipados)?equipados:[]} size={size}/>
+    </div>
   );
+}
+
+function StreakOverlay({active, streak, boColor, boEquipados, boNombre}){
+  // Sin hooks en este componente (el useLang que había vivía TRAS el early
+  // return: 0→1 hooks al activarse, crash de React justo en la celebración,
+  // capturado por el ErrorBoundary → en el móvil el overlay nunca aparecía).
+  if(!active) return null;
+  const lang = lsGet("gbh:lang","es");
 
   // Llama SVG animada
   const Flame = ({size=80, glow=false})=>(
@@ -4095,15 +4089,11 @@ function StreakOverlay({active, streak}){
     }}>
       <style>{`
         @keyframes sheepEntrance{
-          0%{transform:translateX(-140px) scaleX(-1);opacity:0}
-          30%{transform:translateX(0px) scaleX(-1);opacity:1}
-          60%{transform:translateX(0px) scaleX(-1)}
-          80%{transform:translateX(-8px) scaleX(-1)}
-          100%{transform:translateX(0px) scaleX(-1)}
-        }
-        @keyframes sheepBounce{
-          0%,100%{transform:translateY(0) scaleX(-1)}
-          50%{transform:translateY(-10px) scaleX(-1)}
+          0%{transform:translateX(-140px);opacity:0}
+          30%{transform:translateX(0px);opacity:1}
+          60%{transform:translateX(0px)}
+          80%{transform:translateX(-8px)}
+          100%{transform:translateX(0px)}
         }
         @keyframes flameGrow{
           0%{transform:scale(0.6);opacity:0.6}
@@ -4144,12 +4134,14 @@ function StreakOverlay({active, streak}){
       {/* Escena principal */}
       <div style={{display:"flex",alignItems:"flex-end",justifyContent:"center",gap:16,marginBottom:20}}>
 
-        {/* Oveja animada */}
+        {/* La oveja DEL PACIENTE entra en escena. Tras la entrada, su propia
+            animación de estado "feliz" (bounce infinito de Sheep) toma el relevo
+            — el antiguo sheepBounce del wrapper sobraba y hacía doble rebote. */}
         <div style={{
-          animation:"sheepEntrance 1.2s ease-out forwards, sheepBounce 0.6s 2.5s ease-in-out infinite",
+          animation:"sheepEntrance 1.2s ease-out forwards",
           transformOrigin:"bottom center",
         }}>
-          <SheepPixel style={{width:72,height:72}}/>
+          <MascotaCelebracion color={boColor} equipados={boEquipados} size={88}/>
         </div>
 
         {/* Llama que crece */}
@@ -4188,7 +4180,9 @@ function StreakOverlay({active, streak}){
             : `¡${streak} día${streak!==1?"s":""} de racha!`}
         </div>
         <div style={{fontSize:14,color:"rgba(255,180,100,0.8)",fontFamily:"'DM Sans',sans-serif"}}>
-          {lang==="en"?"Your sheep is proud of you 🐑":"Tu oveja está orgullosa de ti 🐑"}
+          {lang==="en"
+            ? `${boNombre||"Your sheep"} is proud of you 🐑`
+            : `${boNombre||"Tu oveja"} está orgullosa de ti 🐑`}
         </div>
       </div>
 
@@ -4257,9 +4251,12 @@ function getNextReward(currentLevel){
 
 // ─── LevelUpOverlay — pop-up animado al subir de nivel ───────────────────────
 function LevelUpOverlay({active,level,reward,patientName,streak,lang,onClose}){
+  // ⚠️ Hooks ANTES de cualquier return: con el useLang tras el `return null`,
+  // el primer nivel subido pasaba el componente de 0 a 1 hooks y React
+  // reventaba el render justo en el instante de la celebración.
+  const t       = useLang();
   if(!active)return null;
 
-  const t       = useLang();
   const isMilestone = level%50===0||level===500;
   const isFreeMeal  = reward?.freeMeal;
   const next    = getNextReward(level);
@@ -9628,7 +9625,7 @@ function GBHApp(){
     <div style={{fontFamily:"'Nunito',sans-serif",background:`radial-gradient(ellipse at top,#1A3A10,${T.bg})`,minHeight:"100vh",maxWidth:420,margin:"0 auto",color:T.t1,paddingBottom:90,overflowX:"hidden"}}>
       <style>{CSS}</style>
       <Confetti active={confetti}/>
-      <StreakOverlay active={streakAnim} streak={streak+1}/>
+      <StreakOverlay active={streakAnim} streak={streak+1} boColor={boColor} boEquipados={boEquipados} boNombre={boNombre}/>
       <MissionsOverlay active={missionsAnim}/>
       {floatItems.length>0&&<FloatReward items={floatItems}/>}
       <LevelUpOverlay active={levelUpAnim} level={levelUpNum} reward={levelUpRew} patientName={profile?.name||""} streak={streak} lang={lang} onClose={()=>setLevelUpAnim(false)}/>
