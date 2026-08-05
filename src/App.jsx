@@ -1025,26 +1025,40 @@ const racionEtiqueta = (t, {raciones=1, racionTexto="", base=false}={}) => {
 // ─── Mascot image path (upload avatar.jpg to /public in GitHub) ───────────────
 
 // ─── Design tokens ───────────────────────────────────────────────────────────
+// ═══ TEMA DE MARCA GBH (fase 2 del brief de paleta) ══════════════════════════
+// Lente de marca: verde #122B1D · dorado #C9A227 · crema #F5F0E8.
+// PAPELES (decisión §2.1): el DORADO es ACCIÓN y celebración (cta1-3, au1-3);
+// el VERDE es ESTADO (toma seguida, día hecho, progreso — g1-3), derivado de la
+// marca, NO ácido. La moneda (gemas/premios) mantiene su dorado BRILLANTE
+// propio (moneda) para no confundirse con el CTA. Los estados llevan icono
+// además de color: el significado nunca depende solo del tono.
+// Contrastes MEDIDOS sobre fondo real (informe en el LEEME de la entrega);
+// t3 es des-énfasis deliberado y queda documentado como la única excepción.
 const T = {
-  // Backgrounds
-  bg:     "#0A1A0F",
-  bgCard: "#152210",
-  bgWood: "#1C1208",
-  // Greens
-  g1: "#58CC02", g2: "#89E219", g3: "#2B7A00",
-  // Gold
-  au1: "#FFC800", au2: "#FFB000", au3: "#A07800",
-  // Neutrals
-  wh: "#FFFFFF", cr: "#F7F0E0",
-  t1: "#FFFFFF", t2: "rgba(255,255,255,0.6)", t3: "rgba(255,255,255,0.3)",
-  // Accents
-  red: "#FF4B4B", blue: "#1CB0F6", pur: "#CE82FF", xp: "#30D5C8",
+  // Backgrounds — familia del verde de marca
+  bg:     "#0B1F14",
+  bgCard: "#122B1D",   // el verde de marca, literal
+  bgWood: "#1C1208",   // la madera se queda: convención de juego, no firma ajena
+  // Greens — ESTADO (seguida/hecho/progreso). g1 6,4:1 sobre bgCard.
+  g1: "#57BC79", g2: "#7FD69A", g3: "#2C6B44",
+  // Gold — au1 es el dorado de marca (6,3:1 sobre bgCard)
+  au1: "#C9A227", au2: "#E0BD54", au3: "#7E661A",
+  // ACCIÓN — el CTA vive en dorado; texto oscuro ctaTx: 7,8:1 sobre cta1
+  cta1: "#C9A227", cta2: "#E0BD54", cta3: "#7E661A", ctaTx: "#1A1000",
+  // Neutrals — t1/t2/t3 en CREMA de marca (t2 compuesta: 5,7:1 sobre bgCard)
+  wh: "#FFFFFF", cr: "#F5F0E8",
+  t1: "#F5F0E8", t2: "rgba(245,240,232,0.6)", t3: "rgba(245,240,232,0.45)",
+  // Accents — mismo papel funcional, saturación replegada (todos ≥4,5 en texto)
+  red: "#E4776C", blue: "#7BB2CB", pur: "#BA98DE", xp: "#4EC2B7",
+  ambar: "#E3B341",   // estado 'menos' (a medias): el dorado ya no es estado
+  // Pop-ups y fondos derivados de la marca
+  pop1: "#16321F", pop2: "#0E2315",
   // Borders
-  bG: "rgba(88,204,2,0.3)", bA: "rgba(255,200,0,0.25)", bW: "rgba(139,100,60,0.5)",
+  bG: "rgba(87,188,121,0.3)", bA: "rgba(201,162,39,0.25)", bW: "rgba(139,100,60,0.5)",
   // ── FASE 1 de normalización (BRIEF_paleta_marca): tokens SEMÁNTICOS nuevos.
   //    Valores idénticos a los literales que sustituyen — cero cambio visual.
-  compra: "#FF8C3C",   // naranja de la lista de la compra
-  platos: "#64B5F6",   // azul de platos/macros del día
+  compra: "#E9945A",   // naranja de la lista de la compra (replegado; 6,4:1)
+  platos: "#7BB0DB",   // azul de platos/macros del día (replegado; 6,5:1)
   moneda: "#FFD700",   // dorado BRILLANTE de moneda y premio (gemas, marcos, medallas).
                        // ⚠️ NO es au1 (dorado de ACCIÓN): en la fase 2 divergen a propósito
                        //    para que la moneda no se confunda con el CTA (§2.1 del brief).
@@ -1401,9 +1415,8 @@ const PAL = {
   L: "#3A2A1E", E: "#FFFFFF", B: "#1A120C", P: "#E8837A",
   T: "#7EC8E3", R: "#C0392B", r: "#E74C3C", G: "#F5B800",
   g: "#2D9B5A", K: "#111111", k: "#3A3A3A",
-  M: "#CE82FF",  // lana lila de la oveja: coincide con el ANTIGUO T.pur por
-                 // casualidad. Es ARTE, no tema: NO tokenizar — si en fase 2
-                 // T.pur baja de saturación, la oveja no debe despintarse.
+  M: "#C98BEB",  // lana lila de la oveja (matiz propio desde fase 2: ya no comparte hex con
+                 // ningún token del tema). Es ARTE, no tema: NO tokenizar.
   C: "#A07848", c: "#8B6040", N: "#1B2A5E", n: "#2E4590",
   D: "#9C9C9C", d: "#7A7A7A", O: "#E8802A", o: "#C4661B",
 };
@@ -3821,7 +3834,7 @@ function WeekPath({logs,onOpenChest}){
                   transition:"all 0.3s",
                 }}>
                   {day.done?<span style={{fontSize:16,color:T.t1,fontWeight:900}}>✓</span>
-                  :<span style={{fontSize:10,fontWeight:900,color:day.isToday?"#1A1000":T.t3}}>{day.label}</span>}
+                  :<span style={{fontSize:10,fontWeight:900,color:day.isToday?T.ctaTx:T.t3}}>{day.label}</span>}
                 </div>
                 {day.isToday&&<div style={{width:5,height:5,borderRadius:"50%",background:T.au1,boxShadow:`0 0 8px ${T.au1}`}}/>}
               </div>
@@ -3871,7 +3884,7 @@ function BigBtn({icon,label,done,onClick}){
       <span style={{fontWeight:900,fontSize:16,color:T.g2}}>{t("dietDone")}</span>
     </div>
   ):(
-    <button onClick={onClick} style={{width:"100%",padding:"18px 20px",borderRadius:20,border:`3px solid ${T.g3}`,cursor:"pointer",fontSize:17,fontWeight:900,background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,boxShadow:`0 6px 0 ${T.g3}`,transition:"all 0.15s",letterSpacing:"0.02em",display:"flex",alignItems:"center",justifyContent:"center",gap:14,animation:"glow 2.5s ease-in-out infinite",marginBottom:12,fontFamily:"'Nunito',sans-serif"}}>
+    <button onClick={onClick} style={{width:"100%",padding:"18px 20px",borderRadius:20,border:`3px solid ${T.g3}`,cursor:"pointer",fontSize:17,fontWeight:900,background:`linear-gradient(135deg,${T.cta1},${T.cta2})`,color:T.ctaTx,boxShadow:`0 6px 0 ${T.cta3}`,transition:"all 0.15s",letterSpacing:"0.02em",display:"flex",alignItems:"center",justifyContent:"center",gap:14,animation:"glow 2.5s ease-in-out infinite",marginBottom:12,fontFamily:"'Nunito',sans-serif"}}>
       <span style={{fontSize:28}}>🍽️</span>{label}
     </button>
   );
@@ -4391,7 +4404,7 @@ const METAS_RACHA=[7,14,30,50];
 function MetaRachaSelector({streak, metaActual, lang, onElegir, onCerrar}){
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
-      <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
+      <div style={{width:"100%",maxWidth:360,background:`linear-gradient(180deg,${T.pop1},${T.pop2})`,
         border:`2.5px solid ${T.au1}`,borderRadius:24,padding:"26px 22px 20px",textAlign:"center",
         boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:REDUCED_MOTION()?"none":"popIn 0.25s ease"}}>
         <div style={{fontSize:46,marginBottom:8}}>🎯</div>
@@ -4429,7 +4442,7 @@ function MetaLogradaOverlay({meta, boColor, boEquipados, lang, onElegir, onCerra
   const siguientes=METAS_RACHA.filter(n=>n>meta);
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.82)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
-      <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
+      <div style={{width:"100%",maxWidth:360,background:`linear-gradient(180deg,${T.pop1},${T.pop2})`,
         border:`2.5px solid ${T.au1}`,borderRadius:24,padding:"24px 22px 20px",textAlign:"center",
         boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:REDUCED_MOTION()?"none":"popIn 0.3s cubic-bezier(0.34,1.56,0.64,1)"}}>
         <MascotaCelebracion color={boColor} equipados={boEquipados} size={92} style={{margin:"0 auto 4px"}}/>
@@ -4516,8 +4529,8 @@ function PausaCard({profile, lang, onDeclarar, onCancelar}){
         </div>
         {error&&<div style={{fontSize:11.5,color:T.au1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,marginBottom:10}}>⚠️ {error}</div>}
         <button onClick={declarar} style={{width:"100%",padding:"13px",borderRadius:14,border:"none",cursor:"pointer",
-          background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,fontWeight:900,fontSize:14,
-          fontFamily:"'Nunito',sans-serif",boxShadow:`0 4px 0 ${T.g3}`,marginBottom:8}}>
+          background:`linear-gradient(135deg,${T.cta1},${T.cta2})`,color:T.ctaTx,fontWeight:900,fontSize:14,
+          fontFamily:"'Nunito',sans-serif",boxShadow:`0 4px 0 ${T.cta3}`,marginBottom:8}}>
           {jt(lang,"pausaBoton")}
         </button>
         <div style={{fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif",lineHeight:1.45}}>
@@ -4576,7 +4589,7 @@ function LevelUpOverlay({active,level,reward,patientName,streak,lang,onClose}){
   const bg = level===500
     ?`linear-gradient(135deg,#7B2FBE,${T.moneda})`
     : isMilestone
-      ?"linear-gradient(135deg,#0D2A0A,#1A5C10)"
+      ?"linear-gradient(135deg,#0E2416,#1B4A2E)"
       :"rgba(6,14,6,0.97)";
 
   // Icono principal
@@ -5032,7 +5045,7 @@ function CalcTab({weights,profile,setProfile,lang}){
       </div>
 
       {/* Número grande */}
-      <div style={{background:"linear-gradient(135deg,#1A3A10,#0F2408)",border:`2.5px solid ${T.g3}`,borderRadius:24,padding:"24px 20px",marginBottom:12,textAlign:"center",boxShadow:`0 8px 0 ${T.g3}`}}>
+      <div style={{background:"linear-gradient(135deg,#163524,#0D2115)",border:`2.5px solid ${T.g3}`,borderRadius:24,padding:"24px 20px",marginBottom:12,textAlign:"center",boxShadow:`0 8px 0 ${T.g3}`}}>
         <div style={{fontSize:11,color:T.g2,textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:900,marginBottom:4}}>{t("calcResultTitle")}</div>
         {saved.goalW&&<div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:12}}>{lang==="en"?`to reach ${saved.goalW} kg in 3 months`:`para llegar a ${saved.goalW} kg en 3 meses`}</div>}
         <div style={{display:"flex",alignItems:"baseline",justifyContent:"center",gap:6}}>
@@ -5133,7 +5146,7 @@ function CalcTab({weights,profile,setProfile,lang}){
           {actOpts.map((o,i)=><option key={i} value={String(i)}>{o}</option>)}
         </select>
       </Card>
-      <button onClick={compute} disabled={!canCompute} style={{width:"100%",padding:"18px 0",borderRadius:20,border:`3px solid ${canCompute?T.g3:"rgba(255,255,255,0.08)"}`,background:canCompute?`linear-gradient(135deg,${T.g1},${T.g2})`:"rgba(255,255,255,0.08)",color:canCompute?T.t1:T.t3,fontSize:17,fontWeight:900,cursor:canCompute?"pointer":"not-allowed",fontFamily:"'Nunito',sans-serif",boxShadow:canCompute?`0 6px 0 ${T.g3}`:"none",transition:"all 0.18s",marginBottom:saved?12:0}}>
+      <button onClick={compute} disabled={!canCompute} style={{width:"100%",padding:"18px 0",borderRadius:20,border:`3px solid ${canCompute?T.g3:"rgba(255,255,255,0.08)"}`,background:canCompute?`linear-gradient(135deg,${T.cta1},${T.cta2})`:"rgba(255,255,255,0.08)",color:canCompute?T.t1:T.t3,fontSize:17,fontWeight:900,cursor:canCompute?"pointer":"not-allowed",fontFamily:"'Nunito',sans-serif",boxShadow:canCompute?`0 6px 0 ${T.cta3}`:"none",transition:"all 0.18s",marginBottom:saved?12:0}}>
         {t("calcBtn")}
       </button>
       {saved&&(
@@ -5527,10 +5540,10 @@ function RuletaModal({onClose, onCollect, onGoHome}){
               border:`3px solid ${T.g3}`,cursor:phase==="ready"?"pointer":"default",
               fontSize:18,fontWeight:900,
               background:phase==="ready"
-                ?`linear-gradient(135deg,${T.g1},${T.g2})`
+                ?`linear-gradient(135deg,${T.cta1},${T.cta2})`
                 :"rgba(255,255,255,0.08)",
               color:phase==="ready"?T.t1:"rgba(255,255,255,0.3)",
-              boxShadow:phase==="ready"?`0 6px 0 ${T.g3}`:"none",
+              boxShadow:phase==="ready"?`0 6px 0 ${T.cta3}`:"none",
               fontFamily:"'Nunito',sans-serif",
               animation:phase==="ready"?"pulse 1.5s ease-in-out infinite":"none",
               transition:"all 0.3s",
@@ -5569,8 +5582,8 @@ function RuletaModal({onClose, onCollect, onGoHome}){
               <button onClick={()=>{onCollect(prize.xp,prize.gems);onClose();}} style={{
                 width:"100%",padding:"16px",borderRadius:18,
                 border:`3px solid ${T.g3}`,cursor:"pointer",fontSize:18,fontWeight:900,
-                background:`linear-gradient(135deg,${T.g1},${T.g2})`,
-                color:T.t1,boxShadow:`0 6px 0 ${T.g3}`,
+                background:`linear-gradient(135deg,${T.cta1},${T.cta2})`,
+                color:T.ctaTx,boxShadow:`0 6px 0 ${T.cta3}`,
                 fontFamily:"'Nunito',sans-serif",marginTop:8}}>
                 ¡Recoger!
               </button>
@@ -5623,12 +5636,12 @@ function QuizModal({onClose, onComplete, todayKey, lang, onGoHome}){
 
   return(
     <div style={{position:"fixed",inset:0,zIndex:11000,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(8px)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={phase==="result"?onClose:undefined}>
-      <div style={{background:`linear-gradient(180deg,#1A3A10,${T.bgWood})`,borderRadius:28,width:"100%",maxWidth:360,border:`2px solid ${T.bW}`,boxShadow:"0 24px 60px rgba(0,0,0,0.8)",animation:"popIn 0.35s cubic-bezier(0.34,1.56,0.64,1)",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
+      <div style={{background:`linear-gradient(180deg,#163524,${T.bgWood})`,borderRadius:28,width:"100%",maxWidth:360,border:`2px solid ${T.bW}`,boxShadow:"0 24px 60px rgba(0,0,0,0.8)",animation:"popIn 0.35s cubic-bezier(0.34,1.56,0.64,1)",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
 
         {phase==="question"&&(
           <>
             {/* Header */}
-            <div style={{background:`linear-gradient(135deg,${T.g1},${T.g2})`,padding:"16px 20px",display:"flex",alignItems:"center",gap:12}}>
+            <div style={{background:`linear-gradient(135deg,${T.cta1},${T.cta2})`,padding:"16px 20px",display:"flex",alignItems:"center",gap:12}}>
               <div style={{fontSize:28}}>🧠</div>
               <div style={{flex:1}}>
                 <div style={{fontSize:11,fontWeight:900,color:"rgba(255,255,255,0.7)",textTransform:"uppercase",letterSpacing:"0.1em"}}>
@@ -5764,7 +5777,7 @@ function StreakChest({streak, onOpen, alreadyOpened}){
         </div>
       </div>
       {isReady&&(
-        <button onClick={onOpen} style={{marginTop:12,width:"100%",padding:"13px",borderRadius:16,border:`2px solid ${chestColor}`,cursor:"pointer",fontSize:15,fontWeight:900,background:`linear-gradient(135deg,${chestColor},${T.au2})`,color:"#1A1000",boxShadow:'0 5px 0 '+T.au3,fontFamily:"'Nunito',sans-serif",animation:"pulse 1.5s ease-in-out infinite"}}>
+        <button onClick={onOpen} style={{marginTop:12,width:"100%",padding:"13px",borderRadius:16,border:`2px solid ${chestColor}`,cursor:"pointer",fontSize:15,fontWeight:900,background:`linear-gradient(135deg,${chestColor},${T.au2})`,color:T.ctaTx,boxShadow:'0 5px 0 '+T.au3,fontFamily:"'Nunito',sans-serif",animation:"pulse 1.5s ease-in-out infinite"}}>
           🎁 ¡Abrir {chestLabel}!
         </button>
       )}
@@ -5821,7 +5834,7 @@ function ChestOpenModal({streak, onClose, onCollect, onGoHome}){
               <div style={{fontSize:14,color:"rgba(255,255,255,0.5)",fontFamily:"'DM Sans',sans-serif"}}>Gemas 💎</div>
             </div>
           </div>
-          <button onClick={()=>{onCollect(rewards.xp,rewards.gems);onClose();}} style={{background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:`3px solid ${T.g3}`,borderRadius:20,padding:"18px 48px",color:T.t1,fontWeight:900,fontSize:18,cursor:"pointer",boxShadow:`0 6px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif",display:"block",width:"100%",marginBottom:12}}>
+          <button onClick={()=>{onCollect(rewards.xp,rewards.gems);onClose();}} style={{background:`linear-gradient(135deg,${T.cta1},${T.cta2})`,border:`3px solid ${T.g3}`,borderRadius:20,padding:"18px 48px",color:T.ctaTx,fontWeight:900,fontSize:18,cursor:"pointer",boxShadow:`0 6px 0 ${T.cta3}`,fontFamily:"'Nunito',sans-serif",display:"block",width:"100%",marginBottom:12}}>
             ¡Recoger!
           </button>
           <button onClick={()=>{onCollect(rewards.xp,rewards.gems);onGoHome();}} style={{background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.12)",borderRadius:16,padding:"13px 48px",color:"rgba(255,255,255,0.4)",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif",width:"100%"}}>
@@ -6196,7 +6209,7 @@ function WeightChart({chartData,setWeightMode,goalWeight,shareName,lang}){
               display:"flex",alignItems:"center",justifyContent:"center",gap:10,
               background:_reached?`linear-gradient(135deg,${T.au1},${T.au2})`:"rgba(255,255,255,0.05)",
               border:_reached?`2px solid ${T.au1}`:"2px solid rgba(255,255,255,0.14)",
-              color:_reached?"#1A1000":T.t1,fontWeight:900,fontSize:14,
+              color:_reached?T.ctaTx:T.t1,fontWeight:900,fontSize:14,
               fontFamily:"'Nunito',sans-serif",
               boxShadow:_reached?`0 5px 0 ${T.au3}`:"0 4px 0 rgba(0,0,0,0.3)",
               animation:_reached?"glow 2.5s ease-in-out infinite":"none"}}>
@@ -6213,7 +6226,7 @@ function WeightChart({chartData,setWeightMode,goalWeight,shareName,lang}){
                 <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:380,display:"flex",flexDirection:"column",gap:12}}>
                   <img src={shareCard.dataUrl} alt="" style={{width:"100%",borderRadius:20,border:"2px solid rgba(255,255,255,0.2)",boxShadow:"0 12px 40px rgba(0,0,0,0.6)",animation:"popIn 0.2s ease"}}/>
                   <div style={{display:"flex",gap:10}}>
-                    <button onClick={compartirTarjeta} style={{flex:1,padding:"14px",borderRadius:16,border:"none",cursor:"pointer",background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif",boxShadow:`0 4px 0 ${T.g3}`}}>
+                    <button onClick={compartirTarjeta} style={{flex:1,padding:"14px",borderRadius:16,border:"none",cursor:"pointer",background:`linear-gradient(135deg,${T.cta1},${T.cta2})`,color:T.ctaTx,fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif",boxShadow:`0 4px 0 ${T.cta3}`}}>
                       📤 {lang==='en'?'Share':'Compartir'}
                     </button>
                     <button onClick={descargarTarjeta} style={{flex:1,padding:"14px",borderRadius:16,cursor:"pointer",background:"rgba(255,255,255,0.10)",border:"2px solid rgba(255,255,255,0.2)",color:T.t1,fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif"}}>
@@ -6265,7 +6278,7 @@ function UserAvatar({size=52, photoB64, initials, borderColor, onClick, frame=nu
     <div onClick={onClick} style={{
       width:size, height:size, borderRadius:size*0.33,
       ...wrapStyle,
-      background:`linear-gradient(135deg,#2A5A2A,#1A3A10)`,
+      background:`linear-gradient(135deg,#23543A,#163524)`,
       cursor:"pointer", flexShrink:0, position:"relative", overflow:"hidden",
       transition:"box-shadow 0.3s",
     }}>
@@ -6343,7 +6356,7 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
         {isLocked?(
           <span style={{fontSize:16,opacity:0.35}} title={lang==="en"?"Email linked to your account":"Email vinculado a tu cuenta"}>🔒</span>
         ):editField===field?(
-          <button onClick={saveEdit} style={{background:T.g1,border:"none",borderRadius:10,padding:"7px 14px",color:T.t1,fontWeight:900,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>✓</button>
+          <button onClick={saveEdit} style={{background:T.cta1,border:"none",borderRadius:10,padding:"7px 14px",color:T.ctaTx,fontWeight:900,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>✓</button>
         ):(
           <button onClick={()=>startEdit(field, value)} style={{background:"rgba(255,255,255,0.08)",border:"1.5px solid rgba(255,255,255,0.14)",borderRadius:10,padding:"7px 10px",color:T.t2,fontSize:16,cursor:"pointer",lineHeight:1}}>✏️</button>
         )}
@@ -6367,12 +6380,12 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
               {photo?(
                 <img src={photo} alt="avatar" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top"}}/>
               ):(
-                <div style={{width:"100%",height:"100%",background:"linear-gradient(135deg,#2A5A2A,#1A3A10)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <div style={{width:"100%",height:"100%",background:"linear-gradient(135deg,#23543A,#163524)",display:"flex",alignItems:"center",justifyContent:"center"}}>
                   <span style={{fontSize:42,fontWeight:900,color:"rgba(255,255,255,0.85)",fontFamily:"'Nunito',sans-serif"}}>{(profile?.name||"?")[0].toUpperCase()}</span>
                 </div>
               )}
             </div>
-            <button onClick={()=>fileRef.current?.click()} style={{position:"absolute",bottom:-4,right:-4,width:32,height:32,borderRadius:"50%",background:T.g1,border:`2px solid #081208`,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 3px 0 ${T.g3}`}}>📷</button>
+            <button onClick={()=>fileRef.current?.click()} style={{position:"absolute",bottom:-4,right:-4,width:32,height:32,borderRadius:"50%",background:T.cta1,border:`2px solid #07130C`,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 3px 0 ${T.cta3}`}}>📷</button>
             <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{display:"none"}}/>
           </div>
 
@@ -6444,7 +6457,7 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
                   <span style={{fontSize:9,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>220cm</span>
                 </div>
                 <div style={{display:"flex",gap:8}}>
-                  <button onClick={()=>{onSaveProfile("height",heightEdit);setEditingHeight(false);}} style={{flex:1,background:T.g1,border:"none",borderRadius:10,padding:"8px 0",color:T.t1,fontWeight:900,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>✓ {lang==="en"?"Save":"Guardar"}</button>
+                  <button onClick={()=>{onSaveProfile("height",heightEdit);setEditingHeight(false);}} style={{flex:1,background:T.cta1,border:"none",borderRadius:10,padding:"8px 0",color:T.ctaTx,fontWeight:900,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>✓ {lang==="en"?"Save":"Guardar"}</button>
                   <button onClick={()=>setEditingHeight(false)} style={{background:"rgba(255,255,255,0.08)",border:"1.5px solid rgba(255,255,255,0.14)",borderRadius:10,padding:"8px 14px",color:T.t2,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>✕</button>
                 </div>
               </div>
@@ -6502,9 +6515,9 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
                 </button>
               ) : ES_IOS_NATIVO ? null : (
                 <button onClick={()=>abrirCheckoutStripe(profile?.id)}
-                  style={{background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:"none",
-                    borderRadius:10,padding:"8px 12px",color:T.t1,fontWeight:900,fontSize:12,
-                    cursor:"pointer",boxShadow:`0 2px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif",flexShrink:0}}>
+                  style={{background:`linear-gradient(135deg,${T.cta1},${T.cta2})`,border:"none",
+                    borderRadius:10,padding:"8px 12px",color:T.ctaTx,fontWeight:900,fontSize:12,
+                    cursor:"pointer",boxShadow:`0 2px 0 ${T.cta3}`,fontFamily:"'Nunito',sans-serif",flexShrink:0}}>
                   {lang==="en"?"Subscribe · €7/mo":"Suscribirme · 7 €/mes"}
                 </button>
               )}
@@ -6642,7 +6655,7 @@ function MiniListaCompra({nombre, ingredientes, idReceta, t, onClose, etiquetaRa
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.72)",zIndex:2000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
       <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:520,maxHeight:"80vh",overflowY:"auto",
-        background:"linear-gradient(180deg,#1d3a14,#142a0e)",border:"2px solid rgba(255,255,255,0.14)",borderBottom:"none",
+        background:`linear-gradient(180deg,${T.pop1},${T.pop2})`,border:"2px solid rgba(255,255,255,0.14)",borderBottom:"none",
         borderRadius:"22px 22px 0 0",padding:"18px 18px 26px",animation:"popIn 0.2s ease"}}>
         <div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:4}}>
           <span style={{fontSize:24,flexShrink:0}}>🛒</span>
@@ -9354,13 +9367,13 @@ function GBHApp(){
     .gbh-select:focus{border-color:${alpha(T.g1,0.75)};}
     .gbh-select option{background:${T.bgCard};color:${T.cr};}
     input[type=range].gbh-slider{-webkit-appearance:none;appearance:none;width:100%;height:8px;border-radius:8px;background:rgba(255,255,255,0.15);outline:none;cursor:pointer;margin:14px 0;}
-    input[type=range].gbh-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,${T.g1},${T.g2});box-shadow:0 3px 8px rgba(0,0,0,0.5),0 0 0 3px ${T.g3};cursor:pointer;}
-    input[type=range].gbh-slider::-moz-range-thumb{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,${T.g1},${T.g2});box-shadow:0 3px 8px rgba(0,0,0,0.5),0 0 0 3px ${T.g3};cursor:pointer;border:none;}
+    input[type=range].gbh-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,${T.cta1},${T.cta2});box-shadow:0 3px 8px rgba(0,0,0,0.5),0 0 0 3px ${T.g3};cursor:pointer;}
+    input[type=range].gbh-slider::-moz-range-thumb{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,${T.cta1},${T.cta2});box-shadow:0 3px 8px rgba(0,0,0,0.5),0 0 0 3px ${T.g3};cursor:pointer;border:none;}
     input[type=range].gbh-slider::-webkit-slider-runnable-track{height:8px;border-radius:8px;background:rgba(255,255,255,0.15);}
     input[type=range].gbh-slider::-moz-range-track{height:8px;border-radius:8px;background:rgba(255,255,255,0.15);}
     input[type=range].gbh-slider-sm{-webkit-appearance:none;appearance:none;width:100%;height:6px;border-radius:6px;background:rgba(255,255,255,0.15);outline:none;cursor:pointer;margin:10px 0;}
-    input[type=range].gbh-slider-sm::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,${T.g1},${T.g2});box-shadow:0 2px 6px rgba(0,0,0,0.5),0 0 0 2px ${T.g3};cursor:pointer;}
-    input[type=range].gbh-slider-sm::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,${T.g1},${T.g2});box-shadow:0 2px 6px rgba(0,0,0,0.5),0 0 0 2px ${T.g3};cursor:pointer;border:none;}
+    input[type=range].gbh-slider-sm::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,${T.cta1},${T.cta2});box-shadow:0 2px 6px rgba(0,0,0,0.5),0 0 0 2px ${T.g3};cursor:pointer;}
+    input[type=range].gbh-slider-sm::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,${T.cta1},${T.cta2});box-shadow:0 2px 6px rgba(0,0,0,0.5),0 0 0 2px ${T.g3};cursor:pointer;border:none;}
   `;
 
   // Cargar ranking cuando se activa la pestaña
@@ -9467,7 +9480,7 @@ function GBHApp(){
       <LangCtx.Provider value={lang}>
         <div style={{
           fontFamily: "'Nunito',sans-serif",
-          background: `radial-gradient(ellipse at top, #1A3A10, ${T.bg})`,
+          background: `radial-gradient(ellipse at top, #163524, ${T.bg})`,
           minHeight: "100vh", maxWidth: 420, margin: "0 auto",
           display: "flex", flexDirection: "column",
           alignItems: "center", justifyContent: "center",
@@ -9495,10 +9508,10 @@ function GBHApp(){
               width: "100%", maxWidth: 320,
               padding: "18px 24px", borderRadius: 20,
               border: `3px solid ${T.g3}`,
-              background: `linear-gradient(135deg,${T.g1},${T.g2})`,
-              color: T.t1, fontSize: 17, fontWeight: 900,
+              background: `linear-gradient(135deg,${T.cta1},${T.cta2})`,
+              color:T.ctaTx, fontSize: 17, fontWeight: 900,
               cursor: "pointer",
-              boxShadow: `0 8px 0 ${T.g3}`,
+              boxShadow: `0 8px 0 ${T.cta3}`,
               fontFamily: "'Nunito',sans-serif",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
               animation: "glow 2.5s ease-in-out infinite",
@@ -9553,7 +9566,7 @@ function GBHApp(){
     <LangCtx.Provider value={lang}>
     <div style={{
       fontFamily:"'Nunito',sans-serif",
-      background:`radial-gradient(ellipse at top, #1A3A10, ${T.bg})`,
+      background:`radial-gradient(ellipse at top, #163524, ${T.bg})`,
       minHeight:"100vh",maxWidth:420,margin:"0 auto",
       display:"flex",flexDirection:"column",
       alignItems:"center",justifyContent:"center",
@@ -9628,10 +9641,10 @@ function GBHApp(){
           padding:"18px 24px",
           borderRadius:20,
           border:`3px solid ${T.g3}`,
-          background:`linear-gradient(135deg,${T.g1},${T.g2})`,
-          color:T.t1,fontSize:18,fontWeight:900,
+          background:`linear-gradient(135deg,${T.cta1},${T.cta2})`,
+          color:T.ctaTx,fontSize:18,fontWeight:900,
           cursor:"pointer",
-          boxShadow:`0 8px 0 ${T.g3}, 0 12px 30px ${alpha(T.g1,0.25)}`,
+          boxShadow:`0 8px 0 ${T.cta3}, 0 12px 30px ${alpha(T.g1,0.25)}`,
           fontFamily:"'Nunito',sans-serif",
           transition:"all 0.15s",
           marginBottom:14,
@@ -9676,7 +9689,7 @@ function GBHApp(){
   // ── AUTH ─────────────────────────────────────────────────────────────────────
   if(screen==="auth")return(
     <LangCtx.Provider value={lang}>
-    <div style={{fontFamily:"'Nunito',sans-serif",background:`radial-gradient(ellipse at top,#1A3A10,${T.bg})`,minHeight:"100vh",maxWidth:420,margin:"0 auto",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:28,color:T.t1}}>
+    <div style={{fontFamily:"'Nunito',sans-serif",background:`radial-gradient(ellipse at top,#163524,${T.bg})`,minHeight:"100vh",maxWidth:420,margin:"0 auto",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:28,color:T.t1}}>
       <style>{CSS}</style>
       {/* Selector de idioma — esquina superior derecha */}
       <div style={{position:"fixed",top:16,right:16,display:"flex",gap:6,zIndex:100}}>
@@ -9826,10 +9839,10 @@ function GBHApp(){
             {/* Caja checkbox visual */}
             <div style={{
               width:22,height:22,borderRadius:7,flexShrink:0,marginTop:1,
-              background:aPrivacy?`linear-gradient(135deg,${T.g1},${T.g2})`:"rgba(255,255,255,0.08)",
+              background:aPrivacy?`linear-gradient(135deg,${T.cta1},${T.cta2})`:"rgba(255,255,255,0.08)",
               border:`2px solid ${aPrivacy?T.g1:"rgba(255,255,255,0.25)"}`,
               display:"flex",alignItems:"center",justifyContent:"center",
-              boxShadow:aPrivacy?`0 2px 0 ${T.g3}`:"none",
+              boxShadow:aPrivacy?`0 2px 0 ${T.cta3}`:"none",
               transition:"all 0.18s",
             }}>
               {aPrivacy&&<span style={{fontSize:13,color:T.t1,fontWeight:900,lineHeight:1}}>✓</span>}
@@ -9870,8 +9883,8 @@ function GBHApp(){
             <button onClick={doAuth} disabled={dis}
               style={{width:"100%",padding:"17px 20px",borderRadius:18,border:`3px solid ${T.g3}`,
                 cursor:dis?"not-allowed":"pointer",fontSize:17,fontWeight:900,
-                background:dis?"rgba(255,255,255,0.12)":`linear-gradient(135deg,${T.g1},${T.g2})`,
-                color:dis?T.t2:T.t1,boxShadow:dis?"none":`0 6px 0 ${T.g3}`,
+                background:dis?"rgba(255,255,255,0.12)":`linear-gradient(135deg,${T.cta1},${T.cta2})`,
+                color:dis?T.t2:T.t1,boxShadow:dis?"none":`0 6px 0 ${T.cta3}`,
                 transition:"all 0.15s",fontFamily:"'Nunito',sans-serif"}}>
               {label}
             </button>
@@ -9885,7 +9898,7 @@ function GBHApp(){
   // ── ADMIN ────────────────────────────────────────────────────────────────────
   if(pinGate){
     return(
-      <div style={{fontFamily:"'Nunito',sans-serif",background:`radial-gradient(ellipse at top,#1A3A10,${T.bg})`,minHeight:"100vh",maxWidth:420,margin:"0 auto",color:T.t1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
+      <div style={{fontFamily:"'Nunito',sans-serif",background:`radial-gradient(ellipse at top,#163524,${T.bg})`,minHeight:"100vh",maxWidth:420,margin:"0 auto",color:T.t1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
         <style>{CSS}</style>
         <div style={{fontSize:38,marginBottom:8}}>🔐</div>
         <div style={{fontSize:17,fontWeight:900,marginBottom:4}}>Acceso de administrador</div>
@@ -9963,7 +9976,7 @@ function GBHApp(){
     const nSinActT=actReady?allP.filter(p=>!esGratis(p)&&sinActivar(p)).length:null;
     const nRiesgoT=actReady?allP.filter(enRiesgo).length:null;
     return(
-      <div style={{fontFamily:"'Nunito',sans-serif",background:`radial-gradient(ellipse at top,#1A3A10,${T.bg})`,minHeight:"100vh",maxWidth:420,margin:"0 auto",color:T.t1,paddingBottom:20}}>
+      <div style={{fontFamily:"'Nunito',sans-serif",background:`radial-gradient(ellipse at top,#163524,${T.bg})`,minHeight:"100vh",maxWidth:420,margin:"0 auto",color:T.t1,paddingBottom:20}}>
         <style>{CSS}</style>
         <div style={{padding:"20px 18px 12px"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -10047,7 +10060,7 @@ function GBHApp(){
   // ── MAIN ─────────────────────────────────────────────────────────────────────
   return(
     <LangCtx.Provider value={lang}>
-    <div style={{fontFamily:"'Nunito',sans-serif",background:`radial-gradient(ellipse at top,#1A3A10,${T.bg})`,minHeight:"100vh",maxWidth:420,margin:"0 auto",color:T.t1,paddingBottom:90,overflowX:"hidden"}}>
+    <div style={{fontFamily:"'Nunito',sans-serif",background:`radial-gradient(ellipse at top,#163524,${T.bg})`,minHeight:"100vh",maxWidth:420,margin:"0 auto",color:T.t1,paddingBottom:90,overflowX:"hidden"}}>
       <style>{CSS}</style>
       <Confetti active={confetti}/>
       <StreakOverlay active={streakAnim} streak={streak+1} boColor={boColor} boEquipados={boEquipados} boNombre={boNombre}/>
@@ -10132,10 +10145,10 @@ function GBHApp(){
                             </div>
                           ):done?(
                             <button onClick={()=>claimChallenge(ch)} style={{
-                              background:`linear-gradient(135deg,${T.g1},${T.g2})`,
+                              background:`linear-gradient(135deg,${T.cta1},${T.cta2})`,
                               border:`2px solid ${T.g3}`,borderRadius:12,
-                              padding:"7px 12px",color:T.t1,fontWeight:900,
-                              fontSize:12,cursor:"pointer",boxShadow:`0 3px 0 ${T.g3}`,
+                              padding:"7px 12px",color:T.ctaTx,fontWeight:900,
+                              fontSize:12,cursor:"pointer",boxShadow:`0 3px 0 ${T.cta3}`,
                               fontFamily:"'Nunito',sans-serif",
                               animation:"pulse 1.5s ease-in-out infinite",
                             }}>+{ch.xp}⚡+{ch.gems}💎</button>
@@ -10304,10 +10317,10 @@ function GBHApp(){
                 }} style={{
                   width:"100%",padding:"18px 0",borderRadius:20,
                   border:`3px solid ${T.g3}`,
-                  background:`linear-gradient(135deg,${T.g1},${T.g2})`,
-                  color:T.t1,fontSize:18,fontWeight:900,
+                  background:`linear-gradient(135deg,${T.cta1},${T.cta2})`,
+                  color:T.ctaTx,fontSize:18,fontWeight:900,
                   cursor:"pointer",
-                  boxShadow:`0 8px 0 ${T.g3}`,
+                  boxShadow:`0 8px 0 ${T.cta3}`,
                   fontFamily:"'Nunito',sans-serif",
                   marginBottom:12,
                   animation:"glow 2s ease-in-out infinite",
@@ -10423,7 +10436,7 @@ function GBHApp(){
         return(
           <div style={{background:"linear-gradient(135deg,#0D2E0D,#1A4A1A)",padding:"10px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,borderBottom:`2px solid ${T.g3}`,animation:"slideDown 0.35s ease"}}>
             <div style={{display:"flex",alignItems:"center",gap:10,flex:1}}>
-              <div style={{width:38,height:38,borderRadius:11,background:`linear-gradient(135deg,${T.g1},${T.g2})`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:20,boxShadow:`0 3px 0 ${T.g3}`}}>🐑</div>
+              <div style={{width:38,height:38,borderRadius:11,background:`linear-gradient(135deg,${T.cta1},${T.cta2})`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:20,boxShadow:`0 3px 0 ${T.cta3}`}}>🐑</div>
               <div>
                 <div style={{fontSize:12,fontWeight:900,color:T.wh,fontFamily:"'Nunito',sans-serif",lineHeight:1.3}}>
                   Instalar GBH en tu móvil
@@ -10444,7 +10457,7 @@ function GBHApp(){
                   const {outcome}=await pwaPrompt.userChoice;
                   if(outcome==="accepted")setPwaInstalled(true);
                   setPwaPrompt(null);
-                }} style={{background:T.g1,border:`2px solid ${T.g3}`,borderRadius:12,padding:"7px 14px",color:T.t1,fontWeight:900,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif",boxShadow:`0 3px 0 ${T.g3}`,whiteSpace:"nowrap"}}>
+                }} style={{background:T.cta1,border:`2px solid ${T.cta3}`,borderRadius:12,padding:"7px 14px",color:T.ctaTx,fontWeight:900,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif",boxShadow:`0 3px 0 ${T.cta3}`,whiteSpace:"nowrap"}}>
                   Instalar
                 </button>
               )}
@@ -10708,7 +10721,7 @@ function GBHApp(){
                 <div style={{fontSize:15,fontWeight:900}}>{t("streakShield")}</div>
                 <div style={{fontSize:12,color:T.t2,marginTop:2,fontFamily:"'DM Sans',sans-serif"}}>{t("shieldDesc",{n:profile?.shields||0})}</div>
               </div>
-              <button onClick={buyShield} style={{background:gems>=200?'linear-gradient(135deg,'+T.au1+','+T.au2+')':"rgba(255,255,255,0.08)",border:"none",borderRadius:16,padding:"12px 20px",color:gems>=200?"#1A1000":T.t2,fontWeight:900,cursor:"pointer",fontSize:14,boxShadow:gems>=200?'0 5px 0 '+T.au3:"none",fontFamily:"'Nunito',sans-serif"}}>
+              <button onClick={buyShield} style={{background:gems>=200?'linear-gradient(135deg,'+T.au1+','+T.au2+')':"rgba(255,255,255,0.08)",border:"none",borderRadius:16,padding:"12px 20px",color:gems>=200?T.ctaTx:T.t2,fontWeight:900,cursor:"pointer",fontSize:14,boxShadow:gems>=200?'0 5px 0 '+T.au3:"none",fontFamily:"'Nunito',sans-serif"}}>
                 💎 200
               </button>
             </div>
@@ -10779,7 +10792,7 @@ function GBHApp(){
               <button
                 onClick={()=>saveW(!!todayW)}
                 disabled={!wInput||isNaN(parseFloat(wInput))}
-                style={{width:"100%",maxWidth:280,padding:"18px 0",borderRadius:20,border:`3px solid ${T.g3}`,cursor:"pointer",fontSize:18,fontWeight:900,background:!wInput||isNaN(parseFloat(wInput))?"rgba(255,255,255,0.1)":`linear-gradient(135deg,${T.g1},${T.g2})`,color:!wInput||isNaN(parseFloat(wInput))?T.t2:T.t1,boxShadow:!wInput||isNaN(parseFloat(wInput))?"none":`0 6px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif",marginBottom:14}}
+                style={{width:"100%",maxWidth:280,padding:"18px 0",borderRadius:20,border:`3px solid ${T.g3}`,cursor:"pointer",fontSize:18,fontWeight:900,background:!wInput||isNaN(parseFloat(wInput))?"rgba(255,255,255,0.1)":`linear-gradient(135deg,${T.cta1},${T.cta2})`,color:!wInput||isNaN(parseFloat(wInput))?T.t2:T.t1,boxShadow:!wInput||isNaN(parseFloat(wInput))?"none":`0 6px 0 ${T.cta3}`,fontFamily:"'Nunito',sans-serif",marginBottom:14}}
               >
                 {todayW?t("saveChanges"):t("saveWeight")}
               </button>
@@ -10814,7 +10827,7 @@ function GBHApp(){
               )}
               {/* Sin pesaje hoy */}
               {!todayW&&(
-                <button onClick={()=>{setWInput("");setWeightMode("input");}} style={{width:"100%",padding:"17px 20px",borderRadius:20,border:`3px solid ${T.g3}`,cursor:"pointer",fontSize:17,fontWeight:900,background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,boxShadow:`0 6px 0 ${T.g3}`,animation:"glow 2.5s ease-in-out infinite",marginBottom:14,fontFamily:"'Nunito',sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:12}}>
+                <button onClick={()=>{setWInput("");setWeightMode("input");}} style={{width:"100%",padding:"17px 20px",borderRadius:20,border:`3px solid ${T.g3}`,cursor:"pointer",fontSize:17,fontWeight:900,background:`linear-gradient(135deg,${T.cta1},${T.cta2})`,color:T.ctaTx,boxShadow:`0 6px 0 ${T.cta3}`,animation:"glow 2.5s ease-in-out infinite",marginBottom:14,fontFamily:"'Nunito',sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:12}}>
                   <span style={{fontSize:26}}>⚖️</span> {t("registerWeightBtn").replace("⚖️ ","")}
                 </button>
               )}
@@ -10870,11 +10883,11 @@ function GBHApp(){
                 {tables.map((t,i)=>(
                   <button key={t.key} onClick={()=>setRankTab(i)} style={{
                     flex:1,padding:"10px 6px",borderRadius:14,border:"none",cursor:"pointer",
-                    background:rankTab===i?`linear-gradient(135deg,${T.g1},${T.g2})`:"transparent",
+                    background:rankTab===i?`linear-gradient(135deg,${T.cta1},${T.cta2})`:"transparent",
                     color:rankTab===i?T.t1:T.t2,
                     fontWeight:rankTab===i?900:700,
                     fontSize:13,fontFamily:"'Nunito',sans-serif",
-                    boxShadow:rankTab===i?`0 3px 0 ${T.g3}`:"none",
+                    boxShadow:rankTab===i?`0 3px 0 ${T.cta3}`:"none",
                     transition:"all 0.2s",
                   }}>
                     {t.icon} {t.title}
@@ -10934,13 +10947,13 @@ function GBHApp(){
                           const fr2 = FRAMES[pFrame];
                           return(
                             <div style={{width:38,height:38,borderRadius:12,
-                              background:isMe?'linear-gradient(135deg,'+T.au1+','+T.au2+')':"linear-gradient(135deg,#2A5A2A,#1A3A10)",
+                              background:isMe?'linear-gradient(135deg,'+T.au1+','+T.au2+')':"linear-gradient(135deg,#23543A,#163524)",
                               display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,
                               border: fr2 ? fr2.border : `2px solid ${isMe?T.au3:T.bW}`,
                               boxShadow: fr2 ? fr2.boxShadow : "0 3px 0 rgba(0,0,0,0.4)",
                             }}>
                               <span style={{fontSize:17,fontWeight:900,
-                                color:isMe?"#1A1000":"rgba(255,255,255,0.85)",
+                                color:isMe?T.ctaTx:"rgba(255,255,255,0.85)",
                                 fontFamily:"'Nunito',sans-serif"}}>
                                 {(p.name||"?")[0].toUpperCase()}
                               </span>
@@ -10979,7 +10992,7 @@ function GBHApp(){
                           <span style={{fontSize:15,fontWeight:900,color:T.au1}}>#{myGlobalPos+1}</span>
                         </div>
                         <div style={{width:38,height:38,borderRadius:12,background:'linear-gradient(135deg,'+T.au1+','+T.au2+')',display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:`2px solid ${T.au3}`,boxShadow:"0 3px 0 rgba(0,0,0,0.4)"}}>
-                          <span style={{fontSize:17,fontWeight:900,color:"#1A1000",fontFamily:"'Nunito',sans-serif"}}>{(myEntry.name||"?")[0].toUpperCase()}</span>
+                          <span style={{fontSize:17,fontWeight:900,color:T.ctaTx,fontFamily:"'Nunito',sans-serif"}}>{(myEntry.name||"?")[0].toUpperCase()}</span>
                         </div>
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{fontSize:14,fontWeight:900,color:T.au1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
@@ -11194,7 +11207,7 @@ function GBHApp(){
                   <div style={{textAlign:"center",padding:40}}>
                     <div style={{fontSize:48,marginBottom:12}}>🍽️</div>
                     <div style={{fontSize:15,color:T.t2,fontFamily:"'DM Sans',sans-serif",whiteSpace:"pre-line"}}>{t("recipeLoadError")}</div>
-                    <button onClick={fetchDailyRecipe} style={{marginTop:16,padding:"12px 24px",background:T.g1,border:"none",borderRadius:14,color:T.t1,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>{t("retry")}</button>
+                    <button onClick={fetchDailyRecipe} style={{marginTop:16,padding:"12px 24px",background:T.cta1,border:"none",borderRadius:14,color:T.ctaTx,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>{t("retry")}</button>
                   </div>
                 )}
               </>)}
@@ -11208,10 +11221,10 @@ function GBHApp(){
                     <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{t("recipeBookEmptyDesc")}</div>
                     <button onClick={()=>setRecipeView("daily")} style={{
                       marginTop:20,padding:"12px 24px",
-                      background:`linear-gradient(135deg,${T.g1},${T.g2})`,
+                      background:`linear-gradient(135deg,${T.cta1},${T.cta2})`,
                       border:`2px solid ${T.g3}`,borderRadius:14,
-                      color:T.t1,fontWeight:900,fontSize:14,cursor:"pointer",
-                      fontFamily:"'Nunito',sans-serif",boxShadow:`0 4px 0 ${T.g3}`,
+                      color:T.ctaTx,fontWeight:900,fontSize:14,cursor:"pointer",
+                      fontFamily:"'Nunito',sans-serif",boxShadow:`0 4px 0 ${T.cta3}`,
                     }}>
                       {lang==="en"?"← Go to today's recipe":"← Ver receta de hoy"}
                     </button>
@@ -11243,7 +11256,7 @@ function GBHApp(){
                     </div>
                     {!ES_IOS_NATIVO&&<>
                     <button onClick={()=>{sfx&&sfx("tap");abrirCheckoutStripe(profile?.id);}}
-                      style={{marginTop:4,width:'100%',maxWidth:300,background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:'none',color:T.t1,fontWeight:900,fontSize:15,borderRadius:18,padding:'16px 20px',cursor:'pointer',boxShadow:`0 4px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif",display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
+                      style={{marginTop:4,width:'100%',maxWidth:300,background:`linear-gradient(135deg,${T.cta1},${T.cta2})`,border:'none',color:T.ctaTx,fontWeight:900,fontSize:15,borderRadius:18,padding:'16px 20px',cursor:'pointer',boxShadow:`0 4px 0 ${T.cta3}`,fontFamily:"'Nunito',sans-serif",display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
                       <span style={{fontSize:20}}>⭐</span>{lang==='en'?'Subscribe · €7/month':'Suscribirme · 7 €/mes'}
                     </button>
                     <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>
@@ -11360,7 +11373,7 @@ function GBHApp(){
         {tab==="progreso"&&<CalcTab weights={weights} profile={profile} setProfile={setProfile} lang={lang}/>}
         {avisoNuevoPlan&&(
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
-            <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
+            <div style={{width:"100%",maxWidth:360,background:`linear-gradient(180deg,${T.pop1},${T.pop2})`,
               border:`2.5px solid ${T.au1}`,borderRadius:24,padding:"26px 22px 20px",textAlign:"center",
               boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:"popIn 0.25s ease"}}>
               <div style={{fontSize:52,marginBottom:10,animation:"tomaBob 1.8s ease-in-out infinite",display:"inline-block"}}>📬</div>
@@ -11374,8 +11387,8 @@ function GBHApp(){
               </div>
               <button onClick={()=>{sfx("missionDone");setAvisoNuevoPlan(null);setTab("plan");}} style={{
                 width:"100%",padding:"15px",borderRadius:16,border:"none",cursor:"pointer",
-                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,fontWeight:900,fontSize:15,
-                fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.g3}`,marginBottom:10}}>
+                background:`linear-gradient(135deg,${T.cta1},${T.cta2})`,color:T.ctaTx,fontWeight:900,fontSize:15,
+                fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.cta3}`,marginBottom:10}}>
                 🍽️ {lang==='en'?'See my plan':'Ver mi programación'}
               </button>
               <button onClick={()=>{sfx("tap");setAvisoNuevoPlan(null);}} style={{
@@ -11388,7 +11401,7 @@ function GBHApp(){
         )}
         {avisoRegistro&&!avisoNuevoPlan&&(
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
-            <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
+            <div style={{width:"100%",maxWidth:360,background:`linear-gradient(180deg,${T.pop1},${T.pop2})`,
               border:`2.5px solid ${T.au1}`,borderRadius:24,padding:"26px 22px 20px",textAlign:"center",
               boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:"popIn 0.25s ease"}}>
               <div style={{fontSize:52,marginBottom:10,animation:"tomaBob 1.8s ease-in-out infinite",display:"inline-block"}}>🔥</div>
@@ -11408,8 +11421,8 @@ function GBHApp(){
               </div>
               <button onClick={()=>{sfx("missionDone");setAvisoRegistro(null);setTab("plan");}} style={{
                 width:"100%",padding:"15px",borderRadius:16,border:"none",cursor:"pointer",
-                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,fontWeight:900,fontSize:15,
-                fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.g3}`,marginBottom:10}}>
+                background:`linear-gradient(135deg,${T.cta1},${T.cta2})`,color:T.ctaTx,fontWeight:900,fontSize:15,
+                fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.cta3}`,marginBottom:10}}>
                 📆 {lang==='en'?'Go to daily plan':'Ir al plan diario'}
               </button>
               <button onClick={()=>{sfx("tap");setAvisoRegistro(null);}} style={{
@@ -11422,7 +11435,7 @@ function GBHApp(){
         )}
         {avisoSupl&&!avisoNuevoPlan&&!avisoRegistro&&(
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
-            <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
+            <div style={{width:"100%",maxWidth:360,background:`linear-gradient(180deg,${T.pop1},${T.pop2})`,
               border:`2.5px solid ${T.au1}`,borderRadius:24,padding:"26px 22px 20px",textAlign:"center",
               boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:"popIn 0.25s ease"}}>
               <div style={{fontSize:52,marginBottom:10,animation:"tomaBob 1.8s ease-in-out infinite",display:"inline-block"}}>{SUPL_IC[avisoSupl.tipo]||'💊'}</div>
@@ -11441,8 +11454,8 @@ function GBHApp(){
               </div>
               <button onClick={()=>{marcarSuplHome(avisoSupl);setAvisoSupl(null);}} style={{
                 width:"100%",padding:"15px",borderRadius:16,border:"none",cursor:"pointer",
-                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,fontWeight:900,fontSize:15,
-                fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.g3}`,marginBottom:10}}>
+                background:`linear-gradient(135deg,${T.cta1},${T.cta2})`,color:T.ctaTx,fontWeight:900,fontSize:15,
+                fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.cta3}`,marginBottom:10}}>
                 ✅ {lang==='en'?'Done! (+5 💎)':'¡Ya lo he tomado! (+5 💎)'}
               </button>
               <button onClick={()=>{sfx("tap");setAvisoSupl(null);}} style={{
@@ -11455,7 +11468,7 @@ function GBHApp(){
         )}
         {avisoTrial&&!avisoNuevoPlan&&!avisoRegistro&&!avisoSupl&&(
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
-            <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
+            <div style={{width:"100%",maxWidth:360,background:`linear-gradient(180deg,${T.pop1},${T.pop2})`,
               border:`2.5px solid ${T.au1}`,borderRadius:24,padding:"26px 22px 20px",textAlign:"center",
               boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:"popIn 0.25s ease"}}>
               <div style={{fontSize:52,marginBottom:10,animation:"tomaBob 1.8s ease-in-out infinite",display:"inline-block"}}>⏳</div>
@@ -11479,8 +11492,8 @@ function GBHApp(){
               {!ES_IOS_NATIVO&&(
               <button onClick={()=>{sfx("tap");setAvisoTrial(null);abrirCheckoutStripe(profile?.id);}} style={{
                 width:"100%",padding:"15px",borderRadius:16,border:"none",cursor:"pointer",
-                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,fontWeight:900,fontSize:15,
-                fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.g3}`,marginBottom:10}}>
+                background:`linear-gradient(135deg,${T.cta1},${T.cta2})`,color:T.ctaTx,fontWeight:900,fontSize:15,
+                fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.cta3}`,marginBottom:10}}>
                 ⭐ {lang==='en'?'Subscribe · €7/month':'Suscribirme · 7 €/mes'}
               </button>
               )}
@@ -11507,8 +11520,8 @@ function GBHApp(){
                 border:`2px solid ${T.au1}`,boxShadow:"0 12px 40px rgba(0,0,0,0.6)",marginBottom:16}}/>
               <button onClick={compartirHito} style={{
                 width:"100%",padding:"15px",borderRadius:16,border:"none",cursor:"pointer",
-                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,fontWeight:900,fontSize:15,
-                fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.g3}`,marginBottom:10}}>
+                background:`linear-gradient(135deg,${T.cta1},${T.cta2})`,color:T.ctaTx,fontWeight:900,fontSize:15,
+                fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.cta3}`,marginBottom:10}}>
                 📤 {lang==='en'?'Share my milestone':'Compartir mi hito'}
               </button>
               {(profile?.plan==='free'||trialDiasRest)&&!ES_IOS_NATIVO&&(
@@ -11531,7 +11544,7 @@ function GBHApp(){
         )}
         {avisoVictoria&&!hitoCard&&!avisoNuevoPlan&&!avisoRegistro&&!avisoSupl&&!avisoTrial&&(
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
-            <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
+            <div style={{width:"100%",maxWidth:360,background:`linear-gradient(180deg,${T.pop1},${T.pop2})`,
               border:`2.5px solid ${T.au1}`,borderRadius:24,padding:"26px 22px 20px",textAlign:"center",
               boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:"popIn 0.25s ease"}}>
               <div style={{fontSize:52,marginBottom:10,animation:"tomaBob 1.8s ease-in-out infinite",display:"inline-block"}}>🌟</div>
@@ -11546,8 +11559,8 @@ function GBHApp(){
               {!ES_IOS_NATIVO&&(
               <button onClick={()=>{sfx("tap");setAvisoVictoria(false);abrirCheckoutStripe(profile?.id);}} style={{
                 width:"100%",padding:"15px",borderRadius:16,border:"none",cursor:"pointer",
-                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,fontWeight:900,fontSize:15,
-                fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.g3}`,marginBottom:10}}>
+                background:`linear-gradient(135deg,${T.cta1},${T.cta2})`,color:T.ctaTx,fontWeight:900,fontSize:15,
+                fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.cta3}`,marginBottom:10}}>
                 ⭐ {lang==='en'?'Keep my plan · €7/month':'Conservar mi plan · 7 €/mes'}
               </button>
               )}
@@ -11561,7 +11574,7 @@ function GBHApp(){
         )}
         {avisoRacha&&!avisoNuevoPlan&&!avisoRegistro&&!avisoSupl&&!avisoTrial&&!hitoCard&&!avisoVictoria&&(
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
-            <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
+            <div style={{width:"100%",maxWidth:360,background:`linear-gradient(180deg,${T.pop1},${T.pop2})`,
               border:`2.5px solid ${T.au1}`,borderRadius:24,padding:"26px 22px 20px",textAlign:"center",
               boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:"popIn 0.25s ease"}}>
               <div style={{fontSize:52,marginBottom:10,animation:"tomaBob 1.8s ease-in-out infinite",display:"inline-block"}}>💔</div>
@@ -11575,9 +11588,9 @@ function GBHApp(){
               </div>
               <button onClick={repararRacha} style={{
                 width:"100%",padding:"15px",borderRadius:16,border:"none",cursor:"pointer",
-                background:(profile?.gems||0)>=RACHA_COSTE_REPARAR?`linear-gradient(135deg,${T.g1},${T.g2})`:"rgba(255,255,255,0.10)",
-                color:T.t1,fontWeight:900,fontSize:15,opacity:(profile?.gems||0)>=RACHA_COSTE_REPARAR?1:0.6,
-                fontFamily:"'Nunito',sans-serif",boxShadow:(profile?.gems||0)>=RACHA_COSTE_REPARAR?`0 5px 0 ${T.g3}`:"none",marginBottom:10}}>
+                background:(profile?.gems||0)>=RACHA_COSTE_REPARAR?`linear-gradient(135deg,${T.cta1},${T.cta2})`:"rgba(255,255,255,0.10)",
+                color:T.ctaTx,fontWeight:900,fontSize:15,opacity:(profile?.gems||0)>=RACHA_COSTE_REPARAR?1:0.6,
+                fontFamily:"'Nunito',sans-serif",boxShadow:(profile?.gems||0)>=RACHA_COSTE_REPARAR?`0 5px 0 ${T.cta3}`:"none",marginBottom:10}}>
                 🔧 {lang==='en'?`Repair my streak · ${RACHA_COSTE_REPARAR} 💎`:`Reparar mi racha · ${RACHA_COSTE_REPARAR} 💎`}
               </button>
               <button onClick={()=>{sfx("tap");setAvisoRacha(null);}} style={{
@@ -11740,7 +11753,7 @@ function TarjetaPareja({profile,sfx,showT}){
             fontFamily:"'Nunito',sans-serif"}}/>
         {!!error&&<div style={{fontSize:11.5,color:'#FF6B6B',marginBottom:8,fontFamily:"'DM Sans',sans-serif"}}>{error}</div>}
         <button onClick={invitar} disabled={ocupado||!codigo.trim()} style={{width:'100%',padding:'12px',borderRadius:13,border:'none',
-          cursor:(ocupado||!codigo.trim())?'default':'pointer',background:codigo.trim()?`linear-gradient(135deg,${T.g1},${T.g2})`:'rgba(255,255,255,0.08)',
+          cursor:(ocupado||!codigo.trim())?'default':'pointer',background:codigo.trim()?`linear-gradient(135deg,${T.cta1},${T.cta2})`:'rgba(255,255,255,0.08)',
           color:codigo.trim()?T.t1:T.t3,fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif",marginBottom:10}}>
           {t("parejaInvitar")}
         </button>
@@ -11816,9 +11829,9 @@ function TarjetaInvitarAmigo({profile,lang,sfx}){
         {profile.referral_code}
       </div>
       <button onClick={compartir} style={{width:'100%',padding:'13px',borderRadius:14,border:'none',
-        cursor:'pointer',background:copiado?'rgba(255,255,255,0.12)':`linear-gradient(135deg,${T.g1},${T.g2})`,
-        color:T.t1,fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif",
-        boxShadow:copiado?'none':`0 3px 0 ${T.g3}`,marginBottom:12}}>
+        cursor:'pointer',background:copiado?'rgba(255,255,255,0.12)':`linear-gradient(135deg,${T.cta1},${T.cta2})`,
+        color:T.ctaTx,fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif",
+        boxShadow:copiado?'none':`0 3px 0 ${T.cta3}`,marginBottom:12}}>
         {copiado?(lang==='en'?'✅ Copied!':'✅ ¡Copiado!'):`📤 ${lang==='en'?'Share my code':'Compartir mi código'}`}
       </button>
       <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6}}>
@@ -12367,7 +12380,7 @@ function fusionarIngredientesJS(textoA, textoB){
 // "como menos", "cambio el plato", "como fuera", "me salto la comida".
 const PLAN_CUMPL = [
   {k:'seguida',  es:'Seguida',     en:'Followed', ic:'✅', c:T.g1},
-  {k:'menos',    es:'Menos',       en:'Less',     ic:'➖', c:T.au1},
+  {k:'menos',    es:'Menos',       en:'Less',     ic:'➖', c:T.ambar},   // fase 2: el dorado pasó a ACCIÓN; el estado 'a medias' vive en su propio ámbar
   {k:'cambiada', es:'La cambié',   en:'Swapped',  ic:'🔄', c:T.blue},
   {k:'fuera',    es:'Comí fuera',  en:'Ate out',  ic:'🍽️', c:T.pur},
   {k:'saltada',  es:'Me la salté', en:'Skipped',  ic:'⏭️', c:T.red},
@@ -12572,7 +12585,7 @@ function EspejoDiaCard({frases, lang, onVerSeguimiento, onClose}){
   if(!frases?.length) return null;
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.72)",zIndex:2400,display:"flex",alignItems:"flex-end",justifyContent:"center",padding:"0 14px 26px"}}>
-      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:380,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:380,background:`linear-gradient(180deg,${T.pop1},${T.pop2})`,
         border:`2px solid ${T.g1}`,borderRadius:22,padding:"18px 18px 14px",boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:"scaleIn 0.35s cubic-bezier(0.34,1.56,0.64,1)"}}>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
           <span style={{fontSize:22}}>🪞</span>
@@ -13781,7 +13794,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
             : 'Primero ponte un objetivo y te preparo el plan 👨‍🍳'}
         </div>
         <button onClick={()=>setTab&&setTab('progreso')}
-          style={{background:'linear-gradient(135deg,'+T.g1+','+T.g2+')',color:T.t1,fontWeight:900,fontSize:16,
+          style={{background:'linear-gradient(135deg,'+T.cta1+','+T.cta2+')',color:T.ctaTx,fontWeight:900,fontSize:16,
             borderRadius:18,padding:'16px 34px',border:'none',cursor:'pointer',boxShadow:'0 5px 0 '+T.g3,
             fontFamily:"'Nunito',sans-serif",display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
           <span style={{fontSize:20}}>🎯</span>
@@ -13835,7 +13848,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
         {/* Botón GENERAR (solo estándar que ya configuró su plan) */}
         {isStandard&&configCompleta&&(
           <button onClick={generarProgramacion} disabled={generando}
-            style={{background:generando?'rgba(255,255,255,0.08)':'linear-gradient(135deg,'+T.g1+','+T.g2+')',
+            style={{background:generando?'rgba(255,255,255,0.08)':'linear-gradient(135deg,'+T.cta1+','+T.cta2+')',
                     color:generando?T.t3:T.t1,fontWeight:900,fontSize:16,borderRadius:20,
                     padding:'18px 24px',border:'none',cursor:generando?'default':'pointer',
                     boxShadow:generando?'none':'0 5px 0 '+T.g3,fontFamily:"'Nunito',sans-serif",
@@ -14142,7 +14155,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
           <div style={{display:'flex',gap:8,minWidth:'min-content'}}>
             {PLAN_DIAS.map((d,i)=>{
               const dayNum=i+1;const isToday=dayNum===todayPlan;const isSel=dayNum===selDay;
-              return(<button key={d} onClick={()=>setSelDay(dayNum)} style={{flexShrink:0,padding:'10px 14px',borderRadius:14,border:'none',cursor:'pointer',background:isSel?'linear-gradient(135deg,'+T.g1+','+T.g2+')':isToday?alpha(T.g1,0.15):'rgba(255,255,255,0.06)',color:isSel?T.t1:isToday?T.g1:T.t2,fontWeight:isSel||isToday?900:600,fontSize:12,fontFamily:"'Nunito',sans-serif",boxShadow:isSel?'0 3px 0 '+T.g3:isToday?'0 0 0 1.5px '+T.bG:'none',transition:'all 0.2s',display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
+              return(<button key={d} onClick={()=>setSelDay(dayNum)} style={{flexShrink:0,padding:'10px 14px',borderRadius:14,border:'none',cursor:'pointer',background:isSel?'linear-gradient(135deg,'+T.cta1+','+T.cta2+')':isToday?alpha(T.g1,0.15):'rgba(255,255,255,0.06)',color:isSel?T.t1:isToday?T.g1:T.t2,fontWeight:isSel||isToday?900:600,fontSize:12,fontFamily:"'Nunito',sans-serif",boxShadow:isSel?'0 3px 0 '+T.cta3:isToday?'0 0 0 1.5px '+T.bG:'none',transition:'all 0.2s',display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
                 <span>{d}</span>
                 {isToday&&!isSel&&<div style={{width:5,height:5,borderRadius:'50%',background:T.g1}}/>}
               </button>);
@@ -14764,7 +14777,7 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
       {/* ── Guardar ── */}
       <div style={{padding:'16px 16px 0',display:'flex',flexDirection:'column',gap:10}}>
         <button onClick={guardar} disabled={guardando||total!==100||recsAMedias}
-          style={{background:(total===100&&!recsAMedias)?'linear-gradient(135deg,'+T.g1+','+T.g2+')':'rgba(255,255,255,0.08)',
+          style={{background:(total===100&&!recsAMedias)?'linear-gradient(135deg,'+T.cta1+','+T.cta2+')':'rgba(255,255,255,0.08)',
                   color:(total===100&&!recsAMedias)?T.t1:T.t3,fontWeight:900,fontSize:15,borderRadius:18,
                   padding:'16px 24px',border:'none',cursor:(total===100&&!recsAMedias)?'pointer':'default',
                   boxShadow:(total===100&&!recsAMedias)?'0 4px 0 '+T.g3:'none',fontFamily:"'Nunito',sans-serif"}}>
@@ -14877,7 +14890,7 @@ class ErrorBoundary extends React.Component {
           {this.state.err?.message||String(this.state.err)}
         </div>
         <button onClick={()=>this.setState({err:null})}
-          style={{marginTop:20,padding:"12px 28px",background:T.g1,border:"none",
+          style={{marginTop:20,padding:"12px 28px",background:T.cta1,border:"none",
             borderRadius:14,color:T.t1,fontWeight:900,cursor:"pointer",fontSize:15}}>
           {lang==="en"?"Retry":"Reintentar"}
         </button>
@@ -14952,7 +14965,7 @@ function RecetasPublicas(){
     </div>
   );
   const CTA=()=>(
-    <div style={{background:"linear-gradient(180deg,#1d3a14,#142a0e)",border:`2px solid ${T.au1}`,
+    <div style={{background:`linear-gradient(180deg,${T.pop1},${T.pop2})`,border:`2px solid ${T.au1}`,
       borderRadius:20,padding:"22px 18px",textAlign:"center",marginTop:22}}>
       <div style={{fontSize:30,marginBottom:8}}>🌱</div>
       <div style={{fontWeight:900,fontSize:16.5,color:T.au1,fontFamily:"'Nunito',sans-serif",marginBottom:8,lineHeight:1.35}}>
@@ -14963,8 +14976,8 @@ function RecetasPublicas(){
         Con un nutricionista real detrás.
       </div>
       <button onClick={irRegistro} style={{width:"100%",padding:"15px",borderRadius:16,border:"none",cursor:"pointer",
-        background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,fontWeight:900,fontSize:15,
-        fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.g3}`}}>
+        background:`linear-gradient(135deg,${T.cta1},${T.cta2})`,color:T.ctaTx,fontWeight:900,fontSize:15,
+        fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.cta3}`}}>
         Pruébalo gratis 7 días
       </button>
       <div style={{fontSize:10,color:T.t3,marginTop:10,fontFamily:"'DM Sans',sans-serif"}}>
