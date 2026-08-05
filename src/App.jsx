@@ -706,12 +706,48 @@ const SFX = {
   },
 };
 
+// ── Háptica (Tarea A del brief de "juice") ───────────────────────────────────
+// navigator.vibrate no aparecía NI UNA VEZ en el fichero, y la mitad de la
+// sensación táctil de referencia es vibración. Misma disciplina que SFX:
+// respeta el MISMO mute persistido ("gbh:mute") y nunca rompe donde no existe
+// (iOS Safari no soporta vibrate → feature-check + try/catch, cero errores en
+// consola). REGLA INNEGOCIABLE: solo se llama desde gestos del usuario. Un
+// pop-up automático que vibra sobresalta (base 45+ con fricción tecnológica
+// alta): los avisos automáticos (escudo auto-consumido, espejo, paywall de
+// victoria, racha en peligro, recordatorio de las 20:00) NO vibran.
+const HAPTIC_PATRONES = {
+  toma:        [10],                  // marcar una toma: pulso corto
+  doble:       [0,25,60,25],          // misión completada / día completo
+  celebracion: [0,30,60,30,60,90],    // overlay de racha (una sola vez, en toggleM)
+  error:       [0,45,70,45],          // gemas insuficientes / acción inválida
+};
+const haptic = (patron)=>{
+  try{
+    if(lsGet("gbh:mute",false)) return;                    // mismo flag que el sonido
+    if(typeof navigator==="undefined"||typeof navigator.vibrate!=="function") return;
+    navigator.vibrate(HAPTIC_PATRONES[patron]||patron||10);
+  }catch{}
+};
+// Sonidos que SIEMPRE llevan su háptica de serie (todos suenan únicamente en
+// gestos directos: chips de estado, flechas de pasos, botones con gemas
+// insuficientes). El resto se engancha explícito en su sitio, porque el mismo
+// sonido significa cosas distintas (missionDone al marcar una toma en Inicio
+// vs al completar una misión) y porque hay sonidos automáticos que no deben
+// vibrar (el escudo que se consume solo al abrir la app).
+const HAPTIC_DE_SFX = { step:"toma", error:"error" };
+
+// prefers-reduced-motion: las animaciones nuevas degradan a cambio de estado
+// simple sin perder información (el color/emoji del botón ya la lleva).
+// Se consulta en vivo, no se cachea: el usuario puede cambiarlo con la app abierta.
+const REDUCED_MOTION = ()=>{ try{ return window.matchMedia("(prefers-reduced-motion: reduce)").matches; }catch{ return false; } };
+
 // Hook para usar sonido con mute toggle persistido
 function useSFX(){
   const muted = lsGet("gbh:mute",false);
   return (name,...args)=>{
     if(muted) return;
     SFX[name]?.(...args);
+    if(HAPTIC_DE_SFX[name]) haptic(HAPTIC_DE_SFX[name]);
   };
 }
 const GBH_EMAIL    = "gbh.nutricion@gmail.com";
@@ -3829,6 +3865,25 @@ function BigBtn({icon,label,done,onClick}){
 // registrar se ve apagado. La tarjeta se pone verde al registrar TODAS las tomas.
 function MealBtns({tomas, meals, done, lang, onTap}){
   const reg = tomas.filter(tm=>meals[tm]).length;
+  // ── Micro-feedback al marcar (Tarea B del brief de "juice") ────────────────
+  // Marcar una toma es el gesto MÁS repetido de la app (5/día): pop de escala
+  // en el botón (bounceIn, ya existente) + el icono del estado subiendo y
+  // desvaneciéndose (floatUp, ya existente). Sin overlays, sin bloquear nada.
+  // Se detecta la transición sin-registro → registrada comparando con el render
+  // anterior, así el pop salta igual si la marca viene del tap aquí o del plan
+  // diario (onMealRegistered repinta este mismo `meals`).
+  // Con prefers-reduced-motion no se anima: el color y el emoji ya informan.
+  const [pops,setPops]=React.useState({});          // {toma:true} animación en curso
+  const prevMealsRef=React.useRef(meals);
+  React.useEffect(()=>{
+    const antes=prevMealsRef.current||{}; prevMealsRef.current=meals;
+    const nuevas=tomas.filter(tm=>meals[tm]&&!antes[tm]);
+    if(!nuevas.length||REDUCED_MOTION()) return;
+    setPops(p=>{const n={...p}; nuevas.forEach(tm=>n[tm]=true); return n;});
+    const id=setTimeout(()=>setPops(p=>{const n={...p}; nuevas.forEach(tm=>delete n[tm]); return n;}),750);
+    return ()=>clearTimeout(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[meals,tomas]);
   // ── Oveja-guía 🐑: señala la toma de la franja horaria actual (hora local del
   // móvil). Se recoloca sola cada minuto por si la app queda abierta. Con tomas
   // ausentes (p. ej. sin merienda), apunta a la última toma cuya franja empezó.
@@ -3872,11 +3927,20 @@ function MealBtns({tomas, meals, done, lang, onTap}){
           return(
             <button key={tm} onClick={()=>onTap(tm)} title={tm} style={{
               flex:1,maxWidth:72,minWidth:0,display:"flex",flexDirection:"column",alignItems:"center",gap:3,
+              position:"relative",
               background:est?c+"2e":"rgba(255,255,255,0.06)",
               border:`2px solid ${est?c:"rgba(255,255,255,0.16)"}`,
               borderRadius:14,padding:"9px 2px 7px",cursor:"pointer",
               boxShadow:est?`0 3px 0 ${c}55`:"0 3px 0 rgba(0,0,0,0.35)",
-              transition:"all 0.15s",fontFamily:"'Nunito',sans-serif"}}>
+              transition:"all 0.15s",fontFamily:"'Nunito',sans-serif",
+              animation:pops[tm]?"bounceIn 0.45s cubic-bezier(0.34,1.56,0.64,1)":"none"}}>
+              {/* Partícula: el icono del estado sube y se desvanece (solo transform+opacity) */}
+              {pops[tm]&&(
+                <span style={{position:"absolute",top:-4,left:"50%",marginLeft:-8,fontSize:15,lineHeight:1,
+                  animation:"floatUp 0.75s ease-out forwards",pointerEvents:"none",zIndex:2}}>
+                  {info?.ic||"✅"}
+                </span>
+              )}
               <span style={{fontSize:19,lineHeight:1,filter:est?"none":"grayscale(0.55)"}}>{PLAN_TOMA_IC[tm]}</span>
               <span style={{fontSize:7.5,fontWeight:900,color:est?c:T.t3,letterSpacing:"0.02em",whiteSpace:"nowrap"}}>{LBL[tm]}</span>
               <span style={{fontSize:11,lineHeight:1}}>{est?(info?.ic||"✅"):<span style={{color:T.t3}}>○</span>}</span>
@@ -6440,7 +6504,7 @@ function GBHApp(){
   const [tab,     setTab]     = useState("home");
   const [lang,    setLang]    = useState(()=>lsGet("gbh:lang","es"));
   const [muted,   setMuted]   = useState(()=>lsGet("gbh:mute",false));
-  const sfx = (name,...args) => { if(!muted) SFX[name]?.(...args); };
+  const sfx = (name,...args) => { if(!muted){ SFX[name]?.(...args); if(HAPTIC_DE_SFX[name]) haptic(HAPTIC_DE_SFX[name]); } };
   const [profile, setProfile] = useState(null);
   const [tLog,    setTLog]    = useState({diet:false,steps:false,hydration:false,sleep:false});
   const [steps,   setSteps]   = useState(0);
@@ -8156,6 +8220,11 @@ function GBHApp(){
     if(was) return;
     const nl={...tLog,[key]:true};setTLog(nl);await saveLog(nl,steps);
     if(key==="diet") sfx("complete"); else sfx("missionDone");
+    // Háptica proporcional al hito (Tarea A): la dieta dispara la celebración
+    // de racha → patrón largo; el resto de misiones, doble pulso. Estamos
+    // dentro del gesto del usuario (tap en la misión o en la última toma), y
+    // `was` garantiza que la celebración vibra UNA sola vez al día.
+    haptic(key==="diet"?"celebracion":"doble");
     await addXG(key==="diet"?15:5,key==="diet"?5:2);
     if(key==="diet"){sfx("streakCelebration");setStreakAnim(true);setTimeout(()=>setStreakAnim(false),5000);}
     const wasAllDone=tLog.diet&&tLog.steps&&tLog.hydration&&tLog.sleep;
@@ -8266,6 +8335,7 @@ function GBHApp(){
     sbReq("POST","daily_logs?on_conflict=profile_id,log_date",{profile_id:profile.id,log_date:hoy,meals_log:meals});
     addXG(0,5);
     sfx("missionDone");
+    haptic("doble");
     showT({icon:SUPL_IC[item.tipo]||'💊',title:lang==='en'?'Done! +5 💎':'¡Completado! +5 💎',
            sub:item.nombre});
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -8339,6 +8409,7 @@ function GBHApp(){
     setLogs(ls=>{ const n=[...ls]; const j=n.findIndex(l=>l.date===today);
       if(j>=0)n[j]={...n[j],meals}; else n.push(entry); return n; });
     sfx("missionDone");
+    haptic("toma");   // pulso corto: es el gesto más repetido, no un fanfarrión
     sbReq("POST","daily_logs?on_conflict=profile_id,log_date",{profile_id:profile.id,log_date:today,meals_log:meals});
     chkTomasCompletas(meals);
   },[profile?.id, chkTomasCompletas]);
@@ -8357,7 +8428,7 @@ function GBHApp(){
   const updSteps=useCallback(async(val)=>{
     const sc=Math.max(0,Math.min(99999,val));setSteps(sc);
     const done=sc>=10000;
-    if(done!==tLog.steps){const nl={...tLog,steps:done};setTLog(nl);await saveLog(nl,sc);if(done){sfx("missionDone");await addXG(5,2);showT({icon:"👟",title:"¡10.000 pasos!",sub:"Meta de pasos alcanzada ✅"});}}
+    if(done!==tLog.steps){const nl={...tLog,steps:done};setTLog(nl);await saveLog(nl,sc);if(done){sfx("missionDone");haptic("doble");await addXG(5,2);showT({icon:"👟",title:"¡10.000 pasos!",sub:"Meta de pasos alcanzada ✅"});}}
     else{ sfx("step"); await saveLog(tLog,sc); }
   },[tLog,saveLog,addXG]);
 
@@ -13689,7 +13760,11 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
               {mostrarChips&&(
                 <div style={{display:'flex',gap:6,background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderTop:'none',borderRadius:'0 0 16px 16px',padding:'8px 10px 10px'}}>
                   {PLAN_CUMPL.map(c=>{const on=estado===c.k;return(
-                    <button key={c.k} onClick={()=>setEstadoComida(toma,c.k)} title={lang==='en'?c.en:c.es} aria-label={lang==='en'?c.en:c.es} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',padding:'11px 0',borderRadius:12,cursor:'pointer',background:on?c.c+'30':'rgba(255,255,255,0.05)',border:on?('2px solid '+c.c):'1.5px solid rgba(255,255,255,0.06)',fontSize:22,lineHeight:1,transition:'all 0.15s'}}>
+                    <button key={c.k} onClick={()=>setEstadoComida(toma,c.k)} title={lang==='en'?c.en:c.es} aria-label={lang==='en'?c.en:c.es} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',padding:'11px 0',borderRadius:12,cursor:'pointer',background:on?c.c+'30':'rgba(255,255,255,0.05)',border:on?('2px solid '+c.c):'1.5px solid rgba(255,255,255,0.06)',fontSize:22,lineHeight:1,transition:'all 0.15s',
+                      // Micro-pop al quedar seleccionado (Tarea B). La animación solo se
+                      // relanza cuando `on` pasa de false→true (la propiedad cambia);
+                      // con reduced-motion, el borde y el fondo ya cuentan la selección.
+                      animation:(on&&!REDUCED_MOTION())?'popIn 0.22s cubic-bezier(0.34,1.56,0.64,1)':'none'}}>
                       {c.ic}
                     </button>);})}
                 </div>
