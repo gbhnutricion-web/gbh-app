@@ -739,7 +739,12 @@ const HAPTIC_DE_SFX = { step:"toma", error:"error" };
 // prefers-reduced-motion: las animaciones nuevas degradan a cambio de estado
 // simple sin perder información (el color/emoji del botón ya la lleva).
 // Se consulta en vivo, no se cachea: el usuario puede cambiarlo con la app abierta.
-const REDUCED_MOTION = ()=>{ try{ return window.matchMedia("(prefers-reduced-motion: reduce)").matches; }catch{ return false; } };
+// Las celebraciones y pops SON producto (retención): no se apagan por el ajuste
+// del SISTEMA, porque MIUI/ahorro de batería activan prefers-reduced-motion por
+// su cuenta y en el móvil desaparecían los pops de registro y los popIn. Solo se
+// reducen si el propio usuario lo pide DENTRO de la app (clave gbh:reducemotion;
+// pendiente exponer el toggle en ajustes).
+const REDUCED_MOTION = ()=>{ try{ return lsGet("gbh:reducemotion", false)===true; }catch{ return false; } };
 
 // Hook para usar sonido con mute toggle persistido
 function useSFX(){
@@ -10959,7 +10964,10 @@ function GBHApp(){
           </div>
           {/* Counters */}
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            <StreakBadge value={streak} label={t("streakLabel")} icon="🔥" color="#FF8040" bg="rgba(255,128,64,0.12)"/>
+            <div onClick={()=>{sfx("tap");setMetaAsk(true);}} style={{cursor:"pointer"}}
+              title={lang==='en'?'Set your streak goal':'Elegir tu meta de racha'}>
+              <StreakBadge value={streak} label={t("streakLabel")} icon="🔥" color="#FF8040" bg="rgba(255,128,64,0.12)"/>
+            </div>
             <StreakBadge value={gems}  label={t("gemsLabel")}  icon="💎" color={T.au1}   bg={alpha(T.au1,0.1)}/>
           </div>
         </div>
@@ -10972,8 +10980,10 @@ function GBHApp(){
           {/* ── Tarea C: la racha con cuerpo temporal (registro/🛡️/🏖️/pendiente).
               El día en curso sin registrar es un hueco neutro con borde vivo,
               JAMÁS un fallo. Incluye el progreso hacia la meta (Tarea D). ── */}
-          <FilaSemanaRacha logs={logs} profile={profile} streak={streak} lang={lang}
-            onElegirMeta={()=>{sfx("tap");setMetaAsk(true);}}/>
+          {/* FilaSemanaRacha retirada de Inicio: duplicaba el formato del
+              «Progreso semanal» de abajo. El componente sigue definido por si
+              se quiere en otra vista; el acceso manual a la meta vive ahora en
+              el chip 🔥 de la cabecera (toque → MetaRachaSelector). */}
           {/* ── Countdown de semana de prueba (tap → checkout) ── */}
           {trialDiasRest&&!ES_IOS_NATIVO&&(
             <button onClick={()=>{sfx("tap");abrirCheckoutStripe(profile?.id);}} style={{
@@ -11085,7 +11095,11 @@ function GBHApp(){
         @keyframes floaty { 0%{transform:translateY(0);opacity:.9} 100%{transform:translateY(-14px);opacity:0} }
         @keyframes popIn { from{transform:scale(.92);opacity:0} to{transform:scale(1);opacity:1} }
         .float-fx { position:absolute; font-size:20px; animation:floaty 1.8s ease-out infinite; }
-        @media (prefers-reduced-motion: reduce){ svg,.float-fx{animation:none!important} }
+        /* La regla @media de prefers-reduced-motion del sistema se retira:
+           MIUI/ahorro de batería la activan solos y mataba la llama SVG de la
+           celebración de racha y los flotantes de XP (.float-fx) — las
+           animaciones que sostienen la retención. La reducción de movimiento
+           es decisión de la app (clave gbh:reducemotion), no del sistema. */
       `}</style>
             <div style={{position:"relative",width:"100%"}}>
               {/* 🎮 bajo el botón de la diana (misma columna izquierda) */}
