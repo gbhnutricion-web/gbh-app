@@ -7328,6 +7328,7 @@ function GBHApp(){
   const refreshingRef = useRef(false); // bloqueo síncrono para evitar doble tap
   const [recipeRefreshes,setRecipeRefreshes] = useState(()=>lsGet(`gbh:recipe:refreshes:${toKey()}`,0));
   const [streakAnim,  setStreakAnim]   = useState(false);
+  const [pausaOpen,   setPausaOpen]    = useState(false);   // plegable «¿Necesitas un descanso?»
   const [missionsAnim,setMissionsAnim] = useState(false);
   const [floatItems,  setFloatItems]   = useState([]);
   const [levelUpAnim, setLevelUpAnim]  = useState(false);
@@ -11178,7 +11179,28 @@ function GBHApp(){
 
           {/* ── Tarea E: la pausa declarada, SEPARADA del escudo a propósito —
               el escudo cubre el despiste, la pausa cubre la vida ── */}
-          <PausaCard profile={profile} lang={lang} onDeclarar={declararPausa} onCancelar={cancelarPausa}/>
+          {/* «Me voy unos días» plegada tras un botón: menos contenido abierto
+              en Inicio. Con una pausa ACTIVA la tarjeta se muestra SIEMPRE —
+              el estado vigente no puede quedar escondido tras un desplegable. */}
+          {(()=>{
+            const pausaActiva=profile?.pausa_desde&&profile?.pausa_hasta&&profile.pausa_hasta>=toKey();
+            const abierta=pausaOpen||pausaActiva;
+            return(<>
+              {!pausaActiva&&(
+                <button onClick={()=>{sfx("tap");setPausaOpen(o=>!o);}} style={{width:"100%",boxSizing:"border-box",
+                  display:"flex",alignItems:"center",gap:10,background:T.bgWood,border:`2px solid ${T.bW}`,
+                  borderRadius:18,padding:"13px 16px",cursor:"pointer",boxShadow:"0 4px 0 rgba(0,0,0,0.4)",
+                  marginTop:4,textAlign:"left"}}>
+                  <span style={{fontSize:18}}>😴</span>
+                  <span style={{flex:1,fontSize:14,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif"}}>
+                    {lang==='en'?'Need a break?':'¿Necesitas un descanso?'}
+                  </span>
+                  <span style={{color:T.t3,fontSize:12,transform:abierta?'rotate(180deg)':'none',transition:'transform 0.2s'}}>▼</span>
+                </button>
+              )}
+              {abierta&&<PausaCard profile={profile} lang={lang} onDeclarar={declararPausa} onCancelar={cancelarPausa}/>}
+            </>);
+          })()}
         </>}
 
         {/* ── WEIGHT ────────────────────────────────────────────────────────── */}
