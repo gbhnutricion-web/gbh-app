@@ -3383,7 +3383,7 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
 // FASE A · AltaBo — alta conversacional estilo tutorial de videojuego: Bo habla
 // en bocadillos, el usuario responde con inputs inline. Mismos campos que el
 // formulario antiguo — ninguno nuevo (incluida la política de privacidad).
-function AltaBo({lang, setLang, emailInicial, onVolver, onLogin, onCrear}){
+function AltaBo({lang, setLang, emailInicial, onVolver, onLogin, onCrear, css}){
   const EN = lang==='en';
   const PASOS=['nombre','email','altura','peso','sexo','objetivo','codigo','bo','privacidad','cierre'];
   const [paso,setPaso]=React.useState(0);
@@ -3397,8 +3397,8 @@ function AltaBo({lang, setLang, emailInicial, onVolver, onLogin, onCrear}){
   const boDe=(p,d)=>{
     const n=(d.nombre||'').trim().split(' ')[0]||'';
     switch(p){
-      case 'nombre':   return EN?'Hi! I\u2019m Bo, the GBH sheep. I\u2019ll walk you through this. What\u2019s your name?'
-                                :'¡Hola! Soy Bo, la oveja de GBH. Voy a acompañarte en esto. ¿Cómo te llamas?';
+      case 'nombre':   return EN?'Hi! I\u2019m Bo, the GBH sheep. I\u2019ll walk you through this. What\u2019s your name? First and last name works best 😉'
+                                :'¡Hola! Soy Bo, la oveja de GBH. Voy a acompañarte en esto. ¿Cómo te llamas? Mejor con nombre y apellido 😉';
       case 'email':    return EN?`Nice to meet you, ${n} 🐑 Your email? That\u2019s how you\u2019ll log in — no weird passwords.`
                                 :`Encantado, ${n} 🐑 ¿Tu correo? Es con lo que entrarás — sin contraseñas raras.`;
       case 'altura':   return EN?'To get your calories right I need two things. Height?'
@@ -3477,7 +3477,7 @@ function AltaBo({lang, setLang, emailInicial, onVolver, onLogin, onCrear}){
   const btnSec={background:'none',border:'1.5px solid rgba(255,255,255,0.18)',borderRadius:14,color:T.t2,fontSize:13,fontWeight:800,cursor:'pointer',padding:'11px 16px',fontFamily:"'Nunito',sans-serif"};
   return(
     <div style={{fontFamily:"'Nunito',sans-serif",background:`radial-gradient(ellipse at top,#1A3A10,${T.bg})`,minHeight:'100vh',maxWidth:420,margin:'0 auto',display:'flex',flexDirection:'column',color:T.t1}}>
-      <style>{CSS}</style>
+      <style>{css}</style>
       {/* Cabecera: volver + progreso + idioma */}
       <div style={{position:'sticky',top:0,zIndex:20,background:'rgba(10,26,8,0.92)',backdropFilter:'blur(14px)',padding:'12px 14px 10px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
         <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:9}}>
@@ -3538,7 +3538,7 @@ function AltaBo({lang, setLang, emailInicial, onVolver, onLogin, onCrear}){
         {(p==='nombre'||p==='bo')&&(<>
           <input value={inputVal} onChange={e=>setInputVal(e.target.value)} maxLength={p==='bo'?12:60}
             onKeyDown={e=>e.key==='Enter'&&enviarTexto()} autoFocus
-            placeholder={p==='bo'?(EN?'Your sheep\u2019s name (Bo?)':'Nombre de tu oveja (¿Bo?)'):(EN?'Your name':'Tu nombre')}
+            placeholder={p==='bo'?(EN?'Your sheep\u2019s name (Bo?)':'Nombre de tu oveja (¿Bo?)'):(EN?'First and last name':'Nombre y apellido')}
             style={{...inp2,marginBottom:10}}/>
           <div style={{display:'flex',gap:8}}>
             {p==='bo'&&<button onClick={()=>avanza('Bo 🐑',{bo:'Bo'})} style={btnSec}>{EN?'Keep "Bo"':'Se queda «Bo»'}</button>}
@@ -3618,6 +3618,20 @@ const TUTO_Z = 9400;
 function TutorialOverlay({targetSel, texto, onSkip, onNext, lang, boNombre, avatar, children}){
   const EN=lang==='en';
   const [rect,setRect]=React.useState(null);
+  // El bocadillo se APARTA para no tapar el formulario (p. ej. el botón
+  // Calcular del objetivo): en pasos de ACCIÓN (sin «Siguiente» y sin selector
+  // dentro del bocadillo), el primer toque del usuario en la zona iluminada lo
+  // encoge a una ficha de Bo; tocándola se vuelve a leer. También hay botón
+  // manual (▾) para esconderlo cuando se quiera.
+  const [mini,setMini]=React.useState(false);
+  const bubbleRef=React.useRef(null);
+  React.useEffect(()=>{ setMini(false); },[targetSel,texto]);
+  React.useEffect(()=>{
+    if(onNext||children) return;                 // pasos informativos o con selector: no auto-apartar
+    const h=(e)=>{ try{ if(bubbleRef.current&&bubbleRef.current.contains(e.target)) return; }catch{} setMini(true); };
+    document.addEventListener('pointerdown',h,true);
+    return ()=>document.removeEventListener('pointerdown',h,true);
+  },[onNext,children,targetSel]);
   React.useEffect(()=>{
     let vivo=true, scrolleado=false;
     const medir=()=>{
@@ -3669,8 +3683,18 @@ function TutorialOverlay({targetSel, texto, onSkip, onNext, lang, boNombre, avat
       fontFamily:"'Nunito',sans-serif"}}>
       {EN?'Skip tutorial':'Saltar tutorial'} ✕
     </button>
-    {/* Bocadillo de Bo */}
-    <div style={{...bubbleSt,zIndex:TUTO_Z+2,background:'linear-gradient(180deg,#1d3a14,#142a0e)',
+    {/* Bocadillo de Bo — o su ficha cuando está apartado */}
+    {mini?(
+      <button onClick={()=>setMini(false)} aria-label={EN?'Read Bo again':'Volver a leer a Bo'}
+        style={{position:'fixed',left:12,bottom:96,zIndex:TUTO_Z+2,display:'flex',alignItems:'center',gap:8,
+          background:'linear-gradient(180deg,#1d3a14,#142a0e)',border:`2px solid ${T.g1}`,borderRadius:26,
+          padding:'6px 13px 6px 7px',cursor:'pointer',boxShadow:'0 6px 20px rgba(0,0,0,0.55)',
+          animation:'scaleIn 0.25s'}}>
+        <div style={{transform:'scale(0.82)',transformOrigin:'center'}}>{avatar}</div>
+        <span style={{fontSize:12,fontWeight:900,color:T.g2,fontFamily:"'Nunito',sans-serif"}}>💬 {boNombre||'Bo'}</span>
+      </button>
+    ):(
+    <div ref={bubbleRef} style={{...bubbleSt,zIndex:TUTO_Z+2,background:'linear-gradient(180deg,#1d3a14,#142a0e)',
       border:`2px solid ${T.g1}`,borderRadius:20,padding:'14px 16px',boxSizing:'border-box',
       boxShadow:'0 12px 44px rgba(0,0,0,0.6)',animation:'scaleIn 0.3s cubic-bezier(0.34,1.56,0.64,1)'}}>
       <div style={{display:'flex',gap:10,alignItems:'flex-start'}}>
@@ -3679,6 +3703,12 @@ function TutorialOverlay({targetSel, texto, onSkip, onNext, lang, boNombre, avat
           <div style={{fontSize:11,fontWeight:900,color:T.g2,marginBottom:3,fontFamily:"'Nunito',sans-serif"}}>🐑 {boNombre||'Bo'}</div>
           <div style={{fontSize:13.5,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.55,whiteSpace:'pre-wrap'}}>{texto}</div>
         </div>
+        {!onNext&&(
+          <button onClick={()=>setMini(true)} aria-label={EN?'Tuck Bo away':'Apartar a Bo'}
+            style={{flexShrink:0,width:26,height:26,borderRadius:9,border:'1.5px solid rgba(255,255,255,0.2)',
+              background:'rgba(0,0,0,0.3)',color:T.t2,fontSize:13,cursor:'pointer',lineHeight:1,
+              display:'flex',alignItems:'center',justifyContent:'center',padding:0}}>▾</button>
+        )}
       </div>
       {children}
       {onNext&&(
@@ -3689,6 +3719,7 @@ function TutorialOverlay({targetSel, texto, onSkip, onNext, lang, boNombre, avat
         </button>
       )}
     </div>
+    )}
   </>);
 }
 
@@ -3705,7 +3736,7 @@ function TutoCierre({nombre, boNombre, boColor, boEquipados, lang, onFin}){
   return(
     <div style={{position:'fixed',inset:0,background:'radial-gradient(ellipse at top,#1A3A10,#0A1A08)',zIndex:TUTO_Z+5,
       display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'28px 22px',textAlign:'center'}}>
-      <style>{CSS}</style>
+      {/* el <style> del componente principal ya está montado bajo esta pantalla */}
       <div style={{animation:'scaleIn 0.5s cubic-bezier(0.34,1.56,0.64,1)'}}>
         <Sheep estado="feliz" equipados={boEquipados||[]} color={boColor||'blanca'} size={175}/>
       </div>
@@ -7733,6 +7764,10 @@ function GBHApp(){
   const tutoEvento=(ev)=>{
     if(!tutoPaso) return;
     if(ev==='plan_generado' && tutoPaso==='B3_generar') tutoAvanzar();
+    // §4: si la acción real no puede ejecutarse (servidor caído, sin conexión),
+    // el paso se salta SIN romper el flujo. B3_listo y B4_* dependen del plan,
+    // así que un fallo de generación salta directo a B5 (peso).
+    else if(ev==='plan_fallo' && tutoPaso==='B3_generar') tutoIr('B5_peso');
     else if(ev==='receta_abierta' && tutoPaso==='B4_receta') tutoAvanzar();
     else if(ev==='lista_vista' && tutoPaso==='B4_lista') tutoAvanzar();
     else if(ev==='comida_marcada' && tutoPaso==='B4_comida') tutoAvanzar();
@@ -9658,7 +9693,7 @@ function GBHApp(){
   // ── ALTA CONVERSACIONAL CON BO (Fase A del tutorial interactivo) ─────────────
   if(screen==="altaBo")return(
     <LangCtx.Provider value={lang}>
-      <AltaBo lang={lang} setLang={setLang} emailInicial={altaEmailInicial}
+      <AltaBo lang={lang} setLang={setLang} emailInicial={altaEmailInicial} css={CSS}
         onVolver={()=>setScreen("landing")}
         onLogin={(em)=>{ if(em){ setAEmail(em); checkEmail(em); } setScreen("auth"); }}
         onCrear={crearCuentaNueva}/>
@@ -13045,6 +13080,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
     if(generando) return;
     if(!GBH_SERVER_URL){
       showT&&showT({icon:"⚙️",title:lang==='en'?'Not configured yet':'Aún no configurado',sub:lang==='en'?'The generation server is not set up.':'El servidor de generación no está configurado todavía.'});
+      onTutoEvent&&onTutoEvent('plan_fallo');   // tour: sin servidor, el paso se salta
       return;
     }
     // ── Sin objetivo nutricional no se genera (el plan se ajusta a esas kcal) ──
@@ -13126,8 +13162,11 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
         throw new Error(lang==='en'?'The server did not respond in time':'El servidor no respondió a tiempo');
       }
     }catch(e){
+      // (sin coletilla de gemas: la regeneración ya no cobra gemas — el texto
+      //  «gemas devueltas» era un resto de la era anterior y confundía)
       showT&&showT({icon:"⚠️",title:lang==='en'?'Could not generate':'No se pudo generar',
-        sub:(String(e.message||e).slice(0,70))+(lang==='en'?' · gems refunded':' · gemas devueltas')});
+        sub:String(e.message||e).slice(0,90)});
+      onTutoEvent&&onTutoEvent('plan_fallo');   // tour: el paso se salta, no se rompe
     }finally{
       setGenerando(false);
     }
