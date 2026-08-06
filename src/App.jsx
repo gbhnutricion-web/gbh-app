@@ -3376,42 +3376,374 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
 }
 
 // ─── 🎉 Bienvenida de Bo (1ª vez): presentación y adopción con nombre propio ───
-function BienvenidaBo({ onAdoptar }) {
-  const [borrador, setBorrador] = useState("");
-  return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.72)", display:"flex",
-      alignItems:"center", justifyContent:"center", zIndex:9600, padding:16 }}>
-      <div style={{ background:T.bgCard, border:`2px solid ${T.au1}`, borderRadius:24,
-        padding:"24px 20px", maxWidth:340, width:"100%", textAlign:"center" }}>
-        <div style={{ fontSize:13, fontWeight:900, color:T.au1, letterSpacing:1.5, textTransform:"uppercase" }}>
-          🎉 Nueva compañera
+// ─── EL TUTORIAL INTERACTIVO (ago-2026) ──────────────────────────────────────
+// Sustituye a BienvenidaBo: la adopción de Bo vive ahora en el paso 7 del alta
+// conversacional, y el modal suelto desaparece del arranque (criterio 10).
+//
+// FASE A · AltaBo — alta conversacional estilo tutorial de videojuego: Bo habla
+// en bocadillos, el usuario responde con inputs inline. Mismos campos que el
+// formulario antiguo — ninguno nuevo (incluida la política de privacidad).
+function AltaBo({lang, setLang, emailInicial, onVolver, onLogin, onCrear}){
+  const EN = lang==='en';
+  const PASOS=['nombre','email','altura','peso','sexo','objetivo','codigo','bo','privacidad','cierre'];
+  const [paso,setPaso]=React.useState(0);
+  const [msgs,setMsgs]=React.useState([]);   // {de:'bo'|'yo', tx}
+  const [dato,setDato]=React.useState({nombre:'',email:(emailInicial||''),altura:170,peso:'',sexo:null,objetivo:'',codigo:'',bo:'',privacidad:false});
+  const [inputVal,setInputVal]=React.useState(emailInicial||'');
+  const [err,setErr]=React.useState('');
+  const [ocupado,setOcupado]=React.useState(false);
+  const [cuentaExiste,setCuentaExiste]=React.useState(null); // {nombre,email}
+  const finRef=React.useRef(null);
+  const boDe=(p,d)=>{
+    const n=(d.nombre||'').trim().split(' ')[0]||'';
+    switch(p){
+      case 'nombre':   return EN?'Hi! I\u2019m Bo, the GBH sheep. I\u2019ll walk you through this. What\u2019s your name?'
+                                :'¡Hola! Soy Bo, la oveja de GBH. Voy a acompañarte en esto. ¿Cómo te llamas?';
+      case 'email':    return EN?`Nice to meet you, ${n} 🐑 Your email? That\u2019s how you\u2019ll log in — no weird passwords.`
+                                :`Encantado, ${n} 🐑 ¿Tu correo? Es con lo que entrarás — sin contraseñas raras.`;
+      case 'altura':   return EN?'To get your calories right I need two things. Height?'
+                                :'Para calcular bien tus calorías necesito dos cosas. ¿Estatura?';
+      case 'peso':     return EN?'And your current weight?':'¿Y tu peso actual?';
+      case 'sexo':     return EN?'Sex?':'¿Sexo?';
+      case 'objetivo': return EN?'Is there a weight you\u2019d like to reach? If you\u2019re not sure, we can leave it for later.'
+                                :'¿Tienes un peso al que te gustaría llegar? Si no lo tienes claro, lo dejamos para luego.';
+      case 'codigo':   return EN?'Did someone invite you? If you have their code, drop it here and your first month of Premium is half price. If not, we just carry on.'
+                                :'¿Te ha invitado alguien? Si tienes su código, ponlo aquí y tu primer mes de Premium sale a mitad de precio. Si no, seguimos sin más.';
+      case 'bo':       return EN?'One more thing: I need a name too. They call me Bo… but you\u2019re the boss.'
+                                :'Una cosa más: yo también necesito nombre. Me llaman Bo… pero tú mandas.';
+      case 'privacidad':return EN?'The legal bit, quickly: to create your account I need you to accept GBH\u2019s privacy policy.'
+                                :'Lo legal, rapidito: para crear tu cuenta necesito que aceptes la política de privacidad de GBH.';
+      case 'cierre':   return EN?'That\u2019s it. This week is on the house: 7 days of trial with the full Standard plan. Come on, let me show you the app — it takes two minutes and we\u2019ll leave with your first week set up.'
+                                :'Pues ya está. Esta semana invita la casa: 7 días de prueba con todo el plan Estándar. Ven, que te enseño la app — son dos minutos y salimos con tu primera semana montada.';
+      default: return '';
+    }
+  };
+  // Primer bocadillo al montar
+  React.useEffect(()=>{ setMsgs([{de:'bo',tx:boDe('nombre',dato)}]); // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+  React.useEffect(()=>{ try{ finRef.current&&finRef.current.scrollIntoView({behavior:'smooth',block:'end'}); }catch{} },[msgs,paso,err,cuentaExiste]);
+  const avanza=(respuestaVisible, patchDato)=>{
+    const d={...dato,...patchDato}; setDato(d); setErr('');
+    const sig=PASOS[paso+1];
+    setMsgs(m=>[...m,
+      ...(respuestaVisible!=null?[{de:'yo',tx:respuestaVisible}]:[]),
+      ...(sig?[{de:'bo',tx:boDe(sig,d)}]:[])]);
+    setPaso(paso+1); setInputVal('');
+  };
+  const enviarTexto=async()=>{
+    const p=PASOS[paso]; const v=inputVal.trim();
+    if(p==='nombre'){
+      if(!v){ setErr(EN?'Tell me your name to continue':'Dime tu nombre para seguir'); return; }
+      avanza(v,{nombre:v}); if(dato.email) setInputVal(dato.email); return;
+    }
+    if(p==='email'){
+      const em=v.toLowerCase();
+      if(!em.includes('@')||em.length<5){ setErr(EN?'That email doesn\u2019t look right':'Ese correo no parece válido'); return; }
+      setOcupado(true);
+      try{
+        const r=await sbReq("GET",`profiles?email=eq.${encodeURIComponent(em)}&select=id,name`);
+        if(Array.isArray(r)&&r.length){ setCuentaExiste({nombre:r[0].name||'',email:em}); setOcupado(false); return; }
+      }catch{}
+      setOcupado(false);
+      avanza(em,{email:em}); return;
+    }
+    if(p==='peso'){
+      const w=parseFloat(v.replace(',','.'));
+      if(isNaN(w)||w<20||w>300){ setErr(EN?'Enter your weight in kg (e.g. 75.5)':'Pon tu peso en kg (p. ej. 75,5)'); return; }
+      avanza(`${w} kg`,{peso:String(w)}); return;
+    }
+    if(p==='objetivo'){
+      const g=parseFloat(v.replace(',','.'));
+      if(isNaN(g)||g<20||g>300){ setErr(EN?'A weight in kg, or skip it':'Un peso en kg, o sáltalo'); return; }
+      avanza(`${g} kg`,{objetivo:String(g)}); return;
+    }
+    if(p==='codigo'){
+      avanza(v.toUpperCase(),{codigo:v.toUpperCase()}); return;
+    }
+    if(p==='bo'){
+      const nb=(v||'Bo').slice(0,12);
+      avanza(nb,{bo:nb}); return;
+    }
+  };
+  const crear=async()=>{
+    if(ocupado) return; setOcupado(true); setErr('');
+    const e=await onCrear(dato);
+    setOcupado(false);
+    if(e) setErr(e);
+  };
+  const p=PASOS[paso];
+  const inp2={width:'100%',boxSizing:'border-box',background:'rgba(255,255,255,0.07)',border:`2px solid ${T.bW}`,borderRadius:16,padding:'14px 16px',color:T.cr,fontSize:16,fontWeight:700,fontFamily:"'DM Sans',sans-serif",outline:'none'};
+  const btnG={width:'100%',padding:'15px 18px',borderRadius:16,border:`3px solid ${T.g3}`,background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:'#fff',fontSize:16,fontWeight:900,cursor:'pointer',boxShadow:`0 5px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif"};
+  const btnSec={background:'none',border:'1.5px solid rgba(255,255,255,0.18)',borderRadius:14,color:T.t2,fontSize:13,fontWeight:800,cursor:'pointer',padding:'11px 16px',fontFamily:"'Nunito',sans-serif"};
+  return(
+    <div style={{fontFamily:"'Nunito',sans-serif",background:`radial-gradient(ellipse at top,#1A3A10,${T.bg})`,minHeight:'100vh',maxWidth:420,margin:'0 auto',display:'flex',flexDirection:'column',color:T.t1}}>
+      <style>{CSS}</style>
+      {/* Cabecera: volver + progreso + idioma */}
+      <div style={{position:'sticky',top:0,zIndex:20,background:'rgba(10,26,8,0.92)',backdropFilter:'blur(14px)',padding:'12px 14px 10px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:9}}>
+          <button onClick={onVolver} style={{background:'none',border:'none',color:T.t2,fontSize:18,cursor:'pointer',padding:'2px 6px',lineHeight:1}}>←</button>
+          <div style={{flex:1,fontWeight:900,fontSize:14,color:T.g2}}>{EN?'Sign-up with Bo':'Tu alta con Bo'} 🐑</div>
+          {[{code:'es',flag:'🇪🇸'},{code:'en',flag:'🇬🇧'}].map(({code,flag})=>(
+            <button key={code} onClick={()=>{ lsSet('gbh:lang',code); setLang(code); }}
+              style={{fontSize:16,background:lang===code?'rgba(88,204,2,0.2)':'rgba(255,255,255,0.08)',
+                border:`2px solid ${lang===code?T.g1:'rgba(255,255,255,0.15)'}`,borderRadius:9,padding:'2px 6px',cursor:'pointer'}}>
+              {flag}
+            </button>
+          ))}
         </div>
-        <div style={{ fontWeight:900, fontSize:20, margin:"8px 0 2px", color:T.t1 }}>
-          ¡Te presentamos a la nueva mascota del rebaño!
+        <div style={{height:7,borderRadius:5,background:'rgba(255,255,255,0.10)',overflow:'hidden'}}>
+          <div style={{height:'100%',width:`${Math.round(paso/(PASOS.length-1)*100)}%`,borderRadius:5,background:`linear-gradient(90deg,${T.g1},${T.g2})`,transition:'width 0.35s'}}/>
         </div>
-        <Sheep estado="feliz" equipados={[]} color="blanca" size={150} />
-        <div style={{ fontSize:14, color:T.t2, lineHeight:1.5, margin:"4px 0 14px" }}>
-          Ha llegado desde GBH Nutrición para acompañarte en tu progreso.
-          Se llama <b style={{color:T.cr}}>Bo</b>… pero puedes ponerle el nombre que tú prefieras:
-        </div>
-        <input value={borrador} maxLength={12}
-          onChange={e => setBorrador(e.target.value)}
-          placeholder="Nombre de tu oveja"
-          style={{ width:"100%", boxSizing:"border-box", background:"rgba(255,255,255,0.08)",
-            border:`2px solid ${T.g1}`, borderRadius:14, color:T.wh, fontWeight:900,
-            fontSize:16, padding:"11px 14px", fontFamily:"inherit", outline:"none",
-            textAlign:"center", marginBottom:12 }} />
-        <button onClick={() => onAdoptar((borrador.trim() || "Bo").slice(0, 12))}
-          style={{ width:"100%", background:`linear-gradient(180deg, ${T.g2}, ${T.g1})`,
-            border:"none", borderRadius:16, color:T.bg, fontWeight:900, fontSize:16,
-            padding:"13px 0", cursor:"pointer", fontFamily:"inherit",
-            boxShadow:"0 4px 0 #2B7A00" }}>
-          🐑 ¡Adoptar a {borrador.trim() || "Bo"}!
-        </button>
       </div>
+      {/* Chat */}
+      <div style={{flex:1,overflowY:'auto',padding:'16px 14px 200px'}}>
+        {msgs.map((m,i)=>m.de==='bo'?(
+          <div key={i} style={{display:'flex',gap:9,alignItems:'flex-end',marginBottom:12,animation:'scaleIn 0.25s'}}>
+            <div style={{flexShrink:0}}><Sheep estado="feliz" equipados={[]} color="blanca" size={44}/></div>
+            <div style={{background:'linear-gradient(180deg,#1d3a14,#142a0e)',border:`1.5px solid ${T.bG}`,borderRadius:'18px 18px 18px 6px',padding:'11px 14px',maxWidth:'78%',fontSize:14,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.55}}>
+              {m.tx}
+            </div>
+          </div>
+        ):(
+          <div key={i} style={{display:'flex',justifyContent:'flex-end',marginBottom:12,animation:'scaleIn 0.25s'}}>
+            <div style={{background:'rgba(88,204,2,0.16)',border:`1.5px solid ${T.g1}`,borderRadius:'18px 18px 6px 18px',padding:'11px 14px',maxWidth:'78%',fontSize:14,fontWeight:800,color:T.g2,fontFamily:"'DM Sans',sans-serif"}}>
+              {m.tx}
+            </div>
+          </div>
+        ))}
+        {cuentaExiste&&(
+          <div style={{background:'rgba(88,204,2,0.10)',border:`1.5px solid ${T.g3}`,borderRadius:16,padding:'14px 16px',marginBottom:12}}>
+            <div style={{fontSize:13.5,fontWeight:900,color:T.g2,marginBottom:4}}>
+              {EN?`We already know each other${cuentaExiste.nombre?`, ${cuentaExiste.nombre.split(' ')[0]}`:''}! 👋`
+                 :`¡Ya nos conocemos${cuentaExiste.nombre?`, ${cuentaExiste.nombre.split(' ')[0]}`:''}! 👋`}
+            </div>
+            <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,marginBottom:12}}>
+              {EN?'That email already has a GBH account. Log in and everything will be right where you left it.'
+                 :'Ese correo ya tiene cuenta en GBH. Entra con él y todo estará donde lo dejaste.'}
+            </div>
+            <button onClick={()=>onLogin(cuentaExiste.email)} style={btnG}>{EN?'Log in to my account':'Entrar con mi cuenta'}</button>
+            <button onClick={()=>setCuentaExiste(null)} style={{...btnSec,width:'100%',marginTop:8}}>{EN?'Use another email':'Usar otro correo'}</button>
+          </div>
+        )}
+        {err&&(
+          <div style={{background:'rgba(255,75,75,0.12)',border:'1.5px solid rgba(255,75,75,0.4)',borderRadius:12,padding:'9px 13px',marginBottom:12,fontSize:12,color:'#FF8080',fontFamily:"'DM Sans',sans-serif"}}>
+            ⚠️ {err}
+          </div>
+        )}
+        <div ref={finRef}/>
+      </div>
+      {/* Zona de respuesta inline (fija abajo) */}
+      {!cuentaExiste&&(
+      <div style={{position:'fixed',bottom:0,left:'50%',transform:'translateX(-50%)',width:'100%',maxWidth:420,background:'rgba(8,18,8,0.97)',backdropFilter:'blur(24px)',borderTop:`2px solid ${T.bW}`,padding:'14px 14px calc(14px + env(safe-area-inset-bottom))',boxSizing:'border-box',zIndex:30}}>
+        {(p==='nombre'||p==='bo')&&(<>
+          <input value={inputVal} onChange={e=>setInputVal(e.target.value)} maxLength={p==='bo'?12:60}
+            onKeyDown={e=>e.key==='Enter'&&enviarTexto()} autoFocus
+            placeholder={p==='bo'?(EN?'Your sheep\u2019s name (Bo?)':'Nombre de tu oveja (¿Bo?)'):(EN?'Your name':'Tu nombre')}
+            style={{...inp2,marginBottom:10}}/>
+          <div style={{display:'flex',gap:8}}>
+            {p==='bo'&&<button onClick={()=>avanza('Bo 🐑',{bo:'Bo'})} style={btnSec}>{EN?'Keep "Bo"':'Se queda «Bo»'}</button>}
+            <button onClick={enviarTexto} style={{...btnG,flex:1}}>{EN?'Continue':'Continuar'} →</button>
+          </div>
+        </>)}
+        {p==='email'&&(<>
+          <input type="email" value={inputVal} onChange={e=>setInputVal(e.target.value)}
+            onKeyDown={e=>e.key==='Enter'&&enviarTexto()} autoFocus placeholder={EN?'you@email.com':'tu@correo.com'}
+            style={{...inp2,marginBottom:10}}/>
+          <button onClick={enviarTexto} disabled={ocupado} style={{...btnG,opacity:ocupado?0.6:1}}>{ocupado?(EN?'Checking…':'Comprobando…'):(EN?'Continue':'Continuar')+' →'}</button>
+        </>)}
+        {p==='altura'&&(<>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:4}}>
+            <span style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>{EN?'Height':'Estatura'}</span>
+            <div style={{display:'flex',alignItems:'baseline',gap:4}}>
+              <span style={{fontSize:34,fontWeight:900,color:T.g2,lineHeight:1}}>{dato.altura}</span>
+              <span style={{fontSize:15,color:T.t2,fontWeight:700}}>cm</span>
+            </div>
+          </div>
+          <input type="range" className="gbh-slider" min={140} max={220} step={1} value={dato.altura}
+            onChange={e=>setDato(d=>({...d,altura:Number(e.target.value)}))}/>
+          <button onClick={()=>avanza(`${dato.altura} cm`,{})} style={{...btnG,marginTop:10}}>{EN?'That\u2019s me':'Esa es'} →</button>
+        </>)}
+        {(p==='peso'||p==='objetivo')&&(<>
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+            <input type="number" inputMode="decimal" value={inputVal} onChange={e=>setInputVal(e.target.value)}
+              onKeyDown={e=>e.key==='Enter'&&enviarTexto()} autoFocus placeholder={p==='peso'?'75.5':'70.0'} step="0.1" min="20" max="300"
+              style={{...inp2,flex:1}}/>
+            <span style={{color:T.t2,fontSize:15,fontWeight:700,flexShrink:0}}>kg</span>
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            {p==='objetivo'&&<button onClick={()=>avanza(EN?'I\u2019ll decide later':'Lo decido luego',{objetivo:''})} style={btnSec}>{EN?'Later':'Para luego'}</button>}
+            <button onClick={enviarTexto} style={{...btnG,flex:1}}>{EN?'Continue':'Continuar'} →</button>
+          </div>
+        </>)}
+        {p==='sexo'&&(
+          <div style={{display:'flex',gap:10}}>
+            {[{v:'M',l:EN?'Man':'Hombre',c:'#64B5F6'},{v:'F',l:EN?'Woman':'Mujer',c:'#F48FB1'}].map(({v,l,c})=>(
+              <button key={v} onClick={()=>avanza(l,{sexo:v})}
+                style={{flex:1,padding:'15px 0',borderRadius:16,border:`2.5px solid ${c}`,background:`${c}22`,color:c,fontSize:15,fontWeight:900,cursor:'pointer',fontFamily:"'Nunito',sans-serif",boxShadow:`0 4px 0 ${c}55`}}>
+                {l}
+              </button>
+            ))}
+          </div>
+        )}
+        {p==='codigo'&&(<>
+          <input value={inputVal} onChange={e=>setInputVal(e.target.value.toUpperCase())} maxLength={12}
+            onKeyDown={e=>e.key==='Enter'&&inputVal.trim()&&enviarTexto()} placeholder="GBH-XXXXX" autoCapitalize="characters"
+            style={{...inp2,marginBottom:10}}/>
+          <div style={{display:'flex',gap:8}}>
+            <button onClick={()=>avanza(EN?'No code':'Sin código',{codigo:''})} style={btnSec}>{EN?'I don\u2019t have one':'No tengo'}</button>
+            <button onClick={enviarTexto} disabled={!inputVal.trim()} style={{...btnG,flex:1,opacity:inputVal.trim()?1:0.5}}>{EN?'Apply code':'Aplicar código'} →</button>
+          </div>
+        </>)}
+        {p==='privacidad'&&(<>
+          <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,marginBottom:10}}>
+            {EN?<span>I have read and accept the <span onClick={()=>window.open(GBH_PRIVACY_URL,'_blank','noopener')} style={{color:T.g2,fontWeight:700,textDecoration:'underline',cursor:'pointer'}}>privacy policy</span> of GBH Nutricion. I understand how my data is managed.</span>
+               :<span>He leído y acepto la <span onClick={()=>window.open(GBH_PRIVACY_URL,'_blank','noopener')} style={{color:T.g2,fontWeight:700,textDecoration:'underline',cursor:'pointer'}}>política de privacidad</span> de GBH Nutrición. Entiendo cómo se gestionan mis datos.</span>}
+          </div>
+          <button onClick={()=>avanza(EN?'I accept ✓':'Acepto ✓',{privacidad:true})} style={btnG}>✓ {EN?'I accept the privacy policy':'Acepto la política de privacidad'}</button>
+        </>)}
+        {p==='cierre'&&(
+          <button onClick={crear} disabled={ocupado} style={{...btnG,opacity:ocupado?0.6:1}}>
+            {ocupado?(EN?'Creating your account…':'Creando tu cuenta…'):(EN?'Let\u2019s go! 🐑':'¡Vamos! 🐑')}
+          </button>
+        )}
+      </div>)}
     </div>
   );
 }
+
+// FASE B · TutorialOverlay — spotlight: fondo oscurecido (0.72, la convención de
+// los overlays existentes), la zona a tocar iluminada y ÚNICA interactiva,
+// bocadillo de Bo anclado cerca y «Saltar tutorial» siempre visible.
+const TUTO_Z = 9400;
+function TutorialOverlay({targetSel, texto, onSkip, onNext, lang, boNombre, avatar, children}){
+  const EN=lang==='en';
+  const [rect,setRect]=React.useState(null);
+  React.useEffect(()=>{
+    let vivo=true, scrolleado=false;
+    const medir=()=>{
+      if(!vivo) return;
+      const el=targetSel?document.querySelector(`[data-tuto="${targetSel}"]`):null;
+      if(el){
+        const r=el.getBoundingClientRect();
+        if(!scrolleado&&(r.top<70||r.bottom>window.innerHeight-110)){
+          scrolleado=true;
+          try{ el.scrollIntoView({block:'center',behavior:'smooth'}); }catch{}
+        }
+        const y=Math.max(0,r.top-6), fin=Math.min(window.innerHeight,r.bottom+6);
+        setRect({x:Math.max(0,r.left-6),y,w:Math.min(window.innerWidth,r.width+12),h:Math.max(0,fin-y)});
+      } else setRect(null);
+    };
+    medir();
+    const id=setInterval(medir,350);
+    window.addEventListener('resize',medir);
+    window.addEventListener('scroll',medir,true);
+    return ()=>{vivo=false;clearInterval(id);window.removeEventListener('resize',medir);window.removeEventListener('scroll',medir,true);};
+  },[targetSel]);
+  const H=typeof window!=='undefined'?window.innerHeight:800;
+  const zonaGrande=rect&&rect.h>H*0.55;
+  const bubbleAbajo=rect&&!zonaGrande&&(rect.y+rect.h+240<H);
+  const bubbleSt = !rect||zonaGrande
+    ? {position:'fixed',left:'50%',transform:'translateX(-50%)',bottom:96,width:'calc(100% - 28px)',maxWidth:392}
+    : bubbleAbajo
+      ? {position:'fixed',left:'50%',transform:'translateX(-50%)',top:rect.y+rect.h+14,width:'calc(100% - 28px)',maxWidth:392}
+      : {position:'fixed',left:'50%',transform:'translate(-50%,-100%)',top:Math.max(70,rect.y-14),width:'calc(100% - 28px)',maxWidth:392};
+  return(<>
+    {/* Oscurecido + recorte del objetivo */}
+    {rect
+      ? (<>
+          <div style={{position:'fixed',left:rect.x,top:rect.y,width:rect.w,height:rect.h,borderRadius:18,
+            boxShadow:'0 0 0 200vmax rgba(0,0,0,0.72)',pointerEvents:'none',zIndex:TUTO_Z,transition:'all 0.25s ease'}}/>
+          {/* Bloqueadores: fuera del recorte NADA es interactivo */}
+          <div style={{position:'fixed',left:0,top:0,right:0,height:rect.y,zIndex:TUTO_Z,pointerEvents:'auto'}}/>
+          <div style={{position:'fixed',left:0,top:rect.y+rect.h,right:0,bottom:0,zIndex:TUTO_Z,pointerEvents:'auto'}}/>
+          <div style={{position:'fixed',left:0,top:rect.y,width:rect.x,height:rect.h,zIndex:TUTO_Z,pointerEvents:'auto'}}/>
+          <div style={{position:'fixed',left:rect.x+rect.w,top:rect.y,right:0,height:rect.h,zIndex:TUTO_Z,pointerEvents:'auto'}}/>
+        </>)
+      : (<div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.72)',zIndex:TUTO_Z,pointerEvents:'auto'}}/>)}
+    {/* La barra de pestañas queda SIEMPRE bloqueada: el tour cambia de pestaña él solo */}
+    <div style={{position:'fixed',left:0,right:0,bottom:0,height:78,zIndex:TUTO_Z+1,pointerEvents:'auto'}}/>
+    {/* Saltar tutorial — visible y discreto en todo momento */}
+    <button onClick={onSkip} style={{position:'fixed',top:14,right:14,zIndex:TUTO_Z+3,
+      background:'rgba(0,0,0,0.5)',border:'1px solid rgba(255,255,255,0.25)',borderRadius:20,
+      color:'rgba(255,255,255,0.8)',fontSize:11.5,fontWeight:800,cursor:'pointer',padding:'7px 13px',
+      fontFamily:"'Nunito',sans-serif"}}>
+      {EN?'Skip tutorial':'Saltar tutorial'} ✕
+    </button>
+    {/* Bocadillo de Bo */}
+    <div style={{...bubbleSt,zIndex:TUTO_Z+2,background:'linear-gradient(180deg,#1d3a14,#142a0e)',
+      border:`2px solid ${T.g1}`,borderRadius:20,padding:'14px 16px',boxSizing:'border-box',
+      boxShadow:'0 12px 44px rgba(0,0,0,0.6)',animation:'scaleIn 0.3s cubic-bezier(0.34,1.56,0.64,1)'}}>
+      <div style={{display:'flex',gap:10,alignItems:'flex-start'}}>
+        <div style={{flexShrink:0}}>{avatar}</div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:11,fontWeight:900,color:T.g2,marginBottom:3,fontFamily:"'Nunito',sans-serif"}}>🐑 {boNombre||'Bo'}</div>
+          <div style={{fontSize:13.5,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.55,whiteSpace:'pre-wrap'}}>{texto}</div>
+        </div>
+      </div>
+      {children}
+      {onNext&&(
+        <button onClick={onNext} style={{width:'100%',marginTop:12,padding:'12px 0',borderRadius:14,
+          border:`2.5px solid ${T.g3}`,background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:'#fff',
+          fontSize:14.5,fontWeight:900,cursor:'pointer',boxShadow:`0 4px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif"}}>
+          {EN?'Next':'Siguiente'} →
+        </button>
+      )}
+    </div>
+  </>);
+}
+
+// B9 · Cierre — celebración a pantalla completa con la mascota personalizada y
+// el resumen de lo YA HECHO. Los artefactos creados en el tour permanecen.
+function TutoCierre({nombre, boNombre, boColor, boEquipados, lang, onFin}){
+  const EN=lang==='en';
+  const n=(nombre||'').split(' ')[0];
+  const hechos=[
+    EN?'Goal set':'Objetivo puesto',
+    EN?'Your week of meals created':'Tu semana de comidas creada',
+    EN?'First meal logged':'Primera comida registrada',
+  ];
+  return(
+    <div style={{position:'fixed',inset:0,background:'radial-gradient(ellipse at top,#1A3A10,#0A1A08)',zIndex:TUTO_Z+5,
+      display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'28px 22px',textAlign:'center'}}>
+      <style>{CSS}</style>
+      <div style={{animation:'scaleIn 0.5s cubic-bezier(0.34,1.56,0.64,1)'}}>
+        <Sheep estado="feliz" equipados={boEquipados||[]} color={boColor||'blanca'} size={175}/>
+      </div>
+      <div style={{fontSize:24,fontWeight:900,color:'#fff',margin:'14px 0 6px',fontFamily:"'Nunito',sans-serif",textShadow:'0 2px 12px rgba(0,0,0,0.5)'}}>
+        {EN?`That\u2019s everything, ${n}!`:`¡Pues ya está todo, ${n}!`}
+      </div>
+      <div style={{display:'flex',flexDirection:'column',gap:8,margin:'12px 0 6px',width:'100%',maxWidth:320}}>
+        {hechos.map((h,i)=>(
+          <div key={i} style={{display:'flex',alignItems:'center',gap:10,background:'rgba(88,204,2,0.10)',
+            border:`1.5px solid ${T.bG}`,borderRadius:14,padding:'11px 14px',
+            animation:`slideInLeft 0.4s ${0.15+i*0.12}s both cubic-bezier(0.34,1.12,0.64,1)`}}>
+            <span style={{fontSize:17}}>✅</span>
+            <span style={{fontSize:13.5,fontWeight:800,color:T.t1,fontFamily:"'DM Sans',sans-serif"}}>{h}</span>
+          </div>
+        ))}
+        <div style={{display:'flex',alignItems:'center',gap:10,background:'rgba(255,140,40,0.10)',
+          border:'1.5px solid rgba(255,140,40,0.4)',borderRadius:14,padding:'11px 14px',
+          animation:'slideInLeft 0.4s 0.51s both cubic-bezier(0.34,1.12,0.64,1)'}}>
+          <span style={{fontSize:17}}>🔥</span>
+          <span style={{fontSize:13.5,fontWeight:800,color:T.t1,fontFamily:"'DM Sans',sans-serif"}}>{EN?'Streak underway':'Racha en marcha'}</span>
+        </div>
+      </div>
+      <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6,margin:'8px 0 20px',maxWidth:300}}>
+        {EN?'This week is on the house. See you tomorrow.':'Esta semana invita la casa. Nos vemos mañana.'}
+      </div>
+      <button onClick={onFin} style={{width:'100%',maxWidth:320,padding:'17px 20px',borderRadius:18,
+        border:`3px solid ${T.g3}`,background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:'#fff',
+        fontSize:17,fontWeight:900,cursor:'pointer',boxShadow:`0 6px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif"}}>
+        {EN?'Let\u2019s do this! 🐑':'¡A por ello! 🐑'}
+      </button>
+    </div>
+  );
+}
+
+// Máquina de estados del tour (persistencia: localStorage gbh:tuto:{profileId})
+const TUTO_ORDEN=['B1_agua','B1_pasos','B1_sueno','B1_cierre','B2_objetivo','B2_racha',
+  'B3_generar','B3_listo','B4_receta','B4_info','B4_lista','B4_comida',
+  'B5_peso','B6_recetas','B7_consulta','B8_ranking','B9_cierre'];
 
 // ─── AvatarDisplay usa directamente el Mascot SVG ──────────────────────────
 function AvatarDisplay({expr="idle", size=200}){
@@ -6544,12 +6876,9 @@ function GBHApp(){
   const [actAdmin,  setActAdmin]  = useState({});  // {profile_id: fila de patient_activity} — actividad real
   const [aName,    setAName]    = useState("");
   const [aEmail,   setAEmail]   = useState("");
-  const [aWeight,  setAWeight]  = useState("");
-  const [aGoal,    setAGoal]    = useState("");
-  const [aRef,     setARef]     = useState("");   // código de invitación (opcional)
-  const [aHeight,  setAHeight]  = useState(170);
-  const [aSex,     setASex]     = useState("M");
-  const [aPrivacy, setAPrivacy] = useState(false);
+  const [altaEmailInicial,setAltaEmailInicial]=useState("");  // email precargado en el alta con Bo
+  // (peso, objetivo, código, estatura, sexo y privacidad se piden ahora en el
+  //  alta conversacional con Bo — el formulario antiguo desapareció)
   const [authMode,setAuthMode]= useState("new"); // "new" | "returning" | "migrate" | "checking"
   const [authErr, setAuthErr] = useState("");
   const [authDbg, setAuthDbg] = useState([]); // debug visible en pantalla
@@ -6694,6 +7023,39 @@ function GBHApp(){
     return ()=>clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[profile?.id, trialDiasRest]);
+
+  // ── Red de reparación de la prueba (§2.1 del tutorial interactivo) ─────────
+  // Si un alta salió sin trial (la cascada tuvo que degradar al núcleo de
+  // emergencia), al entrar se le activa: perfil free/sin plan, sin
+  // trial_ends_at NI plan_until (nunca pagó) y cuenta con menos de 30 días
+  // (created_at del servidor o, en su defecto, la fecha de alta local).
+  useEffect(()=>{ (async()=>{
+    try{
+      if(!profile?.id) return;
+      if(profile.trial_ends_at || profile.plan_until) return;
+      if(profile.plan && profile.plan!=='free') return;
+      const kRep=`gbh:trialrep:${profile.id}`;
+      if(lsGet(kRep,false)) return;
+      let nacimiento=lsGet(`gbh:alta:fecha:${profile.id}`,null);
+      if(!nacimiento){
+        const r=await sbReq("GET",`profiles?id=eq.${profile.id}&select=created_at&limit=1`).catch(()=>null);
+        const ca=(Array.isArray(r)&&r[0]?.created_at)?Date.parse(r[0].created_at):NaN;
+        if(!isNaN(ca)) nacimiento=ca;
+      }
+      if(!nacimiento || (Date.now()-nacimiento)>30*86400000){ lsSet(kRep,true); return; }
+      const fin=new Date(Date.now()+7*86400000).toISOString();
+      const rr=await sbDirect("PATCH",`profiles?id=eq.${profile.id}`,{plan:'standard',trial_ends_at:fin});
+      if(rr?.status===0) return;               // sin red: se reintenta al próximo arranque
+      lsSet(kRep,true);                        // con respuesta (ok o 4xx): no insistir en bucle
+      if(rr?.ok){
+        setProfile(p=>{ if(!p) return p; const u={...p,plan:'standard',trial_ends_at:fin}; try{lsSet(`gbh:p:${u.id}`,u);}catch{} return u; });
+        sbDirect("POST","referral_events",{profile_id:profile.id,event:'trial_reparado',
+          detail:'red de reparación del alta (tutorial §2.1)'}).catch(()=>{});
+      }
+    }catch{}
+  })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.id, profile?.plan, profile?.trial_ends_at, profile?.plan_until]);
 
   // ── Red de seguridad plan_until: suscripción de pago caducada ──────────────
   // La baja real la hace el webhook (customer.subscription.deleted). Esto solo
@@ -7332,15 +7694,9 @@ function GBHApp(){
   const [ptsHoy,setPtsHoy]=useState(0);
   const [ptsSemana,setPtsSemana]=useState(0);
   const arrancarJuegoRef=useRef(null);
-  const [boBienvenida,setBoBienvenida]=useState(false);
-  useEffect(()=>{ if(profile?.id && !localStorage.getItem("gbh_bo_bienvenida")) setBoBienvenida(true); },[profile?.id]);
-  const adoptarBo=(n)=>{
-    localStorage.setItem("gbh_bo_bienvenida","1");
-    setBoBienvenida(false);
-    setBoNombre(n);
-    setProfile(p=>p?{...p,bo_nombre:n}:p);
-    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{bo_nombre:n});
-  };
+  // BienvenidaBo eliminado del arranque (criterio 10 del tutorial): la adopción
+  // de Bo vive ahora en el paso 7 del alta conversacional. Los usuarios ya
+  // existentes conservan su bo_nombre del perfil y pueden cambiarlo con el 🎨.
   const boNivel=(getLevel(xp||0)||{}).l||1;
   useEffect(()=>{ if(!profile) return;
     if(profile.bo_nombre) setBoNombre(profile.bo_nombre);
@@ -7352,6 +7708,75 @@ function GBHApp(){
     setProfile(p=>p?{...p,bo_nombre:boNombre,bo_color:boColor,bo_equipados:boEquipados,bo_personalidad:boPersonalidad}:p);
     sbReq("PATCH",`profiles?id=eq.${profile.id}`,{bo_nombre:boNombre,bo_color:boColor,bo_equipados:boEquipados,bo_personalidad:boPersonalidad});
   };
+  // ── TOUR GUIADO (Fase B del tutorial interactivo) ───────────────────────────
+  // Solo altas NUEVAS: la clave gbh:tuto:{id} nace al completar el alta con Bo.
+  // Los usuarios existentes no tienen la clave y no ven nada de esto.
+  const [tutoPaso,setTutoPaso]=useState(null);
+  const [tutoReoffer,setTutoReoffer]=useState(null);   // paso al que reanudar | null
+  const tutoTapRef=useRef(false);
+  const tutoIr=(p)=>{ try{ if(profile?.id) lsSet(`gbh:tuto:${profile.id}`,p); }catch{} setTutoPaso(p); };
+  const tutoTerminar=()=>{ try{ if(profile?.id) lsSet(`gbh:tuto:${profile.id}`,'done'); }catch{} setTutoPaso(null); };
+  const tutoAvanzar=()=>{
+    const i=TUTO_ORDEN.indexOf(tutoPaso);
+    if(i<0) return;
+    const sig=TUTO_ORDEN[i+1];
+    if(!sig){ tutoTerminar(); return; }
+    tutoIr(sig);
+  };
+  // Saltable siempre: quien salta no queda peor (nada se bloquea). Se reofrece
+  // UNA sola vez al día siguiente.
+  const tutoSaltar=()=>{
+    try{ if(profile?.id){ lsSet(`gbh:tuto:${profile.id}`,'skip:'+tutoPaso); lsSet(`gbh:tuto:skipday:${profile.id}`,toKey()); } }catch{}
+    setTutoPaso(null);
+  };
+  // Acción real completada en un hijo (PlanTab) → el paso correspondiente avanza
+  const tutoEvento=(ev)=>{
+    if(!tutoPaso) return;
+    if(ev==='plan_generado' && tutoPaso==='B3_generar') tutoAvanzar();
+    else if(ev==='receta_abierta' && tutoPaso==='B4_receta') tutoAvanzar();
+    else if(ev==='lista_vista' && tutoPaso==='B4_lista') tutoAvanzar();
+    else if(ev==='comida_marcada' && tutoPaso==='B4_comida') tutoAvanzar();
+  };
+  // Toque real sobre agua/pasos en Inicio → avanza (con un respiro para que
+  // suene su pequeña celebración)
+  const tutoTapAvanza=(p)=>{
+    if(tutoPaso!==p || tutoTapRef.current) return;
+    tutoTapRef.current=true;
+    setTimeout(()=>{ tutoTapRef.current=false; tutoAvanzar(); },650);
+  };
+  // Carga/reanudación (y reoferta única al día siguiente de saltar)
+  useEffect(()=>{
+    if(!profile?.id || screen!=="main") return;
+    try{
+      const v=lsGet(`gbh:tuto:${profile.id}`,null);
+      if(!v || v==='done') return;
+      if(TUTO_ORDEN.includes(v)){ setTutoPaso(v); return; }
+      if(typeof v==='string' && v.startsWith('skip:')){
+        const dia=lsGet(`gbh:tuto:skipday:${profile.id}`,null);
+        const ofrecido=lsGet(`gbh:tuto:reofrecido:${profile.id}`,false);
+        if(!ofrecido && dia && dia<toKey()){
+          lsSet(`gbh:tuto:reofrecido:${profile.id}`,true);
+          setTutoReoffer(TUTO_ORDEN.includes(v.slice(5))?v.slice(5):'B1_agua');
+        }
+      }
+    }catch{}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.id, screen]);
+  // El tour lleva de la mano: cada paso fuerza su pestaña real
+  useEffect(()=>{
+    if(!tutoPaso) return;
+    const destino={B1:'home',B2:'progreso',B3:'plan',B4:'plan',B5:'weight',B6:'receta',B7:'consulta',B8:'ranking',B9:'home'}[tutoPaso.slice(0,2)];
+    if(destino) setTab(destino);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[tutoPaso]);
+  // Pasos que se completan con la acción real observada en el estado
+  useEffect(()=>{ if(tutoPaso==='B1_sueno' && tLog.sleep) tutoAvanzar();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[tutoPaso, tLog.sleep]);
+  useEffect(()=>{ if(tutoPaso==='B2_objetivo' && Number(profile?.target_kcal)>0) tutoAvanzar();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[tutoPaso, profile?.target_kcal]);
+
   const hoyMadrid=()=>new Date().toLocaleDateString("sv-SE",{timeZone:"Europe/Madrid"});
   const cargarPartidasHoy=async()=>{ if(!profile?.id) return;
     try{
@@ -7583,13 +8008,15 @@ function GBHApp(){
         sub:lang==="en"?"Max 3 changes/day. Come back tomorrow!":"Máximo 3 cambios por día. ¡Vuelve mañana!"});
       refreshingRef.current = false; return;
     }
-    if(gems < 10){
+    // Durante la semana de prueba el cambio es GRATIS (tutorial §B3: invita la casa)
+    const enTrialR = profile?.plan==='standard' && profile?.trial_ends_at && Date.parse(profile.trial_ends_at)>Date.now();
+    if(!enTrialR && gems < 10){
       showT({icon:"💎",title:t("insufficientGems"),sub:t("needGemsRecipe")});
       refreshingRef.current = false; return;
     }
 
-    // Descontar gemas y mostrar loading inmediatamente
-    const newGems = gems - 10;
+    // Descontar gemas (0 en trial) y mostrar loading inmediatamente
+    const newGems = enTrialR ? gems : gems - 10;
     const updP = {...profile, gems: newGems};
     setProfile(updP); lsSet(`gbh:p:${profile.id}`, updP);
     setDailyRecipe(null);
@@ -7600,7 +8027,7 @@ function GBHApp(){
     lsSet(`gbh:recipe:refreshes:${todayKey}`, newUsed);
     sbReq("POST","daily_logs?on_conflict=profile_id,log_date",{profile_id:profile.id,log_date:todayKey,recipe_refreshes:newUsed});
     setRecipeRefreshes(newUsed);
-    sbReq("PATCH", `profiles?id=eq.${profile.id}`, {gems: newGems}); // fire & forget
+    if(!enTrialR) sbReq("PATCH", `profiles?id=eq.${profile.id}`, {gems: newGems}); // fire & forget
 
     try {
       const d = new Date();
@@ -7942,15 +8369,10 @@ function GBHApp(){
     }
   };
 
-  const doAuth=async()=>{
-    if(!aEmail.trim()) return;
-    const email = aEmail.trim().toLowerCase();
-    const name  = aName.trim();
-    setLoading(true); setAuthErr("");
-    try{
-
-    // Helper: entrar en la app con un perfil dado
-    const enterApp = async (ep) => {
+  // Helper compartido: entrar en la app con un perfil dado. Lo usan el login
+  // por email (doAuth) y el alta conversacional con Bo (crearCuentaNueva).
+  const enterApp = async (ep) => {
+      const email=(ep.email||aEmail||"").trim().toLowerCase();
       lsSet(`gbh:p:${ep.id}`, ep);
       lsSet(`gbh:em:${email}`, ep.id);
       saveLastEmail(email);
@@ -7977,7 +8399,93 @@ function GBHApp(){
       setRuletaAutoShown(lsGet(`gbh:ruletaSeen:${ep.id}:${today}`, false));
       setScreen("main");
       setTimeout(()=>{ restoreFromServer(ep.id).catch(()=>{}); }, 1500);
-    };
+  };
+
+  // ── ALTA TÉCNICA (la usa el alta conversacional con Bo) ─────────────────────
+  // AQUÍ se arregla el bug de la prueba (§2.1): plan:'standard' y trial_ends_at
+  // NO se sacrifican nunca en el segundo intento — lo que se degrada son los
+  // campos opcionales (goal_weight, sex, height_cm, bo_nombre). Solo el intento
+  // núcleo de emergencia puede prescindir de la prueba, y si ocurre queda
+  // registrado (referral_events + copia local) y marcado como reparable: la red
+  // de reparación lo corrige al entrar. Métrica: % de altas con trial ≈ 100 %.
+  const crearCuentaNueva = async (d) => {
+    try{
+      const email=(d.email||"").trim().toLowerCase();
+      if(!email.includes("@")) return lang==='en'?'That email doesn\u2019t look right':'Ese correo no parece válido';
+      if(!(d.nombre||"").trim()) return lang==='en'?'I need your name':'Necesito tu nombre';
+      const w0=parseFloat(d.peso);
+      if(isNaN(w0)||w0<20||w0>300) return lang==='en'?'I need your current weight to start':'Necesito tu peso actual para comenzar';
+      if(!d.privacidad) return lang==='en'?'You need to accept the privacy policy':'Tienes que aceptar la política de privacidad';
+      const np={
+        id:crypto.randomUUID(), name:d.nombre.trim(), email,
+        xp:0, gems:0, shields:0,
+        height_cm: Math.round(Number(d.altura))||null,
+        sex: d.sexo||null,
+        initial_weight: w0,
+        goal_weight: (d.objetivo && !isNaN(parseFloat(d.objetivo)) && parseFloat(d.objetivo)>20) ? parseFloat(d.objetivo) : null,
+        bo_nombre: ((d.bo||'Bo').trim()||'Bo').slice(0,12),
+        // Semana de prueba estándar: 7 días, luego degrada a 'free'
+        plan:'standard',
+        trial_ends_at:new Date(Date.now()+7*24*60*60*1000).toISOString(),
+      };
+      // Cascada NUEVA: completo → sin OPCIONALES (la prueba SE QUEDA) → núcleo
+      const {height_cm:_h, sex:_s, goal_weight:_g, bo_nombre:_b, ...npSinOpcionales}=np;
+      const npNucleo={id:np.id, name:np.name, email:np.email, xp:0, gems:0, shields:0};
+      let fp=null, usado=null, ultErr=null;
+      for(const [tag,intento] of [['completo',np],['sin_opcionales',npSinOpcionales],['nucleo',npNucleo]]){
+        const r=await sbDirect("POST","profiles",intento);
+        if(r.ok){ fp=(Array.isArray(r.data)&&r.data[0])||intento; usado=tag; break; }
+        if(r.status===0){ await sbReq("POST","profiles",np); fp=np; usado='cola_offline'; break; }
+        ultErr={status:r.status, body:String(typeof r.data==='string'?r.data:JSON.stringify(r.data||'')).slice(0,500)};
+        console.warn("[alta] payload rechazado (",r.status,") — reintento reducido");
+      }
+      if(!fp){ fp=np; usado='memoria'; }
+      // Marca de nacimiento local: la usa la red de reparación (<30 días)
+      try{ lsSet(`gbh:alta:fecha:${np.id}`, Date.now()); }catch{}
+      // Si la prueba se perdió (núcleo/memoria), queda traza consultable
+      if(usado==='nucleo'||usado==='memoria'){
+        try{ lsSet(`gbh:alta:degradada:${np.id}`,{usado,err:ultErr,ts:Date.now()}); }catch{}
+        sbDirect("POST","referral_events",{profile_id:np.id,event:'alta_sin_trial',
+          detail:(`intento=${usado} status=${ultErr?.status??'?'} ${ultErr?.body??''}`).slice(0,900)}).catch(()=>{});
+      }
+      // Si el intento fue sin_opcionales, reintentar los opcionales best-effort
+      if(usado==='sin_opcionales'){
+        sbReq("PATCH",`profiles?id=eq.${np.id}`,{height_cm:np.height_cm,sex:np.sex,goal_weight:np.goal_weight,bo_nombre:np.bo_nombre});
+      }
+      // Referidos: canje por la RPC que ya existe. Nunca bloquea el alta.
+      if(d.codigo&&d.codigo.trim()){
+        try{
+          const rr=await sbReq("POST","rpc/apply_referral",{p_profile:fp.id,p_code:d.codigo.trim()});
+          if(rr?.ok){
+            fp={...fp,referred_by:rr.referred_by||fp.referred_by||true};
+            setTimeout(()=>{ try{ showT&&showT({icon:"🎟️",
+              title: lang==='en'?"Invitation code applied":"Código de invitación aplicado",
+              sub:   lang==='en'?"Your 1st month of Premium at half price (€17.50)":"Tu primer mes de Premium a mitad de precio (17,50 €)"}); }catch{} },1500);
+          }
+        }catch(e){ console.warn("[referido] canje falló:",e); }
+      }
+      // Peso inicial → weight_logs (igual que el alta antigua)
+      const initDate=toKey();
+      lsSet(`gbh:weights:${fp.id}`,[{date:initDate,weight:w0,isInitial:true}]);
+      await sbReq("POST","weight_logs?on_conflict=profile_id,log_date",{profile_id:fp.id,log_date:initDate,weight_kg:w0});
+      // La adopción de Bo vive AQUÍ (paso 7 del alta): el modal antiguo no vuelve
+      try{ localStorage.setItem("gbh_bo_bienvenida","1"); }catch{}
+      if(!fp.bo_nombre) fp={...fp,bo_nombre:np.bo_nombre};
+      // El tour guiado arranca en su primer paso — SOLO para esta alta nueva
+      try{ lsSet(`gbh:tuto:${fp.id}`,'B1_agua'); }catch{}
+      await enterApp(fp);
+      return null;
+    }catch(err){
+      console.warn("[crearCuentaNueva] error inesperado:", err);
+      return lang==='en'?'Something went wrong. Try again.':'Algo salió mal. Inténtalo de nuevo.';
+    }
+  };
+
+  const doAuth=async()=>{
+    if(!aEmail.trim()) return;
+    const email = aEmail.trim().toLowerCase();
+    setLoading(true); setAuthErr("");
+    try{
 
     // ── USUARIO EXISTENTE → entra directo (sin contraseña) ──
     if(authMode==="returning"){
@@ -8011,59 +8519,12 @@ function GBHApp(){
       return;
     }
 
-    // ── USUARIO NUEVO → registro con email (sin contraseña) ──
-    if(!aName.trim()){ setAuthErr(lang==="en"?"Enter your name":"Introduce tu nombre"); setLoading(false); return; }
-    if(!aWeight || isNaN(parseFloat(aWeight))){
-      setAuthErr(lang==="en"?"Enter your current weight to start.":"Introduce tu peso actual para comenzar.");
-      setLoading(false); return;
-    }
-
-    const np = {
-      id: crypto.randomUUID(), name, email,
-      xp:0, gems:0, shields:0,
-      height_cm: Math.round(aHeight)||null,
-      sex: aSex||null,
-      initial_weight: parseFloat(aWeight)||null,
-      goal_weight: (aGoal && !isNaN(parseFloat(aGoal)) && parseFloat(aGoal)>20) ? parseFloat(aGoal) : null,
-      // Semana de prueba estándar: 7 días, luego degrada a 'free'
-      plan: 'standard',
-      trial_ends_at: new Date(Date.now() + 7*24*60*60*1000).toISOString(),
-    };
-    // Alta resiliente: completo → sin campos nuevos → núcleo mínimo
-    const { plan:_pl, trial_ends_at:_tr, ...npSinTrial } = np;
-    const npNucleo = { id:np.id, name:np.name, email:np.email, xp:0, gems:0, shields:0 };
-    let fp = null;
-    for(const intento of [np, npSinTrial, npNucleo]){
-      const r = await sbDirect("POST", "profiles", intento);
-      if(r.ok){ fp = (Array.isArray(r.data) && r.data[0]) || intento; break; }
-      if(r.status === 0){ await sbReq("POST", "profiles", np); fp = np; break; }
-      console.warn("[alta] payload rechazado (", r.status, ") — reintento reducido");
-    }
-    if(!fp) fp = np;
-    // ── Referidos: canjear código de invitación (RPC server-side) ──
-    // Valida + enlaza en una sola llamada segura. Fase 5: las gemas SALEN de
-    // este flujo (se quedan en el juego) — la recompensa del invitado es real:
-    // primer mes de Premium a mitad de precio (17,50 €). El toast lo anuncia y
-    // el descuento queda reflejado en la pantalla de Premium (referred_by).
-    // Nunca bloquea el alta: si falla, el registro sigue adelante igual.
-    if(aRef.trim()){
-      try{
-        const rr = await sbReq("POST","rpc/apply_referral",{p_profile:fp.id,p_code:aRef.trim()});
-        if(rr?.ok){
-          fp = {...fp, referred_by: rr.referred_by || fp.referred_by || true};
-          setTimeout(()=>{ try{ showT&&showT({icon:"🎟️",
-            title: lang==="en"?"Invitation code applied":"Código de invitación aplicado",
-            sub:   lang==="en"?"Your 1st month of Premium at half price (€17.50)":"Tu primer mes de Premium a mitad de precio (17,50 €)"}); }catch{} },1500);
-        }
-      }catch(e){ console.warn("[referido] canje falló:",e); }
-    }
-    const initW = parseFloat(aWeight);
-    if(!isNaN(initW)&&initW>20&&initW<300){
-      const initDate = toKey();
-      lsSet(`gbh:weights:${fp.id}`,[{date:initDate,weight:initW,isInitial:true}]);
-      await sbReq("POST","weight_logs?on_conflict=profile_id,log_date",{profile_id:fp.id,log_date:initDate,weight_kg:initW});
-    }
-    await enterApp(fp);
+    // ── USUARIO NUEVO → el alta ahora es conversacional con Bo (§1-2) ──
+    // El formulario antiguo desapareció para altas nuevas: quien llega aquí
+    // con un email sin cuenta pasa directo al alta con Bo (el login existente
+    // sigue intacto arriba).
+    setAltaEmailInicial(email);
+    setScreen("altaBo");
     }catch(err){
       console.warn("[doAuth] error inesperado:", err);
       setAuthErr(lang==="en"?"Something went wrong. Try again.":"Algo salió mal. Inténtalo de nuevo.");
@@ -9153,32 +9614,9 @@ function GBHApp(){
         {t("landingTagline")}
       </p>
 
-      {/* Features */}
-      <div style={{width:"100%",maxWidth:360,display:"flex",flexDirection:"column",gap:10,marginBottom:28}}>
-        {[
-          {icon:"🥗", key:"landingF1"},
-          {icon:"⚡", key:"landingF2"},
-          {icon:"👑", key:"landingF3"},
-          {icon:"📈", key:"landingF4"},
-        ].map(({icon,key},i)=>(
-          <div key={i} style={{
-            display:"flex",alignItems:"center",gap:14,
-            background:"rgba(255,255,255,0.05)",
-            border:`1.5px solid rgba(88,204,2,0.2)`,
-            borderRadius:16,padding:"13px 16px",
-            animation:`slideInLeft 0.4s ${0.1+i*0.08}s both cubic-bezier(0.34,1.12,0.64,1)`,
-          }}>
-            <span style={{fontSize:24,flexShrink:0}}>{icon}</span>
-            <span style={{fontSize:14,fontWeight:700,color:T.wh,fontFamily:"'DM Sans',sans-serif"}}>
-              {t(key)}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      {/* CTA principal */}
+      {/* ── Puerta de entrada (§1 del tutorial): dos botones y nada más ── */}
       <button
-        onClick={()=>setScreen("auth")}
+        onClick={()=>{setAltaEmailInicial("");setScreen("altaBo");}}
         style={{
           width:"100%",maxWidth:360,
           padding:"18px 24px",
@@ -9197,35 +9635,33 @@ function GBHApp(){
         onTouchStart={e=>e.currentTarget.style.transform="scale(0.97)"}
         onTouchEnd={e=>e.currentTarget.style.transform="scale(1)"}
       >
-        {t("landingCTA")}
+        🐑 {lang==="en"?"Start":"Empezar"}
       </button>
-
-      {/* Login usuarios existentes */}
       <button
         onClick={()=>setScreen("auth")}
         style={{
-          background:"none",border:"none",
-          color:T.t2,fontSize:13,cursor:"pointer",
-          fontFamily:"'DM Sans',sans-serif",
-          padding:"8px 0",marginBottom:20,
-          textDecoration:"underline",
-          textDecorationColor:"rgba(255,255,255,0.2)",
+          width:"100%",maxWidth:360,
+          padding:"15px 24px",
+          borderRadius:18,
+          border:"2px solid rgba(255,255,255,0.18)",
+          background:"rgba(255,255,255,0.06)",
+          color:T.t1,fontSize:15,fontWeight:800,
+          cursor:"pointer",
+          fontFamily:"'Nunito',sans-serif",
         }}>
-        {t("landingLogin")}
+        {lang==="en"?"I already have an account":"Ya tengo cuenta"}
       </button>
-
-      {/* Free badge */}
-      <div style={{
-        fontSize:11,color:"rgba(88,204,2,0.7)",
-        fontFamily:"'DM Sans',sans-serif",
-        letterSpacing:"0.05em",textAlign:"center",
-        padding:"6px 16px",
-        border:"1px solid rgba(88,204,2,0.2)",
-        borderRadius:20,
-      }}>
-        {t("landingFree")}
-      </div>
     </div>
+    </LangCtx.Provider>
+  );
+
+  // ── ALTA CONVERSACIONAL CON BO (Fase A del tutorial interactivo) ─────────────
+  if(screen==="altaBo")return(
+    <LangCtx.Provider value={lang}>
+      <AltaBo lang={lang} setLang={setLang} emailInicial={altaEmailInicial}
+        onVolver={()=>setScreen("landing")}
+        onLogin={(em)=>{ if(em){ setAEmail(em); checkEmail(em); } setScreen("auth"); }}
+        onCrear={crearCuentaNueva}/>
     </LangCtx.Provider>
   );
 
@@ -9284,80 +9720,25 @@ function GBHApp(){
           </div>
         )}
 
-        {authMode!=="returning"&&authMode!=="migrate"&&(<>
-          <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8,marginTop:4}}>{t("fullName")}</div>
-          <input type="text" value={aName} onChange={e=>setAName(e.target.value)}
-            placeholder={t("namePH")} style={{...inp,marginBottom:16}}/>
-          <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>{t("currentWeight")}</div>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
-            <input type="number" value={aWeight} onChange={e=>setAWeight(e.target.value)}
-              onKeyDown={e=>e.key==="Enter"&&doAuth()} placeholder="75.5" step="0.1" min="20" max="300"
-              style={{...inp,flex:1}}/>
-            <span style={{color:T.t2,fontSize:15,fontWeight:700,flexShrink:0}}>kg</span>
-          </div>
-          <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:16}}>
-            {t("weightHint")}
-          </div>
-          <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>{t("goalWeight")}</div>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
-            <input type="number" value={aGoal} onChange={e=>setAGoal(e.target.value)}
-              onKeyDown={e=>e.key==="Enter"&&doAuth()} placeholder="70.0" step="0.1" min="20" max="300"
-              style={{...inp,flex:1}}/>
-            <span style={{color:T.t2,fontSize:15,fontWeight:700,flexShrink:0}}>kg</span>
-          </div>
-          <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:20}}>
-            {t("goalHint")}
-          </div>
-          {/* ── Código de invitación (referidos, opcional) ── */}
-          <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>
-            {lang==='en'?'Invitation code (optional)':'Código de invitación (opcional)'}
-          </div>
-          <input type="text" value={aRef} onChange={e=>setARef(e.target.value.toUpperCase())}
-            onKeyDown={e=>e.key==="Enter"&&doAuth()} placeholder="GBH-XXXXX" maxLength={12}
-            autoCapitalize="characters" style={{...inp,marginBottom:6}}/>
-          <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:20}}>
-            {lang==='en'?'Did a friend invite you? Enter their code and your first month of Premium is half price (€17.50)':'¿Te ha invitado un amigo? Pon su código y tu primer mes de Premium te sale a mitad de precio (17,50 €)'}
-          </div>
-          {/* ── Sexo ── */}
-          <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:10}}>
-            {t("calcSex")}
-          </div>
-          <div style={{display:"flex",gap:10,marginBottom:20}}>
-            {[{v:"M",l:t("calcMan"),c:"#64B5F6"},{v:"F",l:t("calcWoman"),c:"#F48FB1"}].map(({v,l,c})=>(
-              <button key={v} onClick={()=>setASex(v)} type="button"
-                style={{flex:1,padding:"14px 0",borderRadius:16,border:`2.5px solid ${aSex===v?c:"rgba(255,255,255,0.12)"}`,background:aSex===v?`${c}22`:"rgba(255,255,255,0.05)",color:aSex===v?c:T.t2,fontSize:15,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",transition:"all 0.18s",boxShadow:aSex===v?`0 4px 0 ${c}55`:"0 3px 0 rgba(0,0,0,0.4)"}}>
-                {l}
-              </button>
-            ))}
-          </div>
-          {/* ── Estatura ── */}
-          <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:10}}>
-            📏 {t("heightTitle")}
-          </div>
-          <div style={{background:"rgba(255,255,255,0.06)",border:`2px solid ${T.bW}`,borderRadius:18,padding:"16px 18px",marginBottom:6}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4}}>
-              <span style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>Estatura</span>
-              <div style={{display:"flex",alignItems:"baseline",gap:4}}>
-                <span style={{fontSize:38,fontWeight:900,color:T.g2,lineHeight:1,textShadow:`0 0 20px ${T.g1}80`}}>{aHeight}</span>
-                <span style={{fontSize:16,color:T.t2,fontWeight:700}}>cm</span>
-              </div>
+        {/* ── Email nuevo: el alta vive ahora en la conversación con Bo ── */}
+        {authMode==="new"&&aEmail.includes("@")&&(
+          <div style={{textAlign:"center",padding:"6px 0 2px"}}>
+            <div style={{fontSize:34,marginBottom:6}}>🐑</div>
+            <div style={{fontSize:14,fontWeight:900,color:T.t1,marginBottom:4}}>
+              {lang==="en"?"First time at GBH?":"¿Primera vez en GBH?"}
             </div>
-            <input
-              type="range"
-              className="gbh-slider"
-              min={140} max={220} step={1}
-              value={aHeight}
-              onChange={e=>setAHeight(Number(e.target.value))}
-            />
-            <div style={{display:"flex",justifyContent:"space-between",marginTop:2}}>
-              <span style={{fontSize:10,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>140 cm</span>
-              <span style={{fontSize:10,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>220 cm</span>
+            <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,marginBottom:14}}>
+              {lang==="en"?"Bo signs you up in a two-minute chat — no forms.":"Bo te da de alta charlando en dos minutos — sin formularios."}
             </div>
+            <button onClick={()=>{setAltaEmailInicial(aEmail.trim().toLowerCase());setScreen("altaBo");}}
+              style={{width:"100%",padding:"15px 20px",borderRadius:16,border:`3px solid ${T.g3}`,
+                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"white",fontSize:15,fontWeight:900,
+                cursor:"pointer",boxShadow:`0 5px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif",marginBottom:6}}>
+              🐑 {lang==="en"?"Start with Bo":"Empezar con Bo"}
+            </button>
           </div>
-          <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:20}}>
-            {t("heightHint")}
-          </div>
-        </>)}
+        )}
+
 
         {authErr&&(
           <div style={{background:"rgba(255,75,75,0.12)",border:"1.5px solid rgba(255,75,75,0.4)",
@@ -9367,61 +9748,15 @@ function GBHApp(){
           </div>
         )}
 
-        {/* ── Checkbox política de privacidad (solo para nuevos usuarios) ── */}
-        {authMode!=="returning"&&authMode!=="migrate"&&(
-          <div
-            onClick={()=>setAPrivacy(p=>!p)}
-            style={{
-              display:"flex",alignItems:"flex-start",gap:12,
-              marginBottom:18,cursor:"pointer",
-              padding:"12px 14px",
-              background:aPrivacy?"rgba(88,204,2,0.08)":"rgba(255,255,255,0.04)",
-              border:`1.5px solid ${aPrivacy?"rgba(88,204,2,0.4)":"rgba(255,255,255,0.12)"}`,
-              borderRadius:14,transition:"all 0.2s",
-            }}>
-            {/* Caja checkbox visual */}
-            <div style={{
-              width:22,height:22,borderRadius:7,flexShrink:0,marginTop:1,
-              background:aPrivacy?`linear-gradient(135deg,${T.g1},${T.g2})`:"rgba(255,255,255,0.08)",
-              border:`2px solid ${aPrivacy?T.g1:"rgba(255,255,255,0.25)"}`,
-              display:"flex",alignItems:"center",justifyContent:"center",
-              boxShadow:aPrivacy?`0 2px 0 ${T.g3}`:"none",
-              transition:"all 0.18s",
-            }}>
-              {aPrivacy&&<span style={{fontSize:13,color:"white",fontWeight:900,lineHeight:1}}>✓</span>}
-            </div>
-            <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>
-              {lang==="en"?(
-                <>I have read and accept the{" "}
-                  <span onClick={e=>{e.stopPropagation();window.open(GBH_PRIVACY_URL,"_blank","noopener");}}
-                    style={{color:T.g2,fontWeight:700,textDecoration:"underline",cursor:"pointer"}}>
-                    privacy policy
-                  </span>
-                  {" "}of GBH Nutricion. I understand how my data is managed.
-                </>
-              ):(
-                <>He leido y acepto la{" "}
-                  <span onClick={e=>{e.stopPropagation();window.open(GBH_PRIVACY_URL,"_blank","noopener");}}
-                    style={{color:T.g2,fontWeight:700,textDecoration:"underline",cursor:"pointer"}}>
-                    politica de privacidad
-                  </span>
-                  {" "}de GBH Nutricion. Entiendo como se gestionan mis datos.
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
+        {/* La política de privacidad se acepta en el alta con Bo (mismo campo) */}
         {/* ── DEBUG PANEL eliminado ── */}
 
         {(()=>{
           const isReturning = authMode==="returning";
-          const dis = loading || authMode==="checking" ||
-                      !aEmail.trim() ||
-                      (!isReturning && (!aName.trim()||!aWeight||isNaN(parseFloat(aWeight))||!aPrivacy));
-          const label = loading ? t("verifying")
-                      : isReturning ? t("recoverAccount")
-                      : t("startAdventure");
+          // El alta nueva vive en la conversación con Bo: aquí solo se entra
+          if(!isReturning && authMode!=="migrate") return null;
+          const dis = loading || authMode==="checking" || !aEmail.trim();
+          const label = loading ? t("verifying") : t("recoverAccount");
           return(
             <button onClick={doAuth} disabled={dis}
               style={{width:"100%",padding:"17px 20px",borderRadius:18,border:`3px solid ${T.g3}`,
@@ -9721,7 +10056,74 @@ function GBHApp(){
       {showQuiz&&<QuizModal onClose={()=>setShowQuiz(false)} onComplete={onQuizComplete} todayKey={toKey()} lang={lang} onGoHome={()=>{setShowQuiz(false);setTab("home");}}/>}
       {showChest&&<ChestOpenModal streak={streak} onClose={()=>setShowChest(false)} onCollect={onChestCollect} onGoHome={()=>{setShowChest(false);setTab("home");}}/>}
       {/* ── 🐑 Zona de juego + Personalización de Bo ── */}
-      {boBienvenida&&(<BienvenidaBo onAdoptar={adoptarBo}/>)}
+      {/* ── Tour guiado con Bo (Fase B): spotlight sobre acciones reales ── */}
+      {tutoPaso&&tutoPaso!=='B9_cierre'&&(()=>{
+        const EN=lang==='en';
+        const kcalObj=Number(profile?.target_kcal)||null;
+        const pesoUlt=(weights&&weights.length)?weights[weights.length-1]?.weight:null;
+        const bn=boNombre||'Bo';
+        const D={
+          B1_agua:{sel:'agua',tx:EN?'This is your day-to-day. Let’s start easy: have you drunk water? Tap it.':'Esto es tu día a día. Empecemos por lo fácil: ¿has bebido agua? Tócalo.'},
+          B1_pasos:{sel:'pasos',tx:EN?'Now your steps: add them as you move those legs.':'Ahora tus pasos: súmalos cuando muevas las patas.'},
+          B1_sueno:{sel:'sueno',tx:EN?'And sleep: tick it if you slept well.':'Y el sueño: márcalo si has dormido bien.'},
+          B1_cierre:{sel:null,next:true,tx:EN?'You don’t need to complete everything today — what matters is starting. Tomorrow this fills itself in with your real day.':'Hoy no hace falta completarlo todo — lo importante es empezar. Mañana esto se rellena solo con tu día real.'},
+          B2_objetivo:{sel:'objetivo',tx:EN?'This is where your goal lives. Let’s set it: fill in your details and hit calculate — I’ll handle the maths.':'Aquí vive tu objetivo. Vamos a ponerlo: rellena tus datos y pulsa calcular — de las cuentas me encargo yo.'},
+          B2_racha:{sel:'objetivo',racha:true,tx:(kcalObj?(EN?`${kcalObj} kcal a day to get there in about 3 months. `:`${kcalObj} kcal al día para llegar en unos 3 meses. `):'')+(EN?'Will you commit to logging a few days in a row? Pick your goal — and if you miss a day, nothing happens: that’s what pauses are for.':'¿Te comprometes a registrar unos días seguidos? Elige tu meta — y si fallas un día no pasa nada, para eso están las pausas.')},
+          B3_generar:{sel:'plan-zona',tx:EN?'And now the big one: your first week of meals. Tweak your preferences if you like and press ✨ Generate.':'Y ahora lo gordo: tu primera semana de comidas. Ajusta tus preferencias si quieres y pulsa ✨ Generar.'},
+          B3_listo:{sel:'plan-zona',next:true,tx:EN?'Done. And if something doesn’t convince you, you can regenerate it or swap recipes for free while the trial lasts: it’s on the house.':'Hecha. Y si algo no te convence, puedes regenerarla o cambiar recetas gratis mientras dure la prueba: invita la casa.'},
+          B4_receta:{sel:'plan-zona',tx:EN?'Go into 🍽️ Daily Meals and open one of today’s recipes.':'Entra en 🍽️ Platos diarios y abre una receta de hoy.'},
+          B4_info:{sel:'plan-zona',next:true,tx:EN?'The amounts already come adjusted to YOUR portion. From here you can swap it for free during the trial, save it to favourites or discard it.':'Las cantidades ya vienen ajustadas a TU ración. Desde aquí puedes cambiarla gratis durante la prueba, guardarla en favoritas o quitarla.'},
+          B4_lista:{sel:'plan-zona',tx:EN?'Go back and open the 🛒 Shopping List: tick off ingredients as you shop. It builds itself from your week.':'Vuelve atrás y entra en la 🛒 Lista de la compra: marca los ingredientes mientras compras. Se hace sola con tu semana.'},
+          B4_comida:{sel:'plan-zona',tx:EN?'Now, in 🍽️ Daily Meals, log today’s meal with one of the 5 states (followed · less · swapped · ate out · skipped). It doesn’t need to be perfect. Log what you actually did: what counts is logging, not complying. An average day, logged, is worth more than a perfect day unlogged.':'Ahora, en 🍽️ Platos diarios, marca tu comida de hoy con uno de los 5 estados (seguida · menos · la cambié · comí fuera · me la salté). No hace falta que salga perfecto. Marca lo que has hecho de verdad: lo que cuenta es registrar, no cumplir. Un día regular, registrado, vale más que un día perfecto sin registrar.'},
+          B5_peso:{sel:null,next:true,tx:(EN?`I already have today’s weight from sign-up${pesoUlt?` (${pesoUlt} kg)`:''}. Here you’ll see the trend. A tip: weigh yourself always on the same day, at the same time, fasted — and look at the line over several weeks, never a single day.`:`Tu peso de hoy ya lo tengo del registro${pesoUlt?` (${pesoUlt} kg)`:''}. Aquí verás la evolución. Un consejo: pésate siempre el mismo día, a la misma hora, en ayunas — y mira la línea de varias semanas, nunca un solo día.`)},
+          B6_recetas:{sel:null,next:true,tx:EN?'The whole GBH recipe book. Search, open, and save the ones you like with the star — yours live in Favourites.':'Todo el recetario GBH. Busca, abre, y guarda las que te gusten con la estrella — las tuyas quedan en Favoritas.'},
+          B7_consulta:{sel:null,next:true,tx:EN?'This tab is the direct line to Alejandro — it’s the Premium side of the plan: in-person consultation, weekly follow-up and his WhatsApp. If the trial wins you over, this is where you level up. And below you’ve got your code to invite a friend.':'Esta pestaña es la línea directa con Alejandro — es la parte del plan Premium: consulta presencial, seguimiento semanal y su WhatsApp. Si la prueba te convence, aquí es donde se sube de nivel. Y debajo tienes tu código para invitar a un amigo.'},
+          B8_ranking:{sel:null,next:true,tx:EN?`And here’s the whole flock. Your ${bn} competes with its XP. No pressure — the ranking is the least of it; your week is what matters.`:`Y aquí el rebaño entero. Tu ${bn} compite con su XP. Sin presión — el ranking es lo de menos; tu semana es lo de más.`},
+        };
+        const TD=D[tutoPaso]; if(!TD) return null;
+        return(
+          <TutorialOverlay targetSel={TD.sel} texto={TD.tx} lang={lang} boNombre={bn}
+            avatar={<Sheep estado="feliz" equipados={boEquipados} color={boColor} size={48}/>}
+            onSkip={tutoSaltar} onNext={TD.next?tutoAvanzar:null}>
+            {TD.racha&&(
+              <div style={{display:"flex",gap:8,marginTop:12}}>
+                {[7,14,30,50].map(nm=>(
+                  <button key={nm} onClick={()=>{ try{ lsSet(`gbh:rachameta:${profile.id}`,nm); patchWeeklyState(profile.id, mergeWeeklyState(profile.id,{rachaMeta:nm})); }catch{} sfx("missionDone"); tutoAvanzar(); }}
+                    style={{flex:1,padding:"13px 0",borderRadius:14,border:`2px solid ${T.g1}`,background:"rgba(88,204,2,0.12)",color:T.g2,fontWeight:900,fontSize:15,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
+                    {nm}{lang==='en'?' d':' d'}
+                  </button>
+                ))}
+              </div>
+            )}
+          </TutorialOverlay>
+        );
+      })()}
+      {tutoPaso==='B9_cierre'&&(
+        <TutoCierre nombre={profile?.name} boNombre={boNombre} boColor={boColor} boEquipados={boEquipados}
+          lang={lang} onFin={()=>{ sfx("streakCelebration"); tutoTerminar(); }}/>
+      )}
+      {/* Reoferta ÚNICA al día siguiente de saltar el tour */}
+      {tutoReoffer&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.72)",zIndex:TUTO_Z+4,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{background:"linear-gradient(180deg,#1d3a14,#142a0e)",border:`2px solid ${T.g1}`,borderRadius:22,padding:"20px 18px",maxWidth:330,width:"100%",textAlign:"center",animation:"scaleIn 0.3s"}}>
+            <Sheep estado="feliz" equipados={boEquipados} color={boColor} size={92}/>
+            <div style={{fontSize:16,fontWeight:900,color:T.t1,margin:"8px 0 6px"}}>
+              {lang==='en'?'Shall we pick the tour back up where you left it?':'¿Retomamos el tour donde lo dejaste?'}
+            </div>
+            <div style={{fontSize:12.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,marginBottom:14}}>
+              {lang==='en'?'Two minutes and we’ll leave with your week set up.':'Dos minutos y salimos con tu semana montada.'}
+            </div>
+            <button onClick={()=>{ const pr=tutoReoffer; setTutoReoffer(null); tutoIr(pr); }}
+              style={{width:"100%",padding:"13px 0",borderRadius:15,border:`2.5px solid ${T.g3}`,background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"#fff",fontSize:15,fontWeight:900,cursor:"pointer",boxShadow:`0 4px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif",marginBottom:8}}>
+              {lang==='en'?'Yes, let’s continue':'Sí, seguimos'} 🐑
+            </button>
+            <button onClick={()=>{ setTutoReoffer(null); try{ if(profile?.id) lsSet(`gbh:tuto:${profile.id}`,'done'); }catch{} }}
+              style={{width:"100%",background:"none",border:"1.5px solid rgba(255,255,255,0.15)",borderRadius:14,color:T.t3,fontSize:13,fontWeight:800,cursor:"pointer",padding:"11px 0",fontFamily:"'Nunito',sans-serif"}}>
+              {lang==='en'?'No, thanks':'No, gracias'}
+            </button>
+          </div>
+        </div>
+      )}
       {zonaJuego&&(
         <div style={{position:"fixed",inset:0,zIndex:9000,background:T.bg,display:"flex",flexDirection:"column"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"calc(14px + env(safe-area-inset-top, 0px)) 16px 8px"}}>
@@ -10251,9 +10653,9 @@ function GBHApp(){
             ? <MealBtns tomas={tomasHoy} meals={mealsHoy} done={tLog.diet} lang={lang} onTap={marcarTomaHome}/>
             : <BigBtn icon="🍽️" label={t("dietBtn")} done={tLog.diet} onClick={()=>toggleM("diet")}/>}
 
-          <MRow num="2" icon="🌙" label={t("sleepLabel")} done={tLog.sleep} onToggle={()=>toggleM("sleep")} xpR={5}/>
-          <StepsWidget done={tLog.steps} stepCount={steps} onToggle={()=>toggleM("steps")} onUpdateSteps={updSteps}/>
-          <HydrationWidget done={tLog.hydration} onToggle={()=>toggleM("hydration")}/>
+          <div data-tuto="sueno"><MRow num="2" icon="🌙" label={t("sleepLabel")} done={tLog.sleep} onToggle={()=>toggleM("sleep")} xpR={5}/></div>
+          <div data-tuto="pasos" onClickCapture={()=>tutoTapAvanza('B1_pasos')}><StepsWidget done={tLog.steps} stepCount={steps} onToggle={()=>toggleM("steps")} onUpdateSteps={updSteps}/></div>
+          <div data-tuto="agua" onClickCapture={()=>tutoTapAvanza('B1_agua')}><HydrationWidget done={tLog.hydration} onToggle={()=>toggleM("hydration")}/></div>
 
           {/* ── Quiz + Ruleta ── */}
           <div style={{display:"flex",gap:8,marginBottom:10}}>
@@ -10650,7 +11052,8 @@ function GBHApp(){
                   {(()=>{
                     const refreshesLeft = 3 - recipeRefreshes;
                     const blocked = recipeRefreshes >= 3;
-                    const noGems  = gems < 10;
+                    const enTrialR = profile?.plan==='standard' && profile?.trial_ends_at && Date.parse(profile.trial_ends_at)>Date.now();
+                    const noGems  = !enTrialR && gems < 10;
                     const dis = blocked || noGems || recipeLoading;
                     return(
                       <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
@@ -10921,7 +11324,7 @@ function GBHApp(){
         })()}
 
 
-        {tab==="progreso"&&<CalcTab weights={weights} profile={profile} setProfile={setProfile} lang={lang}/>}
+        {tab==="progreso"&&<div data-tuto="objetivo"><CalcTab weights={weights} profile={profile} setProfile={setProfile} lang={lang}/></div>}
         {avisoNuevoPlan&&(
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
             <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
@@ -11157,7 +11560,7 @@ function GBHApp(){
             onVerSeguimiento={espejoAbrirSeguimiento}
             onClose={()=>{sfx("tap");setEspejoDia(null);}}/>
         )}
-        {tab==="plan"&&<PlanTab profile={profile} lang={lang} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} descartadas={descartadas} setDescartadas={setDescartadas} showT={showT} sfx={sfx} t={t} setTab={setTab} onMealRegistered={onMealRegistered} vistaInicial={planVista} onVistaConsumida={()=>setPlanVista(null)}/>}
+        {tab==="plan"&&<div data-tuto="plan-zona"><PlanTab profile={profile} lang={lang} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} descartadas={descartadas} setDescartadas={setDescartadas} showT={showT} sfx={sfx} t={t} setTab={setTab} onMealRegistered={onMealRegistered} vistaInicial={planVista} onVistaConsumida={()=>setPlanVista(null)} onTutoEvent={tutoEvento}/></div>}
         {tab==="consulta"&&<ConsultaTab profile={profile} lang={lang} sfx={sfx}/>}
       </div>
 
@@ -12433,11 +12836,15 @@ function OverlayGenerando({lang}){
   );
 }
 
-function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartadas,setDescartadas,showT,sfx,t,setTab,onMealRegistered,vistaInicial,onVistaConsumida}){
+function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartadas,setDescartadas,showT,sfx,t,setTab,onMealRegistered,vistaInicial,onVistaConsumida,onTutoEvent}){
   const isPremium=profile?.plan==='premium';
   const isStandard=profile?.plan==='standard';
   const tieneAcceso=isPremium||isStandard;
   const gems=profile?.gems??0;
+  // ── Semana de prueba: regenerar y cambiar recetas es GRATIS (tutorial §B3:
+  //    «invita la casa»). Al acabar el trial vuelven el candado semanal y las
+  //    gemas de siempre. ──
+  const enTrial = isStandard && profile?.trial_ends_at && Date.parse(profile.trial_ends_at)>Date.now();
   const [planes,setPlanes]=React.useState([]);
   const [idx,setIdx]=React.useState(0);
   const [loading,setLoading]=React.useState(true);
@@ -12449,6 +12856,10 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
     if(vistaInicial){ setView(vistaInicial); onVistaConsumida&&onVistaConsumida(); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[vistaInicial]);
+  // ── Tour guiado: la lista de la compra vista de verdad avanza su paso ──────
+  React.useEffect(()=>{ if(view==='lista') onTutoEvent&&onTutoEvent('lista_vista');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[view]);
   const [config,setConfig]=React.useState(null);       // fila patient_config
   const [configView,setConfigView]=React.useState(false); // pantalla de edición de plan
   // ── Candado del plan estándar ──────────────────────────────────────────────
@@ -12479,7 +12890,8 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
   // se generó. Al llegar el lunes siguiente, se desbloquea gratis.
   const lunesActual = lunesDe(Date.now());
   const lunesDelPlan = (ultimaGenMs!==null && !isNaN(ultimaGenMs)) ? lunesDe(ultimaGenMs) : null;
-  const planBloqueado = isStandard && tienePlan && lunesDelPlan!==null && lunesDelPlan >= lunesActual;
+  // Durante el trial NO hay candado: se puede regenerar cuantas veces se quiera
+  const planBloqueado = !enTrial && isStandard && tienePlan && lunesDelPlan!==null && lunesDelPlan >= lunesActual;
   // Días que faltan hasta el próximo lunes (para el mensaje)
   const proximoLunes = lunesActual + 7*24*60*60*1000;
   const diasDesbloqueo = planBloqueado ? Math.max(1, Math.ceil((proximoLunes - Date.now())/(24*60*60*1000))) : 0;
@@ -12618,7 +13030,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
     // quedan todas las tomas del día registradas, completa la misión de dieta (racha).
     if(toma && typeof onMealRegistered==='function') onMealRegistered(dateKey, meals);
   };
-  const setEstadoComida = (toma,estado)=>{ if(!puedeRegistrar) return; persistDia(selDateKey,{toma,estado}); sfx&&sfx('step'); };
+  const setEstadoComida = (toma,estado)=>{ if(!puedeRegistrar) return; persistDia(selDateKey,{toma,estado}); sfx&&sfx('step'); onTutoEvent&&onTutoEvent('comida_marcada'); };
   const guardarNotaDia  = ()=>{ if(!puedeRegistrar) return; if(notaTmp===(regDia[selDateKey]?.note||'')) return;
     persistDia(selDateKey,{note:notaTmp.trim()}); setNotaOK(true); setTimeout(()=>setNotaOK(false),1800); };
 
@@ -12707,6 +13119,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
       if((resp && resp.ok) || planNuevo){
         exito=true;
         setIdx(0);
+        onTutoEvent&&onTutoEvent('plan_generado');   // tour: programación creada de verdad
         sfx&&sfx("recipe");
         showT&&showT({icon:"🎉",title:lang==='en'?'Plan ready!':'¡Programación lista!',sub:lang==='en'?'Your weekly plan is here':'Tu plan semanal ya está disponible'});
       }else{
@@ -12952,6 +13365,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
   }
 
   async function abrirToma(toma){
+    onTutoEvent&&onTutoEvent('receta_abierta');   // tour: receta del día abierta
     const meal=planJ?.[toma]?.[String(selDay)];
     if(!meal?.Nombre_Receta) return;
     setOpenToma(toma);setTomaReceta(null);setLoadingToma(true);
@@ -13031,7 +13445,8 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
   // ── Cambiar la receta por otra de composición similar (10 💎) ──────────────
   async function cambiarRecetaToma(){
     if(!tomaReceta||!profile) return;
-    if(gems < 10){
+    const costeCambio = enTrial ? 0 : 10;   // gratis mientras dura la prueba
+    if(costeCambio>0 && gems < costeCambio){
       sfx&&sfx("error");
       showT&&showT({icon:"💎",title:lang==='en'?'Not enough gems':'Sin gemas suficientes',sub:lang==='en'?'You need 10 💎 to change the recipe':'Necesitas 10 💎 para cambiar la receta'});
       return;
@@ -13128,11 +13543,13 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
     const totPeso = pesos.reduce((s,x)=>s+x,0);
     let rnd = Math.random()*totPeso, acc=0, elegida=pool[pool.length-1];
     for(let i=0;i<pool.length;i++){ acc+=pesos[i]; if(rnd<=acc){ elegida=pool[i]; break; } }
-    // Descontar gemas
-    const newGems = gems - 10;
-    const updP = {...profile, gems:newGems};
-    setProfile(updP); lsSet(`gbh:p:${profile.id}`, updP);
-    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:newGems});
+    // Descontar gemas (0 durante la prueba: invita la casa)
+    if(costeCambio>0){
+      const newGems = gems - costeCambio;
+      const updP = {...profile, gems:newGems};
+      setProfile(updP); lsSet(`gbh:p:${profile.id}`, updP);
+      sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:newGems});
+    }
     sfx&&sfx("recipe");
     // ── Escalar la nueva receta a las kcal de la toma. El pool ya garantiza
     //    que el factor cae en 0.70–1.40 (rango RACION_MIN/MAX del generador),
@@ -13972,15 +14389,15 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
           {/* Botones: cambiar receta (10💎), guardar (20💎) y descartar (gratis) */}
           <div style={{display:'flex',gap:10,marginTop:12}}>
             <button onClick={cambiarRecetaToma}
-              style={{flex:1,background:gems<10?'rgba(255,255,255,0.05)':'rgba(100,181,246,0.15)',
-                      border:gems<10?'1.5px solid rgba(255,255,255,0.08)':'1.5px solid rgba(100,181,246,0.4)',
-                      borderRadius:16,padding:'14px 10px',cursor:gems<10?'default':'pointer',
+              style={{flex:1,background:(!enTrial&&gems<10)?'rgba(255,255,255,0.05)':'rgba(100,181,246,0.15)',
+                      border:(!enTrial&&gems<10)?'1.5px solid rgba(255,255,255,0.08)':'1.5px solid rgba(100,181,246,0.4)',
+                      borderRadius:16,padding:'14px 10px',cursor:(!enTrial&&gems<10)?'default':'pointer',
                       display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
               <span style={{fontSize:20}}>🔄</span>
-              <span style={{fontSize:12,fontWeight:900,color:gems<10?T.t3:'#64B5F6',fontFamily:"'Nunito',sans-serif"}}>
+              <span style={{fontSize:12,fontWeight:900,color:(!enTrial&&gems<10)?T.t3:'#64B5F6',fontFamily:"'Nunito',sans-serif"}}>
                 {lang==='en'?'Change':'Cambiar'}
               </span>
-              <span style={{fontSize:10,color:T.t3}}>10 💎</span>
+              <span style={{fontSize:10,color:enTrial?T.g1:T.t3,fontWeight:enTrial?900:400}}>{enTrial?(lang==='en'?'Free · trial':'Gratis · prueba'):'10 💎'}</span>
             </button>
             <button onClick={recetaYaGuardada?undefined:guardarRecetaToma}
               style={{flex:1,background:recetaYaGuardada?'rgba(88,204,2,0.15)':(gems<20?'rgba(255,255,255,0.05)':'rgba(255,200,0,0.12)'),
