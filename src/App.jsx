@@ -706,12 +706,48 @@ const SFX = {
   },
 };
 
+// ── Háptica (Tarea A del brief de "juice") ───────────────────────────────────
+// navigator.vibrate no aparecía NI UNA VEZ en el fichero, y la mitad de la
+// sensación táctil de referencia es vibración. Misma disciplina que SFX:
+// respeta el MISMO mute persistido ("gbh:mute") y nunca rompe donde no existe
+// (iOS Safari no soporta vibrate → feature-check + try/catch, cero errores en
+// consola). REGLA INNEGOCIABLE: solo se llama desde gestos del usuario. Un
+// pop-up automático que vibra sobresalta (base 45+ con fricción tecnológica
+// alta): los avisos automáticos (escudo auto-consumido, espejo, paywall de
+// victoria, racha en peligro, recordatorio de las 20:00) NO vibran.
+const HAPTIC_PATRONES = {
+  toma:        [10],                  // marcar una toma: pulso corto
+  doble:       [0,25,60,25],          // misión completada / día completo
+  celebracion: [0,30,60,30,60,90],    // overlay de racha (una sola vez, en toggleM)
+  error:       [0,45,70,45],          // gemas insuficientes / acción inválida
+};
+const haptic = (patron)=>{
+  try{
+    if(lsGet("gbh:mute",false)) return;                    // mismo flag que el sonido
+    if(typeof navigator==="undefined"||typeof navigator.vibrate!=="function") return;
+    navigator.vibrate(HAPTIC_PATRONES[patron]||patron||10);
+  }catch{}
+};
+// Sonidos que SIEMPRE llevan su háptica de serie (todos suenan únicamente en
+// gestos directos: chips de estado, flechas de pasos, botones con gemas
+// insuficientes). El resto se engancha explícito en su sitio, porque el mismo
+// sonido significa cosas distintas (missionDone al marcar una toma en Inicio
+// vs al completar una misión) y porque hay sonidos automáticos que no deben
+// vibrar (el escudo que se consume solo al abrir la app).
+const HAPTIC_DE_SFX = { step:"toma", error:"error" };
+
+// prefers-reduced-motion: las animaciones nuevas degradan a cambio de estado
+// simple sin perder información (el color/emoji del botón ya la lleva).
+// Se consulta en vivo, no se cachea: el usuario puede cambiarlo con la app abierta.
+const REDUCED_MOTION = ()=>{ try{ return window.matchMedia("(prefers-reduced-motion: reduce)").matches; }catch{ return false; } };
+
 // Hook para usar sonido con mute toggle persistido
 function useSFX(){
   const muted = lsGet("gbh:mute",false);
   return (name,...args)=>{
     if(muted) return;
     SFX[name]?.(...args);
+    if(HAPTIC_DE_SFX[name]) haptic(HAPTIC_DE_SFX[name]);
   };
 }
 const GBH_EMAIL    = "gbh.nutricion@gmail.com";
@@ -990,22 +1026,40 @@ const racionEtiqueta = (t, {raciones=1, racionTexto="", base=false}={}) => {
 
 // ─── Design tokens ───────────────────────────────────────────────────────────
 const T = {
+  // ── Paleta de MARCA GBH (verde oscuro #122B1D · dorado #C9A227 · crema
+  //    #F5F0E8). Sustituye por completo a la paleta Duolingo anterior. ──
   // Backgrounds
-  bg:     "#0A1A0F",
-  bgCard: "#152210",
+  bg:     "#0B1A11",
+  bgCard: "#122B1D",
   bgWood: "#1C1208",
-  // Greens
-  g1: "#58CC02", g2: "#89E219", g3: "#2B7A00",
-  // Gold
-  au1: "#FFC800", au2: "#FFB000", au3: "#A07800",
-  // Neutrals
-  wh: "#FFFFFF", cr: "#F7F0E0",
+  // Greens — gama de marca (skill gbh-diseno: 1a6b3c / 2d9b5a / 4dc97a)
+  g1: "#2D9B5A", g2: "#4DC97A", g3: "#1A6B3C",
+  // Gold — dorado de marca
+  au1: "#C9A227", au2: "#E0B94B", au3: "#8F741C",
+  // CTA principal de marca (dorado sobre verde oscuro)
+  cta1: "#C9A227",
+  // Neutrals — crema de marca
+  wh: "#FFFFFF", cr: "#F5F0E8",
   t1: "#FFFFFF", t2: "rgba(255,255,255,0.6)", t3: "rgba(255,255,255,0.3)",
   // Accents
   red: "#FF4B4B", blue: "#1CB0F6", pur: "#CE82FF", xp: "#30D5C8",
   // Borders
-  bG: "rgba(88,204,2,0.3)", bA: "rgba(255,200,0,0.25)", bW: "rgba(139,100,60,0.5)",
+  bG: "rgba(45,155,90,0.3)", bA: "rgba(201,162,39,0.25)", bW: "rgba(139,100,60,0.5)",
+  // ── FASE 1 de normalización (BRIEF_paleta_marca): tokens SEMÁNTICOS nuevos.
+  //    Valores idénticos a los literales que sustituyen — cero cambio visual.
+  compra: "#FF8C3C",   // naranja de la lista de la compra
+  platos: "#64B5F6",   // azul de platos/macros del día
+  moneda: "#FFD700",   // dorado BRILLANTE de moneda y premio (gemas, marcos, medallas).
+                       // ⚠️ NO es au1 (dorado de ACCIÓN): en la fase 2 divergen a propósito
+                       //    para que la moneda no se confunda con el CTA (§2.1 del brief).
+  llama1: "#FFE066", llama2: "#FF8C00", llama3: "#FF3300", llama4: "#FF4500",
+  llamaGlow: "#FF6600",  // el fuego de la racha: NO es color de marca (la llama es
+                         // fuego), pero con token para poder ajustarlo luego (§F1.4)
 };
+// alpha(): hex del tema + opacidad → "rgba(r,g,b,a)". Todos los rgba de colores
+// de tema pasan por aquí para que en la fase 2 cambiar T recoloree TAMBIÉN las
+// transparencias (sombras, bordes, fondos suaves). Sin dependencias.
+const alpha=(hex,a)=>{const n=parseInt(hex.slice(1),16);return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;};
 
 // ─── Levels ──────────────────────────────────────────────────────────────────
 // ─── Sistema de 500 niveles ──────────────────────────────────────────────────
@@ -1060,8 +1114,8 @@ const FRAMES = {
     css:"silver",
   },
   2: { // Lv 200 — Oro
-    label:"Marco Oro", color:"#FFD700",
-    border:"3px solid #FFD700",
+    label:"Marco Oro", color:T.moneda,
+    border:`3px solid ${T.moneda}`,
     boxShadow:"0 0 0 2px #B8860B, 0 0 16px rgba(255,215,0,0.7)",
     css:"gold",
   },
@@ -1078,7 +1132,7 @@ const FRAMES = {
     css:"diamond",
   },
   5: { // Lv 500 — Leyenda
-    label:"Marco Leyenda", color:"#FFD700",
+    label:"Marco Leyenda", color:T.moneda,
     border:"3px solid transparent",
     boxShadow:"0 0 0 3px #7B2FBE, 0 0 24px rgba(255,100,0,0.9)",
     css:"legend",
@@ -1350,7 +1404,10 @@ const PAL = {
   W: "#FDF6E3", w: "#E3D5B3", F: "#4A3728", f: "#6B5140",
   L: "#3A2A1E", E: "#FFFFFF", B: "#1A120C", P: "#E8837A",
   T: "#7EC8E3", R: "#C0392B", r: "#E74C3C", G: "#F5B800",
-  g: "#2D9B5A", K: "#111111", k: "#3A3A3A", M: "#CE82FF",
+  g: "#2D9B5A", K: "#111111", k: "#3A3A3A",
+  M: "#CE82FF",  // lana lila de la oveja: coincide con el ANTIGUO T.pur por
+                 // casualidad. Es ARTE, no tema: NO tokenizar — si en fase 2
+                 // T.pur baja de saturación, la oveja no debe despintarse.
   C: "#A07848", c: "#8B6040", N: "#1B2A5E", n: "#2E4590",
   D: "#9C9C9C", d: "#7A7A7A", O: "#E8802A", o: "#C4661B",
 };
@@ -1368,7 +1425,7 @@ const COLORES = [
   { id:"morada",  nombre:"Morada",    W:"#B78BE0", w:"#9B6CC8", nivel:118 },
   { id:"dalmata", nombre:"Dálmata",   W:"#FDFDFD", w:"#E8E8E8", nivel:130, patron:"dalmata", emoji:"🐶" },
   { id:"payasa",  nombre:"Payasa",    W:"#FDFDFD", w:"#EDEDED", nivel:170, patron:"payaso", emoji:"🤡", caraPropia:true },
-  { id:"verde",   nombre:"Verde GBH", W:"#89E219", w:"#58CC02", nivel:200 },
+  { id:"verde",   nombre:"Verde GBH", W:T.g2, w:T.g1, nivel:200 },  // la ÚNICA skin tokenizada: se llama como la marca, sigue al tema
   { id:"esqueleto", nombre:"Esqueleto", W:"#3E3E3E", w:"#2A2A2A", nivel:230, patron:"esqueleto", emoji:"💀", caraPropia:true },
   { id:"arcoiris", nombre:"Arcoíris", W:"#FDF6E3", w:"#E3D5B3", nivel:310, patron:"arcoiris", emoji:"🌈" },
   { id:"dorada",  nombre:"Dorada",    W:"#FFD84D", w:"#E0B000", nivel:400 },
@@ -1932,7 +1989,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
     const TEMAS = {
       noche: {
         familia: "runner",
-        cielo: "#4A2C4E", cieloBottom: "#C25E3A", suelo: "#2B7A00", hierba: "rgba(137,226,25,0.4)",
+        cielo: "#4A2C4E", cieloBottom: "#C25E3A", suelo: T.g3, hierba: alpha(T.g2,0.4),
         sol: "rgba(255,210,120,0.55)",
         obstaculo: "lobo",            // lobos que saltar
         volador: "cuervo",            // cuervos que rebotan
@@ -2481,7 +2538,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
         gp.addColorStop(0, tema.prado1); gp.addColorStop(1, tema.prado2);
         ctx.fillStyle = gp; ctx.fillRect(0, 0, W, H);
         // Hierba que baja por márgenes y separaciones (vende la carrera)
-        ctx.fillStyle = "rgba(137,226,25,0.4)";
+        ctx.fillStyle = alpha(T.g2,0.4);
         const fase2 = st.faseCamino || 0;
         [7, 112, 220, 328, 13, 118, 226, 333].forEach((gx, gi) => {
           for (let fi = 0; fi < 5; fi++) {
@@ -2532,7 +2589,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
           ctx.fillStyle = "#9A6E12"; ctx.beginPath(); ctx.ellipse(cx, cy, ancho + 2.5, 14, 0, 0, 7); ctx.fill();
           // cara
           const cg = ctx.createLinearGradient(cx - ancho, cy, cx + ancho, cy);
-          cg.addColorStop(0, "#E0A800"); cg.addColorStop(0.5, "#FFE066"); cg.addColorStop(1, "#D89A00");
+          cg.addColorStop(0, "#E0A800"); cg.addColorStop(0.5, T.llama1); cg.addColorStop(1, "#D89A00");
           ctx.fillStyle = cg; ctx.beginPath(); ctx.ellipse(cx, cy, ancho, 12, 0, 0, 7); ctx.fill();
           // borde interior
           ctx.strokeStyle = "#B8860B"; ctx.lineWidth = 1.5;
@@ -2686,17 +2743,17 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
           ctx.beginPath(); ctx.ellipse(jx + 42, jy + 42, 40, 42, 0, 0, 7); ctx.fill();
           ctx.fillStyle = "#E8EAED";
           ctx.beginPath(); ctx.ellipse(jx + 42, jy + 60, 22, 20, 0, 0, 7); ctx.fill();
-          P2(jx + 22, jy + 28, 12, 9, "#FFC800"); P2(jx + 50, jy + 28, 12, 9, "#FFC800");
+          P2(jx + 22, jy + 28, 12, 9, T.au1); P2(jx + 50, jy + 28, 12, 9, T.au1);
           P2(jx + 26, jy + 30, 5, 6, "#111"); P2(jx + 54, jy + 30, 5, 6, "#111");
           P2(jx + 37, jy + 52, 10, 7, "#161616");
           P2(jx + 30, jy + 72, 4, 7, "#FFFFFF"); P2(jx + 50, jy + 72, 4, 7, "#FFFFFF");
-          ctx.fillStyle = "#FFC800";
+          ctx.fillStyle = T.au1;
           ctx.beginPath(); ctx.moveTo(jx + 20, jy + 2); ctx.lineTo(jx + 26, jy - 16); ctx.lineTo(jx + 34, jy);
           ctx.lineTo(jx + 42, jy - 18); ctx.lineTo(jx + 50, jy); ctx.lineTo(jx + 58, jy - 16);
           ctx.lineTo(jx + 64, jy + 2); ctx.closePath(); ctx.fill();
           ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(jx - 2, jy - 36, 88, 10);
-          ctx.fillStyle = "#FF4B4B"; ctx.fillRect(jx, jy - 34, 84, 6);
-          ctx.fillStyle = "#58CC02"; ctx.fillRect(jx, jy - 34, 84 * (st.jefe.hp / st.jefe.max), 6);
+          ctx.fillStyle = T.red; ctx.fillRect(jx, jy - 34, 84, 6);
+          ctx.fillStyle = T.g1; ctx.fillRect(jx, jy - 34, 84 * (st.jefe.hp / st.jefe.max), 6);
           // Aviso de disparo: brillo naranja creciente en la boca
           if (st.jefeCarga > 0) {
             const cr2 = 5 + st.jefeCarga * 11;
@@ -2785,8 +2842,8 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
             ctx.fillStyle = "#E8EAED";
             ctx.beginPath(); ctx.ellipse(ox2, ly2 + 41, 14, 12, 0, 0, 7); ctx.fill();
             const P3 = (x, y, w, h, col) => { ctx.fillStyle = col; ctx.fillRect(x, y, w, h); };
-            P3(ox2 - 12, ly2 + 20, 9, 7, "#FFC800");
-            P3(ox2 + 3,  ly2 + 20, 9, 7, "#FFC800");
+            P3(ox2 - 12, ly2 + 20, 9, 7, T.au1);
+            P3(ox2 + 3,  ly2 + 20, 9, 7, T.au1);
             P3(ox2 - 9, ly2 + 22, 4, 5, "#111");
             P3(ox2 + 6, ly2 + 22, 4, 5, "#111");
             P3(ox2 - 4, ly2 + 35, 8, 6, "#161616");
@@ -2806,7 +2863,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
           ctx.font = "bold 17px system-ui"; ctx.textAlign = "center";
           ctx.lineWidth = 4; ctx.strokeStyle = `rgba(247,240,224,${a})`;
           ctx.strokeText("+4", f.x + 7, f.y);
-          ctx.fillStyle = `rgba(43,122,0,${a})`;
+          ctx.fillStyle = alpha(T.g3,a);
           ctx.fillText("+4", f.x + 7, f.y);
           ctx.textAlign = "left";
         });
@@ -2814,15 +2871,15 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
         [[-1, 12], [1, W - 64]].forEach(([d, bx]) => {
           const activo = st.flechaFlash && st.flechaFlash.d === d && st.flechaFlash.t > 0;
           const by = H - 112 + (activo ? 3 : 0);
-          ctx.fillStyle = "#A07800";
+          ctx.fillStyle = T.au3;
           rr(bx, by + 4, 52, 84, 14); ctx.fill();
           const gb = ctx.createLinearGradient(0, by, 0, by + 84);
-          if (activo) { gb.addColorStop(0, "#89E219"); gb.addColorStop(1, "#58CC02"); }
+          if (activo) { gb.addColorStop(0, T.g2); gb.addColorStop(1, T.g1); }
           else { gb.addColorStop(0, "#2E7A0A"); gb.addColorStop(1, "#1C4D05"); }
           ctx.fillStyle = gb; rr(bx, by, 52, 84, 14); ctx.fill();
-          ctx.strokeStyle = "#FFC800"; ctx.lineWidth = activo ? 3 : 2.5;
+          ctx.strokeStyle = T.au1; ctx.lineWidth = activo ? 3 : 2.5;
           rr(bx, by, 52, 84, 14); ctx.stroke();
-          ctx.fillStyle = activo ? "#0A1A0F" : "#FFC800";
+          ctx.fillStyle = activo ? T.bg : T.au1;
           ctx.beginPath();
           if (d < 0) { ctx.moveTo(bx + 35, by + 20); ctx.lineTo(bx + 15, by + 42); ctx.lineTo(bx + 35, by + 64); }
           else       { ctx.moveTo(bx + 17, by + 20); ctx.lineTo(bx + 37, by + 42); ctx.lineTo(bx + 17, by + 64); }
@@ -2897,7 +2954,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
         ctx.fillStyle = `rgba(255,255,255,${st.transicion * 0.6})`;
         ctx.fillRect(0, 0, W, H);
       }
-      ctx.fillStyle = st.modo === "noche" ? "#DDE4F5" : "#F7F0E0";
+      ctx.fillStyle = st.modo === "noche" ? "#DDE4F5" : T.cr;
       ctx.font = "bold 20px monospace";
       ctx.lineWidth = 3.5; ctx.strokeStyle = "rgba(0,0,0,0.55)";
       ctx.strokeText(String(st.score).padStart(4, "0"), W - 76, 32);
@@ -2907,7 +2964,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
         ctx.textAlign = "center";
         ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.font = "bold 22px system-ui";
         ctx.fillText("¡Prepárate!", W / 2, H / 2 - 76);
-        ctx.fillStyle = "#89E219"; ctx.font = "bold 120px system-ui";
+        ctx.fillStyle = T.g2; ctx.font = "bold 120px system-ui";
         ctx.fillText(String(cuentaRef.current), W / 2, H / 2 + 38);
 
         ctx.textAlign = "left";
@@ -2942,7 +2999,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
       {!jugando && !fin && (
         <div style={{ display: "flex", justifyContent: "center", padding: "12px 6px" }}>
           <div style={{ position: "relative", width: "100%", maxWidth: 340, margin: "auto",
-            background: "linear-gradient(160deg, rgba(88,204,2,0.10), rgba(21,34,16,0.6))",
+            background: `linear-gradient(160deg, ${alpha(T.g1,0.10)}, ${alpha(T.bgCard,0.6)})`,
             border: `2.5px solid ${T.g1}`, borderRadius: 24, padding: "26px 22px 28px",
             textAlign: "center", boxShadow: "0 8px 30px rgba(0,0,0,0.4)" }}>
             {/* esquinas decorativas */}
@@ -2973,11 +3030,11 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
               <span style={{ color: T.t2 }}>Semana: <b style={{ color: T.au1 }}>{puntosSemana} pts</b></span>
             </div>
             <button onClick={onPagarYJugar} disabled={partidasProp === 0}
-              style={{ background: partidasProp > 0 ? "linear-gradient(180deg,#89E219,#58CC02)" : "rgba(255,255,255,0.1)",
-                border: "none", borderRadius: 18, color: partidasProp > 0 ? "#0A1A0F" : T.t3,
+              style={{ background: partidasProp > 0 ? `linear-gradient(180deg,${T.g2},${T.g1})` : "rgba(255,255,255,0.1)",
+                border: "none", borderRadius: 18, color: partidasProp > 0 ? T.bg : T.t3,
                 fontWeight: 900, fontSize: 18, padding: "15px 40px",
                 cursor: partidasProp > 0 ? "pointer" : "not-allowed", fontFamily: "inherit",
-                boxShadow: partidasProp > 0 ? "0 5px 0 #2B7A00" : "none",
+                boxShadow: partidasProp > 0 ? `0 5px 0 ${T.g3}` : "none",
                 display: "inline-flex", alignItems: "center", gap: 10 }}>
               ▶ Jugar <span style={{ fontSize: 19 }}>💎</span>
             </button>
@@ -3011,9 +3068,9 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
                       <button key={jj.id} onClick={() => setModoElegido(jj.id)}
                         style={{ width: 46, height: 46, borderRadius: "50%", padding: 0, cursor: "pointer",
                           background: jj.css, fontFamily: "inherit",
-                          border: `2.5px solid ${modoElegido === jj.id ? "#FFC800" : jj.borde}`,
+                          border: `2.5px solid ${modoElegido === jj.id ? "${T.au1}" : jj.borde}`,
                           boxShadow: modoElegido === jj.id
-                            ? "0 0 12px rgba(255,200,0,0.65), 0 3px 0 #A07800"
+                            ? `0 0 12px ${alpha(T.au1,0.65)}, 0 3px 0 ${T.au3}`
                             : "0 3px 6px rgba(0,0,0,0.4)",
                           transform: modoElegido === jj.id ? "scale(1.12)" : "scale(1)",
                           transition: "all 0.15s",
@@ -3052,17 +3109,17 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
       {/* Fin de partida */}
       {jugando && fin && (
         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column",
-          alignItems: "center", justifyContent: "center", gap: 8, background: "rgba(10,26,15,0.85)",
+          alignItems: "center", justifyContent: "center", gap: 8, background: alpha(T.bg,0.85),
           borderRadius: 14, animation: "popIn .2s ease-out", padding: "0 16px" }}>
           <div style={{ fontWeight: 900, fontSize: 16 }}>💥 ¡{nombre} ha tropezado!</div>
-          <div style={{ fontSize: 13, color: "#FFC800", fontWeight: 800 }}>Puntos: {score} · Récord: {best}</div>
-          <div style={{ fontSize: 12, color: "#89E219", fontWeight: 800 }}>
+          <div style={{ fontSize: 13, color: T.au1, fontWeight: 800 }}>Puntos: {score} · Récord: {best}</div>
+          <div style={{ fontSize: 12, color: T.g2, fontWeight: 800 }}>
             +{score} pts a tu marcador → esta semana llevas {puntosSemana}
           </div>
           <button onClick={() => { setJugando(false); setFin(false); onSalir && onSalir(); }}
-            style={{ background: "linear-gradient(180deg,#89E219,#58CC02)", border: "none",
-              borderRadius: 14, color: "#0A1A0F", fontWeight: 900, fontSize: 13.5, padding: "10px 20px",
-              cursor: "pointer", fontFamily: "inherit", boxShadow: "0 3px 0 #2B7A00" }}>
+            style={{ background: `linear-gradient(180deg,${T.g2},${T.g1})`, border: "none",
+              borderRadius: 14, color: T.bg, fontWeight: 900, fontSize: 13.5, padding: "10px 20px",
+              cursor: "pointer", fontFamily: "inherit", boxShadow: `0 3px 0 ${T.g3}` }}>
             Volver
           </button>
           <div style={{ fontSize: 10.5, color: "rgba(255,255,255,0.4)", textAlign: "center" }}>
@@ -3083,7 +3140,7 @@ function Desple({ titulo, resumen, open, onToggle, children }) {
   return (
     <div style={{ marginTop:8 }}>
       <button onClick={onToggle}
-        style={{ width:"100%", background: open ? "rgba(88,204,2,0.10)" : "rgba(255,255,255,0.04)",
+        style={{ width:"100%", background: open ? alpha(T.g1,0.10) : "rgba(255,255,255,0.04)",
           border:`2px solid ${open ? T.bG : "rgba(255,255,255,0.10)"}`, borderRadius:13,
           color:T.cr, fontWeight:900, fontSize:12.5, padding:"10px 12px", cursor:"pointer",
           fontFamily:"inherit", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
@@ -3121,7 +3178,7 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
 
   const btn = (active) => ({
     padding:"8px 12px", borderRadius:14, border:`2px solid ${active ? T.g1 : "rgba(255,255,255,0.12)"}`,
-    background: active ? "rgba(88,204,2,0.18)" : "rgba(255,255,255,0.04)",
+    background: active ? alpha(T.g1,0.18) : "rgba(255,255,255,0.04)",
     color: active ? T.g2 : T.t2, fontWeight:700, fontSize:13, cursor:"pointer",
     fontFamily:"inherit", transition:"all .15s",
   });
@@ -3313,9 +3370,9 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
 
               {/* Conjuntos temáticos (desplegable, al final) */}
               <button onClick={() => setVerConjuntos(v => !v)}
-                style={{ width:"100%", marginTop:16, background: verConjuntos ? "rgba(206,130,255,0.12)" : "rgba(255,255,255,0.05)",
-                  border:`2px solid ${verConjuntos ? "rgba(206,130,255,0.4)" : "rgba(255,255,255,0.12)"}`,
-                  borderRadius:14, color: verConjuntos ? "#CE82FF" : T.cr, fontWeight:900, fontSize:13.5,
+                style={{ width:"100%", marginTop:16, background: verConjuntos ? alpha(T.pur,0.12) : "rgba(255,255,255,0.05)",
+                  border:`2px solid ${verConjuntos ? "${alpha(T.pur,0.4)}" : "rgba(255,255,255,0.12)"}`,
+                  borderRadius:14, color: verConjuntos ? T.pur : T.cr, fontWeight:900, fontSize:13.5,
                   padding:"10px 0", cursor:"pointer", fontFamily:"inherit" }}>
                 🎭 Conjuntos completos {verConjuntos ? "▲" : "▼"}
               </button>
@@ -3347,8 +3404,8 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
 
               {/* Reseteo a la oveja original */}
               <button onClick={resetear}
-                style={{ width:"100%", marginTop:10, marginBottom:8, background:"rgba(255,75,75,0.08)",
-                  border:"2px solid rgba(255,75,75,0.3)", borderRadius:13, color:"#FF8A8A",
+                style={{ width:"100%", marginTop:10, marginBottom:8, background:alpha(T.red,0.08),
+                  border:`2px solid ${alpha(T.red,0.3)}`, borderRadius:13, color:"#FF8A8A",
                   fontWeight:900, fontSize:12.5, padding:"10px 0", cursor:"pointer",
                   fontFamily:"inherit" }}>
                 ↺ Restablecer oveja original
@@ -3363,9 +3420,9 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
                   borderTop:"1px solid rgba(255,255,255,0.08)",
                   boxShadow:"0 -10px 22px -10px rgba(0,0,0,0.55)" }}>
                   <button onClick={() => onCerrar()}
-                    style={{ width:"100%", background:`linear-gradient(180deg,#89E219,#58CC02)`,
-                      border:"none", borderRadius:16, color:"#0A1A0F", fontWeight:900, fontSize:16,
-                      padding:"14px 0", cursor:"pointer", fontFamily:"inherit", boxShadow:"0 4px 0 #2B7A00" }}>
+                    style={{ width:"100%", background:`linear-gradient(180deg,${T.g2},${T.g1})`,
+                      border:"none", borderRadius:16, color:T.bg, fontWeight:900, fontSize:16,
+                      padding:"14px 0", cursor:"pointer", fontFamily:"inherit", boxShadow:`0 4px 0 ${T.g3}` }}>
                     ✓ Aplicar cambios
                   </button>
                 </div>
@@ -3485,7 +3542,7 @@ function AltaBo({lang, setLang, emailInicial, onVolver, onLogin, onCrear, css}){
           <div style={{flex:1,fontWeight:900,fontSize:14,color:T.g2}}>{EN?'Sign-up with Bo':'Tu alta con Bo'} 🐑</div>
           {[{code:'es',flag:'🇪🇸'},{code:'en',flag:'🇬🇧'}].map(({code,flag})=>(
             <button key={code} onClick={()=>{ lsSet('gbh:lang',code); setLang(code); }}
-              style={{fontSize:16,background:lang===code?'rgba(88,204,2,0.2)':'rgba(255,255,255,0.08)',
+              style={{fontSize:16,background:lang===code?'rgba(45,155,90,0.2)':'rgba(255,255,255,0.08)',
                 border:`2px solid ${lang===code?T.g1:'rgba(255,255,255,0.15)'}`,borderRadius:9,padding:'2px 6px',cursor:'pointer'}}>
               {flag}
             </button>
@@ -3506,13 +3563,13 @@ function AltaBo({lang, setLang, emailInicial, onVolver, onLogin, onCrear, css}){
           </div>
         ):(
           <div key={i} style={{display:'flex',justifyContent:'flex-end',marginBottom:12,animation:'scaleIn 0.25s'}}>
-            <div style={{background:'rgba(88,204,2,0.16)',border:`1.5px solid ${T.g1}`,borderRadius:'18px 18px 6px 18px',padding:'11px 14px',maxWidth:'78%',fontSize:14,fontWeight:800,color:T.g2,fontFamily:"'DM Sans',sans-serif"}}>
+            <div style={{background:'rgba(45,155,90,0.16)',border:`1.5px solid ${T.g1}`,borderRadius:'18px 18px 6px 18px',padding:'11px 14px',maxWidth:'78%',fontSize:14,fontWeight:800,color:T.g2,fontFamily:"'DM Sans',sans-serif"}}>
               {m.tx}
             </div>
           </div>
         ))}
         {cuentaExiste&&(
-          <div style={{background:'rgba(88,204,2,0.10)',border:`1.5px solid ${T.g3}`,borderRadius:16,padding:'14px 16px',marginBottom:12}}>
+          <div style={{background:'rgba(45,155,90,0.10)',border:`1.5px solid ${T.g3}`,borderRadius:16,padding:'14px 16px',marginBottom:12}}>
             <div style={{fontSize:13.5,fontWeight:900,color:T.g2,marginBottom:4}}>
               {EN?`We already know each other${cuentaExiste.nombre?`, ${cuentaExiste.nombre.split(' ')[0]}`:''}! 👋`
                  :`¡Ya nos conocemos${cuentaExiste.nombre?`, ${cuentaExiste.nombre.split(' ')[0]}`:''}! 👋`}
@@ -3627,7 +3684,7 @@ function TutorialOverlay({targetSel, texto, onSkip, onNext, lang, boNombre, avat
   const bubbleRef=React.useRef(null);
   React.useEffect(()=>{ setMini(false); },[targetSel,texto]);
   React.useEffect(()=>{
-    if(onNext||children) return;                 // pasos informativos o con selector: no auto-apartar
+    if(onNext||children) return;
     const h=(e)=>{ try{ if(bubbleRef.current&&bubbleRef.current.contains(e.target)) return; }catch{} setMini(true); };
     document.addEventListener('pointerdown',h,true);
     return ()=>document.removeEventListener('pointerdown',h,true);
@@ -3745,7 +3802,7 @@ function TutoCierre({nombre, boNombre, boColor, boEquipados, lang, onFin}){
       </div>
       <div style={{display:'flex',flexDirection:'column',gap:8,margin:'12px 0 6px',width:'100%',maxWidth:320}}>
         {hechos.map((h,i)=>(
-          <div key={i} style={{display:'flex',alignItems:'center',gap:10,background:'rgba(88,204,2,0.10)',
+          <div key={i} style={{display:'flex',alignItems:'center',gap:10,background:'rgba(45,155,90,0.10)',
             border:`1.5px solid ${T.bG}`,borderRadius:14,padding:'11px 14px',
             animation:`slideInLeft 0.4s ${0.15+i*0.12}s both cubic-bezier(0.34,1.12,0.64,1)`}}>
             <span style={{fontSize:17}}>✅</span>
@@ -3790,8 +3847,9 @@ function Mascot({expr="idle",size=200}){
   const H1="#8B6040",H2="#A07848",H3="#5A3020";
   const F1="#6DBF72",F2="#88CC8A";
   const EY="#1A1414",SH="#FFFFFF";
-  const BL="#FF9999",TE="#64B5F6",MO="#4A2A18";
-  const GD="#FFD700",GD2="#FFA000";
+  const BL="#FF9999",TE="#64B5F6",MO="#4A2A18";  // ARTE del Mascot: TE coincide con
+  const GD="#FFD700",GD2="#FFA000";              // T.platos y GD con T.moneda por
+  // casualidad — NO tokenizar: si el tema cambia, este dibujo no debe cambiar.
   const HT="#8090A0";
 
   const Body=()=>(
@@ -3947,7 +4005,7 @@ function Mascot({expr="idle",size=200}){
 
   return(
     <div style={{position:"relative",width:size,height:size,flexShrink:0}}>
-      {glow&&<div style={{position:"absolute",inset:-Math.round(size*0.12),borderRadius:"50%",background:`radial-gradient(circle,${expr==="legend"?"rgba(255,200,0,0.45)":"rgba(88,204,2,0.35)"} 0%,transparent 65%)`,animation:"aura 2.5s ease-in-out infinite",pointerEvents:"none"}}/>}
+      {glow&&<div style={{position:"absolute",inset:-Math.round(size*0.12),borderRadius:"50%",background:`radial-gradient(circle,${expr==="legend"?"${alpha(T.au1,0.45)}":"${alpha(T.g1,0.35)}"} 0%,transparent 65%)`,animation:"aura 2.5s ease-in-out infinite",pointerEvents:"none"}}/>}
       <svg viewBox="0 0 48 48" width={size} height={size} style={{display:"block",overflow:"visible"}}>
         <Body/>
         {Expr[expr]||Expr.idle}
@@ -4129,7 +4187,7 @@ function WeekPath({logs,onOpenChest}){
                   animation:day.isToday&&!day.done?"pulse 2s ease-in-out infinite":"none",
                   transition:"all 0.3s",
                 }}>
-                  {day.done?<span style={{fontSize:16,color:"white",fontWeight:900}}>✓</span>
+                  {day.done?<span style={{fontSize:16,color:T.t1,fontWeight:900}}>✓</span>
                   :<span style={{fontSize:10,fontWeight:900,color:day.isToday?"#1A1000":T.t3}}>{day.label}</span>}
                 </div>
                 {day.isToday&&<div style={{width:5,height:5,borderRadius:"50%",background:T.au1,boxShadow:`0 0 8px ${T.au1}`}}/>}
@@ -4148,7 +4206,7 @@ function WeekPath({logs,onOpenChest}){
           style={{
             width:52,height:52,borderRadius:16,flexShrink:0,
             background:chestReady?'linear-gradient(135deg,'+T.au1+','+T.au2+')'
-              :weekUnlocked&&chestOpened?`linear-gradient(135deg,rgba(88,204,2,0.3),rgba(43,122,0,0.2))`
+              :weekUnlocked&&chestOpened?`linear-gradient(135deg,${alpha(T.g1,0.3)},${alpha(T.g3,0.2)})`
               :"rgba(255,255,255,0.06)",
             border:`3px solid ${chestReady?T.au1:weekUnlocked&&chestOpened?T.g1:"rgba(255,255,255,0.1)"}`,
             display:"flex",alignItems:"center",justifyContent:"center",
@@ -4175,12 +4233,12 @@ function WeekPath({logs,onOpenChest}){
 function BigBtn({icon,label,done,onClick}){
   const t=useLang();
   return done?(
-    <div style={{background:`linear-gradient(135deg,rgba(43,122,0,0.5),rgba(88,204,2,0.25))`,border:`3px solid ${T.g1}`,borderRadius:20,padding:"17px 20px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"center",gap:12,boxShadow:`0 6px 0 ${T.g3}`}}>
+    <div style={{background:`linear-gradient(135deg,${alpha(T.g3,0.5)},${alpha(T.g1,0.25)})`,border:`3px solid ${T.g1}`,borderRadius:20,padding:"17px 20px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"center",gap:12,boxShadow:`0 6px 0 ${T.g3}`}}>
       <span style={{fontSize:28}}>✅</span>
       <span style={{fontWeight:900,fontSize:16,color:T.g2}}>{t("dietDone")}</span>
     </div>
   ):(
-    <button onClick={onClick} style={{width:"100%",padding:"18px 20px",borderRadius:20,border:`3px solid ${T.g3}`,cursor:"pointer",fontSize:17,fontWeight:900,background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"white",boxShadow:`0 6px 0 ${T.g3}`,transition:"all 0.15s",letterSpacing:"0.02em",display:"flex",alignItems:"center",justifyContent:"center",gap:14,animation:"glow 2.5s ease-in-out infinite",marginBottom:12,fontFamily:"'Nunito',sans-serif"}}>
+    <button onClick={onClick} style={{width:"100%",padding:"18px 20px",borderRadius:20,border:`3px solid ${T.g3}`,cursor:"pointer",fontSize:17,fontWeight:900,background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,boxShadow:`0 6px 0 ${T.g3}`,transition:"all 0.15s",letterSpacing:"0.02em",display:"flex",alignItems:"center",justifyContent:"center",gap:14,animation:"glow 2.5s ease-in-out infinite",marginBottom:12,fontFamily:"'Nunito',sans-serif"}}>
       <span style={{fontSize:28}}>🍽️</span>{label}
     </button>
   );
@@ -4192,6 +4250,25 @@ function BigBtn({icon,label,done,onClick}){
 // registrar se ve apagado. La tarjeta se pone verde al registrar TODAS las tomas.
 function MealBtns({tomas, meals, done, lang, onTap}){
   const reg = tomas.filter(tm=>meals[tm]).length;
+  // ── Micro-feedback al marcar (Tarea B del brief de "juice") ────────────────
+  // Marcar una toma es el gesto MÁS repetido de la app (5/día): pop de escala
+  // en el botón (bounceIn, ya existente) + el icono del estado subiendo y
+  // desvaneciéndose (floatUp, ya existente). Sin overlays, sin bloquear nada.
+  // Se detecta la transición sin-registro → registrada comparando con el render
+  // anterior, así el pop salta igual si la marca viene del tap aquí o del plan
+  // diario (onMealRegistered repinta este mismo `meals`).
+  // Con prefers-reduced-motion no se anima: el color y el emoji ya informan.
+  const [pops,setPops]=React.useState({});          // {toma:true} animación en curso
+  const prevMealsRef=React.useRef(meals);
+  React.useEffect(()=>{
+    const antes=prevMealsRef.current||{}; prevMealsRef.current=meals;
+    const nuevas=tomas.filter(tm=>meals[tm]&&!antes[tm]);
+    if(!nuevas.length||REDUCED_MOTION()) return;
+    setPops(p=>{const n={...p}; nuevas.forEach(tm=>n[tm]=true); return n;});
+    const id=setTimeout(()=>setPops(p=>{const n={...p}; nuevas.forEach(tm=>delete n[tm]); return n;}),750);
+    return ()=>clearTimeout(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[meals,tomas]);
   // ── Oveja-guía 🐑: señala la toma de la franja horaria actual (hora local del
   // móvil). Se recoloca sola cada minuto por si la app queda abierta. Con tomas
   // ausentes (p. ej. sin merienda), apunta a la última toma cuya franja empezó.
@@ -4203,7 +4280,7 @@ function MealBtns({tomas, meals, done, lang, onTap}){
     ? {Desayuno:"BRKFST",Almuerzo:"SNACK 1",Comida:"LUNCH",Merienda:"SNACK 2",Cena:"DINNER"}
     : {Desayuno:"DESAY.",Almuerzo:"ALMUER.",Comida:"COMIDA",Merienda:"MERIEN.",Cena:"CENA"};
   return(
-    <div style={{background:done?"linear-gradient(135deg,rgba(43,122,0,0.5),rgba(88,204,2,0.25))":T.bgWood,
+    <div style={{background:done?`linear-gradient(135deg,${alpha(T.g3,0.5)},${alpha(T.g1,0.25)})`:T.bgWood,
       border:`3px solid ${done?T.g1:T.g3}`,borderRadius:20,padding:"13px 12px 11px",marginBottom:12,
       boxShadow:`0 6px 0 ${done?T.g3:"rgba(0,0,0,0.4)"}`,transition:"all 0.25s"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:10}}>
@@ -4235,11 +4312,20 @@ function MealBtns({tomas, meals, done, lang, onTap}){
           return(
             <button key={tm} onClick={()=>onTap(tm)} title={tm} style={{
               flex:1,maxWidth:72,minWidth:0,display:"flex",flexDirection:"column",alignItems:"center",gap:3,
+              position:"relative",
               background:est?c+"2e":"rgba(255,255,255,0.06)",
               border:`2px solid ${est?c:"rgba(255,255,255,0.16)"}`,
               borderRadius:14,padding:"9px 2px 7px",cursor:"pointer",
               boxShadow:est?`0 3px 0 ${c}55`:"0 3px 0 rgba(0,0,0,0.35)",
-              transition:"all 0.15s",fontFamily:"'Nunito',sans-serif"}}>
+              transition:"all 0.15s",fontFamily:"'Nunito',sans-serif",
+              animation:pops[tm]?"bounceIn 0.45s cubic-bezier(0.34,1.56,0.64,1)":"none"}}>
+              {/* Partícula: el icono del estado sube y se desvanece (solo transform+opacity) */}
+              {pops[tm]&&(
+                <span style={{position:"absolute",top:-4,left:"50%",marginLeft:-8,fontSize:15,lineHeight:1,
+                  animation:"floatUp 0.75s ease-out forwards",pointerEvents:"none",zIndex:2}}>
+                  {info?.ic||"✅"}
+                </span>
+              )}
               <span style={{fontSize:19,lineHeight:1,filter:est?"none":"grayscale(0.55)"}}>{PLAN_TOMA_IC[tm]}</span>
               <span style={{fontSize:7.5,fontWeight:900,color:est?c:T.t3,letterSpacing:"0.02em",whiteSpace:"nowrap"}}>{LBL[tm]}</span>
               <span style={{fontSize:11,lineHeight:1}}>{est?(info?.ic||"✅"):<span style={{color:T.t3}}>○</span>}</span>
@@ -4258,10 +4344,16 @@ function MealBtns({tomas, meals, done, lang, onTap}){
 
 // ─── Mission row ──────────────────────────────────────────────────────────────
 function MRow({num,icon,label,done,onToggle,xpR=5,children}){
+  // ⚠️ Hook SIEMPRE arriba e incondicional. Antes, React.useContext se llamaba
+  // DENTRO del template `{done?`…${React.useContext(...)}`:""}`: al completar la
+  // misión, el componente pasaba de 0 a 1 hooks y React lanzaba "Rendered more
+  // hooks than during the previous render" — el ErrorBoundary se tragaba el
+  // crash y la celebración nunca llegaba a pintarse en el móvil.
+  const lang=React.useContext(LangCtx);
   return(
-    <div style={{background:done?`linear-gradient(135deg,rgba(43,122,0,0.45),rgba(88,204,2,0.2))`:T.bgCard,border:`2px solid ${done?T.g1:T.bW}`,borderRadius:20,padding:"14px 16px",marginBottom:10,boxShadow:done?`0 5px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)",transition:"all 0.2s",transform:done?"scale(1.01)":"scale(1)"}}>
+    <div style={{background:done?`linear-gradient(135deg,${alpha(T.g3,0.45)},${alpha(T.g1,0.2)})`:T.bgCard,border:`2px solid ${done?T.g1:T.bW}`,borderRadius:20,padding:"14px 16px",marginBottom:10,boxShadow:done?`0 5px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)",transition:"all 0.2s",transform:done?"scale(1.01)":"scale(1)"}}>
       <div style={{display:"flex",alignItems:"center",gap:14}}>
-        <div style={{width:38,height:38,borderRadius:14,background:done?T.g1:T.bW,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontWeight:900,fontSize:16,color:"white",boxShadow:done?`0 3px 0 ${T.g3}`:"0 3px 0 rgba(0,0,0,0.5)",border:`2px solid ${done?T.g3:"rgba(255,255,255,0.1)"}`}}>
+        <div style={{width:38,height:38,borderRadius:14,background:done?T.g1:T.bW,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontWeight:900,fontSize:16,color:T.t1,boxShadow:done?`0 3px 0 ${T.g3}`:"0 3px 0 rgba(0,0,0,0.5)",border:`2px solid ${done?T.g3:"rgba(255,255,255,0.1)"}`}}>
           {done?"✓":num}
         </div>
         <div style={{flex:1}}>
@@ -4269,12 +4361,12 @@ function MRow({num,icon,label,done,onToggle,xpR=5,children}){
             <span style={{fontSize:22}}>{icon}</span>
             <div>
               <div style={{fontSize:14,fontWeight:800,color:done?T.t1:"rgba(255,255,255,0.55)"}}>{label}</div>
-              <div style={{fontSize:11,color:T.au1,fontWeight:700}}>+{xpR} XP{done?` · ${React.useContext(LangCtx)==="en"?"Completed!":"¡Completado!"}`:""}</div>
+              <div style={{fontSize:11,color:T.au1,fontWeight:700}}>+{xpR} XP{done?` · ${lang==="en"?"Completed!":"¡Completado!"}`:""}</div>
             </div>
           </div>
         </div>
         <button onClick={onToggle} style={{width:30,height:30,borderRadius:10,border:`2.5px solid ${done?T.g1:"rgba(255,255,255,0.15)"}`,background:done?T.g1:"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,transition:"all 0.2s"}}>
-          {done&&<span style={{fontSize:14,color:"white",fontWeight:900}}>✓</span>}
+          {done&&<span style={{fontSize:14,color:T.t1,fontWeight:900}}>✓</span>}
         </button>
       </div>
       {children&&<div style={{marginTop:10}}>{children}</div>}
@@ -4287,9 +4379,9 @@ function StepsWidget({done,stepCount,onToggle,onUpdateSteps}){
   const t=useLang();
   const pct=Math.min((stepCount/10000)*100,100);
   return(
-    <div style={{background:done?`linear-gradient(135deg,rgba(43,122,0,0.45),rgba(88,204,2,0.2))`:T.bgCard,border:`2px solid ${done?T.g1:T.bW}`,borderRadius:20,padding:"14px 16px",marginBottom:10,boxShadow:done?`0 5px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)"}}>
+    <div style={{background:done?`linear-gradient(135deg,${alpha(T.g3,0.45)},${alpha(T.g1,0.2)})`:T.bgCard,border:`2px solid ${done?T.g1:T.bW}`,borderRadius:20,padding:"14px 16px",marginBottom:10,boxShadow:done?`0 5px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)"}}>
       <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:12}}>
-        <div style={{width:38,height:38,borderRadius:14,background:done?T.g1:T.bW,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontWeight:900,fontSize:16,color:"white",boxShadow:done?`0 3px 0 ${T.g3}`:"0 3px 0 rgba(0,0,0,0.5)",border:`2px solid ${done?T.g3:"rgba(255,255,255,0.1)"}`}}>
+        <div style={{width:38,height:38,borderRadius:14,background:done?T.g1:T.bW,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontWeight:900,fontSize:16,color:T.t1,boxShadow:done?`0 3px 0 ${T.g3}`:"0 3px 0 rgba(0,0,0,0.5)",border:`2px solid ${done?T.g3:"rgba(255,255,255,0.1)"}`}}>
           {done?"✓":"3"}
         </div>
         <div style={{flex:1}}>
@@ -4323,46 +4415,34 @@ const CTip=({active,payload})=>{
 };
 
 // ─── Streak overlay (Duolingo-style, negro) ───────────────────────────────────
-// ─── StreakCelebrationOverlay — oveja pixelart + llama que sube de nivel ──────
-function StreakOverlay({active, streak}){
-  if(!active) return null;
-  const t = useLang();
-  const lang = lsGet("gbh:lang","es");
+// ─── StreakCelebrationOverlay — LA OVEJA DEL PACIENTE + llama que sube ────────
 
-  // Pixel-art sheep SVG inline (la mascota GBH en verde)
-  const SheepPixel = ({style={}})=>(
-    <svg width="80" height="80" viewBox="0 0 16 16" style={{imageRendering:"pixelated",...style}}>
-      {/* cuerpo — verde oscuro */}
-      <rect x="3" y="7" width="10" height="7" fill="#2E7D32"/>
-      {/* barriga más clara */}
-      <rect x="5" y="9" width="6" height="4" fill="#43A047"/>
-      {/* cabeza */}
-      <rect x="4" y="3" width="8" height="6" fill="#2E7D32"/>
-      {/* orejas */}
-      <rect x="2" y="4" width="2" height="3" fill="#388E3C"/>
-      <rect x="12" y="4" width="2" height="3" fill="#388E3C"/>
-      {/* ojos — blancos con pupila */}
-      <rect x="6" y="5" width="2" height="2" fill="white"/>
-      <rect x="9" y="5" width="2" height="2" fill="white"/>
-      <rect x="7" y="5" width="1" height="1" fill="#1B5E20"/>
-      <rect x="10" y="5" width="1" height="1" fill="#1B5E20"/>
-      {/* hocico */}
-      <rect x="6" y="7" width="4" height="2" fill="#A5D6A7"/>
-      {/* patas */}
-      <rect x="4" y="14" width="2" height="2" fill="#1B5E20"/>
-      <rect x="10" y="14" width="2" height="2" fill="#1B5E20"/>
-      {/* cuernos */}
-      <rect x="5" y="1" width="1" height="3" fill="#6D4C41"/>
-      <rect x="10" y="1" width="1" height="3" fill="#6D4C41"/>
-      <rect x="4" y="1" width="2" height="1" fill="#6D4C41"/>
-      <rect x="10" y="1" width="2" height="1" fill="#6D4C41"/>
-    </svg>
+// ── Punto ÚNICO de sustitución de la mascota en celebraciones (Tarea F) ──────
+// La celebración la protagoniza la MISMA oveja que el paciente tiene en Inicio:
+// su color, sus accesorios equipados y su nombre (bo_color / bo_equipados /
+// bo_nombre del perfil). Es SU oveja la que celebra con él — no una genérica.
+// Cuando llegue el Bo riggeado de fase 2 (Rive), se cambia SOLO este
+// componente: los overlays no se tocan.
+function MascotaCelebracion({color, equipados, size=88, style={}}){
+  return(
+    <div style={{width:size,height:size,...style}}>
+      <Sheep estado="feliz" color={color||"blanca"}
+        equipados={Array.isArray(equipados)?equipados:[]} size={size}/>
+    </div>
   );
+}
+
+function StreakOverlay({active, streak, boColor, boEquipados, boNombre}){
+  // Sin hooks en este componente (el useLang que había vivía TRAS el early
+  // return: 0→1 hooks al activarse, crash de React justo en la celebración,
+  // capturado por el ErrorBoundary → en el móvil el overlay nunca aparecía).
+  if(!active) return null;
+  const lang = lsGet("gbh:lang","es");
 
   // Llama SVG animada
   const Flame = ({size=80, glow=false})=>(
     <svg width={size} height={size*1.3} viewBox="0 0 40 52" style={{
-      filter:glow?"drop-shadow(0 0 12px #FF8C00) drop-shadow(0 0 24px #FF4500)":"drop-shadow(0 0 6px #FF8C00)",
+      filter:glow?`drop-shadow(0 0 12px ${T.llama2}) drop-shadow(0 0 24px ${T.llama4})`:`drop-shadow(0 0 6px ${T.llama2})`,
     }}>
       <path d="M20 50 C8 50 4 40 4 32 C4 20 12 16 12 8 C12 8 14 14 16 16 C16 8 20 2 20 2 C20 2 24 12 26 14 C28 10 28 6 28 6 C28 6 36 16 36 28 C36 40 32 50 20 50 Z"
         fill="url(#flameGrad)" style={{animation:"flameDance 0.4s ease-in-out infinite alternate"}}/>
@@ -4371,14 +4451,14 @@ function StreakOverlay({active, streak}){
         fill="url(#innerGrad)" opacity="0.9"/>
       <defs>
         <radialGradient id="flameGrad" cx="50%" cy="80%">
-          <stop offset="0%"  stopColor="#FFE066"/>
-          <stop offset="40%" stopColor="#FF8C00"/>
-          <stop offset="100%"stopColor="#FF3300"/>
+          <stop offset="0%"  stopColor={T.llama1}/>
+          <stop offset="40%" stopColor={T.llama2}/>
+          <stop offset="100%"stopColor={T.llama3}/>
         </radialGradient>
         <radialGradient id="innerGrad" cx="50%" cy="70%">
-          <stop offset="0%"  stopColor="#FFFFFF" stopOpacity="0.9"/>
-          <stop offset="60%" stopColor="#FFE066" stopOpacity="0.7"/>
-          <stop offset="100%"stopColor="#FF8C00" stopOpacity="0"/>
+          <stop offset="0%"  stopColor={T.wh} stopOpacity="0.9"/>
+          <stop offset="60%" stopColor={T.llama1} stopOpacity="0.7"/>
+          <stop offset="100%"stopColor={T.llama2} stopOpacity="0"/>
         </radialGradient>
       </defs>
     </svg>
@@ -4394,15 +4474,11 @@ function StreakOverlay({active, streak}){
     }}>
       <style>{`
         @keyframes sheepEntrance{
-          0%{transform:translateX(-140px) scaleX(-1);opacity:0}
-          30%{transform:translateX(0px) scaleX(-1);opacity:1}
-          60%{transform:translateX(0px) scaleX(-1)}
-          80%{transform:translateX(-8px) scaleX(-1)}
-          100%{transform:translateX(0px) scaleX(-1)}
-        }
-        @keyframes sheepBounce{
-          0%,100%{transform:translateY(0) scaleX(-1)}
-          50%{transform:translateY(-10px) scaleX(-1)}
+          0%{transform:translateX(-140px);opacity:0}
+          30%{transform:translateX(0px);opacity:1}
+          60%{transform:translateX(0px)}
+          80%{transform:translateX(-8px)}
+          100%{transform:translateX(0px)}
         }
         @keyframes flameGrow{
           0%{transform:scale(0.6);opacity:0.6}
@@ -4443,12 +4519,14 @@ function StreakOverlay({active, streak}){
       {/* Escena principal */}
       <div style={{display:"flex",alignItems:"flex-end",justifyContent:"center",gap:16,marginBottom:20}}>
 
-        {/* Oveja animada */}
+        {/* La oveja DEL PACIENTE entra en escena. Tras la entrada, su propia
+            animación de estado "feliz" (bounce infinito de Sheep) toma el relevo
+            — el antiguo sheepBounce del wrapper sobraba y hacía doble rebote. */}
         <div style={{
-          animation:"sheepEntrance 1.2s ease-out forwards, sheepBounce 0.6s 2.5s ease-in-out infinite",
+          animation:"sheepEntrance 1.2s ease-out forwards",
           transformOrigin:"bottom center",
         }}>
-          <SheepPixel style={{width:72,height:72}}/>
+          <MascotaCelebracion color={boColor} equipados={boEquipados} size={88}/>
         </div>
 
         {/* Llama que crece */}
@@ -4466,9 +4544,9 @@ function StreakOverlay({active, streak}){
         display:"flex",alignItems:"center",gap:12,
         animation:"streakNumPop 0.6s 1.8s cubic-bezier(0.34,1.56,0.64,1) both",
       }}>
-        <span style={{fontSize:90,lineHeight:1,filter:"drop-shadow(0 0 20px #FF6600)"}}>🔥</span>
+        <span style={{fontSize:90,lineHeight:1,filter:`drop-shadow(0 0 20px ${T.llamaGlow})`}}>🔥</span>
         <div style={{fontFamily:"'Nunito',sans-serif"}}>
-          <div style={{fontSize:88,fontWeight:900,color:"#FF6600",lineHeight:1,
+          <div style={{fontSize:88,fontWeight:900,color:T.llamaGlow,lineHeight:1,
             textShadow:"0 0 30px rgba(255,100,0,0.8), 0 4px 0 rgba(0,0,0,0.6)"}}>
             {streak}
           </div>
@@ -4480,14 +4558,16 @@ function StreakOverlay({active, streak}){
         marginTop:12,textAlign:"center",
         animation:"scaleIn 0.5s 2.2s both",
       }}>
-        <div style={{fontSize:22,fontWeight:900,color:"white",fontFamily:"'Nunito',sans-serif",
+        <div style={{fontSize:22,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif",
           letterSpacing:"0.04em",marginBottom:4}}>
           {lang==="en"
             ? `${streak} day${streak!==1?"s":""} on fire!`
             : `¡${streak} día${streak!==1?"s":""} de racha!`}
         </div>
         <div style={{fontSize:14,color:"rgba(255,180,100,0.8)",fontFamily:"'DM Sans',sans-serif"}}>
-          {lang==="en"?"Your sheep is proud of you 🐑":"Tu oveja está orgullosa de ti 🐑"}
+          {lang==="en"
+            ? `${boNombre||"Your sheep"} is proud of you 🐑`
+            : `${boNombre||"Tu oveja"} está orgullosa de ti 🐑`}
         </div>
       </div>
 
@@ -4501,8 +4581,8 @@ function MissionsOverlay({active}){
   return(
     <div style={{position:"fixed",inset:0,zIndex:10000,background:"#000",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",animation:"fadeInOut 2.8s ease forwards",pointerEvents:"none"}}>
       <div style={{fontSize:88,animation:"scaleIn 0.5s cubic-bezier(0.34,1.56,0.64,1)"}}>⭐</div>
-      <div style={{fontSize:32,fontWeight:900,color:"#FFC800",fontFamily:"'Nunito',sans-serif",marginTop:14,animation:"scaleIn 0.5s 0.15s cubic-bezier(0.34,1.56,0.64,1) both",textAlign:"center"}}>¡Día Perfecto!</div>
-      <div style={{fontSize:42,fontWeight:900,color:"#FFD700",fontFamily:"'Nunito',sans-serif",marginTop:8,animation:"scaleIn 0.6s 0.35s cubic-bezier(0.34,1.56,0.64,1) both",display:"flex",alignItems:"center",gap:10}}>
+      <div style={{fontSize:32,fontWeight:900,color:T.au1,fontFamily:"'Nunito',sans-serif",marginTop:14,animation:"scaleIn 0.5s 0.15s cubic-bezier(0.34,1.56,0.64,1) both",textAlign:"center"}}>¡Día Perfecto!</div>
+      <div style={{fontSize:42,fontWeight:900,color:T.moneda,fontFamily:"'Nunito',sans-serif",marginTop:8,animation:"scaleIn 0.6s 0.35s cubic-bezier(0.34,1.56,0.64,1) both",display:"flex",alignItems:"center",gap:10}}>
         <span>+10 💎</span>
       </div>
       <div style={{marginTop:16,fontSize:15,color:"rgba(255,255,255,0.55)",fontFamily:"'DM Sans',sans-serif",animation:"scaleIn 0.5s 0.55s ease both"}}>Todas las misiones completadas</div>
@@ -4521,6 +4601,299 @@ function Confetti({active}){
 const Card=({children,style={}})=>(
   <div style={{background:T.bgWood,borderRadius:22,padding:"16px 18px",border:`2px solid ${T.bW}`,boxShadow:"0 6px 0 rgba(0,0,0,0.4)",marginBottom:14,...style}}>{children}</div>
 );
+
+// ═══ JUICE FASE 1 — Tareas C, D y E ══════════════════════════════════════════
+// C: la racha con cuerpo temporal (fila L-D). D: meta de racha (compromiso
+// declarado). E: pausa declarada gratis ("Me voy unos días").
+// Todos los textos de cara al paciente viven en JUICE_TEXTOS para poder
+// pasarles el MISMO test de términos prohibidos que a las frases del espejo
+// (sin culpa, sin "solo", sin "deberías"): tests/juice_cde.test.mjs.
+
+const JUICE_TEXTOS = {
+  es: {
+    metaPregunta: "¿Te comprometes a una meta de racha?",
+    metaSub: "Declarar una meta ayuda a cumplirla. Y si un día se escapa, no pasa nada: la vuelves a elegir.",
+    metaAhoraNo: "Ahora no",
+    metaProgreso: "Meta de racha",
+    metaElegir: "🎯 Ponerme una meta de racha",
+    metaCambiar: "Cambiar meta",
+    metaLograda: "¡Meta de {n} días cumplida!",
+    metaLogradaSub: "Lo declaraste y lo has hecho. Esto es constancia de la de verdad.",
+    metaSiguiente: "¿Siguiente meta?",
+    metaSeguir: "Me quedo como estoy",
+    diasUnidad: "días",
+    pausaTitulo: "Me voy unos días",
+    pausaIntro: "¿Vacaciones, un viaje, una semana complicada? Decláralo por adelantado y esos días no rompen tu racha. Gratis, sin gemas: el descanso no se paga.",
+    pausaDesde: "Desde", pausaHasta: "Hasta",
+    pausaBoton: "Declarar pausa",
+    pausaActiva: "Pausa del {d} al {h}",
+    pausaEspera: "Tu racha te espera. Nos vemos a la vuelta. 🧳",
+    pausaCancelar: "Cancelar pausa",
+    pausaConfirmar: "Toca de nuevo para confirmar ↺",
+    pausaLimDias: "Las pausas duran hasta {n} días. Para ausencias más largas, escríbenos.",
+    pausaLimTrim: "Ya has usado las {n} pausas de este trimestre. Si necesitas otra, escríbenos.",
+    pausaFechas: "Revisa las fechas: el final tiene que ser igual o posterior al inicio, y el inicio no puede estar en el pasado.",
+    pausaNota: "El escudo (💎) cubre el despiste de un día. La pausa cubre la vida.",
+  },
+  en: {
+    metaPregunta: "Ready to commit to a streak goal?",
+    metaSub: "Declaring a goal helps you reach it. And if a day slips by, nothing happens: you simply pick it again.",
+    metaAhoraNo: "Not now",
+    metaProgreso: "Streak goal",
+    metaElegir: "🎯 Set a streak goal",
+    metaCambiar: "Change goal",
+    metaLograda: "{n}-day goal reached!",
+    metaLogradaSub: "You declared it and you did it. That's real consistency.",
+    metaSiguiente: "Next goal?",
+    metaSeguir: "I'm good for now",
+    diasUnidad: "days",
+    pausaTitulo: "I'll be away a few days",
+    pausaIntro: "Holidays, a trip, a tough week? Declare it in advance and those days won't break your streak. Free, no gems: rest is not something you pay for.",
+    pausaDesde: "From", pausaHasta: "To",
+    pausaBoton: "Declare pause",
+    pausaActiva: "Pause from {d} to {h}",
+    pausaEspera: "Your streak will be waiting. See you when you're back. 🧳",
+    pausaCancelar: "Cancel pause",
+    pausaConfirmar: "Tap again to confirm ↺",
+    pausaLimDias: "Pauses last up to {n} days. For longer absences, get in touch.",
+    pausaLimTrim: "You've used the {n} pauses for this quarter. If you need another one, get in touch.",
+    pausaFechas: "Check the dates: the end must be on or after the start, and the start can't be in the past.",
+    pausaNota: "The shield (💎) covers a one-day slip. The pause covers life.",
+  },
+};
+const jt=(lang,k,vars={})=>{
+  let s=(JUICE_TEXTOS[lang]||JUICE_TEXTOS.es)[k]||JUICE_TEXTOS.es[k]||k;
+  for(const [kk,v] of Object.entries(vars)) s=s.split(`{${kk}}`).join(String(v));
+  return s;
+};
+
+// ── Tarea E · helpers PUROS de pausa (testeables) ────────────────────────────
+// LÍMITES (decididos y documentados, §7 del brief): máximo 2 pausas por
+// TRIMESTRE NATURAL y 14 días por pausa. Suficiente para vacaciones de verano
+// + un puente sin vaciar la mecánica de racha; ausencias mayores son
+// conversación con el operador, no un botón.
+const PAUSA_MAX_DIAS = 14;
+const PAUSA_MAX_TRIMESTRE = 2;
+const pausaRangos = (profile)=>{
+  const r=[...(Array.isArray(profile?.pausas_hist)?profile.pausas_hist:[])];
+  if(profile?.pausa_desde&&profile?.pausa_hasta&&!r.some(x=>x.d===profile.pausa_desde&&x.h===profile.pausa_hasta))
+    r.push({d:profile.pausa_desde,h:profile.pausa_hasta});
+  return r.filter(x=>x&&x.d&&x.h);
+};
+// ¿La fecha (clave ISO) cae dentro de alguna pausa declarada? Comparación de
+// cadenas ISO: válida porque "YYYY-MM-DD" ordena igual que la fecha.
+const pausaCubre = (profile,k)=> pausaRangos(profile).some(r=>r.d<=k&&k<=r.h);
+const trimestreDe = (k)=> k.slice(0,4)+"T"+String(Math.floor((parseInt(k.slice(5,7),10)-1)/3)+1);
+const pausasEnTrimestre = (hist,k)=> (Array.isArray(hist)?hist:[]).filter(p=>p&&p.d&&trimestreDe(p.d)===trimestreDe(k)).length;
+
+// ── Tarea C · FilaSemanaRacha: la racha como semana, junto al contador ───────
+// L M X J V S D con el estado real de cada día. Reglas innegociables del brief:
+// el escudo SE VE (🛡️, no es un fallo), la pausa SE VE (🏖️, tampoco), y el día
+// en curso sin registrar es un hueco NEUTRO — un día en curso no es un fallo, y
+// un día pasado sin registrar tampoco se pinta de rojo ni con aspa: hueco vacío.
+function FilaSemanaRacha({logs, profile, streak, lang, onElegirMeta}){
+  const hoy=new Date(); hoy.setHours(12,0,0,0);
+  const lunes=new Date(hoy); lunes.setDate(hoy.getDate()-((hoy.getDay()+6)%7));
+  const hoyKey=toKey();
+  const meta=profile?.meta_racha||0;
+  const dias=Array.from({length:7},(_,i)=>{
+    const d=new Date(lunes); d.setDate(lunes.getDate()+i);
+    const k=toKey(d);
+    const reg=!!(logs||[]).find(l=>l.date===k&&l.diet);
+    const escudo=reg&&lsGet(`gbh:escudo:${profile?.id}:${k}`,false);
+    const pausa=pausaCubre(profile,k);
+    return {k,lbl:WLABELS[i],reg,escudo,pausa,esHoy:k===hoyKey,futuro:k>hoyKey};
+  });
+  return(
+    <Card style={{padding:"12px 16px 11px",marginBottom:12}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:9}}>
+        <span style={{fontSize:18,lineHeight:1}}>🔥</span>
+        <span style={{fontWeight:900,fontSize:14,color:T.t1,fontFamily:"'Nunito',sans-serif",flex:1}}>
+          {streak} {jt(lang,"diasUnidad")}
+        </span>
+        {meta>0&&(
+          <button onClick={onElegirMeta} title={jt(lang,"metaCambiar")} style={{background:"none",border:"none",cursor:"pointer",padding:0,display:"flex",alignItems:"center",gap:5,fontFamily:"'Nunito',sans-serif"}}>
+            <span style={{fontSize:11,fontWeight:900,color:Math.min(streak,meta)>=meta?T.au1:T.t2}}>🎯 {Math.min(streak,meta)}/{meta}</span>
+          </button>
+        )}
+      </div>
+      <div style={{display:"flex",gap:5}}>
+        {dias.map(d=>{
+          let icono="", bg="rgba(255,255,255,0.04)", borde="rgba(255,255,255,0.10)", op=1;
+          if(d.pausa&&!d.reg){ icono="🏖️"; bg=alpha(T.au1,0.10); borde=alpha(T.au1,0.35); }
+          else if(d.escudo){ icono="🛡️"; bg=alpha(T.platos,0.12); borde=alpha(T.platos,0.4); }
+          else if(d.reg){ icono="🔥"; bg=alpha(T.g1,0.14); borde=alpha(T.g1,0.5); }
+          else if(d.futuro){ op=0.35; }
+          // hoy sin registrar: hueco neutro con borde vivo — "en curso", jamás fallo
+          const bordeFinal=d.esHoy&&!d.reg?`2px dashed ${alpha(T.au1,0.55)}`:`1.5px solid ${borde}`;
+          return(
+            <div key={d.k} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,opacity:op}}>
+              <div style={{width:"100%",aspectRatio:"1",maxWidth:38,borderRadius:11,background:bg,border:bordeFinal,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,lineHeight:1}}>
+                {icono}
+              </div>
+              <span style={{fontSize:8.5,fontWeight:900,color:d.esHoy?T.au1:T.t3,fontFamily:"'Nunito',sans-serif"}}>{d.lbl}</span>
+            </div>
+          );
+        })}
+      </div>
+      {meta>0&&(
+        <div style={{marginTop:9,background:"rgba(255,255,255,0.07)",borderRadius:7,height:7,overflow:"hidden"}}>
+          <div style={{height:"100%",width:`${Math.min(100,Math.round(Math.min(streak,meta)/meta*100))}%`,background:`linear-gradient(90deg,${T.g1},${T.g2})`,borderRadius:7,transition:"width 0.5s ease"}}/>
+        </div>
+      )}
+      {!meta&&lsGet(`gbh:metaracha:ask:${profile?.id}`,false)&&(
+        <button onClick={onElegirMeta} style={{marginTop:8,background:"none",border:"none",color:T.t2,fontWeight:800,fontSize:11.5,cursor:"pointer",fontFamily:"'Nunito',sans-serif",padding:0}}>
+          {jt(lang,"metaElegir")}
+        </button>
+      )}
+    </Card>
+  );
+}
+
+// ── Tarea D · Selector de meta de racha ──────────────────────────────────────
+// Cialdini: el compromiso ACTIVO y VISIBLE es el que se cumple. Al fallar la
+// meta no pasa NADA (ni mensaje, ni penalización): el compromiso motiva por
+// haberlo declarado, no por el castigo.
+const METAS_RACHA=[7,14,30,50];
+function MetaRachaSelector({streak, metaActual, lang, onElegir, onCerrar}){
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+      <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
+        border:`2.5px solid ${T.au1}`,borderRadius:24,padding:"26px 22px 20px",textAlign:"center",
+        boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:REDUCED_MOTION()?"none":"popIn 0.25s ease"}}>
+        <div style={{fontSize:46,marginBottom:8}}>🎯</div>
+        <div style={{fontWeight:900,fontSize:18,color:T.au1,fontFamily:"'Nunito',sans-serif",marginBottom:8}}>
+          {jt(lang,"metaPregunta")}
+        </div>
+        <div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.55,marginBottom:16}}>
+          {jt(lang,"metaSub")}
+        </div>
+        <div style={{display:"flex",gap:8,marginBottom:12}}>
+          {METAS_RACHA.map(n=>{
+            const on=metaActual===n;
+            return(
+              <button key={n} onClick={()=>onElegir(n)} style={{flex:1,padding:"14px 0",borderRadius:14,cursor:"pointer",
+                background:on?alpha(T.g1,0.25):"rgba(255,255,255,0.07)",
+                border:on?`2px solid ${T.g1}`:"1.5px solid rgba(255,255,255,0.15)",
+                color:on?T.g2:T.t1,fontWeight:900,fontSize:16,fontFamily:"'Nunito',sans-serif"}}>
+                {n}<div style={{fontSize:9,fontWeight:800,color:T.t3,marginTop:2}}>{jt(lang,"diasUnidad")}</div>
+              </button>
+            );
+          })}
+        </div>
+        <button onClick={onCerrar} style={{background:"none",border:"none",color:T.t3,fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif",padding:"6px"}}>
+          {jt(lang,"metaAhoraNo")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Celebración PROPIA al alcanzar la meta — la protagoniza la oveja del paciente
+// (mismo punto de sustitución que la racha). Ofrece la siguiente meta sin
+// obligar: "me quedo como estoy" es una salida digna, no un fracaso.
+function MetaLogradaOverlay({meta, boColor, boEquipados, lang, onElegir, onCerrar}){
+  const siguientes=METAS_RACHA.filter(n=>n>meta);
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.82)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+      <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
+        border:`2.5px solid ${T.au1}`,borderRadius:24,padding:"24px 22px 20px",textAlign:"center",
+        boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:REDUCED_MOTION()?"none":"popIn 0.3s cubic-bezier(0.34,1.56,0.64,1)"}}>
+        <MascotaCelebracion color={boColor} equipados={boEquipados} size={92} style={{margin:"0 auto 4px"}}/>
+        <div style={{fontSize:34,lineHeight:1,marginBottom:6}}>🏆</div>
+        <div style={{fontWeight:900,fontSize:19,color:T.au1,fontFamily:"'Nunito',sans-serif",marginBottom:6}}>
+          {jt(lang,"metaLograda",{n:meta})}
+        </div>
+        <div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.55,marginBottom:16}}>
+          {jt(lang,"metaLogradaSub")}
+        </div>
+        {siguientes.length>0&&(<>
+          <div style={{fontSize:12,fontWeight:900,color:T.t2,fontFamily:"'Nunito',sans-serif",marginBottom:8}}>{jt(lang,"metaSiguiente")}</div>
+          <div style={{display:"flex",gap:8,marginBottom:12}}>
+            {siguientes.map(n=>(
+              <button key={n} onClick={()=>onElegir(n)} style={{flex:1,padding:"13px 0",borderRadius:14,cursor:"pointer",
+                background:"rgba(255,255,255,0.07)",border:"1.5px solid rgba(255,255,255,0.15)",
+                color:T.t1,fontWeight:900,fontSize:15,fontFamily:"'Nunito',sans-serif"}}>
+                {n}<div style={{fontSize:9,fontWeight:800,color:T.t3,marginTop:2}}>{jt(lang,"diasUnidad")}</div>
+              </button>
+            ))}
+          </div>
+        </>)}
+        <button onClick={onCerrar} style={{background:"none",border:"none",color:T.t3,fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif",padding:"6px"}}>
+          {jt(lang,"metaSeguir")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Tarea E · Tarjeta "Me voy unos días" ─────────────────────────────────────
+// EL punto del brief que no es de gráficos: la culpa anticipada es motivo de
+// baja documentado. El permiso es GRATIS y por adelantado. El escudo de 200 💎
+// se queda para el despiste de un día: son cosas distintas y van en tarjetas
+// distintas a propósito.
+function PausaCard({profile, lang, onDeclarar, onCancelar}){
+  const hoyKey=toKey();
+  const [desde,setDesde]=React.useState(hoyKey);
+  const [hasta,setHasta]=React.useState(hoyKey);
+  const [error,setError]=React.useState("");
+  const [conf,setConf]=React.useState(false);
+  const activa=profile?.pausa_desde&&profile?.pausa_hasta&&profile.pausa_hasta>=hoyKey;
+  const inp={background:"rgba(0,0,0,0.25)",border:"1.5px solid rgba(255,255,255,0.14)",borderRadius:12,
+    padding:"10px 12px",color:T.t1,fontSize:13,fontFamily:"'DM Sans',sans-serif",width:"100%",boxSizing:"border-box",colorScheme:"dark"};
+  const declarar=()=>{
+    setError("");
+    if(!desde||!hasta||hasta<desde||desde<hoyKey){ setError(jt(lang,"pausaFechas")); return; }
+    const dias=Math.round((new Date(hasta)-new Date(desde))/86400000)+1;
+    if(dias>PAUSA_MAX_DIAS){ setError(jt(lang,"pausaLimDias",{n:PAUSA_MAX_DIAS})); return; }
+    if(pausasEnTrimestre(profile?.pausas_hist,desde)>=PAUSA_MAX_TRIMESTRE){ setError(jt(lang,"pausaLimTrim",{n:PAUSA_MAX_TRIMESTRE})); return; }
+    onDeclarar(desde,hasta);
+  };
+  return(
+    <Card style={{marginTop:4}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+        <span style={{fontSize:18}}>🧳</span>
+        <div style={{fontSize:15,fontWeight:900,fontFamily:"'Nunito',sans-serif",color:T.t1}}>{jt(lang,"pausaTitulo")}</div>
+      </div>
+      {activa?(<>
+        <div style={{fontSize:13,fontWeight:900,color:T.au1,fontFamily:"'Nunito',sans-serif",marginBottom:4}}>
+          🏖️ {jt(lang,"pausaActiva",{d:profile.pausa_desde,h:profile.pausa_hasta})}
+        </div>
+        <div style={{fontSize:12.5,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.55,marginBottom:10}}>
+          {jt(lang,"pausaEspera")}
+        </div>
+        <button onClick={()=>{ if(!conf){ setConf(true); setTimeout(()=>setConf(false),2500); return; } setConf(false); onCancelar(); }}
+          style={{background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.15)",borderRadius:12,
+          padding:"9px 14px",color:T.t2,fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
+          {conf?jt(lang,"pausaConfirmar"):jt(lang,"pausaCancelar")}
+        </button>
+      </>):(<>
+        <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.55,marginBottom:10}}>
+          {jt(lang,"pausaIntro")}
+        </div>
+        <div style={{display:"flex",gap:8,marginBottom:10}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:10,color:T.t3,fontWeight:800,marginBottom:4,fontFamily:"'DM Sans',sans-serif"}}>{jt(lang,"pausaDesde")}</div>
+            <input type="date" value={desde} min={hoyKey} onChange={e=>setDesde(e.target.value)} style={inp}/>
+          </div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:10,color:T.t3,fontWeight:800,marginBottom:4,fontFamily:"'DM Sans',sans-serif"}}>{jt(lang,"pausaHasta")}</div>
+            <input type="date" value={hasta} min={desde||hoyKey} onChange={e=>setHasta(e.target.value)} style={inp}/>
+          </div>
+        </div>
+        {error&&<div style={{fontSize:11.5,color:T.au1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,marginBottom:10}}>⚠️ {error}</div>}
+        <button onClick={declarar} style={{width:"100%",padding:"13px",borderRadius:14,border:"none",cursor:"pointer",
+          background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,fontWeight:900,fontSize:14,
+          fontFamily:"'Nunito',sans-serif",boxShadow:`0 4px 0 ${T.g3}`,marginBottom:8}}>
+          {jt(lang,"pausaBoton")}
+        </button>
+        <div style={{fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif",lineHeight:1.45}}>
+          {jt(lang,"pausaNota")}
+        </div>
+      </>)}
+    </Card>
+  );
+}
 
 
 // ─── Floating reward chip (+XP / +💎) ────────────────────────────────────────
@@ -4556,16 +4929,19 @@ function getNextReward(currentLevel){
 
 // ─── LevelUpOverlay — pop-up animado al subir de nivel ───────────────────────
 function LevelUpOverlay({active,level,reward,patientName,streak,lang,onClose}){
+  // ⚠️ Hooks ANTES de cualquier return: con el useLang tras el `return null`,
+  // el primer nivel subido pasaba el componente de 0 a 1 hooks y React
+  // reventaba el render justo en el instante de la celebración.
+  const t       = useLang();
   if(!active)return null;
 
-  const t       = useLang();
   const isMilestone = level%50===0||level===500;
   const isFreeMeal  = reward?.freeMeal;
   const next    = getNextReward(level);
 
   // Colores de fondo según importancia
   const bg = level===500
-    ?"linear-gradient(135deg,#7B2FBE,#FFD700)"
+    ?`linear-gradient(135deg,#7B2FBE,${T.moneda})`
     : isMilestone
       ?"linear-gradient(135deg,#0D2A0A,#1A5C10)"
       :"rgba(6,14,6,0.97)";
@@ -4602,7 +4978,7 @@ function LevelUpOverlay({active,level,reward,patientName,streak,lang,onClose}){
               top:`${Math.random()*100}%`,
               width:8,height:8,
               borderRadius:"50%",
-              background:["#FFD700","#C8FF40","#64B5F6","#FF8080","#A78BFA"][i%5],
+              background:[T.moneda,"#C8FF40",T.platos,"#FF8080","#A78BFA"][i%5],
               animation:`confettiFall ${1.5+Math.random()*2}s ${Math.random()*1}s ease-in forwards`,
               opacity:0.8,
             }}/>
@@ -4636,7 +5012,7 @@ function LevelUpOverlay({active,level,reward,patientName,streak,lang,onClose}){
 
         {/* ── Número de nivel ── */}
         <div style={{
-          fontSize:90,fontWeight:900,color:"#FFD700",
+          fontSize:90,fontWeight:900,color:T.moneda,
           fontFamily:"'Nunito',sans-serif",lineHeight:1,
           animation:"scaleIn 0.7s 0.3s cubic-bezier(0.34,1.56,0.64,1) both",
           textShadow:"0 4px 30px rgba(255,215,0,0.5)",
@@ -4703,9 +5079,9 @@ function LevelUpOverlay({active,level,reward,patientName,streak,lang,onClose}){
                 : `Hola,\n\nAcabo de alcanzar el Nivel ${level} en la app de GBH Nutrición y he desbloqueado mi informe de progreso.\n\n¿Puedes enviármelo?\n\n¡Gracias!`
               );
               return(
-                <div style={{background:"rgba(100,181,246,0.12)",border:"2px solid #64B5F6",
+                <div style={{background:"rgba(100,181,246,0.12)",border:`2px solid ${T.platos}`,
                   borderRadius:20,padding:"16px 20px",textAlign:"center",width:"100%"}}>
-                  <div style={{fontSize:15,fontWeight:900,color:"#64B5F6",marginBottom:4}}>
+                  <div style={{fontSize:15,fontWeight:900,color:T.platos,marginBottom:4}}>
                     📊 {lang==="en"?"Progress report unlocked":"Informe desbloqueado"}
                   </div>
                   <div style={{fontSize:12,color:"rgba(255,255,255,0.65)",
@@ -4716,7 +5092,7 @@ function LevelUpOverlay({active,level,reward,patientName,streak,lang,onClose}){
                     <a href={`https://wa.me/${GBH_WHATSAPP}?text=${waMsg}`}
                       target="_blank" rel="noreferrer"
                       style={{display:"flex",alignItems:"center",gap:7,padding:"11px 18px",
-                        borderRadius:16,background:"#25D366",color:"white",fontWeight:900,
+                        borderRadius:16,background:"#25D366",color:T.t1,fontWeight:900,
                         fontSize:14,textDecoration:"none",fontFamily:"'Nunito',sans-serif",
                         boxShadow:"0 4px 0 #1aad4e"}}>
                       <span style={{fontSize:18}}>📱</span> WhatsApp
@@ -4724,7 +5100,7 @@ function LevelUpOverlay({active,level,reward,patientName,streak,lang,onClose}){
                     <a href={`mailto:${GBH_EMAIL}?subject=${mailSubject}&body=${mailBody}`}
                       style={{display:"flex",alignItems:"center",gap:7,padding:"11px 18px",
                         borderRadius:16,background:"rgba(255,255,255,0.12)",
-                        border:"1.5px solid rgba(255,255,255,0.25)",color:"white",fontWeight:900,
+                        border:"1.5px solid rgba(255,255,255,0.25)",color:T.t1,fontWeight:900,
                         fontSize:14,textDecoration:"none",fontFamily:"'Nunito',sans-serif",
                         boxShadow:"0 4px 0 rgba(0,0,0,0.3)"}}>
                       <span style={{fontSize:18}}>✉️</span> Email
@@ -4740,16 +5116,16 @@ function LevelUpOverlay({active,level,reward,patientName,streak,lang,onClose}){
               );
             })()}
             {reward.freeMeal&&!reward.report&&(
-              <div style={{background:"rgba(255,200,0,0.18)",border:"2px solid #FFD700",
+              <div style={{background:alpha(T.au1,0.18),border:`2px solid ${T.moneda}`,
                 borderRadius:18,padding:"10px 24px",fontSize:15,fontWeight:900,
-                color:"#FFD700",width:"100%",textAlign:"center"}}>
+                color:T.moneda,width:"100%",textAlign:"center"}}>
                 🍽️ {lang==="en"?"Free meal unlocked!":"¡Comida libre desbloqueada!"}
               </div>
             )}
             {reward.shield&&!reward.frame&&(
-              <div style={{background:"rgba(100,181,246,0.18)",border:"2px solid #64B5F6",
+              <div style={{background:"rgba(100,181,246,0.18)",border:`2px solid ${T.platos}`,
                 borderRadius:18,padding:"8px 20px",fontSize:14,fontWeight:900,
-                color:"#64B5F6",textAlign:"center"}}>
+                color:T.platos,textAlign:"center"}}>
                 🛡️ {lang==="en"?"Shield earned!":"¡Escudo ganado!"}
               </div>
             )}
@@ -4773,7 +5149,7 @@ function LevelUpOverlay({active,level,reward,patientName,streak,lang,onClose}){
             </div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
               <div style={{
-                background:"rgba(88,204,2,0.15)",border:"1.5px solid rgba(88,204,2,0.3)",
+                background:alpha(T.g1,0.15),border:`1.5px solid ${alpha(T.g1,0.3)}`,
                 borderRadius:20,padding:"4px 14px",
                 fontSize:13,fontWeight:900,color:"#C8FF40",
                 fontFamily:"'Nunito',sans-serif",
@@ -4819,7 +5195,7 @@ function TomorrowCard({name,streak}){
   const t=useLang();
   const n=name.split(" ")[0];
   return(
-    <div style={{background:"linear-gradient(135deg,rgba(43,122,0,0.35),rgba(88,204,2,0.15))",border:`2px solid ${T.g1}`,borderRadius:24,padding:"22px 20px",textAlign:"center",marginBottom:14,boxShadow:`0 6px 0 ${T.g3}`}}>
+    <div style={{background:`linear-gradient(135deg,${alpha(T.g3,0.35)},${alpha(T.g1,0.15)})`,border:`2px solid ${T.g1}`,borderRadius:24,padding:"22px 20px",textAlign:"center",marginBottom:14,boxShadow:`0 6px 0 ${T.g3}`}}>
       <div style={{fontSize:40,marginBottom:8}}>🌙</div>
       <div style={{fontSize:20,fontWeight:900,color:T.g2,marginBottom:6}}>{t("tomorrowTitle",{n})}</div>
       <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6,marginBottom:14}}>
@@ -4872,9 +5248,9 @@ function HydrationWidget({done,onToggle}){
   };
   const pct=Math.min((glasses/target)*100,100);
   return(
-    <div style={{background:done?`linear-gradient(135deg,rgba(43,122,0,0.45),rgba(88,204,2,0.2))`:T.bgCard,border:`2px solid ${done?T.g1:T.bW}`,borderRadius:20,padding:"14px 16px",marginBottom:10,boxShadow:done?`0 5px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)"}}>
+    <div style={{background:done?`linear-gradient(135deg,${alpha(T.g3,0.45)},${alpha(T.g1,0.2)})`:T.bgCard,border:`2px solid ${done?T.g1:T.bW}`,borderRadius:20,padding:"14px 16px",marginBottom:10,boxShadow:done?`0 5px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)"}}>
       <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:10}}>
-        <div style={{width:38,height:38,borderRadius:14,background:done?T.g1:"rgba(41,182,246,0.2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontWeight:900,fontSize:done?18:15,color:done?"white":"#29B6F6",boxShadow:done?`0 3px 0 ${T.g3}`:"0 3px 0 rgba(0,0,0,0.5)",border:`2px solid ${done?T.g3:"#0288D1"}`}}>
+        <div style={{width:38,height:38,borderRadius:14,background:done?T.g1:"rgba(41,182,246,0.2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontWeight:900,fontSize:done?18:15,color:done?T.t1:"#29B6F6",boxShadow:done?`0 3px 0 ${T.g3}`:"0 3px 0 rgba(0,0,0,0.5)",border:`2px solid ${done?T.g3:"#0288D1"}`}}>
           {done?"✓":`${glasses}/${target}`}
         </div>
         <div style={{flex:1}}>
@@ -5031,7 +5407,7 @@ function CalcTab({weights,profile,setProfile,lang}){
           <span style={{fontSize:18,color:T.t2,fontWeight:700}}>{t("calcKcal")}</span>
         </div>
         {saved.goalW&&saved.loseGain&&(
-          <div style={{marginTop:12,display:"inline-flex",alignItems:"center",gap:6,background:saved.loseGain==="deficit"?"rgba(255,75,75,0.12)":"rgba(88,204,2,0.12)",border:`1.5px solid ${saved.loseGain==="deficit"?"rgba(255,75,75,0.35)":T.g3}`,borderRadius:10,padding:"6px 14px"}}>
+          <div style={{marginTop:12,display:"inline-flex",alignItems:"center",gap:6,background:saved.loseGain==="deficit"?alpha(T.red,0.12):alpha(T.g1,0.12),border:`1.5px solid ${saved.loseGain==="deficit"?"${alpha(T.red,0.35)}":T.g3}`,borderRadius:10,padding:"6px 14px"}}>
             <span style={{fontSize:13,fontWeight:900,color:saved.loseGain==="deficit"?"#FF8080":T.g2}}>
               {saved.loseGain==="deficit"?"▼":"▲"} {Math.abs(saved.adj)} kcal {t(`calc${saved.loseGain.charAt(0).toUpperCase()+saved.loseGain.slice(1)}`)}
             </span>
@@ -5063,12 +5439,12 @@ function CalcTab({weights,profile,setProfile,lang}){
       </Card>
 
       {/* Nota */}
-      <div style={{background:"rgba(255,200,0,0.07)",border:`1.5px solid ${T.au3}`,borderRadius:14,padding:"12px 16px",fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6,marginBottom:16}}>
+      <div style={{background:alpha(T.au1,0.07),border:`1.5px solid ${T.au3}`,borderRadius:14,padding:"12px 16px",fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6,marginBottom:16}}>
         {t("calcNote")}
       </div>
 
       {/* Botón editar */}
-      <button onClick={startEdit} style={{width:"100%",padding:"16px 0",borderRadius:18,border:`2px solid ${T.au2}`,background:"rgba(255,200,0,0.08)",color:T.au1,fontSize:15,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",letterSpacing:"0.02em"}}>
+      <button onClick={startEdit} style={{width:"100%",padding:"16px 0",borderRadius:18,border:`2px solid ${T.au2}`,background:alpha(T.au1,0.08),color:T.au1,fontSize:15,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",letterSpacing:"0.02em"}}>
         {t("calcEditBtn")}
       </button>
     </div>
@@ -5081,12 +5457,12 @@ function CalcTab({weights,profile,setProfile,lang}){
         <div style={{fontSize:22,fontWeight:900,color:T.wh}}>{t("calcTitle")}</div>
         <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:4}}>{t("calcSubtitle")}</div>
       </div>
-      {!currentW&&<div style={{background:"rgba(255,200,0,0.10)",border:`1.5px solid ${T.au2}`,borderRadius:14,padding:"12px 16px",marginBottom:14,fontSize:13,color:T.au1,fontFamily:"'DM Sans',sans-serif"}}>{t("calcNoWeight")}</div>}
-      {currentW&&!goalW&&<div style={{background:"rgba(255,200,0,0.10)",border:`1.5px solid ${T.au2}`,borderRadius:14,padding:"12px 16px",marginBottom:14,fontSize:13,color:T.au1,fontFamily:"'DM Sans',sans-serif"}}>{t("calcNoGoal")}</div>}
+      {!currentW&&<div style={{background:alpha(T.au1,0.10),border:`1.5px solid ${T.au2}`,borderRadius:14,padding:"12px 16px",marginBottom:14,fontSize:13,color:T.au1,fontFamily:"'DM Sans',sans-serif"}}>{t("calcNoWeight")}</div>}
+      {currentW&&!goalW&&<div style={{background:alpha(T.au1,0.10),border:`1.5px solid ${T.au2}`,borderRadius:14,padding:"12px 16px",marginBottom:14,fontSize:13,color:T.au1,fontFamily:"'DM Sans',sans-serif"}}>{t("calcNoGoal")}</div>}
       <Card style={{marginBottom:12}}>
         <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:12}}>{t("calcSex")}</div>
         <div style={{display:"flex",gap:10}}>
-          {[{v:"M",l:t("calcMan"),c:"#64B5F6"},{v:"F",l:t("calcWoman"),c:"#F48FB1"}].map(({v,l,c})=>(
+          {[{v:"M",l:t("calcMan"),c:T.platos},{v:"F",l:t("calcWoman"),c:"#F48FB1"}].map(({v,l,c})=>(
             <button key={v} onClick={()=>setCsex(v)} style={{flex:1,padding:"16px 0",borderRadius:16,border:`2.5px solid ${cSex===v?c:"rgba(255,255,255,0.12)"}`,background:cSex===v?`${c}22`:"rgba(255,255,255,0.05)",color:cSex===v?c:T.t2,fontSize:15,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",transition:"all 0.18s",boxShadow:cSex===v?`0 4px 0 ${c}55`:"0 3px 0 rgba(0,0,0,0.4)"}}>
               {l}
             </button>
@@ -5124,7 +5500,7 @@ function CalcTab({weights,profile,setProfile,lang}){
           {actOpts.map((o,i)=><option key={i} value={String(i)}>{o}</option>)}
         </select>
       </Card>
-      <button onClick={compute} disabled={!canCompute} style={{width:"100%",padding:"18px 0",borderRadius:20,border:`3px solid ${canCompute?T.g3:"rgba(255,255,255,0.08)"}`,background:canCompute?`linear-gradient(135deg,${T.g1},${T.g2})`:"rgba(255,255,255,0.08)",color:canCompute?"white":T.t3,fontSize:17,fontWeight:900,cursor:canCompute?"pointer":"not-allowed",fontFamily:"'Nunito',sans-serif",boxShadow:canCompute?`0 6px 0 ${T.g3}`:"none",transition:"all 0.18s",marginBottom:saved?12:0}}>
+      <button onClick={compute} disabled={!canCompute} style={{width:"100%",padding:"18px 0",borderRadius:20,border:`3px solid ${canCompute?T.g3:"rgba(255,255,255,0.08)"}`,background:canCompute?`linear-gradient(135deg,${T.g1},${T.g2})`:"rgba(255,255,255,0.08)",color:canCompute?T.t1:T.t3,fontSize:17,fontWeight:900,cursor:canCompute?"pointer":"not-allowed",fontFamily:"'Nunito',sans-serif",boxShadow:canCompute?`0 6px 0 ${T.g3}`:"none",transition:"all 0.18s",marginBottom:saved?12:0}}>
         {t("calcBtn")}
       </button>
       {saved&&(
@@ -5153,7 +5529,7 @@ function WeeklyXPGoal({logs,xp}){
       </div>
       <div style={{background:"rgba(255,255,255,0.08)",borderRadius:10,height:14,overflow:"hidden",boxShadow:"inset 0 2px 4px rgba(0,0,0,0.3)"}}>
         <div style={{height:"100%",width:`${pct}%`,background:done?`linear-gradient(90deg,${T.g1},${T.g2})`:`linear-gradient(90deg,${T.xp},${T.g1})`,borderRadius:10,transition:"width 0.7s ease",boxShadow:done?`0 0 12px ${T.g1}80`:`0 0 8px ${T.xp}60`,position:"relative"}}>
-          {pct>15&&<div style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",fontSize:9,fontWeight:900,color:"white"}}>{Math.round(pct)}%</div>}
+          {pct>15&&<div style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",fontSize:9,fontWeight:900,color:T.t1}}>{Math.round(pct)}%</div>}
         </div>
       </div>
       {done&&<div style={{fontSize:11,color:T.g2,marginTop:6,fontWeight:800,textAlign:"center"}}>{t("weeklyXPDone")}</div>}
@@ -5363,9 +5739,9 @@ const QUIZ_ALL = [...QUIZ_BANK, ...QUIZ_RECETARIO];
 // ─── Ruleta diaria ────────────────────────────────────────────────────────────
 const RULETA_PREMIOS = [
   {icon:"🍏", label:"+10 XP",       xp:10,  gems:0,  color:"#C8FF40", weight:30},
-  {icon:"🥗", label:"+3 💎",        xp:0,   gems:3,  color:"#FFD700", weight:25},
+  {icon:"🥗", label:"+3 💎",        xp:0,   gems:3,  color:T.moneda, weight:25},
   {icon:"🍌", label:"+25 XP",       xp:25,  gems:0,  color:"#C8FF40", weight:18},
-  {icon:"🍝", label:"+8 💎",        xp:0,   gems:8,  color:"#FFD700", weight:12},
+  {icon:"🍝", label:"+8 💎",        xp:0,   gems:8,  color:T.moneda, weight:12},
   {icon:"🌮", label:"+15 XP +5💎",  xp:15,  gems:5,  color:"#FF8040", weight:8},
   {icon:"🍕", label:"+50 XP",       xp:50,  gems:0,  color:"#C8FF40", weight:5},
   {icon:"🍔", label:"+30 XP +15💎", xp:30,  gems:15, color:"#FF40FF", weight:2},
@@ -5452,7 +5828,7 @@ function RuletaModal({onClose, onCollect, onGoHome}){
             <div style={{position:"relative",zIndex:10,marginBottom:-14}}>
               <div style={{width:0,height:0,
                 borderLeft:"13px solid transparent",borderRight:"13px solid transparent",
-                borderTop:"20px solid #FFD700",
+                borderTop:`20px solid ${T.moneda}`,
                 filter:"drop-shadow(0 2px 4px rgba(0,0,0,0.7))",
               }}/>
             </div>
@@ -5495,7 +5871,7 @@ function RuletaModal({onClose, onCollect, onGoHome}){
                     <div style={{position:"absolute",left:tx-28,top:ty-18,width:56,
                       textAlign:"center",transform:`rotate(${mid}deg)`}}>
                       <div style={{fontSize:20,lineHeight:1,filter:"drop-shadow(0 1px 2px rgba(0,0,0,0.8))"}}>{p.icon}</div>
-                      <div style={{fontSize:8,fontWeight:900,color:"#FFD700",
+                      <div style={{fontSize:8,fontWeight:900,color:T.moneda,
                         fontFamily:"'Nunito',sans-serif",whiteSpace:"nowrap",
                         textShadow:"0 1px 3px rgba(0,0,0,0.9)",marginTop:2}}>{p.label}</div>
                     </div>
@@ -5520,7 +5896,7 @@ function RuletaModal({onClose, onCollect, onGoHome}){
               background:phase==="ready"
                 ?`linear-gradient(135deg,${T.g1},${T.g2})`
                 :"rgba(255,255,255,0.08)",
-              color:phase==="ready"?"white":"rgba(255,255,255,0.3)",
+              color:phase==="ready"?T.t1:"rgba(255,255,255,0.3)",
               boxShadow:phase==="ready"?`0 6px 0 ${T.g3}`:"none",
               fontFamily:"'Nunito',sans-serif",
               animation:phase==="ready"?"pulse 1.5s ease-in-out infinite":"none",
@@ -5561,7 +5937,7 @@ function RuletaModal({onClose, onCollect, onGoHome}){
                 width:"100%",padding:"16px",borderRadius:18,
                 border:`3px solid ${T.g3}`,cursor:"pointer",fontSize:18,fontWeight:900,
                 background:`linear-gradient(135deg,${T.g1},${T.g2})`,
-                color:"white",boxShadow:`0 6px 0 ${T.g3}`,
+                color:T.t1,boxShadow:`0 6px 0 ${T.g3}`,
                 fontFamily:"'Nunito',sans-serif",marginTop:8}}>
                 ¡Recoger!
               </button>
@@ -5625,14 +6001,14 @@ function QuizModal({onClose, onComplete, todayKey, lang, onGoHome}){
                 <div style={{fontSize:11,fontWeight:900,color:"rgba(255,255,255,0.7)",textTransform:"uppercase",letterSpacing:"0.1em"}}>
                   {lang==="en"?"Daily quiz":"Quiz del día"}
                 </div>
-                <div style={{fontSize:14,fontWeight:900,color:"white"}}>
+                <div style={{fontSize:14,fontWeight:900,color:T.t1}}>
                   {lang==="en"?"Nutrition":"Nutrición"} · {correct?"":(lang==="en"?"Earn up to":"Gana hasta")} +20 XP +8 💎
                 </div>
               </div>
               {/* Botón cerrar */}
               <button onClick={onClose} style={{
                 background:"rgba(0,0,0,0.2)",border:"2px solid rgba(255,255,255,0.3)",
-                borderRadius:"50%",width:32,height:32,color:"white",
+                borderRadius:"50%",width:32,height:32,color:T.t1,
                 fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",
                 justifyContent:"center",flexShrink:0,lineHeight:1,
               }}>✕</button>
@@ -5649,10 +6025,10 @@ function QuizModal({onClose, onComplete, todayKey, lang, onGoHome}){
                   let border=T.bW;
                   let col=T.t1;
                   if(revealed){
-                    if(i===q.ans){bg="rgba(88,204,2,0.25)";border=T.g1;col=T.g2;}
+                    if(i===q.ans){bg=alpha(T.g1,0.25);border=T.g1;col=T.g2;}
                     else if(i===selected&&selected!==q.ans){bg="rgba(255,80,80,0.2)";border="rgba(255,80,80,0.6)";col="#FF8080";}
                   } else if(selected===i){
-                    bg="rgba(255,200,0,0.15)";border=T.au1;col=T.au1;
+                    bg=alpha(T.au1,0.15);border=T.au1;col=T.au1;
                   }
                   return(
                     <button key={i} onClick={()=>choose(i)} style={{
@@ -5812,7 +6188,7 @@ function ChestOpenModal({streak, onClose, onCollect, onGoHome}){
               <div style={{fontSize:14,color:"rgba(255,255,255,0.5)",fontFamily:"'DM Sans',sans-serif"}}>Gemas 💎</div>
             </div>
           </div>
-          <button onClick={()=>{onCollect(rewards.xp,rewards.gems);onClose();}} style={{background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:`3px solid ${T.g3}`,borderRadius:20,padding:"18px 48px",color:"white",fontWeight:900,fontSize:18,cursor:"pointer",boxShadow:`0 6px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif",display:"block",width:"100%",marginBottom:12}}>
+          <button onClick={()=>{onCollect(rewards.xp,rewards.gems);onClose();}} style={{background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:`3px solid ${T.g3}`,borderRadius:20,padding:"18px 48px",color:T.t1,fontWeight:900,fontSize:18,cursor:"pointer",boxShadow:`0 6px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif",display:"block",width:"100%",marginBottom:12}}>
             ¡Recoger!
           </button>
           <button onClick={()=>{onCollect(rewards.xp,rewards.gems);onGoHome();}} style={{background:"rgba(255,255,255,0.06)",border:"1.5px solid rgba(255,255,255,0.12)",borderRadius:16,padding:"13px 48px",color:"rgba(255,255,255,0.4)",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif",width:"100%"}}>
@@ -5853,7 +6229,7 @@ async function generarTarjetaProgreso({nombre, chartData, goalWeight, lang}){
   bg.addColorStop(0,"#0d2b12"); bg.addColorStop(0.55,"#14301b"); bg.addColorStop(1,"#0a2313");
   x.fillStyle=bg; x.fillRect(0,0,W,H);
   x.globalAlpha=0.07;
-  x.fillStyle=reached?"#FFC800":"#58CC02";
+  x.fillStyle=reached?T.au1:T.g1;
   x.beginPath();x.arc(W-80,140,260,0,7);x.fill();
   x.beginPath();x.arc(60,H-160,300,0,7);x.fill();
   x.globalAlpha=1;
@@ -5890,19 +6266,19 @@ async function generarTarjetaProgreso({nombre, chartData, goalWeight, lang}){
   ws.forEach((v,i)=>x.lineTo(X(i),Y(v)));
   x.lineTo(X(ws.length-1),gy+gh); x.lineTo(X(0),gy+gh); x.closePath();
   const ar=x.createLinearGradient(0,gy,0,gy+gh);
-  ar.addColorStop(0,"rgba(255,200,0,0.22)"); ar.addColorStop(1,"rgba(255,200,0,0)");
+  ar.addColorStop(0,alpha(T.au1,0.22)); ar.addColorStop(1,alpha(T.au1,0));
   x.fillStyle=ar; x.fill();
   // línea real (dorada) con puntos
-  x.strokeStyle="#FFC800"; x.lineWidth=7; x.lineJoin="round";
+  x.strokeStyle=T.au1; x.lineWidth=7; x.lineJoin="round";
   x.beginPath(); ws.forEach((v,i)=>i?x.lineTo(X(i),Y(v)):x.moveTo(X(i),Y(v))); x.stroke();
   const step=Math.max(1,Math.ceil(ws.length/14));
   ws.forEach((v,i)=>{ if(i%step&&i!==ws.length-1) return;
-    x.fillStyle="#FFC800"; x.beginPath(); x.arc(X(i),Y(v),9,0,7); x.fill();
+    x.fillStyle=T.au1; x.beginPath(); x.arc(X(i),Y(v),9,0,7); x.fill();
     x.fillStyle="#0d2b12"; x.beginPath(); x.arc(X(i),Y(v),4,0,7); x.fill(); });
   // etiquetas primer/último peso y fechas
   x.font=F(900,30);
   x.textAlign="left";  x.fillStyle="rgba(250,253,246,0.9)"; x.fillText(`${num(ini.weight)} kg`, gx, Y(ini.weight)+(Y(ini.weight)<gy+60?52:-20));
-  x.textAlign="right"; x.fillStyle="#FFC800"; x.fillText(`${num(fin.weight)} kg`, gx+gw, Y(fin.weight)+(Y(fin.weight)<gy+60?52:-20));
+  x.textAlign="right"; x.fillStyle=T.au1; x.fillText(`${num(fin.weight)} kg`, gx+gw, Y(fin.weight)+(Y(fin.weight)<gy+60?52:-20));
   x.font=F(700,22); x.fillStyle="rgba(250,253,246,0.5)";
   x.textAlign="left";  x.fillText(ini.date.slice(5).replace("-","/"), gx, gy+gh+38);
   x.textAlign="right"; x.fillText(fin.date.slice(5).replace("-","/"), gx+gw, gy+gh+38);
@@ -5921,11 +6297,11 @@ async function generarTarjetaProgreso({nombre, chartData, goalWeight, lang}){
   // ── Barra de objetivo ──
   if(goalWeight!=null){
     const py=1030, ph2=170, px2=90, pw2=W-180;
-    x.fillStyle=reached?"rgba(255,200,0,0.10)":"rgba(255,107,157,0.08)";
+    x.fillStyle=reached?alpha(T.au1,0.10):"rgba(255,107,157,0.08)";
     rr(px2,py,pw2,ph2,26); x.fill();
-    x.strokeStyle=reached?"#FFC800":"rgba(255,107,157,0.5)"; x.lineWidth=4; rr(px2,py,pw2,ph2,26); x.stroke();
+    x.strokeStyle=reached?T.au1:"rgba(255,107,157,0.5)"; x.lineWidth=4; rr(px2,py,pw2,ph2,26); x.stroke();
     x.textAlign="left"; x.font=F(900,30);
-    x.fillStyle=reached?"#FFC800":"#FF6B9D";
+    x.fillStyle=reached?T.au1:"#FF6B9D";
     x.fillText(reached?(es?"🎉 ¡OBJETIVO ALCANZADO!":"🎉 GOAL REACHED!"):(es?"🎯 Camino al objetivo":"🎯 On my way"), px2+34, py+52);
     x.textAlign="right"; x.fillStyle="#fafdf6"; x.font=F(900,42);
     x.fillText(`${pct}%`, px2+pw2-34, py+56);
@@ -5934,7 +6310,7 @@ async function generarTarjetaProgreso({nombre, chartData, goalWeight, lang}){
     x.fillStyle="rgba(255,255,255,0.10)"; rr(bx,byy,bw2,bh2,13); x.fill();
     const fillW=Math.max(bh2,bw2*pct/100);
     const bg2=x.createLinearGradient(bx,0,bx+fillW,0);
-    if(reached){ bg2.addColorStop(0,"#FFC800"); bg2.addColorStop(1,"#58CC02"); }
+    if(reached){ bg2.addColorStop(0,T.au1); bg2.addColorStop(1,T.g1); }
     else { bg2.addColorStop(0,"#FF6B9D"); bg2.addColorStop(1,"#FF4081"); }
     x.fillStyle=bg2; rr(bx,byy,fillW,bh2,13); x.fill();
     x.textAlign="left"; x.fillStyle="rgba(250,253,246,0.65)"; x.font=F(700,26);
@@ -5969,7 +6345,7 @@ async function generarTarjetaHito({icono, cifra, etiqueta, sub, nombre, dorada, 
   const bg=x.createLinearGradient(0,0,0,H);
   bg.addColorStop(0,"#0d2b12"); bg.addColorStop(0.55,"#14301b"); bg.addColorStop(1,"#0a2313");
   x.fillStyle=bg; x.fillRect(0,0,W,H);
-  x.globalAlpha=0.08; x.fillStyle=dorada?"#FFC800":"#58CC02";
+  x.globalAlpha=0.08; x.fillStyle=dorada?T.au1:T.g1;
   x.beginPath();x.arc(W-60,220,320,0,7);x.fill();
   x.beginPath();x.arc(40,H-260,380,0,7);x.fill();
   x.globalAlpha=1;
@@ -5984,14 +6360,14 @@ async function generarTarjetaHito({icono, cifra, etiqueta, sub, nombre, dorada, 
   }
 
   // Anillo decorativo tras el bloque central
-  x.strokeStyle=dorada?"rgba(255,200,0,0.25)":"rgba(88,204,2,0.22)";
+  x.strokeStyle=dorada?alpha(T.au1,0.25):alpha(T.g1,0.22);
   x.lineWidth=10; x.beginPath(); x.arc(W/2, 780, 330, 0, 7); x.stroke();
-  x.strokeStyle=dorada?"rgba(255,200,0,0.10)":"rgba(88,204,2,0.09)";
+  x.strokeStyle=dorada?alpha(T.au1,0.10):alpha(T.g1,0.09);
   x.lineWidth=34; x.beginPath(); x.arc(W/2, 780, 385, 0, 7); x.stroke();
 
   // Icono + cifra + etiqueta
   x.font=F(900,190); x.fillText(icono, W/2, 660);
-  x.fillStyle=dorada?"#FFC800":"#fafdf6"; x.font=F(900,210);
+  x.fillStyle=dorada?T.au1:"#fafdf6"; x.font=F(900,210);
   x.fillText(cifra, W/2, 900);
   x.fillStyle="#fafdf6"; x.font=F(900,64);
   x.fillText(etiqueta, W/2, 1010);
@@ -6032,7 +6408,7 @@ function TarjetaMetabolismo({seg,lang}){
   const esDef=d!=null&&d<0;
   const ret=seg.retencion_kg;
   return(
-    <div style={{background:'rgba(255,255,255,0.04)',border:'2px solid rgba(255,200,0,0.35)',
+    <div style={{background:'rgba(255,255,255,0.04)',border:`2px solid ${alpha(T.au1,0.35)}`,
       borderRadius:20,padding:'20px',marginTop:14,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
       <div style={{fontSize:10,color:T.au1,textTransform:'uppercase',letterSpacing:'0.1em',
         fontWeight:900,marginBottom:12,fontFamily:"'DM Sans',sans-serif"}}>
@@ -6051,9 +6427,9 @@ function TarjetaMetabolismo({seg,lang}){
           <div style={{fontSize:10,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:2}}>{es?'Tu pauta':'Your target'}</div>
           <div style={{fontSize:16,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif"}}>{seg.kcal_pautadas?nf(seg.kcal_pautadas):'—'} kcal</div>
         </div>
-        <div style={{flex:1,background:esDef?'rgba(88,204,2,0.10)':'rgba(100,181,246,0.10)',borderRadius:12,padding:'10px 12px',textAlign:'center'}}>
+        <div style={{flex:1,background:esDef?alpha(T.g1,0.10):'rgba(100,181,246,0.10)',borderRadius:12,padding:'10px 12px',textAlign:'center'}}>
           <div style={{fontSize:10,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:2}}>{d!=null?(esDef?(es?'Déficit diario':'Daily deficit'):(es?'Superávit diario':'Daily surplus')):(es?'Ajuste':'Adjustment')}</div>
-          <div style={{fontSize:16,fontWeight:900,color:esDef?T.g2:'#64B5F6',fontFamily:"'Nunito',sans-serif"}}>{d!=null?`${d>0?'+':'−'}${nf(Math.abs(d))} kcal`:'—'}</div>
+          <div style={{fontSize:16,fontWeight:900,color:esDef?T.g2:T.platos,fontFamily:"'Nunito',sans-serif"}}>{d!=null?`${d>0?'+':'−'}${nf(Math.abs(d))} kcal`:'—'}</div>
         </div>
       </div>
       {ret!=null&&Math.abs(ret)>=0.3&&(
@@ -6159,7 +6535,7 @@ function WeightChart({chartData,setWeightMode,goalWeight,shareName,lang}){
               const reached=Math.abs(toGoal)<=0.5;
               const losing=totalNeeded>0;
               return(
-                <div style={{marginTop:12,padding:"16px 18px",background:reached?"rgba(88,204,2,0.12)":"rgba(255,107,157,0.08)",borderRadius:18,border:`2px solid ${reached?T.g1:"rgba(255,107,157,0.3)"}`}}>
+                <div style={{marginTop:12,padding:"16px 18px",background:reached?alpha(T.g1,0.12):"rgba(255,107,157,0.08)",borderRadius:18,border:`2px solid ${reached?T.g1:"rgba(255,107,157,0.3)"}`}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
                     <div style={{fontSize:12,fontWeight:900,color:reached?T.g1:"#FF6B9D"}}>
                       {reached?t("chartGoalReached"):t("chartGoalSection")}
@@ -6204,7 +6580,7 @@ function WeightChart({chartData,setWeightMode,goalWeight,shareName,lang}){
                 <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:380,display:"flex",flexDirection:"column",gap:12}}>
                   <img src={shareCard.dataUrl} alt="" style={{width:"100%",borderRadius:20,border:"2px solid rgba(255,255,255,0.2)",boxShadow:"0 12px 40px rgba(0,0,0,0.6)",animation:"popIn 0.2s ease"}}/>
                   <div style={{display:"flex",gap:10}}>
-                    <button onClick={compartirTarjeta} style={{flex:1,padding:"14px",borderRadius:16,border:"none",cursor:"pointer",background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"#fff",fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif",boxShadow:`0 4px 0 ${T.g3}`}}>
+                    <button onClick={compartirTarjeta} style={{flex:1,padding:"14px",borderRadius:16,border:"none",cursor:"pointer",background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif",boxShadow:`0 4px 0 ${T.g3}`}}>
                       📤 {lang==='en'?'Share':'Compartir'}
                     </button>
                     <button onClick={descargarTarjeta} style={{flex:1,padding:"14px",borderRadius:16,cursor:"pointer",background:"rgba(255,255,255,0.10)",border:"2px solid rgba(255,255,255,0.2)",color:T.t1,fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif"}}>
@@ -6231,7 +6607,7 @@ function UserAvatar({size=52, photoB64, initials, borderColor, onClick, frame=nu
     border: fr.border,
     boxShadow: fr.boxShadow,
     // Legend gets an animated gradient border effect via outline
-    outline: fr.css==="legend" ? "2px solid #FF6600" : "none",
+    outline: fr.css==="legend" ? `2px solid ${T.llamaGlow}` : "none",
     outlineOffset:"2px",
   } : {
     border:`2.5px solid ${borderColor||T.au1}`,
@@ -6274,7 +6650,7 @@ function UserAvatar({size=52, photoB64, initials, borderColor, onClick, frame=nu
         position:"absolute", bottom:2, right:2,
         width:size*0.3, height:size*0.3,
         borderRadius:"50%",
-        background:"rgba(88,204,2,0.9)",
+        background:alpha(T.g1,0.9),
         display:"flex", alignItems:"center", justifyContent:"center",
         fontSize:size*0.15,
       }}>📷</div>
@@ -6334,7 +6710,7 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
         {isLocked?(
           <span style={{fontSize:16,opacity:0.35}} title={lang==="en"?"Email linked to your account":"Email vinculado a tu cuenta"}>🔒</span>
         ):editField===field?(
-          <button onClick={saveEdit} style={{background:T.g1,border:"none",borderRadius:10,padding:"7px 14px",color:"white",fontWeight:900,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>✓</button>
+          <button onClick={saveEdit} style={{background:T.g1,border:"none",borderRadius:10,padding:"7px 14px",color:T.t1,fontWeight:900,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>✓</button>
         ):(
           <button onClick={()=>startEdit(field, value)} style={{background:"rgba(255,255,255,0.08)",border:"1.5px solid rgba(255,255,255,0.14)",borderRadius:10,padding:"7px 10px",color:T.t2,fontSize:16,cursor:"pointer",lineHeight:1}}>✏️</button>
         )}
@@ -6435,7 +6811,7 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
                   <span style={{fontSize:9,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>220cm</span>
                 </div>
                 <div style={{display:"flex",gap:8}}>
-                  <button onClick={()=>{onSaveProfile("height",heightEdit);setEditingHeight(false);}} style={{flex:1,background:T.g1,border:"none",borderRadius:10,padding:"8px 0",color:"white",fontWeight:900,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>✓ {lang==="en"?"Save":"Guardar"}</button>
+                  <button onClick={()=>{onSaveProfile("height",heightEdit);setEditingHeight(false);}} style={{flex:1,background:T.g1,border:"none",borderRadius:10,padding:"8px 0",color:T.t1,fontWeight:900,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>✓ {lang==="en"?"Save":"Guardar"}</button>
                   <button onClick={()=>setEditingHeight(false)} style={{background:"rgba(255,255,255,0.08)",border:"1.5px solid rgba(255,255,255,0.14)",borderRadius:10,padding:"8px 14px",color:T.t2,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>✕</button>
                 </div>
               </div>
@@ -6448,7 +6824,7 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
             <div style={{display:"flex",gap:6}}>
               {[{code:"es",flag:"🇪🇸"},{code:"en",flag:"🇬🇧"}].map(({code,flag})=>(
                 <button key={code} onClick={()=>setLang(code)}
-                  style={{fontSize:22,background:lang===code?`rgba(88,204,2,0.2)`:"rgba(255,255,255,0.06)",
+                  style={{fontSize:22,background:lang===code?alpha(T.g1,0.2):"rgba(255,255,255,0.06)",
                     border:`2px solid ${lang===code?T.g1:"rgba(255,255,255,0.1)"}`,
                     borderRadius:10,padding:"4px 8px",cursor:"pointer",
                     boxShadow:lang===code?`0 2px 0 ${T.g3}`:"none",transition:"all 0.15s"}}>
@@ -6494,7 +6870,7 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
               ) : ES_IOS_NATIVO ? null : (
                 <button onClick={()=>abrirCheckoutStripe(profile?.id)}
                   style={{background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:"none",
-                    borderRadius:10,padding:"8px 12px",color:"#fff",fontWeight:900,fontSize:12,
+                    borderRadius:10,padding:"8px 12px",color:T.t1,fontWeight:900,fontSize:12,
                     cursor:"pointer",boxShadow:`0 2px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif",flexShrink:0}}>
                   {lang==="en"?"Subscribe · €7/mo":"Suscribirme · 7 €/mes"}
                 </button>
@@ -6535,14 +6911,14 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
           )}
 
           {/* ── Eliminar cuenta ── */}
-          <div style={{marginTop:20,paddingTop:16,borderTop:"1px solid rgba(255,75,75,0.2)"}}>
+          <div style={{marginTop:20,paddingTop:16,borderTop:`1px solid ${alpha(T.red,0.2)}`}}>
             {!showDelConf?(
               <button
                 onClick={()=>{setShowDelConf(true);setDelInput("");}}
                 style={{
                   width:"100%",padding:"12px",borderRadius:14,
-                  background:"rgba(255,75,75,0.07)",
-                  border:"1.5px solid rgba(255,75,75,0.25)",
+                  background:alpha(T.red,0.07),
+                  border:`1.5px solid ${alpha(T.red,0.25)}`,
                   color:"rgba(255,120,120,0.85)",fontSize:13,fontWeight:800,
                   cursor:"pointer",fontFamily:"'Nunito',sans-serif",
                   transition:"all 0.2s",
@@ -6551,8 +6927,8 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
               </button>
             ):(
               <div style={{
-                background:"rgba(255,75,75,0.1)",
-                border:"1.5px solid rgba(255,75,75,0.35)",
+                background:alpha(T.red,0.1),
+                border:`1.5px solid ${alpha(T.red,0.35)}`,
                 borderRadius:16,padding:"16px 14px",
               }}>
                 <div style={{fontSize:13,fontWeight:900,color:"#FF8080",marginBottom:6,textAlign:"center"}}>
@@ -6574,7 +6950,7 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
                   placeholder={lang==="en"?"DELETE DATA":"BORRAR DATOS"}
                   style={{
                     width:"100%",background:"rgba(255,255,255,0.07)",
-                    border:`1.5px solid ${(lang==="en"?delInput==="DELETE DATA":delInput==="BORRAR DATOS")?"rgba(255,75,75,0.7)":"rgba(255,255,255,0.15)"}`,
+                    border:`1.5px solid ${(lang==="en"?delInput==="DELETE DATA":delInput==="BORRAR DATOS")?"${alpha(T.red,0.7)}":"rgba(255,255,255,0.15)"}`,
                     borderRadius:10,padding:"10px 12px",color:"#FF8080",
                     fontSize:14,fontWeight:700,fontFamily:"'DM Sans',sans-serif",
                     marginBottom:12,outline:"none",letterSpacing:"0.05em",
@@ -6593,9 +6969,9 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
                     onClick={()=>{ const ok=lang==="en"?delInput==="DELETE DATA":delInput==="BORRAR DATOS"; if(ok) onDeleteAccount(); }}
                     disabled={lang==="en"?delInput!=="DELETE DATA":delInput!=="BORRAR DATOS"}
                     style={{flex:1,padding:"11px",borderRadius:12,
-                      background:(lang==="en"?delInput==="DELETE DATA":delInput==="BORRAR DATOS")?"rgba(255,75,75,0.9)":"rgba(255,75,75,0.15)",
-                      border:`1.5px solid ${(lang==="en"?delInput==="DELETE DATA":delInput==="BORRAR DATOS")?"rgba(255,100,100,0.8)":"rgba(255,75,75,0.2)"}`,
-                      color:(lang==="en"?delInput==="DELETE DATA":delInput==="BORRAR DATOS")?"white":"rgba(255,120,120,0.4)",
+                      background:(lang==="en"?delInput==="DELETE DATA":delInput==="BORRAR DATOS")?alpha(T.red,0.9):alpha(T.red,0.15),
+                      border:`1.5px solid ${(lang==="en"?delInput==="DELETE DATA":delInput==="BORRAR DATOS")?"rgba(255,100,100,0.8)":"${alpha(T.red,0.2)}"}`,
+                      color:(lang==="en"?delInput==="DELETE DATA":delInput==="BORRAR DATOS")?T.t1:"rgba(255,120,120,0.4)",
                       fontWeight:900,fontSize:13,
                       cursor:(lang==="en"?delInput==="DELETE DATA":delInput==="BORRAR DATOS")?"pointer":"not-allowed",
                       fontFamily:"'Nunito',sans-serif",
@@ -6657,8 +7033,8 @@ function MiniListaCompra({nombre, ingredientes, idReceta, t, onClose, etiquetaRa
             return(
               <button key={i} onClick={()=>toggle(i)} style={{
                 display:"flex",alignItems:"center",gap:11,textAlign:"left",cursor:"pointer",
-                background:on?"rgba(88,204,2,0.08)":"rgba(255,255,255,0.05)",
-                border:`1.5px solid ${on?"rgba(88,204,2,0.35)":"rgba(255,255,255,0.12)"}`,
+                background:on?alpha(T.g1,0.08):"rgba(255,255,255,0.05)",
+                border:`1.5px solid ${on?"${alpha(T.g1,0.35)}":"rgba(255,255,255,0.12)"}`,
                 borderRadius:13,padding:"10px 13px",transition:"all 0.15s"}}>
                 <span style={{width:21,height:21,flexShrink:0,borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",
                   background:on?T.g1:"transparent",border:`2px solid ${on?T.g1:"rgba(255,255,255,0.3)"}`,
@@ -6673,8 +7049,8 @@ function MiniListaCompra({nombre, ingredientes, idReceta, t, onClose, etiquetaRa
         <button onClick={regen} style={{
           width:"100%",marginTop:14,padding:"12px 18px",borderRadius:14,cursor:"pointer",
           background:conf?"rgba(255,140,60,0.18)":"rgba(255,255,255,0.06)",
-          border:`2px solid ${conf?"#FF8C3C":"rgba(255,255,255,0.15)"}`,
-          color:conf?"#FF8C3C":T.t2,fontWeight:900,fontSize:13,fontFamily:"'Nunito',sans-serif",transition:"all 0.15s"}}>
+          border:`2px solid ${conf?"${T.compra}":"rgba(255,255,255,0.15)"}`,
+          color:conf?T.compra:T.t2,fontWeight:900,fontSize:13,fontFamily:"'Nunito',sans-serif",transition:"all 0.15s"}}>
           {conf?t("listConfirm"):t("listReset")}
         </button>
       </div>
@@ -6691,9 +7067,9 @@ function SavedRecipeCard({rec, t, T, removeFromBook, lang, gems, isSaved, isDisc
   const [expanded, setExpanded] = React.useState(false);
   const [showCompra, setShowCompra] = React.useState(false);  // popup 🛒 de esta receta
   const tipoColor = {
-    Carne:"#E57373",Pescado:"#64B5F6",Vegetariana:"#81C784",
+    Carne:"#E57373",Pescado:T.platos,Vegetariana:"#81C784",
     Vegana:"#A5D6A7",Postre:"#F06292",Ensalada:"#AED581","Sopa/Crema":"#FFB74D",
-    Meat:"#E57373",Fish:"#64B5F6",Vegetarian:"#81C784",
+    Meat:"#E57373",Fish:T.platos,Vegetarian:"#81C784",
     Vegan:"#A5D6A7",Dessert:"#F06292",Salad:"#AED581","Soup/Cream":"#FFB74D",
   };
   const tipoIcon = {
@@ -6743,7 +7119,7 @@ function SavedRecipeCard({rec, t, T, removeFromBook, lang, gems, isSaved, isDisc
           {ing.length>0&&(<button onClick={()=>setShowCompra(true)} style={{
             width:"100%",padding:"10px",borderRadius:12,marginBottom:8,
             background:"rgba(255,140,60,0.10)",border:"1.5px solid rgba(255,140,60,0.35)",
-            color:"#FF8C3C",fontSize:12.5,fontWeight:900,
+            color:T.compra,fontSize:12.5,fontWeight:900,
             cursor:"pointer",fontFamily:"'Nunito',sans-serif",
           }}>{t("buyBtn")}</button>)}
           {/* ── Acciones del RECETARIO COMPLETO (solo si vienen los handlers): ──
@@ -6756,8 +7132,8 @@ function SavedRecipeCard({rec, t, T, removeFromBook, lang, gems, isSaved, isDisc
               {onSave&&(
                 <button onClick={()=>{ if(!isSaved) onSave(rec); }} style={{
                   flex:1,padding:"10px 6px",borderRadius:12,
-                  background:isSaved?"rgba(88,204,2,0.15)":(gems<20?"rgba(255,255,255,0.05)":"rgba(255,200,0,0.12)"),
-                  border:isSaved?"1.5px solid rgba(88,204,2,0.5)":(gems<20?"1.5px solid rgba(255,255,255,0.08)":"1.5px solid rgba(255,200,0,0.35)"),
+                  background:isSaved?alpha(T.g1,0.15):(gems<20?"rgba(255,255,255,0.05)":alpha(T.au1,0.12)),
+                  border:isSaved?`1.5px solid ${alpha(T.g1,0.5)}`:(gems<20?"1.5px solid rgba(255,255,255,0.08)":`1.5px solid ${alpha(T.au1,0.35)}`),
                   color:isSaved?T.g1:(gems<20?T.t3:T.au1),fontSize:12,fontWeight:900,
                   cursor:isSaved?"default":(gems<20?"default":"pointer"),fontFamily:"'Nunito',sans-serif",
                 }}>{isSaved?(lang==='en'?'✅ Saved':'✅ Guardada'):(lang==='en'?'📖 Save · 20 💎':'📖 Guardar · 20 💎')}</button>
@@ -6775,7 +7151,7 @@ function SavedRecipeCard({rec, t, T, removeFromBook, lang, gems, isSaved, isDisc
           )}
           {removeFromBook && (<button onClick={()=>removeFromBook(rec.recipe_id)} style={{
             width:"100%",padding:"9px",borderRadius:12,
-            background:"rgba(255,75,75,0.07)",border:"1.5px solid rgba(255,75,75,0.2)",
+            background:alpha(T.red,0.07),border:`1.5px solid ${alpha(T.red,0.2)}`,
             color:"rgba(255,120,120,0.8)",fontSize:12,fontWeight:800,
             cursor:"pointer",fontFamily:"'Nunito',sans-serif",
           }}>🗑️ {t("recipeDeleteFromBook")}</button>)}
@@ -6803,7 +7179,7 @@ function GBHApp(){
   const [tab,     setTab]     = useState("home");
   const [lang,    setLang]    = useState(()=>lsGet("gbh:lang","es"));
   const [muted,   setMuted]   = useState(()=>lsGet("gbh:mute",false));
-  const sfx = (name,...args) => { if(!muted) SFX[name]?.(...args); };
+  const sfx = (name,...args) => { if(!muted){ SFX[name]?.(...args); if(HAPTIC_DE_SFX[name]) haptic(HAPTIC_DE_SFX[name]); } };
   const [profile, setProfile] = useState(null);
   const [tLog,    setTLog]    = useState({diet:false,steps:false,hydration:false,sleep:false});
   const [steps,   setSteps]   = useState(0);
@@ -6908,8 +7284,12 @@ function GBHApp(){
   const [aName,    setAName]    = useState("");
   const [aEmail,   setAEmail]   = useState("");
   const [altaEmailInicial,setAltaEmailInicial]=useState("");  // email precargado en el alta con Bo
-  // (peso, objetivo, código, estatura, sexo y privacidad se piden ahora en el
-  //  alta conversacional con Bo — el formulario antiguo desapareció)
+  const [aWeight,  setAWeight]  = useState("");
+  const [aGoal,    setAGoal]    = useState("");
+  const [aRef,     setARef]     = useState("");   // código de invitación (opcional)
+  const [aHeight,  setAHeight]  = useState(170);
+  const [aSex,     setASex]     = useState("M");
+  const [aPrivacy, setAPrivacy] = useState(false);
   const [authMode,setAuthMode]= useState("new"); // "new" | "returning" | "migrate" | "checking"
   const [authErr, setAuthErr] = useState("");
   const [authDbg, setAuthDbg] = useState([]); // debug visible en pantalla
@@ -7588,52 +7968,6 @@ function GBHApp(){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[profile?.id, allDone, trialDiasRest]);
 
-  // ── Referidos tras victoria (Fase 5) ───────────────────────────────────────
-  // Pedir un favor funciona DESPUÉS de un logro, no en una pestaña. La tarjeta
-  // de invitar salta en Inicio, una sola vez y descartable, cuando ocurre una
-  // victoria real: semana de 6-7 días registrados, meta de racha (7/14/30/50)
-  // o bajada de peso respecto al pesaje anterior. Y NUNCA si el paciente está
-  // en pausa declarada (profiles.en_pausa), si viene de una semana en silencio
-  // o si la descartó hace menos de 30 días. Pedir un referido a alguien que lo
-  // está pasando mal es la forma más rápida de quemar el foso.
-  const [refCard,setRefCard]=useState(false);
-  useEffect(()=>{
-    if(!profile?.id || !profile?.referral_code || refCard) return;
-    try{
-      const last=lsGet(`gbh:refcard:${profile.id}`,0);
-      if(last && (Date.now()-last) < 30*86400e3) return;      // 30 días de silencio
-      if(profile?.en_pausa) return;                            // pausa declarada
-      const hoy=new Date();
-      // Semana en silencio: los 7 días previos (sin contar hoy) sin un solo registro
-      let silencio=true;
-      for(let i=1;i<=7;i++){
-        const d=new Date(hoy); d.setDate(d.getDate()-i);
-        if(logs.find(l=>l.date===toKey(d)&&l.diet)){ silencio=false; break; }
-      }
-      if(silencio) return;
-      // Victoria 1: semana actual (L→D) con 6-7 días de dieta registrados
-      const lunes=new Date(hoy); lunes.setDate(lunes.getDate()-((lunes.getDay()+6)%7));
-      let diasSem=0;
-      for(let i=0;i<7;i++){
-        const d=new Date(lunes); d.setDate(d.getDate()+i);
-        if(logs.find(l=>l.date===toKey(d)&&l.diet)) diasSem++;
-      }
-      const vSemana=diasSem>=6;
-      // Victoria 2: meta de racha alcanzada (mismos hitos que la fase 1)
-      const vRacha=[7,14,30,50].includes(streak);
-      // Victoria 3: bajada de peso respecto al pesaje anterior
-      const ws=weights.filter(w=>!w.isInitial);
-      const vPeso=ws.length>=2 && ws[ws.length-1].weight < ws[ws.length-2].weight;
-      if(!(vSemana||vRacha||vPeso)) return;
-      setRefCard(true);
-    }catch{}
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[profile?.id, profile?.en_pausa, logs, weights, streak]);
-  const cerrarRefCard=()=>{
-    try{ lsSet(`gbh:refcard:${profile.id}`,Date.now()); }catch{}
-    setRefCard(false);
-  };
-
   // ── Escudos con consumo REAL + reparación de racha ─────────────────────────
   // El escudo existía (compra 200 💎, cofres) pero nunca se consumía: la racha
   // solo miraba l.diet y la "protección" era decorativa. Ahora, si AYER quedó
@@ -7665,6 +7999,7 @@ function GBHApp(){
       const d1=new Date();d1.setDate(d1.getDate()-1);
       const d2=new Date();d2.setDate(d2.getDate()-2);
       const ayer=toKey(d1),anteayer=toKey(d2);
+      if(pausaCubre(profile,ayer)) return;                    // Tarea E: día en pausa → lo cubre la pausa, GRATIS
       if(logs.find(l=>l.date===ayer&&l.diet)) return;         // ayer cubierto
       if(!logs.find(l=>l.date===anteayer&&l.diet)) return;    // no había racha
       const k=`gbh:rachafix:${profile.id}:${ayer}`;
@@ -7678,6 +8013,7 @@ function GBHApp(){
         setProfile(u);lsSet(`gbh:p:${u.id}`,u);
         sbReq("PATCH",`profiles?id=eq.${profile.id}`,{shields:u.shields});
         repararDia(ayer);
+        lsSet(`gbh:escudo:${profile.id}:${ayer}`,true);   // Tarea C: el 🛡️ se ve en la fila semanal
         sfx("shield");
         showT({icon:"🛡️",title:lang==='en'?'Shield used!':'¡Escudo usado!',
           sub:lang==='en'?`Your ${per}-day streak is safe`:`Tu racha de ${per} días sigue viva`});
@@ -7706,6 +8042,7 @@ function GBHApp(){
     setProfile(u);lsSet(`gbh:p:${u.id}`,u);
     sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:u.gems});
     repararDia(avisoRacha.fecha);
+    lsSet(`gbh:escudo:${profile.id}:${avisoRacha.fecha}`,true);   // reparación 25💎 = protección: también se ve 🛡️
     sfx("streakCelebration");
     showT({icon:"💚",title:lang==='en'?'Streak repaired!':'¡Racha reparada!',
       sub:lang==='en'?`Your ${avisoRacha.perdida}-day streak lives on`:`Tu racha de ${avisoRacha.perdida} días sigue viva`});
@@ -7902,7 +8239,7 @@ function GBHApp(){
   const CATS_COMPLETO = [
     {id:"desayuno",   es:"Desayunos",     en:"Breakfasts",  icon:"🥣", color:"#FFD54F", filtro:"categoria=eq."+encodeURIComponent("Desayuno/Almuerzo/Merienda"), match:r=>r.categoria==="Desayuno/Almuerzo/Merienda"},
     {id:"carne",      es:"Carnes",        en:"Meat",        icon:"🥩", color:"#E57373", filtro:"tipo=eq.Carne", match:r=>r.tipo==="Carne"},
-    {id:"pescado",    es:"Pescados",      en:"Fish",        icon:"🐟", color:"#64B5F6", filtro:"tipo=eq.Pescado", match:r=>r.tipo==="Pescado"},
+    {id:"pescado",    es:"Pescados",      en:"Fish",        icon:"🐟", color:T.platos, filtro:"tipo=eq.Pescado", match:r=>r.tipo==="Pescado"},
     {id:"vegetariana",es:"Vegetariano",   en:"Vegetarian",  icon:"🥦", color:"#81C784", filtro:"tipo=eq.Vegetariana", match:r=>r.tipo==="Vegetariana"},
     {id:"vegana",     es:"Vegano",        en:"Vegan",       icon:"🌱", color:"#A5D6A7", filtro:"tipo=eq.Vegana", match:r=>r.tipo==="Vegana"},
     {id:"postre",     es:"Postres",       en:"Desserts",    icon:"🍰", color:"#F06292", filtro:"tipo=eq.Postre", match:r=>r.tipo==="Postre"},
@@ -8278,7 +8615,7 @@ function GBHApp(){
     // ── Refrescar SIEMPRE desde Supabase los campos que controla el nutricionista
     if(navigator.onLine){
       try{
-        const fresh=await sbReq("GET",`profiles?id=eq.${p.id}&select=plan,gems,xp,shields,streak,name,target_kcal,avatar_b64,bo_nombre,bo_color,bo_equipados,bo_personalidad,trial_ends_at,plan_until&limit=1`);
+        const fresh=await sbReq("GET",`profiles?id=eq.${p.id}&select=plan,gems,xp,shields,streak,name,target_kcal,avatar_b64,bo_nombre,bo_color,bo_equipados,bo_personalidad,trial_ends_at,plan_until,meta_racha,pausa_desde,pausa_hasta,pausas_hist&limit=1`);
         if(fresh&&fresh.length){
           const f=fresh[0];
           const merged={
@@ -8626,7 +8963,7 @@ function GBHApp(){
     // Float reward chips
     const chips=[];
     if(ax>0)chips.push({id:Date.now()+"xp",label:`+${ax} XP ⚡`,color:"#C8FF40"});
-    if(ag>0)chips.push({id:Date.now()+"g", label:`+${ag} 💎`,color:"#FFD700"});
+    if(ag>0)chips.push({id:Date.now()+"g", label:`+${ag} 💎`,color:T.moneda});
     if(chips.length){setFloatItems(chips);setTimeout(()=>setFloatItems([]),1600);sfx("coin");}
     // Level-up check + distribute rewards
     const oldLv=getLevel(prevXP),newLv=getLevel(u.xp);
@@ -8701,6 +9038,11 @@ function GBHApp(){
     if(was) return;
     const nl={...tLog,[key]:true};setTLog(nl);await saveLog(nl,steps);
     if(key==="diet") sfx("complete"); else sfx("missionDone");
+    // Háptica proporcional al hito (Tarea A): la dieta dispara la celebración
+    // de racha → patrón largo; el resto de misiones, doble pulso. Estamos
+    // dentro del gesto del usuario (tap en la misión o en la última toma), y
+    // `was` garantiza que la celebración vibra UNA sola vez al día.
+    haptic(key==="diet"?"celebracion":"doble");
     await addXG(key==="diet"?15:5,key==="diet"?5:2);
     if(key==="diet"){sfx("streakCelebration");setStreakAnim(true);setTimeout(()=>setStreakAnim(false),5000);}
     const wasAllDone=tLog.diet&&tLog.steps&&tLog.hydration&&tLog.sleep;
@@ -8811,6 +9153,7 @@ function GBHApp(){
     sbReq("POST","daily_logs?on_conflict=profile_id,log_date",{profile_id:profile.id,log_date:hoy,meals_log:meals});
     addXG(0,5);
     sfx("missionDone");
+    haptic("doble");
     showT({icon:SUPL_IC[item.tipo]||'💊',title:lang==='en'?'Done! +5 💎':'¡Completado! +5 💎',
            sub:item.nombre});
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -8866,6 +9209,117 @@ function GBHApp(){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
+  // ── Tarea D · Meta de racha ────────────────────────────────────────────────
+  const [metaAsk,setMetaAsk]=useState(false);
+  const [metaLograda,setMetaLograda]=useState(null);   // nº de la meta cumplida | null
+  // Primera oferta: TRAS el overlay de racha (5 s), la primera vez que se
+  // alcanza racha ≥2. streakAnim solo se enciende dentro del gesto del usuario,
+  // así que la pregunta nunca aparece "de la nada" al abrir la app.
+  const metaAskTimerRef=useRef(null);
+  useEffect(()=>{
+    if(!streakAnim||!profile?.id) return;
+    if((profile?.meta_racha||0)>0||streak+1<2) return;
+    const k=`gbh:metaracha:ask:${profile.id}`;
+    if(lsGet(k,false)) return;
+    // ⚠️ SIN cleanup por dependencia a propósito: streakAnim se apaga a los
+    // 5 s y este temporizador dispara a los 5,3 s — un cleanup normal lo
+    // mataría justo antes de sonar y la pregunta no aparecería jamás.
+    if(metaAskTimerRef.current) clearTimeout(metaAskTimerRef.current);
+    metaAskTimerRef.current=setTimeout(()=>{
+      try{
+        if(espejoPopupsRef.current) return;   // otro pop-up manda; se reintenta en la siguiente racha
+        lsSet(k,true);
+        setMetaAsk(true);
+      }catch{}
+    },5300);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[streakAnim, profile?.id]);
+  useEffect(()=>()=>{ if(metaAskTimerRef.current) clearTimeout(metaAskTimerRef.current); },[]);
+  const elegirMeta=useCallback((n)=>{
+    if(!profile?.id) return;
+    const u={...profile,meta_racha:n};
+    setProfile(u); lsSet(`gbh:p:${u.id}`,u);
+    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{meta_racha:n});
+    // El fin de la meta anterior no invalida la nueva celebración
+    sfx("tap"); haptic("doble");
+    setMetaAsk(false); setMetaLograda(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile]);
+  // Meta cumplida → celebración propia, UNA vez por meta. Si la racha se cae
+  // después, NO pasa nada: ni mensaje, ni penalización (el progreso de Inicio
+  // simplemente vuelve a contar, y la meta se puede recolocar con un toque).
+  useEffect(()=>{
+    const meta=profile?.meta_racha||0;
+    if(!profile?.id||!meta||streak<meta) return;
+    const k=`gbh:metaracha:done:${profile.id}:${meta}`;
+    if(lsGet(k,false)) return;
+    const espera=streakAnim?5300:800;   // si hay celebración de racha en curso, después de ella
+    const tm=setTimeout(()=>{
+      try{
+        if(espejoPopupsRef.current) return;
+        lsSet(k,true);
+        sfx("badge");            // sin háptica: puede dispararse fuera de un gesto directo
+        setMetaLograda(meta);
+      }catch{}
+    },espera);
+    return ()=>clearTimeout(tm);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[streak, profile?.meta_racha, profile?.id]);
+
+  // La ref de pop-ups del espejo debe conocer también estos dos (segunda
+  // asignación A PROPÓSITO: en la primera, metaAsk/metaLograda aún no existen
+  // y meterlos allí sería la trampa TDZ que ya avisa el comentario de avisoRacha)
+  espejoPopupsRef.current = espejoPopupsRef.current || !!(metaAsk||metaLograda);
+
+  // ── Tarea E · Pausa declarada ("Me voy unos días") ─────────────────────────
+  const declararPausa=useCallback((d,h)=>{
+    if(!profile?.id) return;
+    const hist=[...(Array.isArray(profile.pausas_hist)?profile.pausas_hist:[]),{d,h}];
+    const u={...profile,pausa_desde:d,pausa_hasta:h,pausas_hist:hist};
+    setProfile(u); lsSet(`gbh:p:${u.id}`,u);
+    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{pausa_desde:d,pausa_hasta:h,pausas_hist:hist});
+    sfx("complete"); haptic("doble");
+    showT({icon:"🧳",title:jt(lang,"pausaActiva",{d,h}),sub:jt(lang,"pausaEspera")});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile, lang]);
+  const cancelarPausa=useCallback(()=>{
+    if(!profile?.id||!profile?.pausa_desde) return;
+    const hoyK=toKey();
+    // Si aún no había empezado, no cuenta contra el cupo del trimestre; si está
+    // a medias, sí cuenta (los días ya cubiertos se quedan cubiertos).
+    const hist=(Array.isArray(profile.pausas_hist)?profile.pausas_hist:[])
+      .filter(p=>!(p.d===profile.pausa_desde&&p.h===profile.pausa_hasta&&p.d>hoyK))          // sin empezar → no cuenta contra el cupo
+      .map(p=>(p.d===profile.pausa_desde&&p.h===profile.pausa_hasta&&p.d<=hoyK&&p.h>hoyK)
+        ?{...p,h:hoyK}:p);                                                                    // a medias → se trunca a hoy: los días futuros dejan de ser pausa
+    const u={...profile,pausa_desde:null,pausa_hasta:null,pausas_hist:hist};
+    setProfile(u); lsSet(`gbh:p:${u.id}`,u);
+    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{pausa_desde:null,pausa_hasta:null,pausas_hist:hist});
+    sfx("tap");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile]);
+  // Cobertura de los días en pausa: mismo mecanismo que el escudo (repararDia,
+  // que mantiene viva la racha calculada sobre l.diet) pero GRATIS y por
+  // adelantado. Cubre cada día del rango que ya ha pasado y quedó sin registro;
+  // si el paciente registró igualmente, su registro manda y no se toca nada.
+  useEffect(()=>{
+    if(!profile?.id||!profile?.pausa_desde||!profile?.pausa_hasta) return;
+    try{
+      const hoyK=toKey();
+      const d=new Date(profile.pausa_desde+"T12:00:00");
+      const fin=profile.pausa_hasta<hoyK?profile.pausa_hasta:hoyK;
+      while(toKey(d)<=fin){
+        const k=toKey(d);
+        const cub=`gbh:pausafix:${profile.id}:${k}`;
+        if(!lsGet(cub,false)&&!logs.find(l=>l.date===k&&l.diet)){
+          lsSet(cub,true);
+          repararDia(k);
+        }
+        d.setDate(d.getDate()+1);
+      }
+    }catch{}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.pausa_desde, profile?.pausa_hasta, profile?.id, logs.length]);
+
   // Tap en un mini-botón de toma desde Inicio:
   //  · toma sin registrar → se marca "seguida" (verde) al instante
   //  · toma ya registrada → abre el plan diario para ver/editar el registro
@@ -8884,6 +9338,7 @@ function GBHApp(){
     setLogs(ls=>{ const n=[...ls]; const j=n.findIndex(l=>l.date===today);
       if(j>=0)n[j]={...n[j],meals}; else n.push(entry); return n; });
     sfx("missionDone");
+    haptic("toma");   // pulso corto: es el gesto más repetido, no un fanfarrión
     sbReq("POST","daily_logs?on_conflict=profile_id,log_date",{profile_id:profile.id,log_date:today,meals_log:meals});
     chkTomasCompletas(meals);
   },[profile?.id, chkTomasCompletas]);
@@ -8902,7 +9357,7 @@ function GBHApp(){
   const updSteps=useCallback(async(val)=>{
     const sc=Math.max(0,Math.min(99999,val));setSteps(sc);
     const done=sc>=10000;
-    if(done!==tLog.steps){const nl={...tLog,steps:done};setTLog(nl);await saveLog(nl,sc);if(done){sfx("missionDone");await addXG(5,2);showT({icon:"👟",title:"¡10.000 pasos!",sub:"Meta de pasos alcanzada ✅"});}}
+    if(done!==tLog.steps){const nl={...tLog,steps:done};setTLog(nl);await saveLog(nl,sc);if(done){sfx("missionDone");haptic("doble");await addXG(5,2);showT({icon:"👟",title:"¡10.000 pasos!",sub:"Meta de pasos alcanzada ✅"});}}
     else{ sfx("step"); await saveLog(tLog,sc); }
   },[tLog,saveLog,addXG]);
 
@@ -9383,9 +9838,9 @@ function GBHApp(){
     @keyframes bounceIn{0%{transform:scale(0.5);opacity:0}60%{transform:scale(1.15)}80%{transform:scale(0.95)}100%{transform:scale(1);opacity:1}}
     @keyframes slideInLeft{from{transform:translateX(-24px);opacity:0}to{transform:translateX(0);opacity:1}}
     @keyframes confettiFall{0%{transform:translateY(-20px) rotate(0deg);opacity:1}100%{transform:translateY(100vh) rotate(720deg);opacity:0}}
-    @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,200,0,0.55)}50%{box-shadow:0 0 0 10px rgba(255,200,0,0)}}
+    @keyframes pulse{0%,100%{box-shadow:0 0 0 0 ${alpha(T.au1,0.55)}}50%{box-shadow:0 0 0 10px ${alpha(T.au1,0)}}}
     @keyframes confettiFall{to{transform:translateY(110vh) rotate(800deg);opacity:0}}
-    @keyframes glow{0%,100%{box-shadow:0 6px 0 ${T.g3},0 0 18px rgba(88,204,2,0.35)}50%{box-shadow:0 6px 0 ${T.g3},0 0 38px rgba(88,204,2,0.8)}}
+    @keyframes glow{0%,100%{box-shadow:0 6px 0 ${T.g3},0 0 18px ${alpha(T.g1,0.35)}}50%{box-shadow:0 6px 0 ${T.g3},0 0 38px ${alpha(T.g1,0.8)}}}
     @keyframes wobble{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(8deg)}}
     @keyframes fadeInOut{0%{opacity:0}10%{opacity:1}75%{opacity:1}100%{opacity:0}}
     @keyframes fadeIn{from{opacity:0}to{opacity:1}}
@@ -9399,20 +9854,20 @@ function GBHApp(){
     @keyframes sparkle0{0%,100%{opacity:1;transform:scale(1) rotate(0deg)}50%{opacity:0.5;transform:scale(1.3) rotate(20deg)}}
     @keyframes sparkle1{0%,100%{opacity:0.7;transform:scale(0.9)}50%{opacity:1;transform:scale(1.2)}}
     @keyframes sparkle2{0%,100%{opacity:1;transform:scale(1.1) rotate(-15deg)}50%{opacity:0.6;transform:scale(0.8) rotate(15deg)}}
-    input::placeholder{color:rgba(255,255,255,0.22)}input:focus{outline:none!important;border-color:rgba(88,204,2,0.75)!important}
+    input::placeholder{color:rgba(255,255,255,0.22)}input:focus{outline:none!important;border-color:${alpha(T.g1,0.75)}!important}
     ::-webkit-scrollbar{width:0}button:active{transform:scale(0.94)!important;transition:transform 0.08s!important}
     .nav-scroll::-webkit-scrollbar{display:none}.nav-scroll{scrollbar-width:none;-ms-overflow-style:none;}
-    .gbh-select{width:100%;background:rgba(255,255,255,0.07);border:2px solid rgba(139,100,60,0.5);border-radius:14px;padding:14px 16px;color:#F7F0E0;font-size:15px;font-weight:700;font-family:'DM Sans',sans-serif;-webkit-appearance:none;appearance:none;cursor:pointer;outline:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23FFC800' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 16px center;}
-    .gbh-select:focus{border-color:rgba(88,204,2,0.75);}
-    .gbh-select option{background:#152210;color:#F7F0E0;}
+    .gbh-select{width:100%;background:rgba(255,255,255,0.07);border:2px solid ${T.bW};border-radius:14px;padding:14px 16px;color:${T.cr};font-size:15px;font-weight:700;font-family:'DM Sans',sans-serif;-webkit-appearance:none;appearance:none;cursor:pointer;outline:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23FFC800' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 16px center;}
+    .gbh-select:focus{border-color:${alpha(T.g1,0.75)};}
+    .gbh-select option{background:${T.bgCard};color:${T.cr};}
     input[type=range].gbh-slider{-webkit-appearance:none;appearance:none;width:100%;height:8px;border-radius:8px;background:rgba(255,255,255,0.15);outline:none;cursor:pointer;margin:14px 0;}
-    input[type=range].gbh-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#58CC02,#89E219);box-shadow:0 3px 8px rgba(0,0,0,0.5),0 0 0 3px #2B7A00;cursor:pointer;}
-    input[type=range].gbh-slider::-moz-range-thumb{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#58CC02,#89E219);box-shadow:0 3px 8px rgba(0,0,0,0.5),0 0 0 3px #2B7A00;cursor:pointer;border:none;}
+    input[type=range].gbh-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,${T.g1},${T.g2});box-shadow:0 3px 8px rgba(0,0,0,0.5),0 0 0 3px ${T.g3};cursor:pointer;}
+    input[type=range].gbh-slider::-moz-range-thumb{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,${T.g1},${T.g2});box-shadow:0 3px 8px rgba(0,0,0,0.5),0 0 0 3px ${T.g3};cursor:pointer;border:none;}
     input[type=range].gbh-slider::-webkit-slider-runnable-track{height:8px;border-radius:8px;background:rgba(255,255,255,0.15);}
     input[type=range].gbh-slider::-moz-range-track{height:8px;border-radius:8px;background:rgba(255,255,255,0.15);}
     input[type=range].gbh-slider-sm{-webkit-appearance:none;appearance:none;width:100%;height:6px;border-radius:6px;background:rgba(255,255,255,0.15);outline:none;cursor:pointer;margin:10px 0;}
-    input[type=range].gbh-slider-sm::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,#58CC02,#89E219);box-shadow:0 2px 6px rgba(0,0,0,0.5),0 0 0 2px #2B7A00;cursor:pointer;}
-    input[type=range].gbh-slider-sm::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,#58CC02,#89E219);box-shadow:0 2px 6px rgba(0,0,0,0.5),0 0 0 2px #2B7A00;cursor:pointer;border:none;}
+    input[type=range].gbh-slider-sm::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,${T.g1},${T.g2});box-shadow:0 2px 6px rgba(0,0,0,0.5),0 0 0 2px ${T.g3};cursor:pointer;}
+    input[type=range].gbh-slider-sm::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,${T.g1},${T.g2});box-shadow:0 2px 6px rgba(0,0,0,0.5),0 0 0 2px ${T.g3};cursor:pointer;border:none;}
   `;
 
   // Cargar ranking cuando se activa la pestaña
@@ -9548,7 +10003,7 @@ function GBHApp(){
               padding: "18px 24px", borderRadius: 20,
               border: `3px solid ${T.g3}`,
               background: `linear-gradient(135deg,${T.g1},${T.g2})`,
-              color: "white", fontSize: 17, fontWeight: 900,
+              color: T.t1, fontSize: 17, fontWeight: 900,
               cursor: "pointer",
               boxShadow: `0 8px 0 ${T.g3}`,
               fontFamily: "'Nunito',sans-serif",
@@ -9579,7 +10034,7 @@ function GBHApp(){
       <div style={{fontSize:16,fontWeight:900,color:T.g1}}>
         {lang==="en"?"Switching to English…":"Cambiando a Español…"}
       </div>
-      <div style={{width:48,height:48,border:`4px solid rgba(88,204,2,0.2)`,
+      <div style={{width:48,height:48,border:`4px solid ${alpha(T.g1,0.2)}`,
         borderTopColor:T.g1,borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
     </div>
     </LangCtx.Provider>
@@ -9594,7 +10049,7 @@ function GBHApp(){
       <style>{CSS}</style>
       <Mascot expr="happy" size={120}/>
       <div style={{fontSize:16,fontWeight:900,color:T.g1,letterSpacing:"0.05em"}}>{t("loading")}</div>
-      <div style={{width:48,height:48,border:`4px solid rgba(88,204,2,0.2)`,
+      <div style={{width:48,height:48,border:`4px solid ${alpha(T.g1,0.2)}`,
         borderTopColor:T.g1,borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
     </div>
     </LangCtx.Provider>
@@ -9618,7 +10073,7 @@ function GBHApp(){
       <div style={{position:"fixed",top:16,right:16,display:"flex",gap:6,zIndex:100}}>
         {[{code:"es",flag:"🇪🇸"},{code:"en",flag:"🇬🇧"}].map(({code,flag})=>(
           <button key={code} onClick={()=>{ lsSet("gbh:lang",code); setLang(code); }}
-            style={{fontSize:20,background:lang===code?"rgba(88,204,2,0.2)":"rgba(255,255,255,0.08)",
+            style={{fontSize:20,background:lang===code?alpha(T.g1,0.2):"rgba(255,255,255,0.08)",
               border:`2px solid ${lang===code?T.g1:"rgba(255,255,255,0.15)"}`,
               borderRadius:10,padding:"4px 8px",cursor:"pointer",
               boxShadow:lang===code?`0 2px 0 ${T.g3}`:"none",transition:"all 0.15s"}}>
@@ -9656,11 +10111,11 @@ function GBHApp(){
           width:"100%",maxWidth:360,
           padding:"18px 24px",
           borderRadius:20,
-          border:`3px solid ${T.g3}`,
-          background:`linear-gradient(135deg,${T.g1},${T.g2})`,
-          color:"white",fontSize:18,fontWeight:900,
+          border:`3px solid ${T.au3}`,
+          background:`linear-gradient(135deg,${T.cta1},${T.au2})`,
+          color:T.bgCard,fontSize:18,fontWeight:900,
           cursor:"pointer",
-          boxShadow:`0 8px 0 ${T.g3}, 0 12px 30px rgba(88,204,2,0.25)`,
+          boxShadow:`0 8px 0 ${T.au3}, 0 12px 30px rgba(201,162,39,0.28)`,
           fontFamily:"'Nunito',sans-serif",
           transition:"all 0.15s",
           marginBottom:14,
@@ -9709,7 +10164,7 @@ function GBHApp(){
       <div style={{position:"fixed",top:16,right:16,display:"flex",gap:6,zIndex:100}}>
         {[{code:"es",flag:"🇪🇸"},{code:"en",flag:"🇬🇧"}].map(({code,flag})=>(
           <button key={code} onClick={()=>{ lsSet("gbh:lang",code); setLang(code); }}
-            style={{fontSize:20,background:lang===code?"rgba(88,204,2,0.2)":"rgba(255,255,255,0.08)",
+            style={{fontSize:20,background:lang===code?alpha(T.g1,0.2):"rgba(255,255,255,0.08)",
               border:`2px solid ${lang===code?T.g1:"rgba(255,255,255,0.15)"}`,
               borderRadius:10,padding:"4px 8px",cursor:"pointer",
               boxShadow:lang===code?`0 2px 0 ${T.g3}`:"none",transition:"all 0.15s"}}>
@@ -9737,7 +10192,7 @@ function GBHApp(){
 
         {/* ── Usuario existente: bienvenida, entra directo (sin contraseña) ── */}
         {authMode==="returning"&&(
-          <div style={{background:"rgba(88,204,2,0.12)",border:`1.5px solid ${T.g3}`,borderRadius:14,
+          <div style={{background:alpha(T.g1,0.12),border:`1.5px solid ${T.g3}`,borderRadius:14,
             padding:"12px 16px",margin:"12px 0",display:"flex",alignItems:"center",gap:10}}>
             <span style={{fontSize:22}}>👋</span>
             <div>
@@ -9776,7 +10231,7 @@ function GBHApp(){
 
 
         {authErr&&(
-          <div style={{background:"rgba(255,75,75,0.12)",border:"1.5px solid rgba(255,75,75,0.4)",
+          <div style={{background:alpha(T.red,0.12),border:`1.5px solid ${alpha(T.red,0.4)}`,
             borderRadius:12,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#FF8080",
             fontFamily:"'DM Sans',sans-serif",textAlign:"center"}}>
             ⚠️ {authErr}
@@ -9797,7 +10252,7 @@ function GBHApp(){
               style={{width:"100%",padding:"17px 20px",borderRadius:18,border:`3px solid ${T.g3}`,
                 cursor:dis?"not-allowed":"pointer",fontSize:17,fontWeight:900,
                 background:dis?"rgba(255,255,255,0.12)":`linear-gradient(135deg,${T.g1},${T.g2})`,
-                color:dis?T.t2:"white",boxShadow:dis?"none":`0 6px 0 ${T.g3}`,
+                color:dis?T.t2:T.t1,boxShadow:dis?"none":`0 6px 0 ${T.g3}`,
                 transition:"all 0.15s",fontFamily:"'Nunito',sans-serif"}}>
               {label}
             </button>
@@ -9833,8 +10288,8 @@ function GBHApp(){
               onClick={()=>{if(k==="✕"){setPinGate(false);setPinVal("");}else if(k==="←"){setPinVal(v=>v.slice(0,-1));setPinErr(false);}else pinTecla(k);}}
               style={{height:64,borderRadius:18,fontSize:k==="←"||k==="✕"?18:22,fontWeight:900,cursor:"pointer",
                 fontFamily:"'Nunito',sans-serif",color:k==="✕"?T.red:T.t1,
-                background:k==="✕"?"rgba(255,75,75,0.10)":"rgba(255,255,255,0.06)",
-                border:"2px solid "+(k==="✕"?"rgba(255,75,75,0.3)":"rgba(255,255,255,0.12)"),
+                background:k==="✕"?alpha(T.red,0.10):"rgba(255,255,255,0.06)",
+                border:"2px solid "+(k==="✕"?alpha(T.red,0.3):"rgba(255,255,255,0.12)"),
                 boxShadow:"0 4px 0 rgba(0,0,0,0.4)"}}>
               {k}
             </button>
@@ -9923,7 +10378,7 @@ function GBHApp(){
                 <button key={f.id} onClick={()=>setFiltroAdmin(f.id)}
                   style={{flex:"1 1 30%",padding:"9px 2px",borderRadius:12,cursor:"pointer",whiteSpace:"nowrap",
                     fontWeight:900,fontSize:10.5,fontFamily:"'Nunito',sans-serif",
-                    background:filtroAdmin===f.id?"rgba(88,204,2,0.18)":"rgba(255,255,255,0.05)",
+                    background:filtroAdmin===f.id?alpha(T.g1,0.18):"rgba(255,255,255,0.05)",
                     border:filtroAdmin===f.id?`2px solid ${T.g1}`:"2px solid rgba(255,255,255,0.10)",
                     color:filtroAdmin===f.id?T.g1:T.t2,
                     boxShadow:filtroAdmin===f.id?"0 3px 0 rgba(0,0,0,0.35)":"none"}}>
@@ -9944,7 +10399,7 @@ function GBHApp(){
                   {!esGratis(p)&&(enRiesgo(p)||(diasVisto(p)!=null&&diasVisto(p)>7))&&(
                     <button onClick={()=>copiarWsp(p)} title="Copiar mensaje para WhatsApp" style={{background:"rgba(37,211,102,0.14)",border:"1px solid rgba(37,211,102,0.35)",borderRadius:8,padding:"3px 9px",fontSize:11,fontWeight:800,color:"#25D366",cursor:"pointer",flexShrink:0,fontFamily:"'Nunito',sans-serif"}}>💬</button>
                   )}
-                  <button onClick={()=>exportarSeguimientoCSV(p.id,p.name)} title="Descargar seguimiento (CSV)" style={{background:"rgba(206,130,255,0.14)",border:"1px solid rgba(206,130,255,0.35)",borderRadius:8,padding:"3px 9px",fontSize:11,fontWeight:800,color:T.pur,cursor:"pointer",flexShrink:0,fontFamily:"'Nunito',sans-serif"}}>⬇ CSV</button>
+                  <button onClick={()=>exportarSeguimientoCSV(p.id,p.name)} title="Descargar seguimiento (CSV)" style={{background:alpha(T.pur,0.14),border:`1px solid ${alpha(T.pur,0.35)}`,borderRadius:8,padding:"3px 9px",fontSize:11,fontWeight:800,color:T.pur,cursor:"pointer",flexShrink:0,fontFamily:"'Nunito',sans-serif"}}>⬇ CSV</button>
                 </div>
                 <div style={{display:"flex",gap:14,marginBottom:6,flexWrap:"wrap"}}><span style={{fontSize:12,color:T.t2}}>🔥 <b style={{color:T.t1}}>{s}d</b></span><span style={{fontSize:12,color:T.t2}}>⚖️ <b style={{color:T.t1}}>{w?`${w}kg`:"—"}</b></span><span style={{fontSize:12,color:T.t2}}>7d: <b style={{color:a>=80?T.g1:a>=50?T.au1:T.red}}>{a}%</b></span><span style={{fontSize:12,color:T.t2}}>XP: <b style={{color:T.xp}}>{p.xp||0}</b></span>{actReady&&(()=>{const dv=diasVisto(p);const col=dv==null?T.red:dv<=7?T.g1:dv<=20?T.au1:T.red;const txt=dv==null?t("admSinActivar"):dv===0?t("admVistoHoy"):t("admVistoDias",{d:dv});return <span style={{fontSize:12,color:T.t2}}>👁 <b style={{color:col}}>{txt}</b></span>;})()}</div>
                 <div style={{background:"rgba(255,255,255,0.06)",borderRadius:6,height:6}}><div style={{height:"100%",width:`${a}%`,background:a>=80?T.g1:a>=50?T.au1:T.red,borderRadius:6,transition:"width 0.8s"}}/></div>
@@ -9958,7 +10413,7 @@ function GBHApp(){
                       </div>
                     )}
                     {li.nota&&(
-                      <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.45,background:"rgba(255,200,0,0.06)",border:"1px solid rgba(255,200,0,0.18)",borderRadius:10,padding:"7px 10px"}}><span style={{color:T.au1}}>💬</span> "{li.nota}"{li.notaFecha?` · ${li.notaFecha.slice(8,10)}/${li.notaFecha.slice(5,7)}`:""}</div>
+                      <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.45,background:alpha(T.au1,0.06),border:`1px solid ${alpha(T.au1,0.18)}`,borderRadius:10,padding:"7px 10px"}}><span style={{color:T.au1}}>💬</span> "{li.nota}"{li.notaFecha?` · ${li.notaFecha.slice(8,10)}/${li.notaFecha.slice(5,7)}`:""}</div>
                     )}
                   </div>
                 )}
@@ -9976,7 +10431,7 @@ function GBHApp(){
     <div style={{fontFamily:"'Nunito',sans-serif",background:`radial-gradient(ellipse at top,#1A3A10,${T.bg})`,minHeight:"100vh",maxWidth:420,margin:"0 auto",color:T.t1,paddingBottom:90,overflowX:"hidden"}}>
       <style>{CSS}</style>
       <Confetti active={confetti}/>
-      <StreakOverlay active={streakAnim} streak={streak+1}/>
+      <StreakOverlay active={streakAnim} streak={streak+1} boColor={boColor} boEquipados={boEquipados} boNombre={boNombre}/>
       <MissionsOverlay active={missionsAnim}/>
       {floatItems.length>0&&<FloatReward items={floatItems}/>}
       <LevelUpOverlay active={levelUpAnim} level={levelUpNum} reward={levelUpRew} patientName={profile?.name||""} streak={streak} lang={lang} onClose={()=>setLevelUpAnim(false)}/>
@@ -10041,8 +10496,8 @@ function GBHApp(){
                   const chDesc  = lang==="en" ? (ch.desc_en||ch.desc)   : ch.desc;
                   return(
                     <div key={ch.id} style={{
-                      background:claimed?"rgba(88,204,2,0.1)":done?"rgba(88,204,2,0.06)":"rgba(255,255,255,0.04)",
-                      border:`1.5px solid ${claimed?T.g1:done?"rgba(88,204,2,0.4)":T.bW}`,
+                      background:claimed?alpha(T.g1,0.1):done?alpha(T.g1,0.06):"rgba(255,255,255,0.04)",
+                      border:`1.5px solid ${claimed?T.g1:done?"${alpha(T.g1,0.4)}":T.bW}`,
                       borderRadius:18,padding:"12px 14px",transition:"all 0.3s",
                     }}>
                       <div style={{display:"flex",alignItems:"center",gap:12}}>
@@ -10060,7 +10515,7 @@ function GBHApp(){
                             <button onClick={()=>claimChallenge(ch)} style={{
                               background:`linear-gradient(135deg,${T.g1},${T.g2})`,
                               border:`2px solid ${T.g3}`,borderRadius:12,
-                              padding:"7px 12px",color:"white",fontWeight:900,
+                              padding:"7px 12px",color:T.t1,fontWeight:900,
                               fontSize:12,cursor:"pointer",boxShadow:`0 3px 0 ${T.g3}`,
                               fontFamily:"'Nunito',sans-serif",
                               animation:"pulse 1.5s ease-in-out infinite",
@@ -10122,9 +10577,9 @@ function GBHApp(){
             onSkip={tutoSaltar} onNext={TD.next?tutoAvanzar:null}>
             {TD.racha&&(
               <div style={{display:"flex",gap:8,marginTop:12}}>
-                {[7,14,30,50].map(nm=>(
-                  <button key={nm} onClick={()=>{ try{ lsSet(`gbh:rachameta:${profile.id}`,nm); patchWeeklyState(profile.id, mergeWeeklyState(profile.id,{rachaMeta:nm})); }catch{} sfx("missionDone"); tutoAvanzar(); }}
-                    style={{flex:1,padding:"13px 0",borderRadius:14,border:`2px solid ${T.g1}`,background:"rgba(88,204,2,0.12)",color:T.g2,fontWeight:900,fontSize:15,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
+                {METAS_RACHA.map(nm=>(
+                  <button key={nm} onClick={()=>{ elegirMeta(nm); tutoAvanzar(); }}
+                    style={{flex:1,padding:"13px 0",borderRadius:14,border:`2px solid ${T.g1}`,background:"rgba(45,155,90,0.12)",color:T.g2,fontWeight:900,fontSize:15,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
                     {nm}{lang==='en'?' d':' d'}
                   </button>
                 ))}
@@ -10244,7 +10699,7 @@ function GBHApp(){
               background:`linear-gradient(180deg,#1E4A20,${T.bgWood} 55%)`,
               borderRadius:"28px 28px 0 0",
               border:`2px solid ${T.g1}`,borderBottom:"none",
-              boxShadow:`0 -8px 40px rgba(88,204,2,0.25)`,
+              boxShadow:`0 -8px 40px ${alpha(T.g1,0.25)}`,
               padding:"28px 24px 44px",
               animation:"slideUp 0.4s cubic-bezier(0.34,1.12,0.64,1)",
             }} onClick={e=>e.stopPropagation()}>
@@ -10276,7 +10731,7 @@ function GBHApp(){
                   : ["⚡ Se abre al instante, como una app nativa","🔔 Recordatorios para no perderte un día","📵 Funciona sin conexión también","🏠 Siempre en tu pantalla de inicio"]
                 ).map((item,i)=>(
                   <div key={i} style={{display:"flex",alignItems:"center",gap:10,
-                    background:"rgba(88,204,2,0.08)",border:`1px solid rgba(88,204,2,0.2)`,
+                    background:alpha(T.g1,0.08),border:`1px solid ${alpha(T.g1,0.2)}`,
                     borderRadius:12,padding:"9px 14px"}}>
                     <span style={{fontSize:16,flexShrink:0}}>{item.split(" ")[0]}</span>
                     <span style={{fontSize:13,color:T.wh,fontFamily:"'DM Sans',sans-serif",fontWeight:600}}>
@@ -10298,7 +10753,7 @@ function GBHApp(){
                   width:"100%",padding:"18px 0",borderRadius:20,
                   border:`3px solid ${T.g3}`,
                   background:`linear-gradient(135deg,${T.g1},${T.g2})`,
-                  color:"white",fontSize:18,fontWeight:900,
+                  color:T.t1,fontSize:18,fontWeight:900,
                   cursor:"pointer",
                   boxShadow:`0 8px 0 ${T.g3}`,
                   fontFamily:"'Nunito',sans-serif",
@@ -10309,7 +10764,7 @@ function GBHApp(){
                 </button>
               ) : (
                 <div style={{
-                  background:"rgba(255,200,0,0.10)",
+                  background:alpha(T.au1,0.10),
                   border:`1.5px solid ${T.au2}`,
                   borderRadius:16,padding:"14px 18px",marginBottom:12,
                 }}>
@@ -10358,7 +10813,7 @@ function GBHApp(){
             <div style={{width:36,height:36,borderRadius:10,flexShrink:0,fontSize:20,
               background:"rgba(100,130,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center"}}>🔔</div>
             <div>
-              <div style={{fontSize:12,fontWeight:900,color:"white",fontFamily:"'Nunito',sans-serif",lineHeight:1.2}}>
+              <div style={{fontSize:12,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif",lineHeight:1.2}}>
                 {lang==="en"?"Enable reminders":"Activa los recordatorios"}
               </div>
               <div style={{fontSize:10,color:"rgba(180,200,255,0.8)",fontFamily:"'DM Sans',sans-serif",marginTop:1}}>
@@ -10369,7 +10824,7 @@ function GBHApp(){
           <div style={{display:"flex",gap:8,flexShrink:0,alignItems:"center"}}>
             <button onClick={subscribeNotifications} style={{
               background:"rgba(100,130,255,0.9)",border:"2px solid rgba(120,150,255,0.6)",
-              borderRadius:12,padding:"7px 14px",color:"white",fontWeight:900,
+              borderRadius:12,padding:"7px 14px",color:T.t1,fontWeight:900,
               fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif",
               boxShadow:"0 3px 0 rgba(60,80,200,0.5)",whiteSpace:"nowrap"}}>
               {lang==="en"?"Enable":"Activar"}
@@ -10387,7 +10842,7 @@ function GBHApp(){
           <div onClick={()=>{setShowQuiz(true);setQuizBannerDismissed(true);}} style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}}>
             <div style={{width:38,height:38,borderRadius:11,background:"rgba(255,255,255,0.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:20}}>🧠</div>
             <div>
-              <div style={{fontSize:12,fontWeight:900,color:"white",fontFamily:"'Nunito',sans-serif",lineHeight:1.2}}>¡Quiz de nutrición disponible!</div>
+              <div style={{fontSize:12,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif",lineHeight:1.2}}>¡Quiz de nutrición disponible!</div>
               <div style={{fontSize:10,color:"rgba(255,255,255,0.75)",fontFamily:"'DM Sans',sans-serif",marginTop:1}}>Responde y gana hasta +20 XP +8 💎 →</div>
             </div>
           </div>
@@ -10396,13 +10851,13 @@ function GBHApp(){
       )}
       {/* Banner offline */}
       {showOfflineBanner&&(
-        <div style={{background:"rgba(200,45,45,0.92)",padding:"6px 18px",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontSize:12,fontWeight:800,color:"white",fontFamily:"'Nunito',sans-serif",animation:"slideDown 0.4s ease"}}>
+        <div style={{background:"rgba(200,45,45,0.92)",padding:"6px 18px",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontSize:12,fontWeight:800,color:T.t1,fontFamily:"'Nunito',sans-serif",animation:"slideDown 0.4s ease"}}>
           {t("offlineBanner")}
         </div>
       )}
       {/* Banner sincronizando */}
       {showSyncBanner&&pendingSync>0&&(
-        <div style={{background:"rgba(180,110,0,0.92)",padding:"6px 18px",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontSize:12,fontWeight:800,color:"white",fontFamily:"'Nunito',sans-serif",animation:"slideDown 0.4s ease"}}>
+        <div style={{background:"rgba(180,110,0,0.92)",padding:"6px 18px",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontSize:12,fontWeight:800,color:T.t1,fontFamily:"'Nunito',sans-serif",animation:"slideDown 0.4s ease"}}>
           <span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>🔄</span> {lang==="en"?`Syncing ${pendingSync} action${pendingSync>1?"s":""}…`:`Sincronizando ${pendingSync} acción${pendingSync>1?"es":""}…`}
         </div>
       )}
@@ -10437,7 +10892,7 @@ function GBHApp(){
                   const {outcome}=await pwaPrompt.userChoice;
                   if(outcome==="accepted")setPwaInstalled(true);
                   setPwaPrompt(null);
-                }} style={{background:T.g1,border:`2px solid ${T.g3}`,borderRadius:12,padding:"7px 14px",color:"white",fontWeight:900,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif",boxShadow:`0 3px 0 ${T.g3}`,whiteSpace:"nowrap"}}>
+                }} style={{background:T.g1,border:`2px solid ${T.g3}`,borderRadius:12,padding:"7px 14px",color:T.t1,fontWeight:900,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif",boxShadow:`0 3px 0 ${T.g3}`,whiteSpace:"nowrap"}}>
                   Instalar
                 </button>
               )}
@@ -10461,7 +10916,7 @@ function GBHApp(){
             style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}}>
             <span style={{fontSize:24}}>⚖️</span>
             <div>
-              <div style={{fontSize:13,fontWeight:900,color:"white",fontFamily:"'Nunito',sans-serif",lineHeight:1.2}}>
+              <div style={{fontSize:13,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif",lineHeight:1.2}}>
                 {t("weightBannerTitle")}
               </div>
               <div style={{fontSize:11,color:"rgba(255,255,255,0.82)",fontFamily:"'DM Sans',sans-serif",marginTop:2}}>
@@ -10475,7 +10930,7 @@ function GBHApp(){
             style={{
               width:28,height:28,borderRadius:"50%",
               background:"rgba(0,0,0,0.22)",border:"none",
-              color:"white",fontSize:14,fontWeight:900,
+              color:T.t1,fontSize:14,fontWeight:900,
               cursor:"pointer",display:"flex",alignItems:"center",
               justifyContent:"center",flexShrink:0,marginLeft:8,
               lineHeight:1,
@@ -10505,7 +10960,7 @@ function GBHApp(){
           {/* Counters */}
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             <StreakBadge value={streak} label={t("streakLabel")} icon="🔥" color="#FF8040" bg="rgba(255,128,64,0.12)"/>
-            <StreakBadge value={gems}  label={t("gemsLabel")}  icon="💎" color={T.au1}   bg="rgba(255,200,0,0.1)"/>
+            <StreakBadge value={gems}  label={t("gemsLabel")}  icon="💎" color={T.au1}   bg={alpha(T.au1,0.1)}/>
           </div>
         </div>
       </div>
@@ -10514,29 +10969,17 @@ function GBHApp(){
 
         {/* ── HOME ──────────────────────────────────────────────────────────── */}
         {tab==="home"&&<>
-          {/* ── Referidos tras victoria: una sola vez, descartable, 30 días de silencio ── */}
-          {refCard&&(
-            <div style={{position:"relative",marginBottom:14}}>
-              <button onClick={cerrarRefCard} aria-label={lang==='en'?'Dismiss':'Cerrar'}
-                style={{position:"absolute",top:10,right:10,zIndex:2,width:28,height:28,
-                  borderRadius:"50%",border:"1.5px solid rgba(255,255,255,0.2)",
-                  background:"rgba(0,0,0,0.35)",color:T.t2,fontSize:13,fontWeight:900,
-                  cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
-                  fontFamily:"'Nunito',sans-serif"}}>✕</button>
-              <div style={{fontSize:12.5,color:T.t1,fontWeight:800,fontFamily:"'DM Sans',sans-serif",
-                lineHeight:1.5,marginBottom:8,paddingRight:36}}>
-                {lang==='en'?'What a week you\u2019re having 💚 Know someone who\u2019d want this too?'
-                            :'Menuda semana llevas 💚 ¿Conoces a alguien a quien le vendría bien esto?'}
-              </div>
-              <TarjetaInvitarAmigo profile={profile} lang={lang} sfx={sfx}/>
-            </div>
-          )}
+          {/* ── Tarea C: la racha con cuerpo temporal (registro/🛡️/🏖️/pendiente).
+              El día en curso sin registrar es un hueco neutro con borde vivo,
+              JAMÁS un fallo. Incluye el progreso hacia la meta (Tarea D). ── */}
+          <FilaSemanaRacha logs={logs} profile={profile} streak={streak} lang={lang}
+            onElegirMeta={()=>{sfx("tap");setMetaAsk(true);}}/>
           {/* ── Countdown de semana de prueba (tap → checkout) ── */}
           {trialDiasRest&&!ES_IOS_NATIVO&&(
             <button onClick={()=>{sfx("tap");abrirCheckoutStripe(profile?.id);}} style={{
               width:"100%",boxSizing:"border-box",display:"flex",alignItems:"center",gap:10,
-              background:trialDiasRest<=2?"rgba(229,115,115,0.12)":"rgba(255,200,0,0.10)",
-              border:`1.5px solid ${trialDiasRest<=2?"rgba(229,115,115,0.5)":"rgba(255,200,0,0.45)"}`,
+              background:trialDiasRest<=2?"rgba(229,115,115,0.12)":alpha(T.au1,0.10),
+              border:`1.5px solid ${trialDiasRest<=2?"rgba(229,115,115,0.5)":"${alpha(T.au1,0.45)}"}`,
               borderRadius:14,padding:"10px 14px",marginBottom:14,cursor:"pointer",textAlign:"left"}}>
               <span style={{fontSize:20,lineHeight:1}}>{trialDiasRest<=2?"⏳":"🎁"}</span>
               <div style={{flex:1,minWidth:0}}>
@@ -10578,9 +11021,9 @@ function GBHApp(){
                         background:anyDone
                           ?'linear-gradient(135deg,'+T.au1+','+T.au2+')'
                           :allClaimed
-                            ?"rgba(88,204,2,0.18)"
+                            ?alpha(T.g1,0.18)
                             :"linear-gradient(180deg, rgba(255,208,60,0.38), rgba(150,105,0,0.34))",
-                        border:anyDone?`2px solid ${T.au3}`:allClaimed?`1.5px solid ${T.g3}`:`1.5px solid rgba(255,200,0,0.55)`,
+                        border:anyDone?`2px solid ${T.au3}`:allClaimed?`1.5px solid ${T.g3}`:`1.5px solid ${alpha(T.au1,0.55)}`,
                         boxShadow:anyDone?`0 4px 0 ${T.au3},0 0 14px ${T.au1}60`:allClaimed?`0 3px 0 ${T.g3}`:"0 3px 0 rgba(110,78,0,0.9)",
                         cursor:"pointer",
                         display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:1,
@@ -10593,8 +11036,8 @@ function GBHApp(){
                       <div style={{
                         position:"absolute",top:-5,right:-5,
                         width:18,height:18,borderRadius:"50%",
-                        background:"#FF3B30",border:"2px solid #0A1A0F",
-                        fontSize:10,fontWeight:900,color:"white",
+                        background:"#FF3B30",border:`2px solid ${T.bg}`,
+                        fontSize:10,fontWeight:900,color:T.t1,
                         display:"flex",alignItems:"center",justifyContent:"center",
                         fontFamily:"'Nunito',sans-serif",
                       }}>{claimCount}</div>
@@ -10621,7 +11064,7 @@ function GBHApp(){
                   flexShrink:0,
                   width:44,height:44,borderRadius:16,
                   background:"linear-gradient(180deg, rgba(255,208,60,0.38), rgba(150,105,0,0.34))",
-                  border:`1.5px solid rgba(255,200,0,0.55)`,
+                  border:`1.5px solid ${alpha(T.au1,0.55)}`,
                   cursor:"pointer",fontSize:20,
                   display:"flex",alignItems:"center",justifyContent:"center",
                   boxShadow:"0 3px 0 rgba(110,78,0,0.9)",
@@ -10649,7 +11092,7 @@ function GBHApp(){
               <button onClick={()=>{ cargarPartidasHoy(); setZonaJuego(true); }} title="Zona de juego"
                 style={{position:"absolute",left:0,top:2,zIndex:2,width:44,height:44,borderRadius:16,
                   background:"linear-gradient(180deg, rgba(255,208,60,0.38), rgba(150,105,0,0.34))",
-                  border:"1.5px solid rgba(255,200,0,0.55)",
+                  border:`1.5px solid ${alpha(T.au1,0.55)}`,
                   boxShadow:"0 3px 0 rgba(110,78,0,0.9)",cursor:"pointer",fontFamily:"inherit",padding:0,
                   display:"flex",alignItems:"center",justifyContent:"center"}}>
                 <span style={{fontSize:20,lineHeight:1}}>🎮</span>
@@ -10663,7 +11106,7 @@ function GBHApp(){
                 <button onClick={()=>setPanelBo(true)} title="Personalizar a tu oveja"
                   style={{width:26,height:26,borderRadius:9,
                     background:"linear-gradient(180deg, rgba(255,208,60,0.38), rgba(150,105,0,0.34))",
-                    border:"1.5px solid rgba(255,200,0,0.55)",boxShadow:"0 2px 0 rgba(110,78,0,0.9)",
+                    border:`1.5px solid ${alpha(T.au1,0.55)}`,boxShadow:"0 2px 0 rgba(110,78,0,0.9)",
                     cursor:"pointer",padding:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
                   <span style={{fontSize:13,lineHeight:1}}>🎨</span>
                 </button>
@@ -10694,12 +11137,12 @@ function GBHApp(){
 
           {/* ── Quiz + Ruleta ── */}
           <div style={{display:"flex",gap:8,marginBottom:10}}>
-            <div onClick={quizDone?undefined:()=>setShowQuiz(true)} style={{flex:1,background:quizDone?"rgba(88,204,2,0.14)":T.bgWood,border:`2px solid ${quizDone?T.g1:T.bW}`,borderRadius:18,padding:"12px 10px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:5,cursor:quizDone?"default":"pointer",boxShadow:quizDone?`0 4px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)",minHeight:76,textAlign:"center"}}>
+            <div onClick={quizDone?undefined:()=>setShowQuiz(true)} style={{flex:1,background:quizDone?alpha(T.g1,0.14):T.bgWood,border:`2px solid ${quizDone?T.g1:T.bW}`,borderRadius:18,padding:"12px 10px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:5,cursor:quizDone?"default":"pointer",boxShadow:quizDone?`0 4px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)",minHeight:76,textAlign:"center"}}>
               <div style={{fontSize:26,lineHeight:1}}>{quizDone?"✅":"❓"}</div>
               <div style={{fontSize:13,fontWeight:900,color:quizDone?T.g2:T.t1}}>{quizDone?t("quizDone"):t("quiz")}</div>
               <div style={{fontSize:10,color:T.au1,fontWeight:700}}>{quizDone?"+20 XP +8 💎":t("earnXP")}</div>
             </div>
-            <div onClick={ruletaDone?undefined:()=>setShowRuleta(true)} style={{flex:1,background:ruletaDone?"rgba(88,204,2,0.14)":T.bgWood,border:`2px solid ${ruletaDone?T.g1:T.bW}`,borderRadius:18,padding:"12px 10px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:5,cursor:ruletaDone?"default":"pointer",boxShadow:ruletaDone?`0 4px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)",minHeight:76,textAlign:"center"}}>
+            <div onClick={ruletaDone?undefined:()=>setShowRuleta(true)} style={{flex:1,background:ruletaDone?alpha(T.g1,0.14):T.bgWood,border:`2px solid ${ruletaDone?T.g1:T.bW}`,borderRadius:18,padding:"12px 10px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:5,cursor:ruletaDone?"default":"pointer",boxShadow:ruletaDone?`0 4px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)",minHeight:76,textAlign:"center"}}>
               <div style={{fontSize:26,lineHeight:1,animation:ruletaDone?"none":"pulse 2s ease-in-out infinite"}}>{ruletaDone?"✅":"🎰"}</div>
               <div style={{fontSize:13,fontWeight:900,color:ruletaDone?T.g2:T.t1}}>{ruletaDone?t("rouletteDone"):t("roulette")}</div>
               <div style={{fontSize:10,color:T.au1,fontWeight:700}}>{ruletaDone?t("untilTomorrow"):t("spinFree")}</div>
@@ -10718,6 +11161,10 @@ function GBHApp(){
               </button>
             </div>
           </Card>
+
+          {/* ── Tarea E: la pausa declarada, SEPARADA del escudo a propósito —
+              el escudo cubre el despiste, la pausa cubre la vida ── */}
+          <PausaCard profile={profile} lang={lang} onDeclarar={declararPausa} onCancelar={cancelarPausa}/>
         </>}
 
         {/* ── WEIGHT ────────────────────────────────────────────────────────── */}
@@ -10780,7 +11227,7 @@ function GBHApp(){
               <button
                 onClick={()=>saveW(!!todayW)}
                 disabled={!wInput||isNaN(parseFloat(wInput))}
-                style={{width:"100%",maxWidth:280,padding:"18px 0",borderRadius:20,border:`3px solid ${T.g3}`,cursor:"pointer",fontSize:18,fontWeight:900,background:!wInput||isNaN(parseFloat(wInput))?"rgba(255,255,255,0.1)":`linear-gradient(135deg,${T.g1},${T.g2})`,color:!wInput||isNaN(parseFloat(wInput))?T.t2:"white",boxShadow:!wInput||isNaN(parseFloat(wInput))?"none":`0 6px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif",marginBottom:14}}
+                style={{width:"100%",maxWidth:280,padding:"18px 0",borderRadius:20,border:`3px solid ${T.g3}`,cursor:"pointer",fontSize:18,fontWeight:900,background:!wInput||isNaN(parseFloat(wInput))?"rgba(255,255,255,0.1)":`linear-gradient(135deg,${T.g1},${T.g2})`,color:!wInput||isNaN(parseFloat(wInput))?T.t2:T.t1,boxShadow:!wInput||isNaN(parseFloat(wInput))?"none":`0 6px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif",marginBottom:14}}
               >
                 {todayW?t("saveChanges"):t("saveWeight")}
               </button>
@@ -10801,7 +11248,7 @@ function GBHApp(){
             <>
               {/* Card resumen del pesaje de hoy */}
               {todayW&&(
-                <div style={{background:`linear-gradient(135deg,rgba(43,122,0,0.4),rgba(88,204,2,0.18))`,border:`2px solid ${T.g1}`,borderRadius:22,padding:"16px 20px",marginBottom:14,boxShadow:`0 6px 0 ${T.g3}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <div style={{background:`linear-gradient(135deg,${alpha(T.g3,0.4)},${alpha(T.g1,0.18)})`,border:`2px solid ${T.g1}`,borderRadius:22,padding:"16px 20px",marginBottom:14,boxShadow:`0 6px 0 ${T.g3}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                   <div>
                     <div style={{fontSize:11,color:T.g2,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4}}>{t("weekendWeighLabel")}</div>
                     <div style={{fontSize:38,fontWeight:900,color:T.wh,lineHeight:1}}>{todayW.weight} <span style={{fontSize:18,color:T.t2}}>kg</span></div>
@@ -10815,7 +11262,7 @@ function GBHApp(){
               )}
               {/* Sin pesaje hoy */}
               {!todayW&&(
-                <button onClick={()=>{setWInput("");setWeightMode("input");}} style={{width:"100%",padding:"17px 20px",borderRadius:20,border:`3px solid ${T.g3}`,cursor:"pointer",fontSize:17,fontWeight:900,background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"white",boxShadow:`0 6px 0 ${T.g3}`,animation:"glow 2.5s ease-in-out infinite",marginBottom:14,fontFamily:"'Nunito',sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:12}}>
+                <button onClick={()=>{setWInput("");setWeightMode("input");}} style={{width:"100%",padding:"17px 20px",borderRadius:20,border:`3px solid ${T.g3}`,cursor:"pointer",fontSize:17,fontWeight:900,background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,boxShadow:`0 6px 0 ${T.g3}`,animation:"glow 2.5s ease-in-out infinite",marginBottom:14,fontFamily:"'Nunito',sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:12}}>
                   <span style={{fontSize:26}}>⚖️</span> {t("registerWeightBtn").replace("⚖️ ","")}
                 </button>
               )}
@@ -10838,7 +11285,7 @@ function GBHApp(){
         {/* ── RANKING ──────────────────────────────────────────────────────── */}
         {tab==="ranking"&&(()=>{
           const medal=["👑","🥈","🥉"];
-          const medalColor=["#FFD700","#C0C0C0","#CD7F32"];
+          const medalColor=[T.moneda,"#C0C0C0","#CD7F32"];
 
           // ── Construir los 3 rankings ordenados ───────────────────────────
           const byStreak = [...ranking].sort((a,b)=>(b.streak||0)-(a.streak||0));
@@ -10872,7 +11319,7 @@ function GBHApp(){
                   <button key={t.key} onClick={()=>setRankTab(i)} style={{
                     flex:1,padding:"10px 6px",borderRadius:14,border:"none",cursor:"pointer",
                     background:rankTab===i?`linear-gradient(135deg,${T.g1},${T.g2})`:"transparent",
-                    color:rankTab===i?"white":T.t2,
+                    color:rankTab===i?T.t1:T.t2,
                     fontWeight:rankTab===i?900:700,
                     fontSize:13,fontFamily:"'Nunito',sans-serif",
                     boxShadow:rankTab===i?`0 3px 0 ${T.g3}`:"none",
@@ -10908,10 +11355,10 @@ function GBHApp(){
                     return(
                       <div key={p.id} style={{
                         background: isMe
-                          ? "linear-gradient(135deg,rgba(255,200,0,0.22),rgba(88,204,2,0.1))"
-                          : i===0 ? "linear-gradient(135deg,rgba(255,200,0,0.1),rgba(255,160,0,0.05))"
+                          ? `linear-gradient(135deg,${alpha(T.au1,0.22)},${alpha(T.g1,0.1)})`
+                          : i===0 ? `linear-gradient(135deg,${alpha(T.au1,0.1)},rgba(255,160,0,0.05))`
                           : T.bgWood,
-                        border:`2px solid ${isMe?T.au1:i===0?"rgba(255,200,0,0.35)":T.bW}`,
+                        border:`2px solid ${isMe?T.au1:i===0?"${alpha(T.au1,0.35)}":T.bW}`,
                         borderRadius:18,padding:"11px 14px",
                         display:"flex",alignItems:"center",gap:10,
                         boxShadow:isMe?`0 4px 0 ${T.au3}`:i===0?"0 4px 0 rgba(180,130,0,0.4)":"0 3px 0 rgba(0,0,0,0.35)",
@@ -10971,7 +11418,7 @@ function GBHApp(){
                       <div style={{textAlign:"center",padding:"6px 0",color:T.t2,fontSize:18,letterSpacing:6}}>···</div>
                       {/* Fila del usuario */}
                       <div style={{
-                        background:"linear-gradient(135deg,rgba(255,200,0,0.22),rgba(88,204,2,0.1))",
+                        background:`linear-gradient(135deg,${alpha(T.au1,0.22)},${alpha(T.g1,0.1)})`,
                         border:`2px solid ${T.au1}`,borderRadius:18,padding:"11px 14px",
                         display:"flex",alignItems:"center",gap:10,
                         boxShadow:`0 4px 0 ${T.au3}`,
@@ -11013,9 +11460,9 @@ function GBHApp(){
         {tab==="receta"&&(()=>{
           const r = dailyRecipe;
           const tipoColor = {
-            Carne:"#E57373",Pescado:"#64B5F6",Vegetariana:"#81C784",
+            Carne:"#E57373",Pescado:T.platos,Vegetariana:"#81C784",
             Vegana:"#A5D6A7",Postre:"#F06292",Ensalada:"#AED581","Sopa/Crema":"#FFB74D",
-            Meat:"#E57373",Fish:"#64B5F6",Vegetarian:"#81C784",
+            Meat:"#E57373",Fish:T.platos,Vegetarian:"#81C784",
             Vegan:"#A5D6A7",Dessert:"#F06292",Salad:"#AED581","Soup/Cream":"#FFB74D"
           };
           const tipoIcon = {
@@ -11037,7 +11484,7 @@ function GBHApp(){
               {recipeView==="menu"&&(
                 <div style={{display:"flex",flexDirection:"column",gap:12,paddingTop:8}}>
                   {/* Receta del día */}
-                  <button onClick={()=>setRecipeView("daily")} style={{background:'rgba(88,204,2,0.12)',border:'2px solid rgba(88,204,2,0.3)',borderRadius:20,padding:'20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
+                  <button onClick={()=>setRecipeView("daily")} style={{background:alpha(T.g1,0.12),border:`2px solid ${alpha(T.g1,0.3)}`,borderRadius:20,padding:'20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
                     <div style={{fontSize:40,flexShrink:0}}>🍰</div>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{t("recipeTabDaily")}</div>
@@ -11052,10 +11499,10 @@ function GBHApp(){
                       <div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{t("recipeTabBook")}{savedRecipes.length>0?` (${savedRecipes.length})`:""}</div>
                       <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'The recipes you saved':'Las recetas que has guardado'}</div>
                     </div>
-                    <div style={{color:'#64B5F6',fontSize:20,flexShrink:0}}>›</div>
+                    <div style={{color:T.platos,fontSize:20,flexShrink:0}}>›</div>
                   </button>
                   {/* Recetario completo (bloqueado para free) */}
-                  <button onClick={()=>setRecipeView("completo")} style={{background:'rgba(255,200,0,0.10)',border:'2px solid rgba(255,200,0,0.3)',borderRadius:20,padding:'20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)',opacity:tieneAccesoCompleto?1:0.9}}>
+                  <button onClick={()=>setRecipeView("completo")} style={{background:alpha(T.au1,0.10),border:`2px solid ${alpha(T.au1,0.3)}`,borderRadius:20,padding:'20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)',opacity:tieneAccesoCompleto?1:0.9}}>
                     <div style={{fontSize:40,flexShrink:0}}>{tieneAccesoCompleto?"📚":"🔒"}</div>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Full recipe book':'Recetario completo'}</div>
@@ -11093,7 +11540,7 @@ function GBHApp(){
                     return(
                       <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
                         <button onClick={refreshRecipe} disabled={dis} style={{
-                          background:dis?"rgba(255,255,255,0.05)":"rgba(255,200,0,0.12)",
+                          background:dis?"rgba(255,255,255,0.05)":alpha(T.au1,0.12),
                           border:`1.5px solid ${dis?"rgba(255,255,255,0.1)":T.au2}`,
                           borderRadius:12,padding:"8px 14px",
                           color:dis?T.t3:T.au1,fontSize:12,fontWeight:700,
@@ -11131,7 +11578,7 @@ function GBHApp(){
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,marginBottom:16}}>
                       {[
                         {l:t("calories"),v:`${r.calorias}`,u:"kcal",c:T.au1},
-                        {l:t("protein"),v:`${r.proteinas_g}`,u:"g",c:"#64B5F6"},
+                        {l:t("protein"),v:`${r.proteinas_g}`,u:"g",c:T.platos},
                         {l:t("carbs"),v:`${r.hidratos_g}`,u:"g",c:T.g1},
                         {l:t("fat"),v:`${r.grasas_g}`,u:"g",c:"#FFB74D"},
                       ].map(({l,v,u,c})=>(
@@ -11150,11 +11597,11 @@ function GBHApp(){
                       style={{
                         width:"100%",padding:"12px",borderRadius:14,
                         background:alreadySaved
-                          ?"rgba(88,204,2,0.1)"
+                          ?alpha(T.g1,0.1)
                           :gems<20
                             ?"rgba(255,255,255,0.05)"
-                            :`linear-gradient(135deg,rgba(88,204,2,0.15),rgba(88,204,2,0.08))`,
-                        border:`1.5px solid ${alreadySaved?T.g1:gems<20?"rgba(255,255,255,0.1)":"rgba(88,204,2,0.35)"}`,
+                            :`linear-gradient(135deg,${alpha(T.g1,0.15)},${alpha(T.g1,0.08)})`,
+                        border:`1.5px solid ${alreadySaved?T.g1:gems<20?"rgba(255,255,255,0.1)":"${alpha(T.g1,0.35)}"}`,
                         color:alreadySaved?T.g2:gems<20?T.t3:T.g1,
                         fontSize:13,fontWeight:800,
                         cursor:alreadySaved||gems<20?"default":"pointer",
@@ -11196,7 +11643,7 @@ function GBHApp(){
                   <div style={{textAlign:"center",padding:40}}>
                     <div style={{fontSize:48,marginBottom:12}}>🍽️</div>
                     <div style={{fontSize:15,color:T.t2,fontFamily:"'DM Sans',sans-serif",whiteSpace:"pre-line"}}>{t("recipeLoadError")}</div>
-                    <button onClick={fetchDailyRecipe} style={{marginTop:16,padding:"12px 24px",background:T.g1,border:"none",borderRadius:14,color:"white",fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>{t("retry")}</button>
+                    <button onClick={fetchDailyRecipe} style={{marginTop:16,padding:"12px 24px",background:T.g1,border:"none",borderRadius:14,color:T.t1,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>{t("retry")}</button>
                   </div>
                 )}
               </>)}
@@ -11212,7 +11659,7 @@ function GBHApp(){
                       marginTop:20,padding:"12px 24px",
                       background:`linear-gradient(135deg,${T.g1},${T.g2})`,
                       border:`2px solid ${T.g3}`,borderRadius:14,
-                      color:"white",fontWeight:900,fontSize:14,cursor:"pointer",
+                      color:T.t1,fontWeight:900,fontSize:14,cursor:"pointer",
                       fontFamily:"'Nunito',sans-serif",boxShadow:`0 4px 0 ${T.g3}`,
                     }}>
                       {lang==="en"?"← Go to today's recipe":"← Ver receta de hoy"}
@@ -11245,7 +11692,7 @@ function GBHApp(){
                     </div>
                     {!ES_IOS_NATIVO&&<>
                     <button onClick={()=>{sfx&&sfx("tap");abrirCheckoutStripe(profile?.id);}}
-                      style={{marginTop:4,width:'100%',maxWidth:300,background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:'none',color:'#fff',fontWeight:900,fontSize:15,borderRadius:18,padding:'16px 20px',cursor:'pointer',boxShadow:`0 4px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif",display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
+                      style={{marginTop:4,width:'100%',maxWidth:300,background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:'none',color:T.t1,fontWeight:900,fontSize:15,borderRadius:18,padding:'16px 20px',cursor:'pointer',boxShadow:`0 4px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif",display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
                       <span style={{fontSize:20}}>⭐</span>{lang==='en'?'Subscribe · €7/month':'Suscribirme · 7 €/mes'}
                     </button>
                     <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>
@@ -11376,7 +11823,7 @@ function GBHApp(){
               </div>
               <button onClick={()=>{sfx("missionDone");setAvisoNuevoPlan(null);setTab("plan");}} style={{
                 width:"100%",padding:"15px",borderRadius:16,border:"none",cursor:"pointer",
-                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"#fff",fontWeight:900,fontSize:15,
+                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,fontWeight:900,fontSize:15,
                 fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.g3}`,marginBottom:10}}>
                 🍽️ {lang==='en'?'See my plan':'Ver mi programación'}
               </button>
@@ -11410,7 +11857,7 @@ function GBHApp(){
               </div>
               <button onClick={()=>{sfx("missionDone");setAvisoRegistro(null);setTab("plan");}} style={{
                 width:"100%",padding:"15px",borderRadius:16,border:"none",cursor:"pointer",
-                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"#fff",fontWeight:900,fontSize:15,
+                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,fontWeight:900,fontSize:15,
                 fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.g3}`,marginBottom:10}}>
                 📆 {lang==='en'?'Go to daily plan':'Ir al plan diario'}
               </button>
@@ -11443,7 +11890,7 @@ function GBHApp(){
               </div>
               <button onClick={()=>{marcarSuplHome(avisoSupl);setAvisoSupl(null);}} style={{
                 width:"100%",padding:"15px",borderRadius:16,border:"none",cursor:"pointer",
-                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"#fff",fontWeight:900,fontSize:15,
+                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,fontWeight:900,fontSize:15,
                 fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.g3}`,marginBottom:10}}>
                 ✅ {lang==='en'?'Done! (+5 💎)':'¡Ya lo he tomado! (+5 💎)'}
               </button>
@@ -11481,7 +11928,7 @@ function GBHApp(){
               {!ES_IOS_NATIVO&&(
               <button onClick={()=>{sfx("tap");setAvisoTrial(null);abrirCheckoutStripe(profile?.id);}} style={{
                 width:"100%",padding:"15px",borderRadius:16,border:"none",cursor:"pointer",
-                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"#fff",fontWeight:900,fontSize:15,
+                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,fontWeight:900,fontSize:15,
                 fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.g3}`,marginBottom:10}}>
                 ⭐ {lang==='en'?'Subscribe · €7/month':'Suscribirme · 7 €/mes'}
               </button>
@@ -11509,14 +11956,14 @@ function GBHApp(){
                 border:`2px solid ${T.au1}`,boxShadow:"0 12px 40px rgba(0,0,0,0.6)",marginBottom:16}}/>
               <button onClick={compartirHito} style={{
                 width:"100%",padding:"15px",borderRadius:16,border:"none",cursor:"pointer",
-                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"#fff",fontWeight:900,fontSize:15,
+                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,fontWeight:900,fontSize:15,
                 fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.g3}`,marginBottom:10}}>
                 📤 {lang==='en'?'Share my milestone':'Compartir mi hito'}
               </button>
               {(profile?.plan==='free'||trialDiasRest)&&!ES_IOS_NATIVO&&(
                 <button onClick={()=>{sfx("tap");setHitoCard(null);abrirCheckoutStripe(profile?.id);}} style={{
                   width:"100%",padding:"13px",borderRadius:16,cursor:"pointer",
-                  background:"rgba(255,200,0,0.10)",border:`1.5px solid ${T.au1}`,color:T.au1,
+                  background:alpha(T.au1,0.10),border:`1.5px solid ${T.au1}`,color:T.au1,
                   fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif",marginBottom:10}}>
                   ⭐ {lang==='en'
                     ?(trialDiasRest?'Keep my plan · €7/month':'Get my plan back · €7/month')
@@ -11548,7 +11995,7 @@ function GBHApp(){
               {!ES_IOS_NATIVO&&(
               <button onClick={()=>{sfx("tap");setAvisoVictoria(false);abrirCheckoutStripe(profile?.id);}} style={{
                 width:"100%",padding:"15px",borderRadius:16,border:"none",cursor:"pointer",
-                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"#fff",fontWeight:900,fontSize:15,
+                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,fontWeight:900,fontSize:15,
                 fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.g3}`,marginBottom:10}}>
                 ⭐ {lang==='en'?'Keep my plan · €7/month':'Conservar mi plan · 7 €/mes'}
               </button>
@@ -11578,7 +12025,7 @@ function GBHApp(){
               <button onClick={repararRacha} style={{
                 width:"100%",padding:"15px",borderRadius:16,border:"none",cursor:"pointer",
                 background:(profile?.gems||0)>=RACHA_COSTE_REPARAR?`linear-gradient(135deg,${T.g1},${T.g2})`:"rgba(255,255,255,0.10)",
-                color:"#fff",fontWeight:900,fontSize:15,opacity:(profile?.gems||0)>=RACHA_COSTE_REPARAR?1:0.6,
+                color:T.t1,fontWeight:900,fontSize:15,opacity:(profile?.gems||0)>=RACHA_COSTE_REPARAR?1:0.6,
                 fontFamily:"'Nunito',sans-serif",boxShadow:(profile?.gems||0)>=RACHA_COSTE_REPARAR?`0 5px 0 ${T.g3}`:"none",marginBottom:10}}>
                 🔧 {lang==='en'?`Repair my streak · ${RACHA_COSTE_REPARAR} 💎`:`Reparar mi racha · ${RACHA_COSTE_REPARAR} 💎`}
               </button>
@@ -11590,7 +12037,15 @@ function GBHApp(){
             </div>
           </div>
         )}
-        {espejoDia&&!avisoNuevoPlan&&!avisoRegistro&&!avisoSupl&&!avisoTrial&&!hitoCard&&!avisoVictoria&&!avisoRacha&&(
+        {metaAsk&&!avisoNuevoPlan&&!avisoRegistro&&!avisoSupl&&!avisoTrial&&!hitoCard&&!avisoVictoria&&!avisoRacha&&(
+          <MetaRachaSelector streak={streak} metaActual={profile?.meta_racha||0} lang={lang}
+            onElegir={elegirMeta} onCerrar={()=>{sfx("tap");setMetaAsk(false);}}/>
+        )}
+        {metaLograda&&!metaAsk&&!avisoNuevoPlan&&!avisoRegistro&&!avisoSupl&&!avisoTrial&&!hitoCard&&!avisoVictoria&&!avisoRacha&&(
+          <MetaLogradaOverlay meta={metaLograda} boColor={boColor} boEquipados={boEquipados} lang={lang}
+            onElegir={elegirMeta} onCerrar={()=>{sfx("tap");setMetaLograda(null);}}/>
+        )}
+        {espejoDia&&!metaAsk&&!metaLograda&&!avisoNuevoPlan&&!avisoRegistro&&!avisoSupl&&!avisoTrial&&!hitoCard&&!avisoVictoria&&!avisoRacha&&(
           <EspejoDiaCard frases={espejoDia} lang={lang}
             onVerSeguimiento={espejoAbrirSeguimiento}
             onClose={()=>{sfx("tap");setEspejoDia(null);}}/>
@@ -11687,8 +12142,8 @@ function TarjetaPareja({profile,sfx,showT}){
   };
 
   if(estado==="cargando") return null;
-  const marco={width:'100%',boxSizing:'border-box',background:'rgba(88,204,2,0.06)',
-    border:'2px solid rgba(88,204,2,0.35)',borderRadius:20,padding:'20px',
+  const marco={width:'100%',boxSizing:'border-box',background:alpha(T.g1,0.06),
+    border:`2px solid ${alpha(T.g1,0.35)}`,borderRadius:20,padding:'20px',
     boxShadow:'0 4px 0 rgba(0,0,0,0.3)',textAlign:'left'};
   const btn=(bg,bd,col)=>({flex:1,padding:'11px',borderRadius:12,cursor:ocupado?'default':'pointer',
     background:bg,border:`1.5px solid ${bd}`,color:col,fontWeight:900,fontSize:13,
@@ -11720,7 +12175,7 @@ function TarjetaPareja({profile,sfx,showT}){
         {!!profile?.referral_code&&(
           <div style={{marginBottom:10}}>
             <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginBottom:4}}>{t("parejaTuCodigo")}</div>
-            <div style={{background:'rgba(255,200,0,0.10)',border:`1.5px dashed ${T.au1}`,borderRadius:12,
+            <div style={{background:alpha(T.au1,0.10),border:`1.5px dashed ${T.au1}`,borderRadius:12,
               padding:'9px 12px',textAlign:'center',fontWeight:900,fontSize:16,color:T.au1,letterSpacing:'0.14em'}}>
               {profile.referral_code}
             </div>
@@ -11735,7 +12190,7 @@ function TarjetaPareja({profile,sfx,showT}){
         {!!error&&<div style={{fontSize:11.5,color:'#FF6B6B',marginBottom:8,fontFamily:"'DM Sans',sans-serif"}}>{error}</div>}
         <button onClick={invitar} disabled={ocupado||!codigo.trim()} style={{width:'100%',padding:'12px',borderRadius:13,border:'none',
           cursor:(ocupado||!codigo.trim())?'default':'pointer',background:codigo.trim()?`linear-gradient(135deg,${T.g1},${T.g2})`:'rgba(255,255,255,0.08)',
-          color:codigo.trim()?'#fff':T.t3,fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif",marginBottom:10}}>
+          color:codigo.trim()?T.t1:T.t3,fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif",marginBottom:10}}>
           {t("parejaInvitar")}
         </button>
       </>)}
@@ -11744,7 +12199,7 @@ function TarjetaPareja({profile,sfx,showT}){
         <div style={{fontSize:12.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.55,marginBottom:12}}>
           {t("parejaEnviada",{n:otro?.nombre||""})}
         </div>
-        <button onClick={deshacer} style={btn('rgba(255,140,60,0.10)','rgba(255,140,60,0.4)','#FF8C3C')}>
+        <button onClick={deshacer} style={btn('rgba(255,140,60,0.10)','rgba(255,140,60,0.4)',T.compra)}>
           {conf?t("parejaConfirmar"):t("parejaCancelar")}
         </button>
       </>)}
@@ -11758,7 +12213,7 @@ function TarjetaPareja({profile,sfx,showT}){
         </div>
         <div style={{display:'flex',gap:8}}>
           <button onClick={()=>responder(false)} style={btn('rgba(255,255,255,0.06)','rgba(255,255,255,0.15)',T.t2)}>{t("parejaRechazar")}</button>
-          <button onClick={()=>responder(true)}  style={btn('rgba(88,204,2,0.15)','rgba(88,204,2,0.5)',T.g2)}>{t("parejaAceptar")}</button>
+          <button onClick={()=>responder(true)}  style={btn(alpha(T.g1,0.15),alpha(T.g1,0.5),T.g2)}>{t("parejaAceptar")}</button>
         </div>
       </>)}
 
@@ -11774,36 +12229,24 @@ function TarjetaPareja({profile,sfx,showT}){
   );
 }
 
-// Fase 5 (referidos): la recompensa es REAL, no gemas. Al invitado, primer mes
-// de Premium a mitad de precio (17,50 €); a quien invita, un mes gratis que se
-// abona cuando el invitado completa su SEGUNDO pago (así la recompensa se paga
-// con ingreso ya cobrado). El canal es WhatsApp con el mensaje ya redactado
-// (editable) — nada de copiar al portapapeles y que se apañe. Cada toque en
-// compartir se registra en referral_events (fire & forget) para medir el
-// embudo. Sin distinción paciente/entrenador: una sola tarjeta para todos
-// (decisión del 5-8-2026; el canal de entrenadores se trata aparte, fuera
-// de la app, cuando se hable con ellos).
 function TarjetaInvitarAmigo({profile,lang,sfx}){
-  const code=profile?.referral_code;
-  const defecto=React.useMemo(()=>{
-    if(!code) return "";
-    return lang==='en'
-      ? `I've been on GBH's nutrition plan for a while and it's going well. If you want to try it, with my code ${code} you get your first month at half price: https://gbh-app.vercel.app`
-      : `Llevo un tiempo con la nutrición de GBH y me está yendo bien. Si quieres probarlo, con mi código ${code} tienes el primer mes a mitad de precio: https://gbh-app.vercel.app`;
-  },[code,lang]);
-  const [msg,setMsg]=React.useState(defecto);
-  const [editando,setEditando]=React.useState(false);
-  React.useEffect(()=>{ if(!editando) setMsg(defecto); },[defecto,editando]);
-  if(!code) return null;
-  const enviar=()=>{
+  const [copiado,setCopiado]=React.useState(false);
+  if(!profile?.referral_code) return null;
+  const compartir=async()=>{
     sfx&&sfx("tap");
-    // Medición: toque en compartir. Nunca bloquea.
-    try{ sbDirect("POST","referral_events",{profile_id:profile.id,tipo:'share_tap'}).catch(()=>{}); }catch{}
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg||defecto)}`,'_blank','noopener');
+    const msg = lang==='en'
+      ? `I'm following my nutrition plan with GBH Nutrición 🌱 Sign up with my code ${profile.referral_code} and you get 25 💎 to start: https://gbh-app.vercel.app`
+      : `Estoy siguiendo mi plan de nutrición con GBH Nutrición 🌱 Regístrate con mi código ${profile.referral_code} y te llevas 25 💎 para empezar: https://gbh-app.vercel.app`;
+    try{ if(navigator.share){ await navigator.share({text:msg}); return; } }
+    catch(e){ if(e?.name==="AbortError") return; }
+    try{
+      await navigator.clipboard.writeText(msg);
+      setCopiado(true); setTimeout(()=>setCopiado(false),2200);
+    }catch{}
   };
   return(
-    <div style={{width:'100%',boxSizing:'border-box',background:'rgba(255,200,0,0.07)',
-      border:'2px solid rgba(255,200,0,0.4)',borderRadius:20,padding:'20px',
+    <div style={{width:'100%',boxSizing:'border-box',background:alpha(T.au1,0.07),
+      border:`2px solid ${alpha(T.au1,0.4)}`,borderRadius:20,padding:'20px',
       boxShadow:'0 4px 0 rgba(0,0,0,0.3)',textAlign:'left'}}>
       <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:14}}>
         <div style={{fontSize:36,flexShrink:0}}>🎁</div>
@@ -11812,39 +12255,25 @@ function TarjetaInvitarAmigo({profile,lang,sfx}){
             {lang==='en'?'Invite a friend':'Invita a un amigo'}
           </div>
           <div style={{fontSize:12,color:T.au1,fontWeight:800,fontFamily:"'DM Sans',sans-serif"}}>
-            {lang==='en'?'Half-price 1st month for them · 1 free month for you':'1er mes a mitad de precio para él · 1 mes gratis para ti'}
+            {lang==='en'?'Earn 50 💎 per friend':'Gana 50 💎 por cada amigo'}
           </div>
         </div>
       </div>
-      <div style={{background:'rgba(255,200,0,0.10)',border:`1.5px dashed ${T.au1}`,
+      <div style={{background:alpha(T.au1,0.10),border:`1.5px dashed ${T.au1}`,
         borderRadius:12,padding:'11px 14px',textAlign:'center',fontWeight:900,fontSize:17,
         color:T.au1,letterSpacing:'0.14em',fontFamily:"'Nunito',sans-serif",marginBottom:10}}>
-        {code}
+        {profile.referral_code}
       </div>
-      {editando&&(
-        <textarea value={msg} onChange={e=>setMsg(e.target.value)} rows={4}
-          style={{width:'100%',boxSizing:'border-box',padding:'10px 12px',borderRadius:12,marginBottom:8,
-            background:'rgba(255,255,255,0.06)',border:'1.5px solid rgba(255,255,255,0.16)',
-            color:T.t1,fontSize:12.5,lineHeight:1.5,fontFamily:"'DM Sans',sans-serif",resize:'vertical'}}/>
-      )}
-      <button onClick={enviar} style={{width:'100%',padding:'13px',borderRadius:14,border:'none',
-        cursor:'pointer',background:'linear-gradient(135deg,#25D366,#1DA851)',
-        color:'#fff',fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif",
-        boxShadow:'0 3px 0 #128C4B',marginBottom:8,display:'flex',alignItems:'center',
-        justifyContent:'center',gap:8}}>
-        <span style={{fontSize:18}}>💬</span>
-        {lang==='en'?'Send via WhatsApp':'Enviar por WhatsApp'}
-      </button>
-      <button onClick={()=>{sfx&&sfx("tap");setEditando(e=>!e);}} style={{width:'100%',padding:'8px',
-        borderRadius:12,border:'1.5px solid rgba(255,255,255,0.14)',background:'transparent',
-        cursor:'pointer',color:T.t2,fontWeight:800,fontSize:12,fontFamily:"'Nunito',sans-serif",marginBottom:12}}>
-        {editando?(lang==='en'?'Use default message':'Usar el mensaje por defecto')
-                 :(lang==='en'?'✏️ Edit message':'✏️ Editar el mensaje')}
+      <button onClick={compartir} style={{width:'100%',padding:'13px',borderRadius:14,border:'none',
+        cursor:'pointer',background:copiado?'rgba(255,255,255,0.12)':`linear-gradient(135deg,${T.g1},${T.g2})`,
+        color:T.t1,fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif",
+        boxShadow:copiado?'none':`0 3px 0 ${T.g3}`,marginBottom:12}}>
+        {copiado?(lang==='en'?'✅ Copied!':'✅ ¡Copiado!'):`📤 ${lang==='en'?'Share my code':'Compartir mi código'}`}
       </button>
       <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6}}>
         {lang==='en'
-          ?'How it works: your friend signs up with your code and gets their first month of Premium at half price (€17.50). When they complete their second month, you get one month free.'
-          :'Cómo funciona: tu amigo se registra con tu código y tiene su primer mes de Premium a mitad de precio (17,50 €). Cuando complete su segundo mes, tú tienes un mes gratis.'}
+          ?'How it works: your friend signs up with your code and gets 25 💎 to start. When they log their first day of meals, you earn 50 💎.'
+          :'Cómo funciona: tu amigo se registra con tu código y recibe 25 💎 de bienvenida. Cuando complete su primer día de registro de comidas, tú ganas 50 💎.'}
       </div>
     </div>
   );
@@ -11854,14 +12283,11 @@ function TarjetaInvitarAmigo({profile,lang,sfx}){
 // ═══════════════════════════════════════════════════════════════════════════
 function ConsultaTab({profile,lang,sfx}){
   const isPremium=profile?.plan==='premium';
-  // Referido pendiente de estrenar: llegó con código y aún no es premium →
-  // ve el precio reducido ANTES de pagar y su solicitud ya lo lleva escrito.
-  const esReferido=!!profile?.referred_by && !isPremium;
   // Mensaje pre-rellenado para que un usuario free/estándar SOLICITE pasar a
   // Premium directamente por WhatsApp (mismo patrón que el CTA del plan).
   const waMsgPremium = encodeURIComponent(lang==='en'
-    ? `Hi! I'm ${profile?.name||''} and I'd like to go Premium (weekly follow-up and direct WhatsApp). ${esReferido?'I signed up with an invitation code, so my first month is €17.50. ':''}Do you have a spot? 👑`
-    : `¡Hola! Soy ${profile?.name||''} y quiero pasar a Premium (seguimiento semanal y WhatsApp directo). ${esReferido?'Me registré con código de invitación, así que mi primer mes es a 17,50 €. ':''}¿Tienes plaza? 👑`);
+    ? `Hi! I'm ${profile?.name||''} and I'd like to go Premium (weekly follow-up and direct WhatsApp). Do you have a spot? 👑`
+    : `¡Hola! Soy ${profile?.name||''} y quiero pasar a Premium (seguimiento semanal y WhatsApp directo). ¿Tienes plaza? 👑`);
 
   if(!isPremium) return(
     <div style={{padding:'48px 24px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:18}}>
@@ -11875,7 +12301,7 @@ function ConsultaTab({profile,lang,sfx}){
           : 'La consulta directa con tu nutricionista es solo para Premium.'}
       </div>
       <div style={{marginTop:8,width:'100%',maxWidth:300,boxSizing:'border-box',textAlign:'left',
-        background:'linear-gradient(135deg,rgba(255,200,0,0.12),rgba(255,160,0,0.08))',
+        background:`linear-gradient(135deg,${alpha(T.au1,0.12)},rgba(255,160,0,0.08))`,
         border:'1.5px solid '+T.au1,borderRadius:18,padding:'18px 20px'}}>
         <div style={{textAlign:'center',marginBottom:12}}>
           <div style={{fontSize:30,marginBottom:4}}>👑</div>
@@ -11903,21 +12329,12 @@ function ConsultaTab({profile,lang,sfx}){
             <span style={{fontSize:12.5,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.45}}>{linea}</span>
           </div>
         ))}
-        <div style={{marginTop:10,paddingTop:10,borderTop:'1px solid rgba(255,200,0,0.25)',
+        <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${alpha(T.au1,0.25)}`,
           fontSize:11.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>
           {lang==='en'
             ? 'A one-off consultation runs €40-50. Premium: €35/month with follow-up all week. Just over €1 a day.'
             : 'Una consulta suelta ronda los 40-50 €. Premium: 35 €/mes con seguimiento toda la semana. Poco más de 1 € al día.'}
         </div>
-        {esReferido&&(
-          <div style={{marginTop:8,background:'rgba(88,204,2,0.10)',border:'1.5px solid rgba(88,204,2,0.45)',
-            borderRadius:12,padding:'10px 12px',fontSize:12,fontWeight:800,color:T.g2,
-            fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>
-            {lang==='en'
-              ? '🎟️ You came with an invitation code: your first month is €17.50 (half price). Then €35/month.'
-              : '🎟️ Vienes con código de invitación: tu primer mes te sale a 17,50 € (mitad de precio). Después, 35 €/mes.'}
-          </div>
-        )}
         <div style={{marginTop:6,fontSize:11.5,fontWeight:800,color:T.au1,fontFamily:"'DM Sans',sans-serif"}}>
           {lang==='en'?'Limited spots — first come, first served.':'Plazas limitadas — voy por orden.'}
         </div>
@@ -11926,7 +12343,7 @@ function ConsultaTab({profile,lang,sfx}){
       <a href={`https://wa.me/${GBH_WHATSAPP}?text=${waMsgPremium}`} target="_blank" rel="noopener noreferrer"
         onClick={()=>sfx&&sfx("tap")}
         style={{marginTop:2,width:'100%',maxWidth:300,background:'linear-gradient(135deg,#25D366,#1DA851)',
-          color:'#fff',fontWeight:900,fontSize:15,borderRadius:18,padding:'16px 20px',
+          color:T.t1,fontWeight:900,fontSize:15,borderRadius:18,padding:'16px 20px',
           textDecoration:'none',boxShadow:'0 4px 0 #128C4B',fontFamily:"'Nunito',sans-serif",
           display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
         <span style={{fontSize:20}}>💬</span>
@@ -11996,7 +12413,7 @@ function ConsultaTab({profile,lang,sfx}){
               {lang==='en'?'Schedule a weekend appointment':'Agenda una cita para el fin de semana'}
             </div>
           </div>
-          <div style={{color:'#64B5F6',fontSize:22,flexShrink:0}}>›</div>
+          <div style={{color:T.platos,fontSize:22,flexShrink:0}}>›</div>
         </button>
 
         {/* Invita a un amigo (referidos) */}
@@ -12440,7 +12857,7 @@ const emojiPlato = (nombre, tipo) => {
   return PLAN_TIPO_IC[tipo] || '🍴';
 };
 const PLAN_TIPO_BG = {Carne:'rgba(192,57,43,0.22)',Pescado:'rgba(41,128,185,0.22)',Vegetariana:'rgba(39,174,96,0.18)',Vegana:'rgba(22,160,133,0.18)',Ensalada:'rgba(139,195,74,0.18)','Sopa/Crema':'rgba(230,126,34,0.22)',Postre:'rgba(214,70,158,0.22)',Directo:'rgba(212,175,55,0.22)'};
-const PLAN_TIPO_COLOR={Carne:'#E57373',Pescado:'#64B5F6',Vegetariana:'#81C784',Vegana:'#A5D6A7',Postre:'#F06292',Ensalada:'#AED581','Sopa/Crema':'#FFB74D'};
+const PLAN_TIPO_COLOR={Carne:'#E57373',Pescado:T.platos,Vegetariana:'#81C784',Vegana:'#A5D6A7',Postre:'#F06292',Ensalada:'#AED581','Sopa/Crema':'#FFB74D'};
 
 // ── Exportación CSV del seguimiento de un paciente (para el nutricionista) ────
 async function exportarSeguimientoCSV(profileId, nombre){
@@ -12557,18 +12974,43 @@ function espejoFrases({stats, logs, hoyKey, lang}){
       }
     }
   }
-  // 4) Tendencia entre semanas, solo si la dirección es clara (≥5 puntos y ≥10
-  //    registros en cada una de las dos últimas semanas con datos).
-  const sem = Object.keys(stats.semanas||{}).map(Number).sort((a,b)=>a-b)
-    .map(w=>stats.semanas[w]).filter(s=>s.total>=10);
-  if(sem.length>=2){
-    const a=Math.round(sem[sem.length-1].seguida/sem[sem.length-1].total*100);
-    const b=Math.round(sem[sem.length-2].seguida/sem[sem.length-2].total*100);
-    if(Math.abs(a-b)>=5) out.push({id:'tendencia', tono:'dato',
-      texto: EN?`This week you're at ${a} % versus ${b} % last week.`
-              :`Esta semana vas al ${a} % frente al ${b} % de la pasada.`});
+  // 4) Tendencia entre semanas: SIEMPRE la semana de hoy frente a la
+  //    inmediatamente anterior (índices adyacentes del mismo calendario), cada
+  //    una con ≥10 registros y ≥5 puntos de diferencia. Antes se comparaban
+  //    "las dos últimas semanas con ≥10", y un lunes o martes —cuando la semana
+  //    en curso aún no tiene base— la frase llamaba "esta semana" a la pasada.
+  //    Ahora, si la semana de hoy no tiene base, la tendencia no se muestra.
+  if(hoyKey && stats.semanas){
+    const dH=new Date(hoyKey+'T12:00:00');
+    if(!isNaN(dH)){
+      // Mismo índice semanal que usa espejoAgregar sobre el mes natural:
+      // floor((offset + día-1) / 7), con offset = día de la semana del día 1.
+      const offH=(new Date(dH.getFullYear(),dH.getMonth(),1).getDay()+6)%7;
+      const wHoy=Math.floor((offH+dH.getDate()-1)/7);
+      const sA=stats.semanas[wHoy], sB=stats.semanas[wHoy-1];
+      if(sA&&sB&&sA.total>=10&&sB.total>=10){
+        const a=Math.round(sA.seguida/sA.total*100);
+        const b=Math.round(sB.seguida/sB.total*100);
+        if(Math.abs(a-b)>=5) out.push({id:'tendencia', tono:'dato',
+          texto: EN?`This week you're at ${a} % versus ${b} % last week.`
+                  :`Esta semana vas al ${a} % frente al ${b} % de la pasada.`});
+      }
+    }
   }
-  return out;
+  // Rotación de la SEGUNDA frase: la tarjeta pinta máx. 2, y con el orden fijo
+  // de prioridad el paciente veía siempre el mismo par (constancia + mejor).
+  // La constancia se queda SIEMPRE primera (es lo que la regla ética premia);
+  // la acompañante rota por día del mes entre las candidatas disponibles
+  // (mejor / floja / tendencia), y el resto conserva su orden de prioridad.
+  const iConst = out.findIndex(f=>f.id==='constancia');
+  const cabeza = iConst>=0 ? [out[iConst]] : [];
+  const resto  = out.filter((_,i)=>i!==iConst);
+  if(resto.length>1 && hoyKey){
+    const diaMes = parseInt(String(hoyKey).slice(8,10),10)||0;
+    const rot = diaMes % resto.length;
+    resto.unshift(resto.splice(rot,1)[0]);
+  }
+  return [...cabeza, ...resto];
 }
 
 // ── Tarjeta del espejo tras completar el día (Tarea B) ───────────────────────
@@ -12632,7 +13074,7 @@ function EspejoSemanaCard({profile, logs, lang, onVerSeguimiento}){
   if(!datos||descartada) return null;
   const cerrar=()=>{ lsSet(datos.lsKey,true); setDescartada(true); };
   return(
-    <Card style={{border:`2px solid rgba(88,204,2,0.35)`}}>
+    <Card style={{border:`2px solid ${alpha(T.g1,0.35)}`}}>
       <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontWeight:900,fontSize:14.5,color:T.g2,fontFamily:"'Nunito',sans-serif",marginBottom:6}}>
@@ -12738,7 +13180,7 @@ function SeguimientoView({profile, lang}){
       {/* Selector de comida */}
       <div style={{display:'flex',gap:6,overflowX:'auto',padding:'0 16px 10px',scrollbarWidth:'none'}}>
         {PLAN_TOMAS.map(t=>{ const on=t===tomaSel; return(
-          <button key={t} onClick={()=>setTomaSel(t)} style={{flex:'0 0 auto',display:'flex',alignItems:'center',gap:5,padding:'8px 12px',borderRadius:12,cursor:'pointer',background:on?'rgba(206,130,255,0.18)':'rgba(255,255,255,0.05)',border:on?'1.5px solid '+T.pur:'1.5px solid transparent',color:on?T.pur:T.t2,fontSize:12,fontWeight:on?900:700,...TT}}>
+          <button key={t} onClick={()=>setTomaSel(t)} style={{flex:'0 0 auto',display:'flex',alignItems:'center',gap:5,padding:'8px 12px',borderRadius:12,cursor:'pointer',background:on?alpha(T.pur,0.18):'rgba(255,255,255,0.05)',border:on?'1.5px solid '+T.pur:'1.5px solid transparent',color:on?T.pur:T.t2,fontSize:12,fontWeight:on?900:700,...TT}}>
             <span>{PLAN_TOMA_IC[t]}</span><span>{TOMA_LBL[t]}</span>
           </button>);})}
       </div>
@@ -13738,7 +14180,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
       {!ES_IOS_NATIVO?<>
       <div style={{display:'flex',flexDirection:'column',gap:10,width:'100%',maxWidth:330,marginTop:4}}>
         <button onClick={()=>{sfx&&sfx("tap");abrirCheckoutStripe(profile?.id);}}
-          style={{background:'rgba(88,204,2,0.08)',border:'2px solid '+T.bG,borderRadius:18,padding:'14px 16px',textAlign:'left',display:'flex',alignItems:'center',gap:12,cursor:'pointer',width:'100%',boxShadow:'0 3px 0 rgba(0,0,0,0.25)'}}>
+          style={{background:alpha(T.g1,0.08),border:'2px solid '+T.bG,borderRadius:18,padding:'14px 16px',textAlign:'left',display:'flex',alignItems:'center',gap:12,cursor:'pointer',width:'100%',boxShadow:'0 3px 0 rgba(0,0,0,0.25)'}}>
           <div style={{fontSize:28,flexShrink:0}}>📅</div>
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:14,fontWeight:900,color:T.g1,fontFamily:"'Nunito',sans-serif"}}>
@@ -13756,7 +14198,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
           <div style={{color:T.g1,fontSize:20,flexShrink:0}}>›</div>
         </button>
         <a href={`https://wa.me/${GBH_WHATSAPP}?text=${waMsgPlan}`} target="_blank" rel="noopener noreferrer" onClick={()=>sfx&&sfx("tap")}
-          style={{background:'rgba(255,200,0,0.07)',border:'2px solid rgba(255,200,0,0.35)',borderRadius:18,padding:'14px 16px',textAlign:'left',display:'flex',alignItems:'center',gap:12,cursor:'pointer',textDecoration:'none',boxShadow:'0 3px 0 rgba(0,0,0,0.25)'}}>
+          style={{background:alpha(T.au1,0.07),border:`2px solid ${alpha(T.au1,0.35)}`,borderRadius:18,padding:'14px 16px',textAlign:'left',display:'flex',alignItems:'center',gap:12,cursor:'pointer',textDecoration:'none',boxShadow:'0 3px 0 rgba(0,0,0,0.25)'}}>
           <div style={{fontSize:28,flexShrink:0}}>👑</div>
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:14,fontWeight:900,color:T.au1,fontFamily:"'Nunito',sans-serif"}}>
@@ -13806,7 +14248,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
             : 'Primero ponte un objetivo y te preparo el plan 👨‍🍳'}
         </div>
         <button onClick={()=>setTab&&setTab('progreso')}
-          style={{background:'linear-gradient(135deg,'+T.g1+','+T.g2+')',color:'#fff',fontWeight:900,fontSize:16,
+          style={{background:'linear-gradient(135deg,'+T.g1+','+T.g2+')',color:T.t1,fontWeight:900,fontSize:16,
             borderRadius:18,padding:'16px 34px',border:'none',cursor:'pointer',boxShadow:'0 5px 0 '+T.g3,
             fontFamily:"'Nunito',sans-serif",display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
           <span style={{fontSize:20}}>🎯</span>
@@ -13861,7 +14303,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
         {isStandard&&configCompleta&&(
           <button onClick={generarProgramacion} disabled={generando}
             style={{background:generando?'rgba(255,255,255,0.08)':'linear-gradient(135deg,'+T.g1+','+T.g2+')',
-                    color:generando?T.t3:'#fff',fontWeight:900,fontSize:16,borderRadius:20,
+                    color:generando?T.t3:T.t1,fontWeight:900,fontSize:16,borderRadius:20,
                     padding:'18px 24px',border:'none',cursor:generando?'default':'pointer',
                     boxShadow:generando?'none':'0 5px 0 '+T.g3,fontFamily:"'Nunito',sans-serif",
                     display:'flex',alignItems:'center',justifyContent:'center',gap:10,marginTop:4}}>
@@ -13886,11 +14328,11 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
       <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:7,flexWrap:'wrap'}}>
         <span style={{fontWeight:900,fontSize:15,color:T.t1}}>{lang==='en'?'Week':'Semana'} {plan.semana}</span>
         {idx===idxActual
-          ? <span style={{fontSize:9.5,fontWeight:900,color:T.g1,background:'rgba(88,204,2,0.15)',border:'1px solid '+T.bG,borderRadius:20,padding:'2px 9px',textTransform:'uppercase',letterSpacing:'0.03em',whiteSpace:'nowrap'}}>● {lang==='en'?'Current week':'Semana actual'}</span>
-          : <button onClick={()=>setIdx(idxActual)} style={{fontSize:9.5,fontWeight:800,color:T.au1,background:'rgba(255,200,0,0.12)',border:'1px solid rgba(255,200,0,0.3)',borderRadius:20,padding:'2px 9px',cursor:'pointer',whiteSpace:'nowrap',fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Go to current →':'Ir a la actual →'}</button>}
+          ? <span style={{fontSize:9.5,fontWeight:900,color:T.g1,background:alpha(T.g1,0.15),border:'1px solid '+T.bG,borderRadius:20,padding:'2px 9px',textTransform:'uppercase',letterSpacing:'0.03em',whiteSpace:'nowrap'}}>● {lang==='en'?'Current week':'Semana actual'}</span>
+          : <button onClick={()=>setIdx(idxActual)} style={{fontSize:9.5,fontWeight:800,color:T.au1,background:alpha(T.au1,0.12),border:`1px solid ${alpha(T.au1,0.3)}`,borderRadius:20,padding:'2px 9px',cursor:'pointer',whiteSpace:'nowrap',fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Go to current →':'Ir a la actual →'}</button>}
       </div>
       {mediaKcalSem!==null&&(
-        <div style={{display:'inline-flex',alignItems:'center',gap:6,marginTop:6,background:'rgba(88,204,2,0.12)',border:'1px solid '+T.bG,borderRadius:20,padding:'3px 11px'}}>
+        <div style={{display:'inline-flex',alignItems:'center',gap:6,marginTop:6,background:alpha(T.g1,0.12),border:'1px solid '+T.bG,borderRadius:20,padding:'3px 11px'}}>
           <span style={{fontSize:12,lineHeight:1}}>🔥</span>
           <span style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>{lang==='en'?'Daily average':'Media diaria'}: <b style={{color:T.g1}}>{mediaKcalSem}</b> kcal</span>
         </div>
@@ -13906,7 +14348,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
   const trialDias = (isStandard && trialMs!==null && trialMs>0) ? Math.max(1, Math.ceil(trialMs/(24*60*60*1000))) : null;
   const TrialChip=()=>trialDias?(
     <div style={{margin:'10px 16px 0',display:'flex',alignItems:'center',gap:10,
-      background:'rgba(255,200,0,0.10)',border:'1.5px solid rgba(255,200,0,0.45)',
+      background:alpha(T.au1,0.10),border:`1.5px solid ${alpha(T.au1,0.45)}`,
       borderRadius:14,padding:'10px 14px'}}>
       <span style={{fontSize:20,lineHeight:1}}>🎁</span>
       <div style={{flex:1}}>
@@ -13936,7 +14378,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
         const pct=Math.max(0,Math.min(100,Math.round(fr.pct||0)));
         const alto=pct>=80;
         return(
-          <div style={{margin:'4px 16px 0',background:'rgba(255,200,0,0.10)',border:'2px solid rgba(255,200,0,0.30)',borderRadius:18,padding:'14px 16px',boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
+          <div style={{margin:'4px 16px 0',background:alpha(T.au1,0.10),border:`2px solid ${alpha(T.au1,0.30)}`,borderRadius:18,padding:'14px 16px',boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
             <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
               <span style={{fontSize:22,lineHeight:1,flexShrink:0}}>⭐</span>
               <div style={{flex:1,fontWeight:900,fontSize:13,color:T.au1,fontFamily:"'Nunito',sans-serif",lineHeight:1.3}}>
@@ -13967,7 +14409,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
             así que la vista duplicada sobra. Entrada DIRECTA al PDF (sin
             pantalla intermedia con botón de descarga); si el PDF aún no
             existe, cae a la vista 'pdf' que muestra el aviso de no disponible. */}
-        <button onClick={()=>{if(plan.pdf_url){window.open(plan.pdf_url,'_blank','noopener');}else{setView('pdf');}}} style={{background:'rgba(255,200,0,0.10)',border:'2px solid rgba(255,200,0,0.3)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
+        <button onClick={()=>{if(plan.pdf_url){window.open(plan.pdf_url,'_blank','noopener');}else{setView('pdf');}}} style={{background:alpha(T.au1,0.10),border:`2px solid ${alpha(T.au1,0.3)}`,borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
           <div style={{fontSize:40,flexShrink:0}}>📅</div>
           <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Plan & Recipes':'Plan y recetas'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Your week at a glance, recipes and progress (PDF)':'Tu semana de un vistazo, recetas y tu progreso (PDF)'}</div></div>
           <div style={{color:T.au1,fontSize:20,flexShrink:0}}>›</div>
@@ -13975,14 +14417,14 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
         <button onClick={()=>setView('daily')} style={{background:'rgba(100,181,246,0.12)',border:'2px solid rgba(100,181,246,0.3)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
           <div style={{fontSize:40,flexShrink:0}}>🍽️</div>
           <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Daily Meals':'Platos diarios'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Your meals for today with full recipe details':'Tus platos de hoy con receta e ingredientes'}</div></div>
-          <div style={{color:'#64B5F6',fontSize:20,flexShrink:0}}>›</div>
+          <div style={{color:T.platos,fontSize:20,flexShrink:0}}>›</div>
         </button>
         <button onClick={()=>setView('lista')} style={{background:'rgba(255,140,60,0.10)',border:'2px solid rgba(255,140,60,0.32)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
           <div style={{fontSize:40,flexShrink:0}}>🛒</div>
           <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Shopping List':'Lista de la compra'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Tick off ingredients as you shop':'Marca los ingredientes mientras compras'}</div></div>
-          <div style={{color:'#FF8C3C',fontSize:20,flexShrink:0}}>›</div>
+          <div style={{color:T.compra,fontSize:20,flexShrink:0}}>›</div>
         </button>
-        <button onClick={()=>setView('seguimiento')} style={{background:'rgba(206,130,255,0.12)',border:'2px solid rgba(206,130,255,0.3)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
+        <button onClick={()=>setView('seguimiento')} style={{background:alpha(T.pur,0.12),border:`2px solid ${alpha(T.pur,0.3)}`,borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
           <div style={{fontSize:40,flexShrink:0}}>📊</div>
           <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Tracking':'Seguimiento'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Calendar and charts of your meal compliance':'Calendario y gráficas de tu cumplimiento'}</div></div>
           <div style={{color:T.pur,fontSize:20,flexShrink:0}}>›</div>
@@ -14006,7 +14448,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
           </div>
         )}
         {isStandard&&!planBloqueado&&(
-          <button onClick={()=>setConfigView(true)} style={{background:'rgba(88,204,2,0.08)',border:'1.5px solid '+T.bG,borderRadius:16,padding:'14px 16px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:14,marginTop:4}}>
+          <button onClick={()=>setConfigView(true)} style={{background:alpha(T.g1,0.08),border:'1.5px solid '+T.bG,borderRadius:16,padding:'14px 16px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:14,marginTop:4}}>
             <div style={{fontSize:26,flexShrink:0}}>✨</div>
             <div style={{flex:1}}><div style={{fontWeight:800,fontSize:14,color:T.g1,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Generate new week':'Generar nueva semana'}</div><div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>{lang==='en'?'Review your settings and create a fresh plan':'Revisa tu configuración y crea un plan nuevo'}</div></div>
             <div style={{color:T.g1,fontSize:16,flexShrink:0}}>›</div>
@@ -14069,8 +14511,8 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
               {[false,true].map(m=>(
                 <button key={String(m)} onClick={()=>{sfx&&sfx('tap');setListaDeDos(m);setListaConfirm(false);}}
                   style={{flex:1,padding:'8px 6px',borderRadius:10,cursor:'pointer',
-                    background:listaDeDos===m?'rgba(88,204,2,0.18)':'transparent',
-                    border:`1.5px solid ${listaDeDos===m?'rgba(88,204,2,0.5)':'transparent'}`,
+                    background:listaDeDos===m?alpha(T.g1,0.18):'transparent',
+                    border:`1.5px solid ${listaDeDos===m?'${alpha(T.g1,0.5)}':'transparent'}`,
                     color:listaDeDos===m?T.g2:T.t2,fontSize:12.5,fontWeight:900,
                     fontFamily:"'Nunito',sans-serif"}}>
                   {m?t("listaDeDos",{n:pareja?.nombre||''}):t("listaSoloMia")}
@@ -14083,7 +14525,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
           </div>
           {modoDos&&(
             <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,
-              marginBottom:12,background:'rgba(88,204,2,0.08)',border:'1px solid rgba(88,204,2,0.25)',
+              marginBottom:12,background:alpha(T.g1,0.08),border:`1px solid ${alpha(T.g1,0.25)}`,
               borderRadius:11,padding:'8px 11px'}}>
               🛒 {t("listaDeDosNota",{n:pareja?.nombre||''})}
             </div>
@@ -14098,8 +14540,8 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
               return(
                 <button key={it.key} onClick={()=>toggleListaCheck(it.key)} style={{
                   display:'flex',alignItems:'center',gap:12,textAlign:'left',cursor:'pointer',
-                  background:on?'rgba(88,204,2,0.08)':'rgba(255,255,255,0.05)',
-                  border:`1.5px solid ${on?'rgba(88,204,2,0.35)':'rgba(255,255,255,0.12)'}`,
+                  background:on?alpha(T.g1,0.08):'rgba(255,255,255,0.05)',
+                  border:`1.5px solid ${on?'${alpha(T.g1,0.35)}':'rgba(255,255,255,0.12)'}`,
                   borderRadius:14,padding:'11px 14px',transition:'all 0.15s'}}>
                   <span style={{width:22,height:22,flexShrink:0,borderRadius:7,display:'flex',alignItems:'center',justifyContent:'center',
                     background:on?T.g1:'transparent',border:`2px solid ${on?T.g1:'rgba(255,255,255,0.3)'}`,
@@ -14116,8 +14558,8 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
           <button onClick={regenerarLista} style={{
             width:'100%',marginTop:16,padding:'14px 20px',borderRadius:16,cursor:'pointer',
             background:listaConfirm?'rgba(255,140,60,0.18)':'rgba(255,255,255,0.06)',
-            border:`2px solid ${listaConfirm?'#FF8C3C':'rgba(255,255,255,0.15)'}`,
-            color:listaConfirm?'#FF8C3C':T.t2,fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif",
+            border:`2px solid ${listaConfirm?'${T.compra}':'rgba(255,255,255,0.15)'}`,
+            color:listaConfirm?T.compra:T.t2,fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif",
             boxShadow:'0 4px 0 rgba(0,0,0,0.3)',transition:'all 0.15s'}}>
             {listaConfirm
               ?(lang==='en'?'Tap again to confirm ↺':'Toca otra vez para confirmar ↺')
@@ -14167,7 +14609,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
           <div style={{display:'flex',gap:8,minWidth:'min-content'}}>
             {PLAN_DIAS.map((d,i)=>{
               const dayNum=i+1;const isToday=dayNum===todayPlan;const isSel=dayNum===selDay;
-              return(<button key={d} onClick={()=>setSelDay(dayNum)} style={{flexShrink:0,padding:'10px 14px',borderRadius:14,border:'none',cursor:'pointer',background:isSel?'linear-gradient(135deg,'+T.g1+','+T.g2+')':isToday?'rgba(88,204,2,0.15)':'rgba(255,255,255,0.06)',color:isSel?'#fff':isToday?T.g1:T.t2,fontWeight:isSel||isToday?900:600,fontSize:12,fontFamily:"'Nunito',sans-serif",boxShadow:isSel?'0 3px 0 '+T.g3:isToday?'0 0 0 1.5px '+T.bG:'none',transition:'all 0.2s',display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
+              return(<button key={d} onClick={()=>setSelDay(dayNum)} style={{flexShrink:0,padding:'10px 14px',borderRadius:14,border:'none',cursor:'pointer',background:isSel?'linear-gradient(135deg,'+T.g1+','+T.g2+')':isToday?alpha(T.g1,0.15):'rgba(255,255,255,0.06)',color:isSel?T.t1:isToday?T.g1:T.t2,fontWeight:isSel||isToday?900:600,fontSize:12,fontFamily:"'Nunito',sans-serif",boxShadow:isSel?'0 3px 0 '+T.g3:isToday?'0 0 0 1.5px '+T.bG:'none',transition:'all 0.2s',display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
                 <span>{d}</span>
                 {isToday&&!isSel&&<div style={{width:5,height:5,borderRadius:'50%',background:T.g1}}/>}
               </button>);
@@ -14224,7 +14666,11 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
               {mostrarChips&&(
                 <div style={{display:'flex',gap:6,background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderTop:'none',borderRadius:'0 0 16px 16px',padding:'8px 10px 10px'}}>
                   {PLAN_CUMPL.map(c=>{const on=estado===c.k;return(
-                    <button key={c.k} onClick={()=>setEstadoComida(toma,c.k)} title={lang==='en'?c.en:c.es} aria-label={lang==='en'?c.en:c.es} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',padding:'11px 0',borderRadius:12,cursor:'pointer',background:on?c.c+'30':'rgba(255,255,255,0.05)',border:on?('2px solid '+c.c):'1.5px solid rgba(255,255,255,0.06)',fontSize:22,lineHeight:1,transition:'all 0.15s'}}>
+                    <button key={c.k} onClick={()=>setEstadoComida(toma,c.k)} title={lang==='en'?c.en:c.es} aria-label={lang==='en'?c.en:c.es} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',padding:'11px 0',borderRadius:12,cursor:'pointer',background:on?c.c+'30':'rgba(255,255,255,0.05)',border:on?('2px solid '+c.c):'1.5px solid rgba(255,255,255,0.06)',fontSize:22,lineHeight:1,transition:'all 0.15s',
+                      // Micro-pop al quedar seleccionado (Tarea B). La animación solo se
+                      // relanza cuando `on` pasa de false→true (la propiedad cambia);
+                      // con reduced-motion, el borde y el fondo ya cuentan la selección.
+                      animation:(on&&!REDUCED_MOTION())?'popIn 0.22s cubic-bezier(0.34,1.56,0.64,1)':'none'}}>
                       {c.ic}
                     </button>);})}
                 </div>
@@ -14241,7 +14687,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
               <div style={{display:'flex',alignItems:'center',gap:18}}>
                 {(()=>{
                   const R=42, SW=18, C=2*Math.PI*R;
-                  const segs=[{f:macrosDia.fH,c:T.g1},{f:macrosDia.fG,c:'#FFB74D'},{f:macrosDia.fP,c:'#64B5F6'}];
+                  const segs=[{f:macrosDia.fH,c:T.g1},{f:macrosDia.fG,c:'#FFB74D'},{f:macrosDia.fP,c:T.platos}];
                   let acc=0;
                   return(
                     <svg width="110" height="110" viewBox="0 0 112 112" style={{flexShrink:0}}>
@@ -14253,7 +14699,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
                   );
                 })()}
                 <div style={{flex:1,display:'flex',flexDirection:'column',gap:9}}>
-                  {[{c:'#64B5F6',lbl:lang==='en'?'Protein':'Proteínas',pct:macrosDia.pctP,g:macrosDia.p},
+                  {[{c:T.platos,lbl:lang==='en'?'Protein':'Proteínas',pct:macrosDia.pctP,g:macrosDia.p},
                     {c:T.g1,lbl:lang==='en'?'Carbs':'Hidratos',pct:macrosDia.pctH,g:macrosDia.h},
                     {c:'#FFB74D',lbl:lang==='en'?'Fat':'Grasas',pct:macrosDia.pctG,g:macrosDia.g}].map((mm,i)=>(
                     <div key={i} style={{display:'flex',alignItems:'center',gap:8}}>
@@ -14303,8 +14749,8 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
               </div>
             </div>
             {!!tomaReceta.racion_texto&&(
-              <div style={{display:'flex',alignItems:'center',gap:8,background:'rgba(255,200,0,0.10)',
-                border:'1.5px solid rgba(255,200,0,0.45)',borderRadius:14,padding:'9px 12px',marginBottom:12}}>
+              <div style={{display:'flex',alignItems:'center',gap:8,background:alpha(T.au1,0.10),
+                border:`1.5px solid ${alpha(T.au1,0.45)}`,borderRadius:14,padding:'9px 12px',marginBottom:12}}>
                 <span style={{fontSize:18,lineHeight:1}}>⚖️</span>
                 <div>
                   <div style={{fontSize:12,fontWeight:900,color:T.au1}}>
@@ -14319,7 +14765,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
               </div>
             )}
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:8}}>
-              {[{l:lang==='en'?'Calories':'Calorías',v:String(tomaReceta.calorias),u:'kcal',c:T.au1},{l:lang==='en'?'Protein':'Proteína',v:String(tomaReceta.proteinas_g),u:'g',c:'#64B5F6'},{l:lang==='en'?'Carbs':'Carbos',v:String(tomaReceta.hidratos_g),u:'g',c:T.g1},{l:lang==='en'?'Fat':'Grasas',v:String(tomaReceta.grasas_g),u:'g',c:'#FFB74D'}].map(({l,v,u,c})=>(
+              {[{l:lang==='en'?'Calories':'Calorías',v:String(tomaReceta.calorias),u:'kcal',c:T.au1},{l:lang==='en'?'Protein':'Proteína',v:String(tomaReceta.proteinas_g),u:'g',c:T.platos},{l:lang==='en'?'Carbs':'Carbos',v:String(tomaReceta.hidratos_g),u:'g',c:T.g1},{l:lang==='en'?'Fat':'Grasas',v:String(tomaReceta.grasas_g),u:'g',c:'#FFB74D'}].map(({l,v,u,c})=>(
                 <div key={l} style={{background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'10px 6px',textAlign:'center',border:'1px solid rgba(255,255,255,0.08)'}}>
                   <div style={{fontSize:16,fontWeight:900,color:c}}>{v}</div>
                   <div style={{fontSize:9,color:c,fontWeight:700,opacity:0.8}}>{u}</div>
@@ -14338,7 +14784,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
                     : cocinarDeMas>1 ? t("cocinarMasCantidades",{x:cocinarDeMas})
                     : racionEtiqueta(t,{raciones:tomaReceta.raciones,racionTexto:tomaReceta.racion_texto})})} style={{
                   background:'rgba(255,140,60,0.12)',border:'1.5px solid rgba(255,140,60,0.4)',borderRadius:20,
-                  padding:'4px 13px',fontSize:11.5,fontWeight:900,color:'#FF8C3C',cursor:'pointer',
+                  padding:'4px 13px',fontSize:11.5,fontWeight:900,color:T.compra,cursor:'pointer',
                   fontFamily:"'Nunito',sans-serif",whiteSpace:'nowrap'}}>{t("buyBtn")}</button>
               </div>
             </div>
@@ -14357,8 +14803,8 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
                 Solo si la pareja tiene la MISMA receta en la MISMA toma del
                 MISMO día. Si no, ni aparece. */}
             {mismaReceta&&(
-              <div style={{background:cocinarDos?'rgba(88,204,2,0.10)':'rgba(255,255,255,0.05)',
-                border:`1.5px solid ${cocinarDos?'rgba(88,204,2,0.45)':'rgba(255,255,255,0.12)'}`,
+              <div style={{background:cocinarDos?alpha(T.g1,0.10):'rgba(255,255,255,0.05)',
+                border:`1.5px solid ${cocinarDos?'${alpha(T.g1,0.45)}':'rgba(255,255,255,0.12)'}`,
                 borderRadius:14,padding:'11px 13px',marginBottom:12,transition:'all 0.15s'}}>
                 <button onClick={()=>{sfx&&sfx('tap');setCocinarDos(v=>!v);setCocinarDeMas(1);}}
                   style={{display:'flex',alignItems:'center',gap:10,width:'100%',background:'none',
@@ -14366,7 +14812,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
                   <span style={{width:42,height:24,borderRadius:14,flexShrink:0,position:'relative',
                     background:cocinarDos?T.g1:'rgba(255,255,255,0.18)',transition:'all 0.15s'}}>
                     <span style={{position:'absolute',top:3,left:cocinarDos?21:3,width:18,height:18,
-                      borderRadius:'50%',background:'#fff',transition:'left 0.15s'}}/>
+                      borderRadius:'50%',background:T.wh,transition:'left 0.15s'}}/>
                   </span>
                   <span style={{flex:1,minWidth:0,fontSize:13,fontWeight:900,color:cocinarDos?T.g2:T.t1,
                     fontFamily:"'Nunito',sans-serif"}}>
@@ -14400,8 +14846,8 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
                   {[1,2,3].map(x=>(
                     <button key={x} onClick={()=>{sfx&&sfx('tap');setCocinarDeMas(x);}} style={{
                       minWidth:44,padding:'6px 12px',borderRadius:11,cursor:'pointer',
-                      background:cocinarDeMas===x?'rgba(88,204,2,0.18)':'rgba(255,255,255,0.06)',
-                      border:`1.5px solid ${cocinarDeMas===x?'rgba(88,204,2,0.5)':'rgba(255,255,255,0.14)'}`,
+                      background:cocinarDeMas===x?alpha(T.g1,0.18):'rgba(255,255,255,0.06)',
+                      border:`1.5px solid ${cocinarDeMas===x?'${alpha(T.g1,0.5)}':'rgba(255,255,255,0.14)'}`,
                       color:cocinarDeMas===x?T.g2:T.t2,fontSize:12.5,fontWeight:900,
                       fontFamily:"'Nunito',sans-serif"}}>
                       {x===1?t("cocinarMasNormal"):`x${x}`}
@@ -14433,14 +14879,14 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
                       borderRadius:16,padding:'14px 10px',cursor:(!enTrial&&gems<10)?'default':'pointer',
                       display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
               <span style={{fontSize:20}}>🔄</span>
-              <span style={{fontSize:12,fontWeight:900,color:(!enTrial&&gems<10)?T.t3:'#64B5F6',fontFamily:"'Nunito',sans-serif"}}>
+              <span style={{fontSize:12,fontWeight:900,color:(!enTrial&&gems<10)?T.t3:T.platos,fontFamily:"'Nunito',sans-serif"}}>
                 {lang==='en'?'Change':'Cambiar'}
               </span>
               <span style={{fontSize:10,color:enTrial?T.g1:T.t3,fontWeight:enTrial?900:400}}>{enTrial?(lang==='en'?'Free · trial':'Gratis · prueba'):'10 💎'}</span>
             </button>
             <button onClick={recetaYaGuardada?undefined:guardarRecetaToma}
-              style={{flex:1,background:recetaYaGuardada?'rgba(88,204,2,0.15)':(gems<20?'rgba(255,255,255,0.05)':'rgba(255,200,0,0.12)'),
-                      border:recetaYaGuardada?'1.5px solid '+T.bG:(gems<20?'1.5px solid rgba(255,255,255,0.08)':'1.5px solid rgba(255,200,0,0.35)'),
+              style={{flex:1,background:recetaYaGuardada?alpha(T.g1,0.15):(gems<20?'rgba(255,255,255,0.05)':alpha(T.au1,0.12)),
+                      border:recetaYaGuardada?'1.5px solid '+T.bG:(gems<20?'1.5px solid rgba(255,255,255,0.08)':`1.5px solid ${alpha(T.au1,0.35)}`),
                       borderRadius:16,padding:'14px 10px',cursor:recetaYaGuardada?'default':(gems<20?'default':'pointer'),
                       display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
               <span style={{fontSize:20}}>{recetaYaGuardada?'✅':'📖'}</span>
@@ -14621,7 +15067,7 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
             const sel=dieta===d.v;
             return(
               <button key={d.v} onClick={()=>setDieta(d.v)}
-                style={{flex:1,background:sel?'rgba(88,204,2,0.15)':'rgba(255,255,255,0.04)',
+                style={{flex:1,background:sel?alpha(T.g1,0.15):'rgba(255,255,255,0.04)',
                         border:sel?'2px solid '+T.bG:'1.5px solid rgba(255,255,255,0.1)',
                         borderRadius:16,padding:'14px 6px',cursor:'pointer',textAlign:'center',
                         transition:'all 0.2s'}}>
@@ -14643,8 +15089,8 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
           </div>
           <div style={{fontSize:12,fontWeight:900,
             color:total===100?T.g1:'#FFB74D',
-            background:total===100?'rgba(88,204,2,0.12)':'rgba(255,183,77,0.12)',
-            border:`1.5px solid ${total===100?'rgba(88,204,2,0.4)':'rgba(255,183,77,0.4)'}`,
+            background:total===100?alpha(T.g1,0.12):'rgba(255,183,77,0.12)',
+            border:`1.5px solid ${total===100?'${alpha(T.g1,0.4)}':'rgba(255,183,77,0.4)'}`,
             borderRadius:10,padding:'4px 10px'}}>
             {total===100
               ? `✓ 100%`
@@ -14660,7 +15106,7 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
             const Btn=({delta,dis,children})=>(
               <button onClick={()=>{!dis&&ajustarToma(toma.k,delta);}} disabled={dis}
                 style={{width:40,height:40,borderRadius:12,border:`1.5px solid ${dis?'rgba(255,255,255,0.08)':T.bG}`,
-                  background:dis?'rgba(255,255,255,0.03)':'rgba(88,204,2,0.12)',
+                  background:dis?'rgba(255,255,255,0.03)':alpha(T.g1,0.12),
                   color:dis?T.t3:T.g1,fontSize:18,fontWeight:900,cursor:dis?'default':'pointer',
                   display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,
                   fontFamily:"'Nunito',sans-serif",touchAction:'manipulation'}}>
@@ -14708,7 +15154,7 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
             const sel=patron===p.v;
             return(
               <button key={p.v} onClick={()=>setPatron(p.v)}
-                style={{background:sel?'rgba(88,204,2,0.12)':'rgba(255,255,255,0.04)',
+                style={{background:sel?alpha(T.g1,0.12):'rgba(255,255,255,0.04)',
                   border:`2px solid ${sel?T.g1:'rgba(255,255,255,0.10)'}`,
                   borderRadius:16,padding:'12px 10px',cursor:'pointer',textAlign:'center'}}>
                 <div style={{fontSize:24,marginBottom:4}}>{p.ic}</div>
@@ -14786,7 +15232,7 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
       <div style={{padding:'16px 16px 0',display:'flex',flexDirection:'column',gap:10}}>
         <button onClick={guardar} disabled={guardando||total!==100||recsAMedias}
           style={{background:(total===100&&!recsAMedias)?'linear-gradient(135deg,'+T.g1+','+T.g2+')':'rgba(255,255,255,0.08)',
-                  color:(total===100&&!recsAMedias)?'#fff':T.t3,fontWeight:900,fontSize:15,borderRadius:18,
+                  color:(total===100&&!recsAMedias)?T.t1:T.t3,fontWeight:900,fontSize:15,borderRadius:18,
                   padding:'16px 24px',border:'none',cursor:(total===100&&!recsAMedias)?'pointer':'default',
                   boxShadow:(total===100&&!recsAMedias)?'0 4px 0 '+T.g3:'none',fontFamily:"'Nunito',sans-serif"}}>
           {guardando?(lang==='en'?'Generating…':'Generando…'):total!==100?(lang==='en'?'Must total 100%':'Debe sumar 100%'):recsAMedias?(lang==='en'?'Finish reminders':'Completa los recordatorios'):(onGenerar?(lang==='en'?'Save & generate plan':'Guardar y generar plan'):(lang==='en'?'Save my plan':'Guardar mi plan'))}
@@ -14843,14 +15289,14 @@ function RewardsModal({onClose, currentLevel}){
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
           {rows.slice(0,200).map(({l,gems,shield,freeMeal,special})=>{
             const done=l<=lv,current=l===lv;
-            const bg=current?"rgba(255,200,0,0.15)":done?"rgba(88,204,2,0.08)":"rgba(255,255,255,0.04)";
-            const border=current?`1.5px solid ${T.au2}`:done?`1px solid rgba(88,204,2,0.2)`:`1px solid rgba(255,255,255,0.06)`;
+            const bg=current?alpha(T.au1,0.15):done?alpha(T.g1,0.08):"rgba(255,255,255,0.04)";
+            const border=current?`1.5px solid ${T.au2}`:done?`1px solid ${alpha(T.g1,0.2)}`:`1px solid rgba(255,255,255,0.06)`;
             return(
               <div key={l} style={{background:bg,border,borderRadius:14,padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
                 <div style={{width:44,height:44,borderRadius:12,flexShrink:0,
-                  background:done?"rgba(88,204,2,0.15)":current?"rgba(255,200,0,0.15)":"rgba(255,255,255,0.06)",
+                  background:done?alpha(T.g1,0.15):current?alpha(T.au1,0.15):"rgba(255,255,255,0.06)",
                   display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-                  border:done?`1.5px solid rgba(88,204,2,0.4)`:current?`1.5px solid ${T.au2}`:`1px solid rgba(255,255,255,0.1)`}}>
+                  border:done?`1.5px solid ${alpha(T.g1,0.4)}`:current?`1.5px solid ${T.au2}`:`1px solid rgba(255,255,255,0.1)`}}>
                   <div style={{fontSize:9,color:done?T.g1:current?T.au1:T.t3,fontWeight:900}}>
                     {done&&!current?"✅":"Lv"}
                   </div>
@@ -14858,9 +15304,9 @@ function RewardsModal({onClose, currentLevel}){
                 </div>
                 <div style={{flex:1,display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
                   <span style={{fontSize:12,fontWeight:700,color:T.au1}}>+{gems}💎</span>
-                  {freeMeal&&<span style={{fontSize:12,fontWeight:900,color:"#FFD700",background:"rgba(255,200,0,0.12)",borderRadius:8,padding:"2px 8px"}}>{t("rewardsFreeMealTag")}</span>}
-                  {shield&&<span style={{fontSize:11,color:"#64B5F6",fontWeight:700}}>🛡️ {t("streakShield").replace("🛡️ ","")}</span>}
-                  {special&&l===500&&<span style={{fontSize:11,color:"#CE82FF",fontWeight:700}}>{t("rewardsChampion")}</span>}
+                  {freeMeal&&<span style={{fontSize:12,fontWeight:900,color:T.moneda,background:alpha(T.au1,0.12),borderRadius:8,padding:"2px 8px"}}>{t("rewardsFreeMealTag")}</span>}
+                  {shield&&<span style={{fontSize:11,color:T.platos,fontWeight:700}}>🛡️ {t("streakShield").replace("🛡️ ","")}</span>}
+                  {special&&l===500&&<span style={{fontSize:11,color:T.pur,fontWeight:700}}>{t("rewardsChampion")}</span>}
                 </div>
               </div>
             );
@@ -14885,11 +15331,11 @@ class ErrorBoundary extends React.Component {
     if(this.state.err){
       const lang=lsGet("gbh:lang","es");
       return(
-      <div style={{minHeight:"100vh",background:"#0A1A0F",display:"flex",
+      <div style={{minHeight:"100vh",background:T.bg,display:"flex",
         flexDirection:"column",alignItems:"center",justifyContent:"center",
-        padding:24,color:"white",fontFamily:"monospace"}}>
+        padding:24,color:T.t1,fontFamily:"monospace"}}>
         <div style={{fontSize:48,marginBottom:12}}>💥</div>
-        <div style={{fontSize:16,fontWeight:700,color:"#FF4B4B",marginBottom:12}}>
+        <div style={{fontSize:16,fontWeight:700,color:T.red,marginBottom:12}}>
           {lang==="en"?"App error":"Error en la app"}
         </div>
         <div style={{fontSize:12,color:"rgba(255,255,255,0.75)",background:"rgba(255,0,0,0.12)",
@@ -14898,8 +15344,8 @@ class ErrorBoundary extends React.Component {
           {this.state.err?.message||String(this.state.err)}
         </div>
         <button onClick={()=>this.setState({err:null})}
-          style={{marginTop:20,padding:"12px 28px",background:"#58CC02",border:"none",
-            borderRadius:14,color:"white",fontWeight:900,cursor:"pointer",fontSize:15}}>
+          style={{marginTop:20,padding:"12px 28px",background:T.g1,border:"none",
+            borderRadius:14,color:T.t1,fontWeight:900,cursor:"pointer",fontSize:15}}>
           {lang==="en"?"Retry":"Reintentar"}
         </button>
       </div>
@@ -14927,7 +15373,7 @@ function BotonCompartirReceta({rec,lang,sfx,style}){
   };
   return(
     <button onClick={compartir} style={{width:'100%',marginTop:12,padding:'13px',borderRadius:14,
-      border:`1.5px solid ${T.au1}`,background:copiado?'rgba(255,255,255,0.10)':'rgba(255,200,0,0.08)',
+      border:`1.5px solid ${T.au1}`,background:copiado?'rgba(255,255,255,0.10)':alpha(T.au1,0.08),
       color:T.au1,fontWeight:900,fontSize:13.5,cursor:'pointer',fontFamily:"'Nunito',sans-serif",...style}}>
       {copiado?(lang==='en'?'✅ Link copied!':'✅ ¡Enlace copiado!')
               :`📤 ${lang==='en'?'Share this recipe':'Compartir esta receta'}`}
@@ -14984,7 +15430,7 @@ function RecetasPublicas(){
         Con un nutricionista real detrás.
       </div>
       <button onClick={irRegistro} style={{width:"100%",padding:"15px",borderRadius:16,border:"none",cursor:"pointer",
-        background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"#fff",fontWeight:900,fontSize:15,
+        background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,fontWeight:900,fontSize:15,
         fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.g3}`}}>
         Pruébalo gratis 7 días
       </button>
@@ -15009,7 +15455,7 @@ function RecetasPublicas(){
           <div style={{fontWeight:900,fontSize:15,color:T.au1,fontFamily:"'Nunito',sans-serif",letterSpacing:"0.06em"}}>
             🌱 GBH NUTRICIÓN
           </div>
-          <button onClick={irRegistro} style={{background:"rgba(255,200,0,0.10)",border:`1.5px solid ${T.au1}`,
+          <button onClick={irRegistro} style={{background:alpha(T.au1,0.10),border:`1.5px solid ${T.au1}`,
             borderRadius:12,padding:"8px 14px",color:T.au1,fontWeight:900,fontSize:12,cursor:"pointer",
             fontFamily:"'Nunito',sans-serif"}}>
             Probar gratis
@@ -15102,7 +15548,7 @@ function RecetasPublicas(){
               <div style={{fontSize:13.5,lineHeight:1.8,color:T.t1,whiteSpace:"pre-wrap"}}>{r.instrucciones}</div>
             </div>
             <button onClick={()=>compartir(r)} style={{width:"100%",marginTop:12,padding:"13px",borderRadius:14,
-              border:`1.5px solid ${T.au1}`,background:"rgba(255,200,0,0.08)",color:T.au1,fontWeight:900,
+              border:`1.5px solid ${T.au1}`,background:alpha(T.au1,0.08),color:T.au1,fontWeight:900,
               fontSize:14,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
               📤 Compartir esta receta
             </button>
