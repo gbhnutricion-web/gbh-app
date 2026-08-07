@@ -7329,6 +7329,8 @@ function GBHApp(){
   const [recipeRefreshes,setRecipeRefreshes] = useState(()=>lsGet(`gbh:recipe:refreshes:${toKey()}`,0));
   const [streakAnim,  setStreakAnim]   = useState(false);
   const [pausaOpen,   setPausaOpen]    = useState(false);   // plegable «¿Necesitas un descanso?»
+  const [streakAnimN, setStreakAnimN]  = useState(null);    // nº que muestra la celebración
+  const chipTapsRef=useRef({n:0,t:null});                   // triple toque del chip 🔥
   const [missionsAnim,setMissionsAnim] = useState(false);
   const [floatItems,  setFloatItems]   = useState([]);
   const [levelUpAnim, setLevelUpAnim]  = useState(false);
@@ -9041,7 +9043,9 @@ function GBHApp(){
 
   const toggleM=useCallback(async(key)=>{
     const was=tLog[key];
-    if(was) return;
+    // Ya marcada HOY: la celebración es una transición de una vez al día, pero
+    // el toque no puede quedar mudo (parecía que "las animaciones no cargan").
+    if(was){ sfx("tap"); haptic("toma"); return; }
     const nl={...tLog,[key]:true};setTLog(nl);await saveLog(nl,steps);
     if(key==="diet") sfx("complete"); else sfx("missionDone");
     // Háptica proporcional al hito (Tarea A): la dieta dispara la celebración
@@ -9050,7 +9054,7 @@ function GBHApp(){
     // `was` garantiza que la celebración vibra UNA sola vez al día.
     haptic(key==="diet"?"celebracion":"doble");
     await addXG(key==="diet"?15:5,key==="diet"?5:2);
-    if(key==="diet"){sfx("streakCelebration");setStreakAnim(true);setTimeout(()=>setStreakAnim(false),5000);}
+    if(key==="diet"){sfx("streakCelebration");setStreakAnimN(streak+1);setStreakAnim(true);setTimeout(()=>setStreakAnim(false),5000);}
     const wasAllDone=tLog.diet&&tLog.steps&&tLog.hydration&&tLog.sleep;
     if(nl.diet&&nl.steps&&nl.hydration&&nl.sleep&&!wasAllDone){
       await addXG(20,10);
@@ -10437,7 +10441,7 @@ function GBHApp(){
     <div style={{fontFamily:"'Nunito',sans-serif",background:`radial-gradient(ellipse at top,#1A3A10,${T.bg})`,minHeight:"100vh",maxWidth:420,margin:"0 auto",color:T.t1,paddingBottom:90,overflowX:"hidden"}}>
       <style>{CSS}</style>
       <Confetti active={confetti}/>
-      <StreakOverlay active={streakAnim} streak={streak+1} boColor={boColor} boEquipados={boEquipados} boNombre={boNombre}/>
+      <StreakOverlay active={streakAnim} streak={streakAnimN??(streak+1)} boColor={boColor} boEquipados={boEquipados} boNombre={boNombre}/>
       <MissionsOverlay active={missionsAnim}/>
       {floatItems.length>0&&<FloatReward items={floatItems}/>}
       <LevelUpOverlay active={levelUpAnim} level={levelUpNum} reward={levelUpRew} patientName={profile?.name||""} streak={streak} lang={lang} onClose={()=>setLevelUpAnim(false)}/>
@@ -10965,7 +10969,18 @@ function GBHApp(){
           </div>
           {/* Counters */}
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            <div onClick={()=>{sfx("tap");setMetaAsk(true);}} style={{cursor:"pointer"}}
+            <div onClick={()=>{
+                const r=chipTapsRef.current; r.n++;
+                if(r.t) clearTimeout(r.t);
+                r.t=setTimeout(()=>{
+                  const n=r.n; r.n=0; r.t=null;
+                  if(n>=3){ // triple toque: presume de racha (y sirve para VER la celebración)
+                    sfx("streakCelebration"); haptic("celebracion");
+                    setStreakAnimN(Math.max(1,streak)); setStreakAnim(true);
+                    setTimeout(()=>setStreakAnim(false),5000);
+                  } else { sfx("tap"); setMetaAsk(true); }
+                },350);
+              }} style={{cursor:"pointer"}}
               title={lang==='en'?'Set your streak goal':'Elegir tu meta de racha'}>
               <StreakBadge value={streak} label={t("streakLabel")} icon="🔥" color="#FF8040" bg="rgba(255,128,64,0.12)"/>
             </div>
