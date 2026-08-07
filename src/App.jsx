@@ -1931,6 +1931,31 @@ function Sheep({ estado, equipados, color, size = 200, mini = false }) {
   );
 }
 
+// ─── Avatar de ranking: la oveja del paciente, no su inicial ─────────────────
+// En TODAS las tablas (🔥 Racha · ⚖️ Peso · 🎮 Juego) el avatar es la Bo
+// personalizada de cada paciente. El marco de nivel (FRAMES) se conserva
+// porque es una recompensa desbloqueable: la oveja va DENTRO del marco.
+// `mini` evita la animación y los emojis flotantes: en una lista de 10 filas
+// sería ruido y coste de render.
+function AvatarRankBo({ color, equipados, nivel = 1, isMe = false, size = 38 }) {
+  const fr = FRAMES[Math.floor(Math.min(nivel || 1, 500) / 100)] || null;
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: 12, flexShrink: 0, overflow: "hidden",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      background: isMe
+        ? `linear-gradient(135deg,${T.au1},${T.au2})`
+        : "linear-gradient(135deg,#2A5A2A,#1A3A10)",
+      border: fr ? fr.border : `2px solid ${isMe ? T.au3 : T.bW}`,
+      boxShadow: fr ? fr.boxShadow : "0 3px 0 rgba(0,0,0,0.4)",
+    }}>
+      <Sheep estado="feliz" mini size={Math.round(size * 0.95)}
+        color={color || "blanca"}
+        equipados={Array.isArray(equipados) ? equipados : []} />
+    </div>
+  );
+}
+
 // ─── Píxeles compuestos de la oveja (para el canvas del juego) ───────────────
 function buildPixels(colorId, equipados) {
   // MISMA lógica de apariencia que el componente Sheep (patrones y skins incluidos),
@@ -3837,7 +3862,10 @@ function TutoCierre({nombre, boNombre, boColor, boEquipados, lang, onFin}){
 
 // Máquina de estados del tour (persistencia: localStorage gbh:tuto:{profileId})
 const TUTO_ORDEN=['B1_agua','B1_pasos','B1_sueno','B1_cierre','B2_objetivo','B2_racha',
-  'B3_generar','B3_listo','B4_receta','B4_info','B4_lista','B4_comida',
+  // La 🛒 Lista de la compra va DESPUÉS de registrar el plato: antes obligaba
+  // a salir de Platos diarios y volver a entrar (ida y vuelta que rompía el
+  // ritmo). Ahora el bloque B4 es un solo movimiento: receta → registro → lista.
+  'B3_generar','B3_listo','B4_receta','B4_info','B4_comida','B4_lista',
   'B5_peso','B6_recetas','B7_consulta','B8_ranking','B9_cierre'];
 
 // ─── AvatarDisplay usa directamente el Mascot SVG ──────────────────────────
@@ -10810,8 +10838,8 @@ function GBHApp(){
           B3_listo:{sel:'plan-zona',next:true,tx:EN?'Done. And if something doesn’t convince you, you can regenerate it or swap recipes for free while the trial lasts: it’s on the house.':'Hecha. Y si algo no te convence, puedes regenerarla o cambiar recetas gratis mientras dure la prueba: invita la casa.'},
           B4_receta:{sel:'plan-zona',tx:EN?'Go into 🍽️ Daily Meals and open one of today’s recipes.':'Entra en 🍽️ Platos diarios y abre una receta de hoy.'},
           B4_info:{sel:'plan-zona',next:true,tx:EN?'The amounts already come adjusted to YOUR portion. From here you can swap it for free during the trial, save it to favourites or discard it.':'Las cantidades ya vienen ajustadas a TU ración. Desde aquí puedes cambiarla gratis durante la prueba, guardarla en favoritas o quitarla.'},
-          B4_lista:{sel:'plan-zona',tx:EN?'Go back and open the 🛒 Shopping List: tick off ingredients as you shop. It builds itself from your week.':'Vuelve atrás y entra en la 🛒 Lista de la compra: marca los ingredientes mientras compras. Se hace sola con tu semana.'},
-          B4_comida:{sel:'plan-zona',tx:EN?'Now, in 🍽️ Daily Meals, log today’s meal with one of the 5 states (followed · less · swapped · ate out · skipped). It doesn’t need to be perfect. Log what you actually did: what counts is logging, not complying. An average day, logged, is worth more than a perfect day unlogged.':'Ahora, en 🍽️ Platos diarios, marca tu comida de hoy con uno de los 5 estados (seguida · menos · la cambié · comí fuera · me la salté). No hace falta que salga perfecto. Marca lo que has hecho de verdad: lo que cuenta es registrar, no cumplir. Un día regular, registrado, vale más que un día perfecto sin registrar.'},
+          B4_lista:{sel:'plan-zona',tx:EN?'Last thing here: open the 🛒 Shopping List. It builds itself from your week — tick off ingredients as you shop.':'Y lo último de tu plan: entra en la 🛒 Lista de la compra. Se hace sola con tu semana — marca los ingredientes mientras compras.'},
+          B4_comida:{sel:'plan-zona',tx:EN?'Go back to 🍽️ Daily Meals and log today’s meal with one of the 5 states (followed · less · swapped · ate out · skipped). It doesn’t need to be perfect. Log what you actually did: what counts is logging, not complying. An average day, logged, is worth more than a perfect day unlogged.':'Vuelve atrás a 🍽️ Platos diarios y marca tu comida de hoy con uno de los 5 estados (seguida · menos · la cambié · comí fuera · me la salté). No hace falta que salga perfecto. Marca lo que has hecho de verdad: lo que cuenta es registrar, no cumplir. Un día regular, registrado, vale más que un día perfecto sin registrar.'},
           B5_peso:{sel:null,next:true,tx:(EN?`I already have today’s weight from sign-up${pesoUlt?` (${pesoUlt} kg)`:''}. Here you’ll see the trend. A tip: weigh yourself always on the same day, at the same time, fasted — and look at the line over several weeks, never a single day.`:`Tu peso de hoy ya lo tengo del registro${pesoUlt?` (${pesoUlt} kg)`:''}. Aquí verás la evolución. Un consejo: pésate siempre el mismo día, a la misma hora, en ayunas — y mira la línea de varias semanas, nunca un solo día.`)},
           B6_recetas:{sel:null,next:true,tx:EN?'The whole GBH recipe book. Search, open, and save the ones you like with the star — yours live in Favourites.':'Todo el recetario GBH. Busca, abre, y guarda las que te gusten con la estrella — las tuyas quedan en Favoritas.'},
           B7_consulta:{sel:null,next:true,tx:EN?'This tab is the direct line to Alejandro — it’s the Premium side of the plan: in-person consultation, weekly follow-up and his WhatsApp. If the trial wins you over, this is where you level up. And below you’ve got your code to invite a friend.':'Esta pestaña es la línea directa con Alejandro — es la parte del plan Premium: consulta presencial, seguimiento semanal y su WhatsApp. Si la prueba te convence, aquí es donde se sube de nivel. Y debajo tienes tu código para invitar a un amigo.'},
@@ -11644,30 +11672,13 @@ function GBHApp(){
                             <span style={{fontSize:15,fontWeight:900,color:T.t2}}>{i+1}</span>
                           )}
                         </div>
-                        {/* Avatar con marco de nivel (en 🎮 Juego: la mini-Bo de cada paciente) */}
-                        {curTable.key==="juego"&&p.bo_color?(
-                          <div style={{width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                            <Sheep estado="feliz" mini size={38} color={p.bo_color}
-                              equipados={Array.isArray(p.bo_equipados)?p.bo_equipados:[]}/>
-                          </div>
-                        ):(()=>{
-                          const pFrame = Math.floor(Math.min(lv2.l,500)/100)||0;
-                          const fr2 = FRAMES[pFrame];
-                          return(
-                            <div style={{width:38,height:38,borderRadius:12,
-                              background:isMe?'linear-gradient(135deg,'+T.au1+','+T.au2+')':"linear-gradient(135deg,#2A5A2A,#1A3A10)",
-                              display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,
-                              border: fr2 ? fr2.border : `2px solid ${isMe?T.au3:T.bW}`,
-                              boxShadow: fr2 ? fr2.boxShadow : "0 3px 0 rgba(0,0,0,0.4)",
-                            }}>
-                              <span style={{fontSize:17,fontWeight:900,
-                                color:isMe?"#1A1000":"rgba(255,255,255,0.85)",
-                                fontFamily:"'Nunito',sans-serif"}}>
-                                {(p.name||"?")[0].toUpperCase()}
-                              </span>
-                            </div>
-                          );
-                        })()}
+                        {/* Avatar: la oveja personalizada del paciente, en las TRES tablas.
+                            Para mi propia fila mando el estado local (boColor/boEquipados),
+                            que va por delante de lo que trajo la última carga del ranking. */}
+                        <AvatarRankBo
+                          color={isMe ? (boColor||p.bo_color) : p.bo_color}
+                          equipados={isMe ? boEquipados : p.bo_equipados}
+                          nivel={lv2.l} isMe={isMe}/>
                         {/* Nombre */}
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{fontSize:14,fontWeight:900,color:isMe?T.au1:T.wh,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
@@ -11699,9 +11710,8 @@ function GBHApp(){
                         <div style={{width:34,textAlign:"center",flexShrink:0}}>
                           <span style={{fontSize:15,fontWeight:900,color:T.au1}}>#{myGlobalPos+1}</span>
                         </div>
-                        <div style={{width:38,height:38,borderRadius:12,background:'linear-gradient(135deg,'+T.au1+','+T.au2+')',display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:`2px solid ${T.au3}`,boxShadow:"0 3px 0 rgba(0,0,0,0.4)"}}>
-                          <span style={{fontSize:17,fontWeight:900,color:"#1A1000",fontFamily:"'Nunito',sans-serif"}}>{(myEntry.name||"?")[0].toUpperCase()}</span>
-                        </div>
+                        <AvatarRankBo color={boColor||myEntry.bo_color}
+                          equipados={boEquipados} nivel={getLevel(myEntry.xp||0).l} isMe/>
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{fontSize:14,fontWeight:900,color:T.au1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
                             {myEntry.name?.split(" ")[0]||"—"} 👈
