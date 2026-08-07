@@ -746,6 +746,71 @@ const HAPTIC_DE_SFX = { step:"toma", error:"error" };
 // pendiente exponer el toggle en ajustes).
 const REDUCED_MOTION = ()=>{ try{ return lsGet("gbh:reducemotion", false)===true; }catch{ return false; } };
 
+// Capa de movimiento (brief 7-ago-2026): entradas, barras que crecen y
+// contadores. ESTA capa sí obedece al ajuste del SISTEMA, porque no lleva
+// información que se pierda al apagarla (el número y la barra se ven igual,
+// solo que sin recorrido). Las celebraciones siguen rigiéndose por REDUCED_MOTION.
+const MOVIMIENTO_REDUCIDO = ()=>{
+  if(REDUCED_MOTION()) return true;
+  try{ return window.matchMedia("(prefers-reduced-motion: reduce)").matches; }catch{ return false; }
+};
+
+// Retardo escalonado de una lista, con TOPE de 8 elementos: a partir del octavo
+// todos entran a la vez, porque una lista de 20 filas escalonada es una lista
+// lenta. A 60 ms el último de una lista de 10 (el ranking) acababa a 680 ms del
+// inicio y se notaba. A 30 ms acaba a 470 ms: la cascada se sigue leyendo y ya
+// no tiene cola. Constante única: es la palanca de TODO el escalonado de la app.
+const ESCALON_S = 0.03;
+const escalon = (i)=>`${Math.min(i,7)*ESCALON_S}s`;
+
+// Monta a 0 y salta al valor real en el siguiente frame: la barra CRECE en vez
+// de aparecer llena. Devuelve false en el primer render y true después.
+function useCrecer(){
+  const [listo,setListo]=React.useState(false);
+  React.useEffect(()=>{
+    if(MOVIMIENTO_REDUCIDO()){ setListo(true); return; }
+    const id=requestAnimationFrame(()=>requestAnimationFrame(()=>setListo(true)));
+    return ()=>cancelAnimationFrame(id);
+  },[]);
+  return listo;
+}
+
+// Barra de progreso que crece desde 0 al montarse.
+function BarraProgreso({pct, color, alto=8, fondo="rgba(255,255,255,0.06)", radio=5, style={}}){
+  const listo=useCrecer();
+  const p=Math.max(0,Math.min(100,pct||0));
+  return(
+    <div style={{height:alto,borderRadius:radio,background:fondo,overflow:"hidden",...style}}>
+      <div className="bar-grow" style={{height:"100%",width:`${listo?p:0}%`,borderRadius:radio,background:color}}/>
+    </div>
+  );
+}
+
+// Número que sube contando cuando CAMBIA por una acción del paciente. En el
+// primer render pinta el valor tal cual: un contador animado en un dato que no
+// ha tocado distrae en vez de premiar.
+function Contador({value, duracion=500}){
+  const destino=Number(value)||0;
+  const [n,setN]=React.useState(destino);
+  const prevRef=React.useRef(destino);
+  React.useEffect(()=>{
+    const desde=prevRef.current; prevRef.current=destino;
+    if(desde===destino) return;
+    if(MOVIMIENTO_REDUCIDO()){ setN(destino); return; }
+    const t0=performance.now();
+    let raf=0;
+    const paso=(t)=>{
+      const k=Math.min(1,(t-t0)/duracion);
+      const e=1-Math.pow(1-k,3);                       // ease-out
+      setN(Math.round(desde+(destino-desde)*e));
+      if(k<1) raf=requestAnimationFrame(paso);
+    };
+    raf=requestAnimationFrame(paso);
+    return ()=>cancelAnimationFrame(raf);
+  },[destino,duracion]);
+  return <>{n}</>;
+}
+
 // Hook para usar sonido con mute toggle persistido
 function useSFX(){
   const muted = lsGet("gbh:mute",false);
@@ -4120,7 +4185,9 @@ function StreakBadge({value,label,icon,color,bg}){
     <div style={{background:bg||"rgba(255,255,255,0.07)",borderRadius:18,padding:"8px 14px",display:"flex",alignItems:"center",gap:8,border:`1.5px solid ${color}30`}}>
       <span style={{fontSize:22,lineHeight:1}}>{icon}</span>
       <div>
-        <div style={{fontSize:18,fontWeight:900,color,lineHeight:1}}>{value}</div>
+        {/* Sube contando SOLO cuando el número cambia (registro, gemas ganadas,
+            racha del día). En el primer render se pinta tal cual. */}
+        <div style={{fontSize:18,fontWeight:900,color,lineHeight:1}}><Contador value={value}/></div>
         <div style={{fontSize:8,color:T.t2,textTransform:"uppercase",letterSpacing:"0.07em",marginTop:1}}>{label}</div>
       </div>
     </div>
@@ -4800,9 +4867,9 @@ function FilaSemanaRacha({logs, profile, streak, lang, onElegirMeta}){
         })}
       </div>
       {meta>0&&(
-        <div style={{marginTop:9,background:"rgba(255,255,255,0.07)",borderRadius:7,height:7,overflow:"hidden"}}>
-          <div style={{height:"100%",width:`${Math.min(100,Math.round(Math.min(streak,meta)/meta*100))}%`,background:`linear-gradient(90deg,${T.g1},${T.g2})`,borderRadius:7,transition:"width 0.5s ease"}}/>
-        </div>
+        <BarraProgreso pct={Math.min(100,Math.round(Math.min(streak,meta)/meta*100))}
+          color={`linear-gradient(90deg,${T.g1},${T.g2})`} alto={7} radio={7}
+          fondo="rgba(255,255,255,0.07)" style={{marginTop:9}}/>
       )}
       {!meta&&lsGet(`gbh:metaracha:ask:${profile?.id}`,false)&&(
         <button onClick={onElegirMeta} style={{marginTop:8,background:"none",border:"none",color:T.t2,fontWeight:800,fontSize:11.5,cursor:"pointer",fontFamily:"'Nunito',sans-serif",padding:0}}>
@@ -9928,7 +9995,26 @@ function GBHApp(){
     @keyframes sparkle1{0%,100%{opacity:0.7;transform:scale(0.9)}50%{opacity:1;transform:scale(1.2)}}
     @keyframes sparkle2{0%,100%{opacity:1;transform:scale(1.1) rotate(-15deg)}50%{opacity:0.6;transform:scale(0.8) rotate(15deg)}}
     input::placeholder{color:rgba(255,255,255,0.22)}input:focus{outline:none!important;border-color:${alpha(T.g1,0.75)}!important}
-    ::-webkit-scrollbar{width:0}button:active{transform:scale(0.94)!important;transition:transform 0.08s!important}
+    ::-webkit-scrollbar{width:0}
+    /* ── Capa de movimiento (brief 7-ago-2026) ─────────────────────────────────
+       Todo lo de aquí son ENTRADAS y RESPUESTAS AL TOQUE: nada se mueve solo
+       mientras el paciente lee. Curva de rebote suave (1.12); la de 1.56 se
+       reserva para celebraciones. Ninguna pasa de 400 ms. */
+    button:active{transform:translateY(2px) scale(0.985)!important;transition:transform 0.08s ease-out!important}
+    @keyframes tabIn{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+    .tab-in{animation:tabIn 0.2s cubic-bezier(0.34,1.12,0.64,1) both}
+    .stagger-in{animation:popIn 0.26s both cubic-bezier(0.34,1.12,0.64,1)}
+    .bar-grow{transition:width 0.6s cubic-bezier(0.22,1,0.36,1)}
+    /* prefers-reduced-motion del SISTEMA: apaga SOLO esta capa nueva. Las
+       celebraciones y los pops de registro siguen intactos a propósito —
+       MIUI y el ahorro de batería activan esta preferencia por su cuenta y
+       ya se documentó que eso mataba lo que sostiene la retención. Para
+       apagarlo TODO está la clave de la app gbh:reducemotion. */
+    @media (prefers-reduced-motion: reduce){
+      .tab-in,.stagger-in{animation:none!important}
+      .bar-grow{transition:none!important}
+      button:active{transform:none!important}
+    }
     .nav-scroll::-webkit-scrollbar{display:none}.nav-scroll{scrollbar-width:none;-ms-overflow-style:none;}
     .gbh-select{width:100%;background:rgba(255,255,255,0.07);border:2px solid ${T.bW};border-radius:14px;padding:14px 16px;color:${T.cr};font-size:15px;font-weight:700;font-family:'DM Sans',sans-serif;-webkit-appearance:none;appearance:none;cursor:pointer;outline:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23FFC800' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 16px center;}
     .gbh-select:focus{border-color:${alpha(T.g1,0.75)};}
@@ -10770,7 +10856,8 @@ function GBHApp(){
                   const chTitle = lang==="en" ? (ch.title_en||ch.title) : ch.title;
                   const chDesc  = lang==="en" ? (ch.desc_en||ch.desc)   : ch.desc;
                   return(
-                    <div key={ch.id} style={{
+                    <div key={ch.id} className="stagger-in" style={{
+                      animationDelay:escalon(weekChs.indexOf(ch)),
                       background:claimed?alpha(T.g1,0.1):done?alpha(T.g1,0.06):"rgba(255,255,255,0.04)",
                       border:`1.5px solid ${claimed?T.g1:done?"${alpha(T.g1,0.4)}":T.bW}`,
                       borderRadius:18,padding:"12px 14px",transition:"all 0.3s",
@@ -10801,13 +10888,9 @@ function GBHApp(){
                         </div>
                       </div>
                       {!claimed&&(
-                        <div style={{marginTop:10,background:"rgba(255,255,255,0.08)",borderRadius:8,height:7,overflow:"hidden"}}>
-                          <div style={{height:"100%",width:`${pct}%`,borderRadius:8,
-                            background:done?`linear-gradient(90deg,${T.g1},${T.g2})`:`linear-gradient(90deg,${T.au1},${T.au2})`,
-                            transition:"width 0.6s ease",
-                            boxShadow:done?`0 0 8px ${T.g1}60`:`0 0 6px ${T.au1}60`,
-                          }}/>
-                        </div>
+                        <BarraProgreso pct={pct} alto={7} radio={8}
+                          color={done?`linear-gradient(90deg,${T.g1},${T.g2})`:`linear-gradient(90deg,${T.au1},${T.au2})`}
+                          fondo="rgba(255,255,255,0.08)" style={{marginTop:10}}/>
                       )}
                     </div>
                   );
@@ -11194,10 +11277,10 @@ function GBHApp(){
             />
             <div>
               <div style={{fontSize:13,fontWeight:900,color:T.wh,lineHeight:1.1}}>{fn} · {translateLvName(lv.n,lang)}</div>
-              <div style={{background:"rgba(255,255,255,0.12)",borderRadius:8,height:7,width:94,marginTop:6,overflow:"hidden",boxShadow:"inset 0 2px 4px rgba(0,0,0,0.4)"}}>
-                <div style={{height:"100%",width:`${xpPct}%`,background:`linear-gradient(90deg,${T.xp},${T.g1})`,borderRadius:8,transition:"width 0.8s"}}/>
-              </div>
-              <div onClick={()=>setRewardsOpen(true)} style={{fontSize:9,color:T.t2,marginTop:3,fontFamily:"'DM Sans',sans-serif",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:4}}>{xp} XP · Lv {lv.l} <span style={{color:T.au1}}>🎁</span></div>
+              <BarraProgreso pct={xpPct} color={`linear-gradient(90deg,${T.xp},${T.g1})`} alto={7} radio={8}
+                fondo="rgba(255,255,255,0.12)"
+                style={{width:94,marginTop:6,boxShadow:"inset 0 2px 4px rgba(0,0,0,0.4)"}}/>
+              <div onClick={()=>setRewardsOpen(true)} style={{fontSize:9,color:T.t2,marginTop:3,fontFamily:"'DM Sans',sans-serif",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:4}}><Contador value={xp}/> XP · Lv {lv.l} <span style={{color:T.au1}}>🎁</span></div>
             </div>
           </div>
           {/* Counters */}
@@ -11222,7 +11305,11 @@ function GBHApp(){
         </div>
       </div>
 
-      <div style={{padding:"4px 18px 0"}}>
+      {/* key={tab}: al cambiar de pestaña el contenedor se remonta y la clase
+          .tab-in reproduce la entrada (200 ms). Sin animación de SALIDA a
+          propósito: esperar a que se vaya la anterior es latencia percibida.
+          No bloquea el toque — es solo pintura, la nav sigue viva. */}
+      <div key={tab} className="tab-in" style={{padding:"4px 18px 0"}}>
 
         {/* ── HOME ──────────────────────────────────────────────────────────── */}
         {tab==="home"&&<>
@@ -11407,13 +11494,18 @@ function GBHApp(){
             <span style={{background:T.bgWood,border:`2px solid ${T.bW}`,borderRadius:16,padding:"7px 20px",fontSize:11,fontWeight:900,color:T.au1,textTransform:"uppercase",letterSpacing:"0.08em",boxShadow:"0 4px 0 rgba(0,0,0,0.4)"}}>{t("dailyMissions")}</span>
           </div>
 
-          {tomasHoy
-            ? <MealBtns tomas={tomasHoy} meals={mealsHoy} done={tLog.diet} lang={lang} onTap={marcarTomaHome}/>
-            : <BigBtn icon="🍽️" label={t("dietBtn")} done={tLog.diet} onClick={()=>toggleM("diet")}/>}
+          {/* Entrada escalonada de las 4 misiones (60 ms por bloque): es lo
+              primero que se ve al abrir la app. El spotlight del tutorial
+              remide cada 350 ms, así que la entrada no lo descoloca. */}
+          <div className="stagger-in" style={{animationDelay:escalon(0)}}>
+            {tomasHoy
+              ? <MealBtns tomas={tomasHoy} meals={mealsHoy} done={tLog.diet} lang={lang} onTap={marcarTomaHome}/>
+              : <BigBtn icon="🍽️" label={t("dietBtn")} done={tLog.diet} onClick={()=>toggleM("diet")}/>}
+          </div>
 
-          <div data-tuto="sueno"><MRow num="2" icon="🌙" label={t("sleepLabel")} done={tLog.sleep} onToggle={()=>toggleM("sleep")} xpR={5}/></div>
-          <div data-tuto="pasos" onClickCapture={()=>tutoTapAvanza('B1_pasos')}><StepsWidget done={tLog.steps} stepCount={steps} onToggle={()=>toggleM("steps")} onUpdateSteps={updSteps}/></div>
-          <div data-tuto="agua" onClickCapture={()=>tutoTapAvanza('B1_agua')}><HydrationWidget done={tLog.hydration} onToggle={()=>toggleM("hydration")}/></div>
+          <div data-tuto="sueno" className="stagger-in" style={{animationDelay:escalon(1)}}><MRow num="2" icon="🌙" label={t("sleepLabel")} done={tLog.sleep} onToggle={()=>toggleM("sleep")} xpR={5}/></div>
+          <div data-tuto="pasos" className="stagger-in" style={{animationDelay:escalon(2)}} onClickCapture={()=>tutoTapAvanza('B1_pasos')}><StepsWidget done={tLog.steps} stepCount={steps} onToggle={()=>toggleM("steps")} onUpdateSteps={updSteps}/></div>
+          <div data-tuto="agua" className="stagger-in" style={{animationDelay:escalon(3)}} onClickCapture={()=>tutoTapAvanza('B1_agua')}><HydrationWidget done={tLog.hydration} onToggle={()=>toggleM("hydration")}/></div>
 
           {/* ── Quiz + Ruleta ── */}
           <div style={{display:"flex",gap:8,marginBottom:10}}>
@@ -11654,7 +11746,8 @@ function GBHApp(){
                     const isMe = p.id===profile?.id;
                     const lv2  = getLevel(p.xp||0);
                     return(
-                      <div key={p.id} style={{
+                      <div key={p.id} className="stagger-in" style={{
+                        animationDelay: escalon(i),
                         background: isMe
                           ? `linear-gradient(135deg,${alpha(T.au1,0.22)},${alpha(T.g1,0.1)})`
                           : i===0 ? `linear-gradient(135deg,${alpha(T.au1,0.1)},rgba(255,160,0,0.05))`
@@ -11906,7 +11999,7 @@ function GBHApp(){
                     </div>
                     <div style={{display:"flex",flexDirection:"column",gap:7}}>
                       {ingList.map((ing,i)=>(
-                        <div key={i} style={{display:"flex",alignItems:"flex-start",gap:10}}>
+                        <div key={i} className="stagger-in" style={{animationDelay:escalon(i),display:"flex",alignItems:"flex-start",gap:10}}>
                           <div style={{width:6,height:6,borderRadius:"50%",background:tc,flexShrink:0,marginTop:6}}/>
                           <div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>{ing}</div>
                         </div>
@@ -13602,19 +13695,19 @@ function SeguimientoView({profile, lang}){
             {/* 2 · Por comida */}
             <div style={{...cardSty,marginRight:12}}>
               <div style={{fontWeight:900,fontSize:13.5,color:T.t1,marginBottom:12,...TT}}>{EN?'Compliance by meal':'Cumplimiento por comida'}</div>
-              {PLAN_TOMAS.map(t=>{ const o=stats.porToma[t]; const pct=o.total?Math.round(o.seguida/o.total*100):0; return(
-                <div key={t} style={{marginBottom:9}}>
+              {PLAN_TOMAS.map((t,i)=>{ const o=stats.porToma[t]; const pct=o.total?Math.round(o.seguida/o.total*100):0; return(
+                <div key={t} className="stagger-in" style={{animationDelay:escalon(i),marginBottom:9}}>
                   <div style={{display:'flex',justifyContent:'space-between',fontSize:11.5,marginBottom:3,fontFamily:"'DM Sans',sans-serif"}}><span style={{color:T.t2}}>{PLAN_TOMA_IC[t]} {TOMA_LBL[t]}</span><span style={{color:T.t1,fontWeight:800}}>{o.total?pct+'%':'—'}</span></div>
-                  <div style={{height:8,borderRadius:5,background:'rgba(255,255,255,0.06)'}}><div style={{height:'100%',width:pct+'%',borderRadius:5,background:T.g1,transition:'width 0.6s'}}/></div>
+                  <BarraProgreso pct={pct} color={T.g1}/>
                 </div>);})}
             </div>
             {/* 3 · Reparto de estados */}
             <div style={{...cardSty,marginRight:12}}>
               <div style={{fontWeight:900,fontSize:13.5,color:T.t1,marginBottom:12,...TT}}>{EN?'Breakdown':'Reparto de estados'}</div>
-              {PLAN_CUMPL.map(c=>{ const n=stats.porEstado[c.k]||0; const pct=stats.totalReg?Math.round(n/stats.totalReg*100):0; return(
-                <div key={c.k} style={{marginBottom:9}}>
+              {PLAN_CUMPL.map((c,i)=>{ const n=stats.porEstado[c.k]||0; const pct=stats.totalReg?Math.round(n/stats.totalReg*100):0; return(
+                <div key={c.k} className="stagger-in" style={{animationDelay:escalon(i),marginBottom:9}}>
                   <div style={{display:'flex',justifyContent:'space-between',fontSize:11.5,marginBottom:3,fontFamily:"'DM Sans',sans-serif"}}><span style={{color:T.t2}}>{c.ic} {EN?c.en:c.es}</span><span style={{color:c.c,fontWeight:800}}>{n} · {pct}%</span></div>
-                  <div style={{height:8,borderRadius:5,background:'rgba(255,255,255,0.06)'}}><div style={{height:'100%',width:pct+'%',borderRadius:5,background:c.c,transition:'width 0.6s'}}/></div>
+                  <BarraProgreso pct={pct} color={c.c}/>
                 </div>);})}
             </div>
             {/* 4 · Tendencia semanal */}
@@ -15220,7 +15313,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
               </div>
             )}
             <div style={{display:'flex',flexDirection:'column',gap:7}}>
-              {ingList.map((ing,i)=>(<div key={i} style={{display:'flex',alignItems:'flex-start',gap:10}}><div style={{width:6,height:6,borderRadius:'50%',background:PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1,flexShrink:0,marginTop:6}}/><div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>{ing}</div></div>))}
+              {ingList.map((ing,i)=>(<div key={i} className="stagger-in" style={{animationDelay:escalon(i),display:'flex',alignItems:'flex-start',gap:10}}><div style={{width:6,height:6,borderRadius:'50%',background:PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1,flexShrink:0,marginTop:6}}/><div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>{ing}</div></div>))}
             </div>
           </div>)}
           <div style={{background:T.bgCard,borderRadius:20,padding:'18px 18px',border:'1px solid rgba(255,255,255,0.07)'}}>
