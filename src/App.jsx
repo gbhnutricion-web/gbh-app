@@ -763,6 +763,18 @@ const MOVIMIENTO_REDUCIDO = ()=>{
 const ESCALON_S = 0.03;
 const escalon = (i)=>`${Math.min(i,7)*ESCALON_S}s`;
 
+// Contenedor de la pestaña activa. Se monta de nuevo en cada cambio (key={tab}
+// en el padre), reproduce la entrada y SUELTA la clase al terminar.
+// Lo de soltarla no es limpieza: mientras un elemento tiene una animación de
+// transform aplicada, el navegador lo trata como bloque contenedor y los
+// position:fixed que cuelgan de él (los popups de receta, por ejemplo) se
+// posicionan respecto a la pestaña en vez de respecto a la ventana.
+function ZonaPestana({children, style}){
+  const [anim,setAnim]=React.useState(true);
+  React.useEffect(()=>{ const id=setTimeout(()=>setAnim(false),320); return ()=>clearTimeout(id); },[]);
+  return <div className={anim?"tab-in":undefined} style={style}>{children}</div>;
+}
+
 // Monta a 0 y salta al valor real en el siguiente frame: la barra CRECE en vez
 // de aparecer llena. Devuelve false en el primer render y true después.
 function useCrecer(){
@@ -10001,9 +10013,15 @@ function GBHApp(){
        mientras el paciente lee. Curva de rebote suave (1.12); la de 1.56 se
        reserva para celebraciones. Ninguna pasa de 400 ms. */
     button:active{transform:translateY(2px) scale(0.985)!important;transition:transform 0.08s ease-out!important}
+    /* ⚠️ AMBAS animaciones DEBEN terminar en transform:none. Un transform
+       residual (aunque sea scale(1)) convierte al elemento en bloque
+       contenedor y rompe cualquier position:fixed que cuelgue de él: el
+       popup 🛒 Comprar del recetario se quedaba fuera de pantalla. Por eso
+       .stagger-in NO usa popIn, que acaba en scale(1). */
     @keyframes tabIn{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+    @keyframes entraItem{from{opacity:0;transform:scale(0.94) translateY(5px)}to{opacity:1;transform:none}}
     .tab-in{animation:tabIn 0.2s cubic-bezier(0.34,1.12,0.64,1) both}
-    .stagger-in{animation:popIn 0.26s both cubic-bezier(0.34,1.12,0.64,1)}
+    .stagger-in{animation:entraItem 0.26s both cubic-bezier(0.34,1.12,0.64,1)}
     .bar-grow{transition:width 0.6s cubic-bezier(0.22,1,0.36,1)}
     /* prefers-reduced-motion del SISTEMA: apaga SOLO esta capa nueva. Las
        celebraciones y los pops de registro siguen intactos a propósito —
@@ -11309,7 +11327,7 @@ function GBHApp(){
           .tab-in reproduce la entrada (200 ms). Sin animación de SALIDA a
           propósito: esperar a que se vaya la anterior es latencia percibida.
           No bloquea el toque — es solo pintura, la nav sigue viva. */}
-      <div key={tab} className="tab-in" style={{padding:"4px 18px 0"}}>
+      <ZonaPestana key={tab} style={{padding:"4px 18px 0"}}>
 
         {/* ── HOME ──────────────────────────────────────────────────────────── */}
         {tab==="home"&&<>
@@ -12428,7 +12446,7 @@ function GBHApp(){
         )}
         {tab==="plan"&&<div data-tuto="plan-zona"><PlanTab profile={profile} lang={lang} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} descartadas={descartadas} setDescartadas={setDescartadas} showT={showT} sfx={sfx} t={t} setTab={setTab} onMealRegistered={onMealRegistered} vistaInicial={planVista} onVistaConsumida={()=>setPlanVista(null)} onTutoEvent={tutoEvento}/></div>}
         {tab==="consulta"&&<ConsultaTab profile={profile} lang={lang} sfx={sfx}/>}
-      </div>
+      </ZonaPestana>
 
       {/* ── BOTTOM NAV ────────────────────────────────────────────────────── */}
       <div className="nav-scroll" style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:420,background:"rgba(8,18,8,0.97)",backdropFilter:"blur(30px)",borderTop:`3px solid ${T.bW}`,zIndex:100,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
