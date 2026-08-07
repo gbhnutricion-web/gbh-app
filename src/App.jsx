@@ -94,7 +94,7 @@ const TRANS = {
     b_excited:"🔥 ¡{s} días seguidos! ¡Imparable, {n}!",
     b_happy:"✅ ¡Dieta registrada! Sigue así, {n}",
     b_sleeping:"😴 Buen descanso, {n}. ¡Mañana a tope!",
-    b_sad_late:"⚠️ {n}, ¡aún puedes registrar la dieta! No pierdas la racha 🔥",
+    b_sad_late:"🥗 {n}, ¿me cuentas qué has comido hoy? Aún estamos a tiempo 💚",
     b_sad:"💚 Hola {n}! Hoy es el día para empezar",
     b_default:"¡Hola {n}! ¿Listo para marcar el día? 🌱",
     // Weight tab
@@ -354,7 +354,7 @@ const TRANS = {
     b_excited:"🔥 {s} days in a row! Unstoppable, {n}!",
     b_happy:"✅ Diet logged! Keep it up, {n}",
     b_sleeping:"😴 Good rest, {n}. Back at it tomorrow!",
-    b_sad_late:"⚠️ {n}, you can still log your diet! Don't break the streak 🔥",
+    b_sad_late:"🥗 {n}, want to tell me what you ate today? There's still time 💚",
     b_sad:"💚 Hey {n}! Today is the day to start",
     b_default:"Hey {n}! Ready to mark the day? 🌱",
     // Weight tab
@@ -1874,8 +1874,10 @@ const ESTADOS = [
   { id:"feliz", label:"Feliz", emoji:"😊", desc:"Misiones de hoy completadas", felicidad:100, anim:"bounce" },
   { id:"normal", label:"Normal", emoji:"🙂", desc:"Día en curso, aún hay misiones", felicidad:70, anim:"idle" },
   { id:"hambrienta", label:"Hambrienta", emoji:"😋", desc:"Dieta de hoy sin registrar", felicidad:50, anim:"wiggle" },
-  { id:"triste", label:"Triste", emoji:"😢", desc:"2+ días sin registrar — racha en peligro", felicidad:25, anim:"droop" },
-  { id:"dormida", label:"Dormida", emoji:"😴", desc:"Es de noche o día ya completado", felicidad:80, anim:"breathe" },
+  // ⚠️ "triste" NO se usa en Inicio (regla «Bo nunca culpabiliza»): queda para
+  //    el panel de juego, donde el paciente entra a propósito.
+  { id:"triste", label:"Triste", emoji:"😢", desc:"Solo panel de juego — nunca en Inicio", felicidad:25, anim:"droop" },
+  { id:"dormida", label:"Dormida", emoji:"😴", desc:"Descansando: de noche, o esperándote sin juzgar", felicidad:80, anim:"breathe" },
 ];
 
 function Sheep({ estado, equipados, color, size = 200, mini = false }) {
@@ -4029,6 +4031,34 @@ function getExpr(streak,dietDone,allDone,sleepDone){
   // Si son las 20h+ y no ha registrado la dieta → preocupado
   if(!dietDone&&new Date().getHours()>=20)return"sad";
   return"idle";
+}
+
+// ─── Bo en Inicio: la cara que el paciente ve al abrir ───────────────────────
+// REGLA ÉTICA (decisión del operador, 6-ago-2026): **Bo nunca culpabiliza**.
+// La culpa es motor de baja documentado en esta base, así que en Inicio NO
+// existe el estado "triste": la ausencia se pinta como "dormida" — Bo descansa
+// y espera, no juzga. Misma información, cero reproche.
+//   feliz      (bounce)  · día resuelto o dieta ya registrada
+//   hambrienta (wiggle)  · falta la dieta de hoy → «tiene ganas de saber qué has comido»
+//   dormida    (breathe) · ha dormido, o lleva días sin aparecer (racha a 0)
+//   normal     (idle)    · día en curso, aún es pronto
+// "triste" sigue existiendo para el panel de juego, donde el paciente entra a
+// propósito. Aquí no se devuelve NUNCA.
+const BO_HORA_HAMBRE = 12;   // antes de esta hora, no haber registrado aún es normal
+
+function getBoEstadoInicio(streak, dietDone, allDone, sleepDone, hora){
+  const h = (typeof hora === "number") ? hora : new Date().getHours();
+  const expr = getExpr(streak, dietDone, allDone, sleepDone);
+  // 1 · Día resuelto o dieta ya registrada → celebra
+  if(expr==="celebrating"||expr==="legend"||expr==="excited"||expr==="happy") return "feliz";
+  // 2 · Racha a 0 = 2+ días sin registrar. Aquí iba "triste": ahora DESCANSA.
+  if(!streak) return "dormida";
+  // 3 · Falta la dieta de hoy y ya es hora → invita, no acusa
+  if(!dietDone && h>=BO_HORA_HAMBRE) return "hambrienta";
+  // 4 · Ha marcado el sueño y todavía es pronto
+  if(expr==="sleeping") return "dormida";
+  // 5 · Día en curso
+  return "normal";
 }
 
 // ─── Speech bubble ─────────────────────────────────────────────────────────
@@ -6664,7 +6694,7 @@ function UserAvatar({size=52, photoB64, initials, borderColor, onClick, frame=nu
 }
 
 // ─── ProfileCardModal — tarjeta de perfil del paciente ──────────────────────
-function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, onSaveProfile, weights, lv, xp, streak, badges, onSubscribeNotifications, lang, setLang, onDeleteAccount}){
+function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, onSaveProfile, weights, lv, xp, streak, badges, lang, setLang, onDeleteAccount}){
   const t=useLang();
   const [photo,       setPhoto]      = useState(userPhoto||null);
   const [editField,   setEditField]  = useState(null);
@@ -6882,27 +6912,9 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
               )}
             </div>
           </div>
-          {/* Notificaciones */}
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 0",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
-            <div>
-              <div style={{fontSize:10,color:T.t2,textTransform:"uppercase",letterSpacing:"0.08em",fontFamily:"'DM Sans',sans-serif",marginBottom:3}}>
-                {lang==="en"?"Reminders":"Recordatorios"}
-              </div>
-              <div style={{fontSize:14,fontWeight:800,color:T.wh,fontFamily:"'DM Sans',sans-serif"}}>
-                {typeof Notification!=="undefined"&&Notification.permission==="granted"
-                  ? (lang==="en"?"🔔 Enabled":"🔔 Activados")
-                  : (lang==="en"?"🔕 Disabled":"🔕 Desactivados")}
-              </div>
-            </div>
-            {typeof Notification!=="undefined"&&Notification.permission!=="granted"&&(
-              <button onClick={onSubscribeNotifications||subscribeNotifications} style={{
-                background:"rgba(100,130,255,0.15)",border:"1.5px solid rgba(100,130,255,0.4)",
-                borderRadius:10,padding:"7px 12px",color:"rgba(150,170,255,0.9)",
-                fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
-                {lang==="en"?"Enable":"Activar"}
-              </button>
-            )}
-          </div>
+          {/* Fila «Recordatorios» retirada con las push (6-ago-2026): ofrecía
+              activar algo que no funciona. Los avisos internos de la app no
+              piden permiso al navegador. */}
 
           {lastW!=="—"&&String(lastW)!==String(initW)&&(
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0"}}>
@@ -7223,8 +7235,6 @@ function GBHApp(){
   const [showWeekChest, setShowWeekChest] = useState(false);
   const [showRuleta,    setShowRuleta]    = useState(false);
   const [showChallenges,   setShowChallenges]   = useState(false);
-  const [notifPermission, setNotifPermission] = useState(()=>lsGet("gbh:notifAsked",false));
-  const [showNotifBanner, setShowNotifBanner] = useState(false);
   const [claimedChallenges, setClaimedChallenges] = useState(()=>{
     const {w,y}=getISOWeek(); return lsGet(`gbh:challenges:${y}:${w}`,[]);
   });
@@ -7353,34 +7363,15 @@ function GBHApp(){
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [pendingSync, setPendingSync] = useState(()=>lsGet(getQueueKey(),[]).length);
 
-  // ── OneSignal Push Notifications ────────────────────────────────────────────
-  useEffect(()=>{
-    // App nativa (Capacitor): usar el SDK NATIVO del plugin onesignal-cordova-plugin.
-    // El SDK web no funciona dentro del WKWebView/WebView; el plugin expone
-    // window.plugins.OneSignal con push real de APNs/FCM.
-    if(ES_NATIVO){
-      try{
-        const OSN = window.plugins && window.plugins.OneSignal;
-        if(OSN && OSN.initialize) OSN.initialize("fc697ca2-52eb-4c9e-9301-531d417fe37a");
-      }catch(e){}
-      return;
-    }
-    // Web: inicializar OneSignal cuando el SDK esté disponible
-    if(typeof window.OneSignalDeferred === "undefined") return;
-    window.OneSignalDeferred.push(async (OneSignal)=>{
-      await OneSignal.init({
-        appId: "fc697ca2-52eb-4c9e-9301-531d417fe37a",
-        safari_web_id: "web.onesignal.auto.6514249a-4cb8-451b-a889-88f5913c9a7f",
-        notifyButton: { enable: false }, // No mostrar el botón flotante de OneSignal
-        allowLocalhostAsSecureOrigin: true,
-        // Usa el service worker propio de la app (que ahora importa el worker de
-        // OneSignal) en vez de registrar OneSignalSDKWorker.js aparte. Sin esto,
-        // dos workers compiten por el scope "/" y el push no se entrega.
-        serviceWorkerPath: "sw.js",
-        serviceWorkerParam: { scope: "/" },
-      });
-    });
-  },[]);
+  // ── Notificaciones push: RETIRADAS (decisión del operador, 6-ago-2026) ──────
+  // Se probaron con OneSignal, dieron problemas y se quitaron. Aquí vivía la
+  // inicialización del SDK (web y nativo) y en sw.js el importScripts de su
+  // worker: ambos eliminados para que ninguna auditoría futura los dé por vivos.
+  // Lo que SÍ funciona son los avisos internos (avisoRegistro 20:00,
+  // avisoNuevoPlan, avisoSupl, avisoTrial, avisoRacha, avisoVictoria), que solo
+  // alcanzan a quien ya ha abierto la app. Para traer de vuelta a quien no
+  // entra, el canal es el informe semanal por correo (lunes) y, en premium, el
+  // WhatsApp directo. NO reintroducir push sin decisión expresa.
 
   // ── Semana de prueba: degradar a 'free' cuando caduca ──────────────────────
   // Solo afecta a cuentas con trial_ends_at (las de pago lo tienen a NULL).
@@ -8068,8 +8059,9 @@ function GBHApp(){
     setAvisoRacha(null);
   };
   const expr=getExpr(streak,tLog.diet,allDone,tLog.sleep);
-  const boEstado = (expr==="celebrating"||expr==="legend"||expr==="excited"||expr==="happy") ? "feliz"
-    : expr==="sleeping" ? "dormida" : expr==="sad" ? "triste" : "normal";
+  // Bo de Inicio: getBoEstadoInicio ya aplica la regla «Bo nunca culpabiliza»
+  // (jamás "triste") y activa "hambrienta", que antes no llegaba a pintarse.
+  const boEstado = getBoEstadoInicio(streak, tLog.diet, allDone, tLog.sleep);
   // ─── 🐑 Bo: estado persistido en profiles + Zona de juego ───
   const [boNombre,setBoNombre]=useState("Bo");
   const [boColor,setBoColor]=useState("blanca");
@@ -8793,13 +8785,9 @@ function GBHApp(){
     setWeightBannerDismissed(false);
     setScreen("main");
     fetchDailyRecipe(); // cargar receta del día
-    // Mostrar banner de notificaciones si llevan ≥1 días y no han respondido
-    if(!lsGet("gbh:notifAsked",false)){
-      const firstOpen = lsGet("gbh:firstOpen", toKey());
-      if(!lsGet("gbh:firstOpen",null)) lsSet("gbh:firstOpen", toKey());
-      const days = Math.floor((Date.now()-new Date(firstOpen))/(1000*60*60*24));
-      if(days>=1) setTimeout(()=>setShowNotifBanner(true), 3000);
-    }
+    // (El banner de push que se mostraba al 2º día se retiró con las push.
+    //  Las claves gbh:notifAsked / gbh:firstOpen quedan huérfanas en el
+    //  localStorage de los pacientes antiguos: son inertes, no hay que migrar.)
     // Auto-popup ruleta: mostrar si no se ha visto hoy (scoped a usuario)
     const todayKey = toKey();
     const alreadySeen  = lsGet("gbh:ruletaSeen:"+p.id+":"+todayKey, false);
@@ -9624,51 +9612,8 @@ function GBHApp(){
     await addXG(xpG, gemG);
   };
 
-  const subscribeNotifications = async () => {
-    lsSet("gbh:notifAsked", true);
-    setNotifPermission(true);
-    setShowNotifBanner(false);
-    // App nativa: permiso y tags a través del SDK nativo del plugin.
-    if(ES_NATIVO){
-      try{
-        const OSN = window.plugins && window.plugins.OneSignal;
-        if(OSN){
-          try{ await OSN.Notifications.requestPermission(true); }catch(e){}
-          if(profile && OSN.User && OSN.User.addTags){
-            OSN.User.addTags({
-              name:   profile.name||"",
-              streak: String(streak||0),
-              level:  String(lv?.l||1),
-            });
-          }
-        }
-      }catch(e){}
-      return;
-    }
-    if(typeof window.OneSignalDeferred !== "undefined"){
-      window.OneSignalDeferred.push(async (OneSignal)=>{
-        await OneSignal.Notifications.requestPermission();
-        // Asegura la suscripción (opt-in) una vez concedido el permiso. Sin esto,
-        // según el navegador el permiso puede quedar concedido pero el usuario
-        // sin suscribir, y OneSignal no tendría a quién enviar.
-        try { await OneSignal.User.PushSubscription.optIn(); } catch(e){}
-        // Enviar tags del usuario para segmentar notificaciones
-        if(profile){
-          await OneSignal.User.addTags({
-            name:   profile.name||"",
-            streak: String(streak||0),
-            level:  String(lv?.l||1),
-          });
-        }
-      });
-    }
-  };
-
-  const dismissNotifBanner = () => {
-    lsSet("gbh:notifAsked", true);
-    setNotifPermission(true);
-    setShowNotifBanner(false);
-  };
+  // subscribeNotifications / dismissNotifBanner eliminados con las push
+  // (6-ago-2026). No pedimos un permiso que no vamos a usar.
 
   const claimChallenge = async (ch) => {
     const {w,y}=getISOWeek();
@@ -10964,7 +10909,6 @@ function GBHApp(){
           xp={xp}
           streak={streak}
           badges={badges.length}
-          onSubscribeNotifications={subscribeNotifications}
           lang={lang}
           setLang={switchLang}
           onDeleteAccount={deleteAccount}
@@ -11104,40 +11048,9 @@ function GBHApp(){
       })()}
 
       {/* ── HEADER ─────────────────────────────────────────────────────────── */}
-      {/* Banner notificaciones — aparece una sola vez tras 1 día de uso */}
-      {showNotifBanner&&(
-        <div style={{background:`linear-gradient(135deg,#1A2A5A,#0D1A3A)`,
-          padding:"10px 14px",display:"flex",alignItems:"center",
-          justifyContent:"space-between",gap:10,
-          borderBottom:`1px solid rgba(100,130,255,0.3)`,
-          animation:"slideDown 0.4s ease"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,flex:1}}>
-            <div style={{width:36,height:36,borderRadius:10,flexShrink:0,fontSize:20,
-              background:"rgba(100,130,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center"}}>🔔</div>
-            <div>
-              <div style={{fontSize:12,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif",lineHeight:1.2}}>
-                {lang==="en"?"Enable reminders":"Activa los recordatorios"}
-              </div>
-              <div style={{fontSize:10,color:"rgba(180,200,255,0.8)",fontFamily:"'DM Sans',sans-serif",marginTop:1}}>
-                {lang==="en"?"Streak at risk · Weekly weigh-in · Daily diet":"Racha en peligro · Pesaje semanal · Dieta diaria"}
-              </div>
-            </div>
-          </div>
-          <div style={{display:"flex",gap:8,flexShrink:0,alignItems:"center"}}>
-            <button onClick={subscribeNotifications} style={{
-              background:"rgba(100,130,255,0.9)",border:"2px solid rgba(120,150,255,0.6)",
-              borderRadius:12,padding:"7px 14px",color:T.t1,fontWeight:900,
-              fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif",
-              boxShadow:"0 3px 0 rgba(60,80,200,0.5)",whiteSpace:"nowrap"}}>
-              {lang==="en"?"Enable":"Activar"}
-            </button>
-            <button onClick={dismissNotifBanner} style={{
-              background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",
-              borderRadius:"50%",width:28,height:28,color:"rgba(255,255,255,0.5)",
-              fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
-          </div>
-        </div>
-      )}
+      {/* Banner de notificaciones push eliminado (6-ago-2026): pedía un
+          permiso que ya no se usa. Los avisos internos (20:00, plan nuevo,
+          racha, trial…) no necesitan banner ni permiso. */}
       {/* Banner quiz diario — si no se ha hecho hoy */}
       {!quizDone&&!quizBannerDismissed&&(
         <div style={{background:"linear-gradient(135deg,rgba(123,47,190,0.97),rgba(74,14,143,0.97))",padding:"10px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,animation:"slideDown 0.35s ease"}}>
