@@ -7286,6 +7286,17 @@ function GBHApp(){
   const [filtroAdmin, setFiltroAdmin] = useState('todos');   // todos|premium|normal
   const [planAdmin, setPlanAdmin] = useState({});  // {profile_id: plan} para las insignias 💎/⭐
   const [actAdmin,  setActAdmin]  = useState({});  // {profile_id: fila de patient_activity} — actividad real
+  // ── Programaciones premium desde el móvil (cola admin_jobs en Supabase):
+  //    la app crea el trabajo y muestra los avisos; el runner del ordenador
+  //    (gbh_runner_programaciones.py, junto a los Excel de G:) lo ejecuta con
+  //    gbh_automatizacion y aplica al Excel de pautas SOLO lo confirmado. ──
+  const [vistaAdmin, setVistaAdmin] = useState('home');      // home|pacientes|programaciones
+  const [progSel,    setProgSel]    = useState({});          // {profile_id:true}
+  const [progFase,   setProgFase]   = useState('seleccion'); // seleccion|generando|avisos|aplicando|hecho|error
+  const [progJobId,  setProgJobId]  = useState(null);
+  const [progJob,    setProgJob]    = useState(null);        // fila viva del trabajo
+  const [progDec,    setProgDec]    = useState({});          // {hoja: aplicar? }
+  const [progT0,     setProgT0]     = useState(0);           // aviso de runner dormido
   const [aName,    setAName]    = useState("");
   const [aEmail,   setAEmail]   = useState("");
   const [altaEmailInicial,setAltaEmailInicial]=useState("");  // email precargado en el alta con Bo
@@ -8156,6 +8167,85 @@ function GBHApp(){
   useEffect(()=>{ if(tutoPaso==='B2_objetivo' && Number(profile?.target_kcal)>0) tutoAvanzar();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[tutoPaso, profile?.target_kcal]);
+
+  // ── Fase 5 · La tarjeta de invitar salta en Inicio, una sola vez y
+  //    descartable, cuando ocurre una VICTORIA real: semana de 6-7 días
+  //    registrados, meta de racha (7/14/30/50) o bajada de peso respecto al
+  //    pesaje anterior. Y NUNCA si el paciente está en pausa declarada, si
+  //    viene de una semana en silencio o si la descartó hace menos de 30 días.
+  //    Pedir un referido a alguien que lo está pasando mal quema el foso. ──
+  const [refCard,setRefCard]=useState(false);
+  useEffect(()=>{
+    if(!profile?.id || !profile?.referral_code || refCard) return;
+    try{
+      const last=lsGet(`gbh:refcard:${profile.id}`,0);
+      if(last && (Date.now()-last) < 30*86400e3) return;      // 30 días de silencio
+      if(profile?.pausa_desde&&profile?.pausa_hasta&&profile.pausa_hasta>=toKey()) return; // pausa declarada
+      const hoy=new Date();
+      let silencio=true;
+      for(let i=1;i<=7;i++){
+        const d=new Date(hoy); d.setDate(d.getDate()-i);
+        if(logs.find(l=>l.date===toKey(d)&&l.diet)){ silencio=false; break; }
+      }
+      if(silencio) return;
+      const lunes=new Date(hoy); lunes.setDate(lunes.getDate()-((lunes.getDay()+6)%7));
+      let diasSem=0;
+      for(let i=0;i<7;i++){
+        const d=new Date(lunes); d.setDate(d.getDate()+i);
+        if(logs.find(l=>l.date===toKey(d)&&l.diet)) diasSem++;
+      }
+      const vSemana=diasSem>=6;
+      const vRacha=METAS_RACHA.includes(streak);
+      const ws=weights.filter(w=>!w.isInitial);
+      const vPeso=ws.length>=2 && ws[ws.length-1].weight < ws[ws.length-2].weight;
+      if(!(vSemana||vRacha||vPeso)) return;
+      setRefCard(true);
+    }catch{}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.id, profile?.pausa_hasta, logs, weights, streak]);
+  const cerrarRefCard=()=>{
+    try{ lsSet(`gbh:refcard:${profile.id}`,Date.now()); }catch{}
+    setRefCard(false);
+  };
+
+  // Polling del trabajo de programaciones mientras el runner trabaja
+  useEffect(()=>{
+    if(!progJobId || !['generando','aplicando'].includes(progFase)) return;
+    const id=setInterval(async()=>{
+      try{
+        const r=await sbReq("GET",`admin_jobs?id=eq.${progJobId}&select=*`);
+        const j=Array.isArray(r)?r[0]:null;
+        if(!j) return;
+        setProgJob(j);
+        if(j.estado==='avisos'&&progFase==='generando'){
+          const dec={};
+          (j.resultado?.ajustes||[]).forEach(a=>{ dec[a.hoja||a.nombre]=true; });   // por defecto: aplicar
+          setProgDec(dec); setProgFase('avisos'); sfx("pop");
+        }else if(j.estado==='hecho'){ setProgFase('hecho'); sfx("pop"); }
+        else if(j.estado==='error'){ setProgFase('error'); }
+      }catch{}
+    },4000);
+    return ()=>clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[progJobId, progFase]);
+  const lanzarProgramaciones=async(pacientes)=>{
+    setProgFase('generando'); setProgT0(Date.now()); setProgJob(null);
+    const r=await sbDirect("POST","admin_jobs",{tipo:'programaciones_premium',estado:'pendiente',
+      payload:{clave:GBH_ADMIN_PIN, pacientes}});
+    const j=(r?.ok&&Array.isArray(r.data)&&r.data[0])||null;
+    if(j?.id){ setProgJobId(j.id); return; }
+    setProgJob({resultado:{error:r?.status===404
+      ?'La tabla admin_jobs no existe todavía — ejecuta GBH_Tabla_Admin_Jobs.sql en Supabase'
+      :`No se pudo crear el trabajo (HTTP ${r?.status??'?'})`}});
+    setProgFase('error');
+  };
+  const confirmarCalorias=async()=>{
+    const dec=(progJob?.resultado?.ajustes||[]).map(a=>({hoja:a.hoja,nombre:a.nombre,
+      kcal_antes:a.kcal_antes,kcal_despues:a.kcal_despues,aplicar:!!progDec[a.hoja||a.nombre]}));
+    setProgFase('aplicando');
+    await sbReq("PATCH",`admin_jobs?id=eq.${progJobId}`,{estado:'decidido',decisiones:dec});
+  };
+  const progReset=()=>{ setProgFase('seleccion'); setProgJobId(null); setProgJob(null); setProgDec({}); };
 
   const hoyMadrid=()=>new Date().toLocaleDateString("sv-SE",{timeZone:"Europe/Madrid"});
   const cargarPartidasHoy=async()=>{ if(!profile?.id) return;
@@ -9616,7 +9706,7 @@ function GBHApp(){
     const v=(pinVal+d).slice(0,4);
     setPinVal(v);
     if(v.length===4){
-      if(v===GBH_ADMIN_PIN){setPinGate(false);setPinVal("");setScreen("admin");loadAdmin();}
+      if(v===GBH_ADMIN_PIN){setPinGate(false);setPinVal("");setVistaAdmin('home');setScreen("admin");loadAdmin();}
       else{setPinErr(true);setTimeout(()=>{setPinVal("");},350);}
     }
   };
@@ -10353,13 +10443,215 @@ function GBHApp(){
     const nCaidaT=actReady?allP.filter(p=>!esGratis(p)&&enCaida(p)).length:null;
     const nSinActT=actReady?allP.filter(p=>!esGratis(p)&&sinActivar(p)).length:null;
     const nRiesgoT=actReady?allP.filter(enRiesgo).length:null;
+
+    // ── PORTADA del panel ──────────────────────────────────────────────────
+    // Programaciones desde el móvil: DESCARTADO por ahora (requiere el worker
+    // de nube o el runner de PC a la escucha). Todo el circuito queda intacto
+    // y dormido — para reactivarlo: PROG_MOVIL_ACTIVO = true y desplegar el
+    // worker según el LEEME (SQL admin_jobs + Railway/Drive).
+    const PROG_MOVIL_ACTIVO = false;
+    const btnGrande=(icono,titulo,sub,onClick)=>(
+      <button onClick={onClick} style={{width:"100%",boxSizing:"border-box",display:"flex",alignItems:"center",gap:16,
+        background:T.bgCard,border:`2px solid ${T.bW}`,borderRadius:22,padding:"22px 20px",cursor:"pointer",
+        boxShadow:"0 5px 0 rgba(0,0,0,0.45)",textAlign:"left",marginBottom:14}}>
+        <span style={{fontSize:34}}>{icono}</span>
+        <span style={{flex:1,minWidth:0}}>
+          <span style={{display:"block",fontSize:16,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif"}}>{titulo}</span>
+          <span style={{display:"block",fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:2,lineHeight:1.45}}>{sub}</span>
+        </span>
+        <span style={{color:T.t3,fontSize:20}}>›</span>
+      </button>
+    );
+    if(vistaAdmin==='home') return(
+      <div style={{fontFamily:"'Nunito',sans-serif",background:`radial-gradient(ellipse at top,#1A3A10,${T.bg})`,minHeight:"100vh",maxWidth:420,margin:"0 auto",color:T.t1,paddingBottom:20}}>
+        <style>{CSS}</style>
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"18px 16px 14px"}}>
+          <button onClick={()=>setScreen("main")} style={{background:T.bgWood,border:`2px solid ${T.bW}`,borderRadius:14,padding:"10px 18px",color:T.t1,fontWeight:900,cursor:"pointer",fontSize:13,boxShadow:"0 4px 0 rgba(0,0,0,0.5)",fontFamily:"'Nunito',sans-serif"}}>← Salir</button>
+          <div style={{fontWeight:900,fontSize:17}}>Panel GBH 🐑</div>
+        </div>
+        <div style={{padding:"6px 16px"}}>
+          {btnGrande("👥","Pacientes",
+            `Desglose y control: ${nPremT} premium · ${nNormT} estándar · ${nGratisT} gratis${nRiesgoT!=null?` · ${nRiesgoT} en riesgo`:''}`,
+            ()=>setVistaAdmin('pacientes'))}
+          {PROG_MOVIL_ACTIVO&&btnGrande("📆","Programaciones",
+            "Genera la semana de los premium desde el móvil, con los avisos de calorías para confirmar",
+            ()=>{progReset();setProgSel({});setVistaAdmin('programaciones');})}
+        </div>
+      </div>
+    );
+
+    // ── PROGRAMACIONES PREMIUM ──────────────────────────────────────────────
+    if(vistaAdmin==='programaciones'){
+      const premiums=allP.filter(p=>tierDe(p)==='premium').sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+      const nSel=premiums.filter(p=>progSel[p.id]).length;
+      const res=progJob?.resultado||{};
+      const ajustes=res.ajustes||[];
+      const revision=res.revision_manual||[];
+      const runnerDormido=progFase==='generando'&&(!progJob||progJob.estado==='pendiente')&&(Date.now()-progT0>45000);
+      return(
+        <div style={{fontFamily:"'Nunito',sans-serif",background:`radial-gradient(ellipse at top,#1A3A10,${T.bg})`,minHeight:"100vh",maxWidth:420,margin:"0 auto",color:T.t1,paddingBottom:120}}>
+          <style>{CSS}</style>
+          <div style={{display:"flex",alignItems:"center",gap:10,padding:"18px 16px 10px"}}>
+            <button onClick={()=>{progReset();setVistaAdmin('home');}} style={{background:T.bgWood,border:`2px solid ${T.bW}`,borderRadius:14,padding:"10px 16px",color:T.t1,fontWeight:900,cursor:"pointer",fontSize:13,boxShadow:"0 4px 0 rgba(0,0,0,0.5)",fontFamily:"'Nunito',sans-serif"}}>←</button>
+            <div style={{fontWeight:900,fontSize:17}}>📆 Programaciones</div>
+          </div>
+
+          {progFase==='seleccion'&&(<>
+            <div style={{padding:"0 16px 8px",fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>
+              Marca a los pacientes premium a los que preparar la semana. El servicio de GBH en la nube hace el trabajo — no hace falta el ordenador.
+            </div>
+            <div style={{display:"flex",gap:8,padding:"0 16px 10px"}}>
+              <button onClick={()=>{sfx("tap");const t={};premiums.forEach(p=>t[p.id]=true);setProgSel(t);}}
+                style={{flex:1,padding:"10px",borderRadius:12,border:`2px solid ${T.g1}`,background:"rgba(45,155,90,0.12)",color:T.g2,fontWeight:900,fontSize:12.5,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>✓ Marcar todos ({premiums.length})</button>
+              <button onClick={()=>{sfx("tap");setProgSel({});}}
+                style={{padding:"10px 14px",borderRadius:12,border:"1.5px solid rgba(255,255,255,0.18)",background:"none",color:T.t2,fontWeight:800,fontSize:12.5,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>Ninguno</button>
+            </div>
+            <div style={{padding:"0 16px",display:"flex",flexDirection:"column",gap:8}}>
+              {premiums.length===0&&(
+                <div style={{textAlign:"center",color:T.t3,fontSize:13,padding:"30px 0",fontFamily:"'DM Sans',sans-serif"}}>Sin pacientes premium todavía</div>
+              )}
+              {premiums.map(p=>{const on=!!progSel[p.id];return(
+                <button key={p.id} onClick={()=>{sfx("tap");setProgSel(o=>({...o,[p.id]:!o[p.id]}));}}
+                  style={{display:"flex",alignItems:"center",gap:12,background:on?"rgba(45,155,90,0.12)":T.bgCard,
+                    border:`2px solid ${on?T.g1:T.bW}`,borderRadius:16,padding:"14px 14px",cursor:"pointer",textAlign:"left"}}>
+                  <span style={{width:26,height:26,borderRadius:9,border:`2px solid ${on?T.g1:'rgba(255,255,255,0.25)'}`,
+                    background:on?T.g1:'transparent',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',
+                    fontSize:15,fontWeight:900,flexShrink:0}}>{on?'✓':''}</span>
+                  <span style={{flex:1,minWidth:0,fontSize:14,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif",
+                    overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>💎 {p.name||p.email}</span>
+                </button>
+              );})}
+            </div>
+            <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:420,
+              background:"rgba(8,18,8,0.97)",backdropFilter:"blur(20px)",borderTop:`2px solid ${T.bW}`,
+              padding:"14px 16px calc(14px + env(safe-area-inset-bottom))",boxSizing:"border-box"}}>
+              <button disabled={nSel===0}
+                onClick={()=>lanzarProgramaciones(premiums.filter(p=>progSel[p.id]).map(p=>({id:p.id,nombre:p.name,email:p.email})))}
+                style={{width:"100%",padding:"16px",borderRadius:16,border:`3px solid ${T.g3}`,
+                  background:nSel?`linear-gradient(135deg,${T.g1},${T.g2})`:"rgba(255,255,255,0.06)",
+                  color:nSel?"#fff":T.t3,fontWeight:900,fontSize:15.5,cursor:nSel?"pointer":"default",
+                  boxShadow:nSel?`0 5px 0 ${T.g3}`:"none",fontFamily:"'Nunito',sans-serif"}}>
+                ✨ Generar programación{nSel>0?` (${nSel})`:''}
+              </button>
+            </div>
+          </>)}
+
+          {(progFase==='generando'||progFase==='aplicando')&&(
+            <div style={{padding:"40px 24px",textAlign:"center"}}>
+              <div style={{fontSize:46,animation:"pulse 1.4s infinite"}}>{progFase==='generando'?'🖥️':'📗'}</div>
+              <div style={{fontWeight:900,fontSize:16,margin:"12px 0 6px"}}>
+                {progFase==='generando'?'Generando programaciones…':'Escribiendo en el Excel de pautas…'}
+              </div>
+              <div style={{fontSize:12.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6}}>
+                {progFase==='generando'
+                  ?(progJob?.estado==='generando'?'El servicio de GBH está trabajando. Puedes dejar el móvil — esto tarda unos minutos.':'Esperando a que el servicio de GBH recoja el trabajo…')
+                  :'Aplicando solo los cambios que has confirmado (con copia de seguridad previa).'}
+              </div>
+              {runnerDormido&&(
+                <div style={{marginTop:16,background:"rgba(201,162,39,0.10)",border:`1.5px solid ${T.au1}`,borderRadius:14,
+                  padding:"12px 14px",fontSize:12,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.55,textAlign:"left"}}>
+                  ⚠️ El servicio no responde. Revisa el worker en Railway (o arranca <b>lanzar_runner.bat</b> en el ordenador como plan B). El trabajo queda en cola y se ejecutará en cuanto haya uno a la escucha.
+                </div>
+              )}
+              <button onClick={async()=>{try{await sbReq("PATCH",`admin_jobs?id=eq.${progJobId}`,{estado:'cancelado'});}catch{} progReset();}}
+                style={{marginTop:20,background:"none",border:"1.5px solid rgba(255,255,255,0.18)",borderRadius:14,
+                  color:T.t2,fontWeight:800,fontSize:13,cursor:"pointer",padding:"11px 20px",fontFamily:"'Nunito',sans-serif"}}>Cancelar</button>
+            </div>
+          )}
+
+          {progFase==='avisos'&&(<>
+            <div style={{padding:"0 16px 10px"}}>
+              <div style={{background:"rgba(45,155,90,0.10)",border:`1.5px solid ${T.bG}`,borderRadius:14,padding:"12px 14px",
+                fontSize:12.5,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>
+                ✅ {res.generadas??0} programaciones generadas{(res.errores&&res.errores.length)?` · ❌ ${res.errores.length} con error (${res.errores.join(', ')})`:''}
+              </div>
+            </div>
+            {ajustes.length>0&&(<>
+              <div style={{padding:"4px 16px 8px",fontWeight:900,fontSize:14}}>⚖️ Correcciones de calorías — confirma antes de tocar el Excel</div>
+              <div style={{padding:"0 16px",display:"flex",flexDirection:"column",gap:10}}>
+                {ajustes.map(a=>{const k=a.hoja||a.nombre;const si=!!progDec[k];return(
+                  <div key={k} style={{background:T.bgCard,border:`2px solid ${si?T.g1:'rgba(255,255,255,0.14)'}`,borderRadius:16,padding:"13px 14px"}}>
+                    <div style={{fontWeight:900,fontSize:13.5,marginBottom:3}}>{a.nombre}</div>
+                    <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,marginBottom:9}}>
+                      {a.kcal_antes} → <b style={{color:si?T.g2:T.t1}}>{a.kcal_despues} kcal</b>
+                      {typeof a.desviacion==='number'?` · desviación ${a.desviacion>0?'+':''}${a.desviacion} kg`:''}
+                      {a.nota?` · ${a.nota}`:''}
+                    </div>
+                    <div style={{display:"flex",gap:8}}>
+                      <button onClick={()=>{sfx("tap");setProgDec(o=>({...o,[k]:true}));}}
+                        style={{flex:1,padding:"10px",borderRadius:12,border:`2px solid ${si?T.g1:'rgba(255,255,255,0.15)'}`,
+                          background:si?"rgba(45,155,90,0.15)":"none",color:si?T.g2:T.t2,fontWeight:900,fontSize:12.5,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>Sí, cambiar</button>
+                      <button onClick={()=>{sfx("tap");setProgDec(o=>({...o,[k]:false}));}}
+                        style={{flex:1,padding:"10px",borderRadius:12,border:`2px solid ${!si?T.red:'rgba(255,255,255,0.15)'}`,
+                          background:!si?"rgba(255,75,75,0.12)":"none",color:!si?"#FF8080":T.t2,fontWeight:900,fontSize:12.5,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>No, dejar {a.kcal_antes}</button>
+                    </div>
+                  </div>
+                );})}
+              </div>
+            </>)}
+            {revision.length>0&&(<>
+              <div style={{padding:"14px 16px 8px",fontWeight:900,fontSize:14}}>⚖️ Revisión manual — pierden más rápido de lo esperado</div>
+              <div style={{padding:"0 16px",display:"flex",flexDirection:"column",gap:8}}>
+                {revision.map(a=>(
+                  <div key={a.nombre} style={{background:"rgba(201,162,39,0.08)",border:`1.5px solid ${alpha(T.au1,0.5)}`,borderRadius:14,padding:"11px 13px",
+                    fontSize:12,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>
+                    <b>{a.nombre}</b> · {a.peso_real} kg vs {a.peso_esperado} esperados ({a.desviacion>0?'+':''}{a.desviacion} kg) · {a.kcal_actuales} kcal.
+                    Sin ajuste automático: valora su rendimiento antes de subir kcal a mano.
+                  </div>
+                ))}
+              </div>
+            </>)}
+            {ajustes.length===0&&revision.length===0&&(
+              <div style={{padding:"6px 16px",fontSize:12.5,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>Sin correcciones de calorías esta semana.</div>
+            )}
+            <div style={{padding:"18px 16px"}}>
+              <button onClick={confirmarCalorias}
+                style={{width:"100%",padding:"16px",borderRadius:16,border:`3px solid ${T.g3}`,
+                  background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"#fff",fontWeight:900,fontSize:15,
+                  cursor:"pointer",boxShadow:`0 5px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif"}}>
+                {ajustes.length?`Confirmar (${Object.values(progDec).filter(Boolean).length} cambios al Excel de pautas)`:'Finalizar'}
+              </button>
+            </div>
+          </>)}
+
+          {progFase==='hecho'&&(
+            <div style={{padding:"40px 24px",textAlign:"center"}}>
+              <div style={{fontSize:52}}>✅</div>
+              <div style={{fontWeight:900,fontSize:17,margin:"12px 0 6px"}}>Semana lista</div>
+              <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.7}}>
+                {progJob?.resultado?.generadas??0} programaciones generadas · {progJob?.resultado?.aplicadas??0} pautas actualizadas en el Excel
+                {progJob?.resultado?.backup?<><br/>Copia de seguridad: {progJob.resultado.backup}</>:null}
+              </div>
+              <button onClick={()=>{progReset();setVistaAdmin('home');}}
+                style={{marginTop:22,width:"100%",padding:"15px",borderRadius:16,border:`3px solid ${T.g3}`,
+                  background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"#fff",fontWeight:900,fontSize:15,cursor:"pointer",
+                  boxShadow:`0 5px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif"}}>Volver al panel</button>
+            </div>
+          )}
+
+          {progFase==='error'&&(
+            <div style={{padding:"40px 24px",textAlign:"center"}}>
+              <div style={{fontSize:48}}>⚠️</div>
+              <div style={{fontWeight:900,fontSize:16,margin:"12px 0 6px"}}>No se pudo completar</div>
+              <div style={{fontSize:12.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6}}>
+                {progJob?.resultado?.error||'Error desconocido — mira el registro del worker en Railway.'}
+              </div>
+              <button onClick={progReset}
+                style={{marginTop:20,background:"none",border:"1.5px solid rgba(255,255,255,0.18)",borderRadius:14,
+                  color:T.t2,fontWeight:800,fontSize:13,cursor:"pointer",padding:"11px 20px",fontFamily:"'Nunito',sans-serif"}}>Volver a intentarlo</button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
     return(
       <div style={{fontFamily:"'Nunito',sans-serif",background:`radial-gradient(ellipse at top,#1A3A10,${T.bg})`,minHeight:"100vh",maxWidth:420,margin:"0 auto",color:T.t1,paddingBottom:20}}>
         <style>{CSS}</style>
         <div style={{padding:"20px 18px 12px"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div><div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:2}}>Panel Administrador</div><div style={{fontSize:22,fontWeight:900}}>Cuarto de Guerra 🎯</div></div>
-            <button onClick={()=>setScreen("main")} style={{background:T.bgWood,border:`2px solid ${T.bW}`,borderRadius:14,padding:"10px 18px",color:T.t1,fontWeight:900,cursor:"pointer",fontSize:13,boxShadow:"0 4px 0 rgba(0,0,0,0.5)",fontFamily:"'Nunito',sans-serif"}}>← Salir</button>
+            <button onClick={()=>setVistaAdmin('home')} style={{background:T.bgWood,border:`2px solid ${T.bW}`,borderRadius:14,padding:"10px 18px",color:T.t1,fontWeight:900,cursor:"pointer",fontSize:13,boxShadow:"0 4px 0 rgba(0,0,0,0.5)",fontFamily:"'Nunito',sans-serif"}}>← Panel</button>
           </div>
         </div>
         <div style={{padding:"0 18px"}}>
@@ -11000,6 +11292,23 @@ function GBHApp(){
               «Progreso semanal» de abajo. El componente sigue definido por si
               se quiere en otra vista; el acceso manual a la meta vive ahora en
               el chip 🔥 de la cabecera (toque → MetaRachaSelector). */}
+          {/* ── Fase 5 · Tarjeta de invitar tras una victoria real ── */}
+          {refCard&&(
+            <div style={{position:"relative",marginBottom:14}}>
+              <button onClick={cerrarRefCard} aria-label={lang==='en'?'Dismiss':'Cerrar'}
+                style={{position:"absolute",top:10,right:10,zIndex:2,width:28,height:28,
+                  borderRadius:"50%",border:"1.5px solid rgba(255,255,255,0.2)",
+                  background:"rgba(0,0,0,0.35)",color:T.t2,fontSize:13,fontWeight:900,
+                  cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
+                  fontFamily:"'Nunito',sans-serif"}}>✕</button>
+              <div style={{fontSize:12.5,color:T.t1,fontWeight:800,fontFamily:"'DM Sans',sans-serif",
+                lineHeight:1.5,marginBottom:8,paddingRight:36}}>
+                {lang==='en'?'What a week you\u2019re having 💚 Know someone who\u2019d want this too?'
+                            :'Menuda semana llevas 💚 ¿Conoces a alguien a quien le vendría bien esto?'}
+              </div>
+              <TarjetaInvitarAmigo profile={profile} lang={lang} sfx={sfx}/>
+            </div>
+          )}
           {/* ── Countdown de semana de prueba (tap → checkout) ── */}
           {trialDiasRest&&!ES_IOS_NATIVO&&(
             <button onClick={()=>{sfx("tap");abrirCheckoutStripe(profile?.id);}} style={{
@@ -12128,11 +12437,35 @@ function GBHApp(){
 // código personalizado, botón de compartir nativo e instrucciones. El feedback
 // de copiado es local (la pestaña no recibe showT).
 
+// ── Plegable de tarjeta (Consulta): botón «título ▼» que despliega el
+//    contenido. abiertoForzado=true lo abre solo (invitación pendiente). ──────
+function TarjetaDesplegable({icono,titulo,sub,aviso,abiertoForzado,children,sfx}){
+  const [abierto,setAbierto]=React.useState(false);
+  React.useEffect(()=>{ if(abiertoForzado) setAbierto(true); },[abiertoForzado]);
+  return(
+    <div style={{marginTop:10}}>
+      <button onClick={()=>{sfx&&sfx("tap");setAbierto(o=>!o);}} style={{width:"100%",boxSizing:"border-box",
+        display:"flex",alignItems:"center",gap:10,background:T.bgWood,border:`2px solid ${T.bW}`,
+        borderRadius:18,padding:"13px 16px",cursor:"pointer",boxShadow:"0 4px 0 rgba(0,0,0,0.4)",textAlign:"left"}}>
+        <span style={{fontSize:18}}>{icono}</span>
+        <span style={{flex:1,minWidth:0}}>
+          <span style={{display:"block",fontSize:14,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif"}}>{titulo}</span>
+          {sub&&<span style={{display:"block",fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:1}}>{sub}</span>}
+        </span>
+        {aviso&&<span style={{background:T.red,color:"#fff",fontSize:10.5,fontWeight:900,borderRadius:10,
+          padding:"3px 8px",fontFamily:"'Nunito',sans-serif",animation:"pulse 1.6s infinite"}}>{aviso}</span>}
+        <span style={{color:T.t3,fontSize:12,transform:abierto?'rotate(180deg)':'none',transition:'transform 0.2s'}}>▼</span>
+      </button>
+      <div style={{display:abierto?'block':'none'}}>{children}</div>
+    </div>
+  );
+}
+
 // ── Tarjeta "Cocinar para los dos": vínculo de pareja (Fase 1) ───────────────
 // Regla no negociable: hacen falta las DOS aceptaciones, porque al vincularse
 // cada uno ve el plan del otro. Y cualquiera de los dos puede deshacerlo.
 // El código que se comparte es el referral_code, que ya es único por cuenta.
-function TarjetaPareja({profile,sfx,showT}){
+function TarjetaPareja({profile,sfx,showT,onEstado}){
   // t() por hook: esta tarjeta se pinta dentro de ConsultaTab, que no recibe
   // `t` por props. Pasárselo desde ahí habría dado un ReferenceError en render.
   const t=useLang();
@@ -12143,6 +12476,9 @@ function TarjetaPareja({profile,sfx,showT}){
   const [error,setError]=React.useState("");
   const [conf,setConf]=React.useState(false);
   const [ocupado,setOcupado]=React.useState(false);
+  React.useEffect(()=>{ onEstado&&onEstado(estado);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[estado]);
 
   const cargar=React.useCallback(async()=>{
     if(!profile?.id){ setEstado("solo"); return; }
@@ -12282,16 +12618,23 @@ function TarjetaPareja({profile,sfx,showT}){
 
 function TarjetaInvitarAmigo({profile,lang,sfx}){
   const [copiado,setCopiado]=React.useState(false);
+  // Fase 5 (recompensa REAL, nada de gemas): el mensaje es EDITABLE — cada uno
+  // invita con sus palabras; el texto de abajo es solo el punto de partida.
+  const [msgEd,setMsgEd]=React.useState(null);
   if(!profile?.referral_code) return null;
+  const msgBase = lang==='en'
+    ? `I'm following my nutrition plan with GBH Nutrición 🌱 Sign up with my code ${profile.referral_code} and your first month of Premium is half price (€17.50): https://gbh-app.vercel.app`
+    : `Estoy siguiendo mi plan de nutrición con GBH Nutrición 🌱 Regístrate con mi código ${profile.referral_code} y tu primer mes de Premium te sale a mitad de precio (17,50 €): https://gbh-app.vercel.app`;
   const compartir=async()=>{
     sfx&&sfx("tap");
-    const msg = lang==='en'
-      ? `I'm following my nutrition plan with GBH Nutrición 🌱 Sign up with my code ${profile.referral_code} and you get 25 💎 to start: https://gbh-app.vercel.app`
-      : `Estoy siguiendo mi plan de nutrición con GBH Nutrición 🌱 Regístrate con mi código ${profile.referral_code} y te llevas 25 💎 para empezar: https://gbh-app.vercel.app`;
+    const msg = (msgEd??msgBase).trim()||msgBase;
+    // Medición sin origen: un compartido es un compartido (best-effort)
+    sbDirect("POST","referral_events",{profile_id:profile.id,event:'ref_compartido',
+      detail:msg===msgBase?'mensaje base':'mensaje editado'}).catch(()=>{});
     try{ if(navigator.share){ await navigator.share({text:msg}); return; } }
     catch(e){ if(e?.name==="AbortError") return; }
     try{
-      await navigator.clipboard.writeText(msg);
+      await navigator.clipboard.writeText((msgEd??msgBase).trim()||msgBase);
       setCopiado(true); setTimeout(()=>setCopiado(false),2200);
     }catch{}
   };
@@ -12306,7 +12649,7 @@ function TarjetaInvitarAmigo({profile,lang,sfx}){
             {lang==='en'?'Invite a friend':'Invita a un amigo'}
           </div>
           <div style={{fontSize:12,color:T.au1,fontWeight:800,fontFamily:"'DM Sans',sans-serif"}}>
-            {lang==='en'?'Earn 50 💎 per friend':'Gana 50 💎 por cada amigo'}
+            {lang==='en'?'A FREE month for every friend who stays':'Un mes GRATIS por cada amigo que se queda'}
           </div>
         </div>
       </div>
@@ -12315,6 +12658,12 @@ function TarjetaInvitarAmigo({profile,lang,sfx}){
         color:T.au1,letterSpacing:'0.14em',fontFamily:"'Nunito',sans-serif",marginBottom:10}}>
         {profile.referral_code}
       </div>
+      {/* Mensaje editable (Fase 5): se comparte tal cual lo dejes */}
+      <textarea value={msgEd??msgBase} onChange={e=>setMsgEd(e.target.value)} rows={4}
+        style={{width:'100%',boxSizing:'border-box',background:'rgba(0,0,0,0.25)',
+          border:'1.5px solid rgba(255,255,255,0.14)',borderRadius:12,padding:'10px 12px',
+          color:T.t1,fontSize:12,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,resize:'vertical',
+          marginBottom:10,outline:'none'}}/>
       <button onClick={compartir} style={{width:'100%',padding:'13px',borderRadius:14,border:'none',
         cursor:'pointer',background:copiado?'rgba(255,255,255,0.12)':`linear-gradient(135deg,${T.g1},${T.g2})`,
         color:T.t1,fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif",
@@ -12323,8 +12672,8 @@ function TarjetaInvitarAmigo({profile,lang,sfx}){
       </button>
       <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6}}>
         {lang==='en'
-          ?'How it works: your friend signs up with your code and gets 25 💎 to start. When they log their first day of meals, you earn 50 💎.'
-          :'Cómo funciona: tu amigo se registra con tu código y recibe 25 💎 de bienvenida. Cuando complete su primer día de registro de comidas, tú ganas 50 💎.'}
+          ?'How it works: your friend signs up with your code and their first month of Premium is half price (€17.50). If they stay and make their second payment, you get a whole month FREE.'
+          :'Cómo funciona: tu amigo se registra con tu código y su primer mes de Premium le sale a mitad de precio (17,50 €). Si se queda y hace su segundo pago, tú te llevas un mes entero GRATIS.'}
       </div>
     </div>
   );
@@ -12333,12 +12682,14 @@ function TarjetaInvitarAmigo({profile,lang,sfx}){
 // ─── ConsultaTab — contacto con el nutricionista (exclusivo premium) ────────
 // ═══════════════════════════════════════════════════════════════════════════
 function ConsultaTab({profile,lang,sfx}){
+  // Estado de la tarjeta de pareja, para abrir su plegable si hay invitación
+  const [parejaEstado,setParejaEstado]=React.useState(null);
   const isPremium=profile?.plan==='premium';
   // Mensaje pre-rellenado para que un usuario free/estándar SOLICITE pasar a
   // Premium directamente por WhatsApp (mismo patrón que el CTA del plan).
   const waMsgPremium = encodeURIComponent(lang==='en'
-    ? `Hi! I'm ${profile?.name||''} and I'd like to go Premium (weekly follow-up and direct WhatsApp). Do you have a spot? 👑`
-    : `¡Hola! Soy ${profile?.name||''} y quiero pasar a Premium (seguimiento semanal y WhatsApp directo). ¿Tienes plaza? 👑`);
+    ? `Hi! I'm ${profile?.name||''} and I'd like to go Premium (weekly follow-up and direct WhatsApp). Do you have a spot? 👑${profile?.referred_by?' I was invited — first month at €17.50 🎟️':''}`
+    : `¡Hola! Soy ${profile?.name||''} y quiero pasar a Premium (seguimiento semanal y WhatsApp directo). ¿Tienes plaza? 👑${profile?.referred_by?' Vengo invitado — primer mes a 17,50 € 🎟️':''}`);
 
   if(!isPremium) return(
     <div style={{padding:'48px 24px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:18}}>
@@ -12390,6 +12741,17 @@ function ConsultaTab({profile,lang,sfx}){
           {lang==='en'?'Limited spots — first come, first served.':'Plazas limitadas — voy por orden.'}
         </div>
       </div>
+      {/* Fase 5 · precio reducido visible: quien vino invitado lo ve aquí */}
+      {profile?.referred_by&&(
+        <div style={{width:'100%',maxWidth:300,boxSizing:'border-box',display:'flex',alignItems:'center',gap:10,
+          background:alpha(T.au1,0.10),border:`1.5px dashed ${T.au1}`,borderRadius:14,padding:'11px 14px',textAlign:'left'}}>
+          <span style={{fontSize:19}}>🎟️</span>
+          <span style={{fontSize:12,color:T.t1,fontWeight:800,fontFamily:"'DM Sans',sans-serif",lineHeight:1.45}}>
+            {lang==='en'?'You were invited: your first month of Premium is half price (€17.50).'
+                        :'Viniste invitado: tu primer mes de Premium a mitad de precio (17,50 €).'}
+          </span>
+        </div>
+      )}
       {/* CTA: solicitar pasar a Premium por WhatsApp (mismo estilo que el del plan) */}
       <a href={`https://wa.me/${GBH_WHATSAPP}?text=${waMsgPremium}`} target="_blank" rel="noopener noreferrer"
         onClick={()=>sfx&&sfx("tap")}
@@ -12404,8 +12766,19 @@ function ConsultaTab({profile,lang,sfx}){
         {lang==='en'?'We reply the same day · @gbhnutricion':'Te respondemos en el día · @gbhnutricion'}
       </div>
       <div style={{width:'100%',maxWidth:300,marginTop:6}}>
-        <TarjetaPareja profile={profile} sfx={sfx}/>
-        <TarjetaInvitarAmigo profile={profile} lang={lang} sfx={sfx}/>
+        <TarjetaDesplegable sfx={sfx} icono="🍽️"
+          titulo={lang==='en'?'Cook for two':'Cocinar para los dos'}
+          sub={parejaEstado==='vinculada'?(lang==='en'?'Linked ✓':'Vinculada ✓')
+              :(lang==='en'?'Link your account with your partner\u2019s':'Vincula tu cuenta con la de tu pareja')}
+          aviso={parejaEstado==='recibida'?(lang==='en'?'1 invitation':'1 invitación'):null}
+          abiertoForzado={parejaEstado==='recibida'}>
+          <TarjetaPareja profile={profile} sfx={sfx} onEstado={setParejaEstado}/>
+        </TarjetaDesplegable>
+        <TarjetaDesplegable sfx={sfx} icono="🎁"
+          titulo={lang==='en'?'Invite a friend':'Invita a un amigo'}
+          sub={lang==='en'?'A free month for every friend who stays':'Un mes gratis por cada amigo que se queda'}>
+          <TarjetaInvitarAmigo profile={profile} lang={lang} sfx={sfx}/>
+        </TarjetaDesplegable>
       </div>
     </div>
   );
@@ -12468,8 +12841,19 @@ function ConsultaTab({profile,lang,sfx}){
         </button>
 
         {/* Invita a un amigo (referidos) */}
-        <TarjetaPareja profile={profile} sfx={sfx}/>
-        <TarjetaInvitarAmigo profile={profile} lang={lang} sfx={sfx}/>
+        <TarjetaDesplegable sfx={sfx} icono="🍽️"
+          titulo={lang==='en'?'Cook for two':'Cocinar para los dos'}
+          sub={parejaEstado==='vinculada'?(lang==='en'?'Linked ✓':'Vinculada ✓')
+              :(lang==='en'?'Link your account with your partner\u2019s':'Vincula tu cuenta con la de tu pareja')}
+          aviso={parejaEstado==='recibida'?(lang==='en'?'1 invitation':'1 invitación'):null}
+          abiertoForzado={parejaEstado==='recibida'}>
+          <TarjetaPareja profile={profile} sfx={sfx} onEstado={setParejaEstado}/>
+        </TarjetaDesplegable>
+        <TarjetaDesplegable sfx={sfx} icono="🎁"
+          titulo={lang==='en'?'Invite a friend':'Invita a un amigo'}
+          sub={lang==='en'?'A free month for every friend who stays':'Un mes gratis por cada amigo que se queda'}>
+          <TarjetaInvitarAmigo profile={profile} lang={lang} sfx={sfx}/>
+        </TarjetaDesplegable>
       </div>
     </div>
   );
