@@ -9770,7 +9770,11 @@ function GBHApp(){
 
   const CSS=`
     @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&family=DM+Sans:wght@400;500;700&display=swap');
-    *{box-sizing:border-box;margin:0;padding:0}body{background:${T.bg};font-family:'Nunito',sans-serif;overflow-x:hidden;}
+    *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}body{background:${T.bg};font-family:'Nunito',sans-serif;overflow-x:hidden;}
+    /* Nada de recuadro azul ni de selección de texto al tocar lo que es pulsable:
+       el gesto de los 5 toques en Bo llegaba a seleccionar el contenido. El texto
+       normal (recetas, listas, chat) sigue siendo seleccionable y copiable. */
+    button,a,[role="button"],.sin-sel{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
     @keyframes aura{0%,100%{opacity:0.5;transform:scale(1)}50%{opacity:1;transform:scale(1.08)}}
     @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
     @keyframes bounce{0%,100%{transform:translateY(0) rotate(-3deg)}40%{transform:translateY(-16px) rotate(3deg)}65%{transform:translateY(-6px) rotate(-1deg)}} @keyframes headTilt{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
@@ -11268,7 +11272,7 @@ function GBHApp(){
                   display:"flex",alignItems:"center",justifyContent:"center"}}>
                 <span style={{fontSize:20,lineHeight:1}}>🎮</span>
               </button>
-              <div onClick={tocarBo} className={boToque && !MOVIMIENTO_REDUCIDO() ? "bo-toque" : ""}
+              <div onClick={tocarBo} className={`sin-sel${boToque && !MOVIMIENTO_REDUCIDO() ? " bo-toque" : ""}`}
                    style={{cursor:"pointer",display:"flex",justifyContent:"center"}}>
                 <Sheep estado={boToque ? "feliz" : boEstado} equipados={boEquipados} color={boColor} size={200}/>
               </div>
