@@ -1947,11 +1947,41 @@ const ESTADOS = [
   { id:"dormida", label:"Dormida", emoji:"😴", desc:"Descansando: de noche, o esperándote sin juzgar", felicidad:80, anim:"breathe" },
 ];
 
+// ─── Bo parpadea ─────────────────────────────────────────────────────────────
+// Cada 4-7 s cierra los ojos 120 ms. Obedece a MOVIMIENTO_REDUCIDO() porque no
+// lleva información: apagarlo no le quita nada al paciente.
+function useParpadeo(estado, activo) {
+  const [cerrado, setCerrado] = React.useState(false);
+  React.useEffect(() => {
+    if (!activo || estado === "dormida" || MOVIMIENTO_REDUCIDO()) { setCerrado(false); return; }
+    let abrir, siguiente, vivo = true;
+    const ciclo = () => {
+      siguiente = setTimeout(() => {
+        if (!vivo) return;
+        if (!document.hidden) {              // en segundo plano no gasta nada
+          setCerrado(true);
+          abrir = setTimeout(() => { if (vivo) setCerrado(false); }, 120);
+        }
+        ciclo();
+      }, 4000 + Math.random() * 3000);       // al azar: dos Bo no parpadean a la vez
+    };
+    ciclo();
+    return () => { vivo = false; clearTimeout(abrir); clearTimeout(siguiente); };
+  }, [estado, activo]);
+  return cerrado ? estado + "_p" : estado;
+}
+
 function Sheep({ estado, equipados, color, size = 200, mini = false }) {
   const col = COLORES.find(c => c.id === color) || COLORES[0];
   const eq = Array.isArray(equipados) ? equipados : [];
-  const tramos = useMemo(() => tramosBo32(col, eq, estado),
-                         [col.id, eq.join(","), estado]);
+  // `!mini` no basta: los avatares de 44-48 px (tutorial, listas) no pasan mini y
+  // parpadearían, contra lo que pide el brief. El umbral de tamaño lo cubre sin
+  // apagarles la animación de cuerpo, que es lo que haría marcarlos como mini.
+  const cara = useParpadeo(estado, !mini && size >= 90);
+  const tramos = useMemo(() => tramosBo32(col, eq, cara),
+                         [col.id, eq.join(","), cara]);
+  // El estado BASE, no `cara`: con "feliz_p" no encontraría nada en ESTADOS y
+  // el rebote se cortaría 120 ms en cada parpadeo.
   const anim = ESTADOS.find(e => e.id === estado)?.anim || "idle";
 
   return (
@@ -9502,6 +9532,16 @@ function GBHApp(){
   };
 
   const tapSheep=()=>{const n=taps+1;setTaps(n);if(tapRef.current)clearTimeout(tapRef.current);tapRef.current=setTimeout(()=>setTaps(0),2500);if(n>=5){setPinVal("");setPinErr(false);setPinGate(true);setTaps(0);}};
+  // Reacción al toque de Bo: se apila sobre tapSheep, que sigue siendo la puerta
+  // del PIN. La respuesta es SIEMPRE positiva, aunque el estado fuera hambrienta.
+  const [boToque, setBoToque] = useState(false);
+  const tocarBo = () => {
+    tapSheep();                          // la puerta del PIN sigue funcionando igual
+    if (boToque) return;                 // los toques rápidos no se encadenan
+    setBoToque(true);
+    haptic("toma"); sfx("tap");
+    setTimeout(() => setBoToque(false), 620);
+  };
   const GBH_ADMIN_PIN="5895";
   const pinTecla=(d)=>{
     if(pinErr)setPinErr(false);
@@ -9737,6 +9777,8 @@ function GBHApp(){
     @keyframes popIn{0%{transform:scale(0.65);opacity:0}100%{transform:scale(1);opacity:1}}
     @keyframes tomaBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
     @keyframes slideUp{from{transform:translateY(80px);opacity:0}to{transform:translateY(0);opacity:1}}
+    @keyframes boToque{0%{transform:scale(1,1)}25%{transform:scale(1.12,0.88)}55%{transform:scale(0.94,1.08)}80%{transform:scale(1.03,0.97)}100%{transform:scale(1,1)}}
+    .bo-toque{animation:boToque 0.62s cubic-bezier(0.34,1.56,0.64,1);transform-origin:50% 100%}
     @keyframes bounceIn{0%{transform:scale(0.5);opacity:0}60%{transform:scale(1.15)}80%{transform:scale(0.95)}100%{transform:scale(1);opacity:1}}
     @keyframes slideInLeft{from{transform:translateX(-24px);opacity:0}to{transform:translateX(0);opacity:1}}
     @keyframes confettiFall{0%{transform:translateY(-20px) rotate(0deg);opacity:1}100%{transform:translateY(100vh) rotate(720deg);opacity:0}}
@@ -11226,8 +11268,9 @@ function GBHApp(){
                   display:"flex",alignItems:"center",justifyContent:"center"}}>
                 <span style={{fontSize:20,lineHeight:1}}>🎮</span>
               </button>
-              <div onClick={tapSheep} style={{cursor:"pointer",display:"flex",justifyContent:"center"}}>
-                <Sheep estado={boEstado} equipados={boEquipados} color={boColor} size={200}/>
+              <div onClick={tocarBo} className={boToque && !MOVIMIENTO_REDUCIDO() ? "bo-toque" : ""}
+                   style={{cursor:"pointer",display:"flex",justifyContent:"center"}}>
+                <Sheep estado={boToque ? "feliz" : boEstado} equipados={boEquipados} color={boColor} size={200}/>
               </div>
               {/* Nombre de Bo + 🎨 pequeñito al lado */}
               <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:7,marginTop:2}}>
