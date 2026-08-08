@@ -4825,7 +4825,7 @@ function FilaSemanaRacha({logs, profile, streak, lang, onElegirMeta}){
 const METAS_RACHA=[7,14,30,50];
 function MetaRachaSelector({streak, metaActual, lang, onElegir, onCerrar}){
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"flex-start",justifyContent:"center",overflowY:"auto",padding:"calc(14px + env(safe-area-inset-top, 0px)) 24px 24px"}}>
       <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
         border:`2.5px solid ${T.au1}`,borderRadius:24,padding:"26px 22px 20px",textAlign:"center",
         boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:REDUCED_MOTION()?"none":"popIn 0.25s ease"}}>
@@ -4863,7 +4863,7 @@ function MetaRachaSelector({streak, metaActual, lang, onElegir, onCerrar}){
 function MetaLogradaOverlay({meta, boColor, boEquipados, lang, onElegir, onCerrar}){
   const siguientes=METAS_RACHA.filter(n=>n>meta);
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.82)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.82)",zIndex:2500,display:"flex",alignItems:"flex-start",justifyContent:"center",overflowY:"auto",padding:"calc(14px + env(safe-area-inset-top, 0px)) 24px 24px"}}>
       <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
         border:`2.5px solid ${T.au1}`,borderRadius:24,padding:"24px 22px 20px",textAlign:"center",
         boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:REDUCED_MOTION()?"none":"popIn 0.3s cubic-bezier(0.34,1.56,0.64,1)"}}>
@@ -12139,7 +12139,7 @@ function GBHApp(){
 
         {tab==="progreso"&&<div data-tuto="objetivo"><CalcTab weights={weights} profile={profile} setProfile={setProfile} lang={lang}/></div>}
         {avisoNuevoPlan&&(
-          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"flex-start",justifyContent:"center",overflowY:"auto",padding:"calc(14px + env(safe-area-inset-top, 0px)) 24px 24px"}}>
             <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
               border:`2.5px solid ${T.au1}`,borderRadius:24,padding:"26px 22px 20px",textAlign:"center",
               boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:"popIn 0.25s ease"}}>
@@ -12167,7 +12167,7 @@ function GBHApp(){
           </div>
         )}
         {avisoRegistro&&!avisoNuevoPlan&&(
-          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"flex-start",justifyContent:"center",overflowY:"auto",padding:"calc(14px + env(safe-area-inset-top, 0px)) 24px 24px"}}>
             <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
               border:`2.5px solid ${T.au1}`,borderRadius:24,padding:"26px 22px 20px",textAlign:"center",
               boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:"popIn 0.25s ease"}}>
@@ -12201,7 +12201,7 @@ function GBHApp(){
           </div>
         )}
         {avisoSupl&&!avisoNuevoPlan&&!avisoRegistro&&(
-          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"flex-start",justifyContent:"center",overflowY:"auto",padding:"calc(14px + env(safe-area-inset-top, 0px)) 24px 24px"}}>
             <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
               border:`2.5px solid ${T.au1}`,borderRadius:24,padding:"26px 22px 20px",textAlign:"center",
               boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:"popIn 0.25s ease"}}>
@@ -12234,7 +12234,7 @@ function GBHApp(){
           </div>
         )}
         {avisoTrial&&!avisoNuevoPlan&&!avisoRegistro&&!avisoSupl&&(
-          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"flex-start",justifyContent:"center",overflowY:"auto",padding:"calc(14px + env(safe-area-inset-top, 0px)) 24px 24px"}}>
             <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
               border:`2.5px solid ${T.au1}`,borderRadius:24,padding:"26px 22px 20px",textAlign:"center",
               boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:"popIn 0.25s ease"}}>
@@ -12273,7 +12273,7 @@ function GBHApp(){
           </div>
         )}
         {hitoCard&&(
-          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.82)",zIndex:2500,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"24px 20px"}}>
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.82)",zIndex:2500,display:"flex",flexDirection:"column",alignItems:"flex-start",justifyContent:"center",overflowY:"auto",padding:"calc(14px + env(safe-area-inset-top, 0px)) 24px 20px"}}>
             <div style={{width:"100%",maxWidth:340,textAlign:"center",animation:"popIn 0.25s ease"}}>
               <div style={{fontWeight:900,fontSize:21,color:T.au1,fontFamily:"'Nunito',sans-serif",marginBottom:hitoCard.gemas?4:12}}>
                 🏆 {hitoCard.titulo}
@@ -12310,7 +12310,7 @@ function GBHApp(){
           </div>
         )}
         {avisoVictoria&&!hitoCard&&!avisoNuevoPlan&&!avisoRegistro&&!avisoSupl&&!avisoTrial&&(
-          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"flex-start",justifyContent:"center",overflowY:"auto",padding:"calc(14px + env(safe-area-inset-top, 0px)) 24px 24px"}}>
             <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
               border:`2.5px solid ${T.au1}`,borderRadius:24,padding:"26px 22px 20px",textAlign:"center",
               boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:"popIn 0.25s ease"}}>
@@ -12340,7 +12340,7 @@ function GBHApp(){
           </div>
         )}
         {avisoRacha&&!avisoNuevoPlan&&!avisoRegistro&&!avisoSupl&&!avisoTrial&&!hitoCard&&!avisoVictoria&&(
-          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"flex-start",justifyContent:"center",overflowY:"auto",padding:"calc(14px + env(safe-area-inset-top, 0px)) 24px 24px"}}>
             <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
               border:`2.5px solid ${T.au1}`,borderRadius:24,padding:"26px 22px 20px",textAlign:"center",
               boxShadow:"0 12px 44px rgba(0,0,0,0.6)",animation:"popIn 0.25s ease"}}>
