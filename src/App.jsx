@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { tramosBo32 } from "./bo32_render";
 
 // ─── Servidor de generación de programaciones (Railway) ─────────────────────
 // Rellena estos dos valores tras desplegar el servidor (ver GUIA_DESPLIEGUE_RAILWAY.md)
@@ -1947,45 +1948,17 @@ const ESTADOS = [
 
 function Sheep({ estado, equipados, color, size = 200, mini = false }) {
   const col = COLORES.find(c => c.id === color) || COLORES[0];
-  const pal = { ...PAL, W: col.W, w: col.w };
-  // Skins de transformación: la zona de la cara se vuelve el "lienzo" de la skin
-  // (hueso para la calavera, cara pintada de blanco para la payasa)
-  if (col.caraPropia) { pal.F = "#F4F1E6"; pal.f = "#E4DFCE"; }
-  if (col.patron === "payaso") { pal.F = "#FAFAFA"; pal.f = "#ECECEC"; }
-  const pixels = [];
-  BASE.forEach((row, y) => {
-    [...row].forEach((c, x) => {
-      if (c === ".") return;
-      // Arcoíris: la lana se pinta por bandas horizontales repetidas
-      if (col.patron === "arcoiris" && (c === "W" || c === "w")) {
-        pixels.push([x, y, null, ARCOIRIS_FILAS[y % ARCOIRIS_FILAS.length]]);
-      } else if (col.bandas && (c === "W" || c === "w")) {
-        // Bandera: bandas horizontales contiguas (franja según la fila)
-        const n = col.bandas.length;
-        const band = Math.min(n - 1, Math.floor((y / 16) * n));
-        pixels.push([x, y, null, col.bandas[band]]);
-      } else {
-        pixels.push([x, y, c]);
-      }
-    });
-  });
-  // Overlay del patrón (manchas dálmata, maquillaje payaso, huesos esqueleto)
-  const patronExtra = (PATRON_PX[col.patron] || []).map(([x, y, hex]) => [x, y, null, hex]);
-  const gafasOn = equipados.includes("gafas");
-  // Con skin de transformación, la cara de oveja NO se dibuja: la cara ES la de la skin
-  const face = col.caraPropia ? []
-    : (FACES[estado] || []).filter(([,y]) => !(gafasOn && (y === 7 || (y === 8 && estado !== "feliz"))));
-  const acc = ACCESORIOS.filter(a => equipados.includes(a.id)).flatMap(a => a.px);
+  const eq = Array.isArray(equipados) ? equipados : [];
+  const tramos = useMemo(() => tramosBo32(col, eq, estado),
+                         [col.id, eq.join(","), estado]);
   const anim = ESTADOS.find(e => e.id === estado)?.anim || "idle";
 
   return (
     <div style={{ position:"relative", width:size, height:size, margin:"0 auto" }}>
-      <svg viewBox="0 0 16 16" width={size} height={size}
+      <svg viewBox="0 0 32 32" width={size} height={size}
         style={{ imageRendering:"pixelated", animation: mini ? "none" : `${anim} 2.2s ease-in-out infinite`, display:"block" }}>
-        {pixels.map(([x,y,c,hex],i) => <rect key={"b"+i} x={x} y={y} width={1} height={1} fill={hex || pal[c]} />)}
-        {patronExtra.map(([x,y,c,hex],i) => <rect key={"p"+i} x={x} y={y} width={1} height={1} fill={hex} />)}
-        {face.map(([x,y,c],i) => <rect key={"f"+i} x={x} y={y} width={1} height={1} fill={pal[c]} />)}
-        {acc.map(([x,y,c],i) => <rect key={"a"+i} x={x} y={y} width={1} height={1} fill={pal[c]} />)}
+        {tramos.map(([x,y,w,hex],i) =>
+          <rect key={i} x={x} y={y} width={w} height={1} fill={hex} />)}
       </svg>
       {!mini && estado === "feliz" && <span className="float-fx" style={{ left:"8%", top:"6%" }}>💚</span>}
       {!mini && estado === "feliz" && <span className="float-fx" style={{ right:"6%", top:"14%", animationDelay:".7s" }}>✨</span>}
@@ -2023,31 +1996,9 @@ function AvatarRankBo({ color, equipados, nivel = 1, isMe = false, size = 38 }) 
 
 // ─── Píxeles compuestos de la oveja (para el canvas del juego) ───────────────
 function buildPixels(colorId, equipados) {
-  // MISMA lógica de apariencia que el componente Sheep (patrones y skins incluidos),
-  // para que la oveja del juego sea idéntica a la de la pestaña/chat/ranking.
+  // Mismo motor que el componente Sheep: ya no puede divergir del canvas.
   const col = COLORES.find(c => c.id === colorId) || COLORES[0];
-  const pal = { ...PAL, W: col.W, w: col.w };
-  if (col.caraPropia) { pal.F = "#F4F1E6"; pal.f = "#E4DFCE"; }
-  if (col.patron === "payaso") { pal.F = "#FAFAFA"; pal.f = "#ECECEC"; }
-  const px = [];
-  BASE.forEach((row, y) => [...row].forEach((c, x) => {
-    if (c === ".") return;
-    if (col.patron === "arcoiris" && (c === "W" || c === "w")) {
-      px.push([x, y, ARCOIRIS_FILAS[y % ARCOIRIS_FILAS.length]]);
-    } else if (col.bandas && (c === "W" || c === "w")) {
-      const n = col.bandas.length;
-      const band = Math.min(n - 1, Math.floor((y / 16) * n));
-      px.push([x, y, col.bandas[band]]);
-    } else {
-      px.push([x, y, pal[c]]);
-    }
-  }));
-  // Overlay del patrón (manchas, maquillaje, calavera)
-  (PATRON_PX[col.patron] || []).forEach(([x, y, hex]) => px.push([x, y, hex]));
-  // Cara de oveja solo si la skin no tiene cara propia
-  if (!col.caraPropia) FACES.normal.forEach(([x, y, c]) => px.push([x, y, pal[c]]));
-  ACCESORIOS.filter(a => equipados.includes(a.id)).forEach(a => a.px.forEach(([x, y, c]) => px.push([x, y, pal[c]])));
-  return px;
+  return tramosBo32(col, equipados || [], "normal");
 }
 
 // ─── 🎮 El Salto del Rebaño (runner offline, estilo dino) ────────────────────
@@ -2072,7 +2023,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
     // Lienzo LÓGICO fijo 340×680; el buffer real se ajusta a pantalla × devicePixelRatio
     // → se acabaron los gráficos reescalados: cada frame se dibuja a resolución nativa
     const W = 340, H = 680, suelo = H - 52;
-    const S = 5, SH = 16 * S, SX = 36;
+    const S = 2.5, SH = 32 * S, SX = 36;   // 32x32 a S=2.5 -> SH sigue siendo 80: la física no cambia
     const ajustarBuffer = () => {
       const r = cv.getBoundingClientRect();
       const dpr = Math.min(window.devicePixelRatio || 1, 3);
@@ -3045,7 +2996,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
       }
 
       const ovejaX = st.sx !== undefined ? st.sx : SX;
-      px.forEach(([x, y, c]) => { ctx.fillStyle = c; ctx.fillRect(ovejaX + x * S, st.y + y * S, S, S); });
+      px.forEach(([x, y, w, c]) => { ctx.fillStyle = c; ctx.fillRect(ovejaX + x * S, st.y + y * S, w * S + 0.5, S + 0.5); });
       // Flash de transición al coger el consumible
       if (st.transicion > 0) {
         ctx.fillStyle = `rgba(255,255,255,${st.transicion * 0.6})`;
