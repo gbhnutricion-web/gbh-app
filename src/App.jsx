@@ -2031,6 +2031,11 @@ function buildPixels(colorId, equipados) {
   const col = COLORES.find(c => c.id === colorId) || COLORES[0];
   return tramosBo32(col, equipados || [], "normal");
 }
+function buildPixelsEstado(colorId, equipados, estado) {
+  // Reutiliza las caras que ya existen (feliz/triste) en vez de inventar tintes
+  const col = COLORES.find(c => c.id === colorId) || COLORES[0];
+  return tramosBo32(col, equipados || [], estado);
+}
 
 // ─── Corona del Rey Lobo ─────────────────────────────────────────────────────
 // Dibujada en la MISMA rejilla que el sprite del lobo (1 px = 4 px de canvas),
@@ -2042,7 +2047,7 @@ const CORONA = [[1,0,1,"O"],[6,0,1,"O"],[11,0,1,"O"],[0,1,1,"O"],[1,1,1,"L"],[2,
 
 // ─── 🎮 El Salto del Rebaño (runner offline, estilo dino) ────────────────────
 function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJugar, arrancarRef,
-  puntosHoy = 0, puntosSemana = 0, onFinPartida }) {
+  puntosHoy = 0, puntosSemana = 0, onFinPartida, perfilId = null }) {
   const canvasRef = useRef(null);
   const tapRef = useRef(null);      // handler del toque expuesto al JSX (sobrevive re-renders)
   const [modoElegido, setModoElegido] = useState("noche");   // juego seleccionado en la pantalla previa
@@ -2051,6 +2056,28 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
   const [score, setScore] = useState(0);
   const [best, setBest] = useState(0);
   const [cuenta, setCuenta] = useState(0); // 5..1 countdown; 0 = jugando
+  // ── Aviso al retado: duelos recibidos desde la última visita (§ tabla duelos) ──
+  const [avisoDuelos, setAvisoDuelos] = useState(null);
+  useEffect(() => {
+    if (!perfilId) return;
+    let vivoA = true;
+    (async () => {
+      try {
+        const pf = await sbReq("GET", `profiles?id=eq.${perfilId}&select=duelos_vistos_at`);
+        const desde = Array.isArray(pf) && pf[0] ? pf[0].duelos_vistos_at : null;
+        const filtro = desde ? `&creado=gt.${encodeURIComponent(desde)}` : "";
+        const filas = await sbReq("GET", `duelos?rival_id=eq.${perfilId}${filtro}&select=gana,puntos`);
+        if (!vivoA || !Array.isArray(filas) || filas.length === 0) return;
+        // gana = ganó el retador → para mí, derrota
+        const derrotas = filas.filter(f => f.gana).length;
+        const victorias = filas.length - derrotas;
+        const saldo = filas.reduce((s, f) => s + (f.gana ? -(f.puntos || 0) : (f.puntos || 0)), 0);
+        setAvisoDuelos({ total: filas.length, victorias, derrotas, saldo });
+        sbReq("PATCH", `profiles?id=eq.${perfilId}`, { duelos_vistos_at: new Date().toISOString() }).catch(() => {});
+      } catch {}
+    })();
+    return () => { vivoA = false; };
+  }, [perfilId]);
 
   // Al terminar cada partida, sus puntos se suman al marcador diario y semanal
   useEffect(() => { if (fin) onFinPartida && onFinPartida(score); }, [fin]);
@@ -2071,6 +2098,11 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
     };
     ajustarBuffer();
     const px = buildPixels(color, equipados);
+    const pxFeliz = buildPixelsEstado(color, equipados, "feliz");
+    const pxTriste = buildPixelsEstado(color, equipados, "triste");
+    // pintarBo del brief: tramos [x, y, ancho, hex] a cualquier escala y posición
+    const pintarTramos = (tr, x, y, esc) => tr.forEach(([tx2, ty2, tw, c]) =>
+      { ctx.fillStyle = c; ctx.fillRect(x + tx2 * esc, y + ty2 * esc, tw * esc + 0.5, esc + 0.5); });
 
     // ── Temas de juego: el consumible transforma el modo completo ──
     const TEMAS = {
@@ -2087,27 +2119,24 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
         cielo: "#3A2A5A", cieloBottom: "#8A5A9E", suelo: "#6B4A2A", hierba: "rgba(255,200,100,0.4)",
         nubeColor: "rgba(255,220,180,0.14)",
       },
-      mar: {
-        familia: "flappy",
-        cielo: "#2E86C8", cieloBottom: "#0A3D6E",
-        nubeColor: "rgba(0,0,0,0)",
+      vuelo: {
+        familia: "vuelo",
+        cielo: "#6EC6E8", cieloBottom: "#E8F5D8",
+        nubeColor: "rgba(255,255,255,0.6)",
       },
       jefe: {
         familia: "shooter",
         cielo: "#2A1E36", cieloBottom: "#3E2C4E", suelo: "#3A2F44", hierba: "rgba(180,150,220,0.25)",
         nubeColor: "rgba(0,0,0,0)",
       },
-      prado: {
-        familia: "carriles",
-        cielo: "#8FD3E8", cieloBottom: "#DCEFC0",
-        madera: "#8A6432", maderaBorde: "#5A3E1C", maderaLinea: "rgba(0,0,0,0.22)",
-        prado1: "#3E8A2E", prado2: "#2B6A1E",
-        sol: "#FFD84D",
-        nubeColor: "rgba(255,255,255,0.55)",
+      duelo: {
+        familia: "duelo",
+        cielo: "#3E2C5E", cieloBottom: "#1E3A2A",
+        nubeColor: "rgba(0,0,0,0)",
       },
     };
     // Icono del consumible según a qué modo lleva
-    const ICONO_MODO = { noche: "🌙", oro: "💲", mar: "🫧", jefe: "🎯", prado: "🐺" };
+    const ICONO_MODO = { noche: "🌙", oro: "💲", vuelo: "✈️", jefe: "🎯", duelo: "⚔️" };
     const otroModo = (actual) => {
       // Nunca repite el último destino: garantiza variedad real entre transiciones
       let otros = Object.keys(TEMAS).filter(m => m !== actual && m !== st.ultimoDestino);
@@ -2129,22 +2158,93 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
       vel: 4.2, score: 0, vivo: true, nubes: [
       { x: 50, y: 70 }, { x: 190, y: 130 }, { x: 280, y: 45 }],
     };
-    if (TEMAS[modoInicial].familia === "flappy") st.y = H * 0.4;
-    if (TEMAS[modoInicial].familia === "carriles") st.carril = 1;   // arrancas por el camino central
+    if (TEMAS[modoInicial].familia === "vuelo") { st.y = H * 0.4; st.objetivoY = st.y; }
 
-    const saltar = (px) => {
+    // ── Transición a otro juego (la usan el orbe Y la victoria del duelo) ──
+    const transita = (to) => {
+      st.modo = to; st.transicion = 1; st.score += 40; setScore(st.score);
+      st.vallas = []; st.monedas = []; st.suelos = [{ x: -20, w: W + 60, top: suelo }]; st.sx = SX;
+      st.corales = []; st.balas = []; st.balasJefe = []; st.jefe = null; st.jefeNivel = 0;
+      st.cad = 0; st.jefeCad = 0; st.flotantes = [];
+      st.jefeYPos = undefined; st.jefeCarga = 0;
+      st.carril = 1; st.objetos = []; st.olaCad = 0; st.faseCamino = 0; st.flechaFlash = null;
+      st.aves = []; st.anillos = []; st.objetivoY = undefined; st.arrastre = false; st.duelo = null;
+      st.quiereConsumible = false;
+      st.desdeConsumible = -400; st.graciaTransicion = 90;
+      // Recolocar a la oveja según el juego destino
+      st.y = TEMAS[to].familia === "vuelo" ? H * 0.4 : suelo - SH;
+      if (TEMAS[to].familia === "vuelo") st.objetivoY = st.y;
+      st.vy = 0; st.enSuelo = true;
+    };
+    // ── Duelo: rivales reales del ranking semanal (top 1, top 2 y el rebaño) ──
+    const cargarRivales = async () => {
+      try {
+        const jr = await sbReq("GET", "v_ranking_juego_semanal?select=profile_id,puntos_semana&order=puntos_semana.desc&limit=14") || [];
+        const filas = (Array.isArray(jr) ? jr : []).filter(r => r.profile_id !== perfilId);
+        const ids = filas.map(r => r.profile_id).slice(0, 10);
+        let perf = [];
+        if (ids.length) perf = await sbReq("GET", `profiles?id=in.(${ids.join(",")})&select=id,name,bo_nombre,bo_color,bo_equipados`) || [];
+        const pMap = {}; (Array.isArray(perf) ? perf : []).forEach(p => { pMap[p.id] = p; });
+        const rivales = filas.map(r => {
+          const p = pMap[r.profile_id]; if (!p) return null;
+          return { id: p.id, usuario: (p.name || "Paciente").split(" ")[0], oveja: p.bo_nombre || "Bo",
+            pts: r.puntos_semana || 0,
+            px: buildPixels(p.bo_color, p.bo_equipados),
+            pxTriste: buildPixelsEstado(p.bo_color, p.bo_equipados, "triste") };
+        }).filter(Boolean);
+        if (st.duelo) { st.duelo.rivales = rivales; st.duelo.cargando = false; }
+      } catch { if (st.duelo) st.duelo.cargando = false; }
+    };
+    // Misma forma que apply_referral: una RPC SECURITY DEFINER mueve los dos marcadores
+    const resolverDuelo = (rival, gana) => {
+      if (!perfilId || !rival || !rival.id) return;
+      sbReq("POST", "rpc/resolver_duelo", { p_reta: perfilId, p_rival: rival.id, p_gana: gana })
+        .then(res => { if (st.duelo && res && res.puntos_semana !== undefined) st.duelo.misPts = res.puntos_semana; })
+        .catch(() => {});
+    };
+
+    const saltar = (px, py) => {
       if (!st.vivo) return;
       const fam = TEMAS[st.modo].familia;
       if (fam === "plataformas") {
         if (st.enSuelo) { st.vy = -18; st.enSuelo = false; }
-      } else if (fam === "flappy") {
-        st.vy = -9.0;                      // impulso de nado hacia arriba
-      } else if (fam === "carriles") {
-        // ◀ ▶: cada toque salta UN camino a ese lado
-        if (px !== undefined) {
-          const d = px < W / 2 ? -1 : 1;
-          st.carril = Math.max(0, Math.min(2, (st.carril === undefined ? 1 : st.carril) + d));
-          st.flechaFlash = { d, t: 9 };   // la flecha pulsada se ilumina un instante
+      } else if (fam === "vuelo") {
+        // Sin gravedad: la avioneta va a tu dedo y SE QUEDA donde la dejes
+        st.arrastre = true;
+        if (py !== undefined) st.objetivoY = py - SH * 0.55;
+      } else if (fam === "duelo") {
+        const d = st.duelo; if (!d || py === undefined) return;
+        if (d.fase === "tapete") {
+          const rv = d.rivales || [];
+          if (d.cargando || rv.length === 0) return;
+          if (py > 240 && py < 412) {
+            const i = px < 115 ? 0 : px < 227 ? 1 : 2;
+            let elegido = null;
+            if (i === 0) elegido = rv[0];
+            else if (i === 1) elegido = rv[1] || rv[0];
+            else elegido = rv[Math.floor(Math.random() * rv.length)];
+            if (elegido) { d.rival = elegido; d.fase = "turno"; d.t = 0; d.psYo = 300; d.psRiv = 300; }
+          }
+        } else if (d.fase === "turno") {
+          if (py > 294 && py < 420) {
+            const i = px < 115 ? 0 : px < 227 ? 1 : 2;
+            d.miIdx = i; d.miCarta = ["A", "D", "P"][i];
+            d.suCarta = ["A", "D", "P"][Math.floor(Math.random() * 3)];
+            d.suIdx = Math.floor(Math.random() * 3);
+            d.fase = "revela"; d.t = 0;
+          }
+        } else if (d.fase === "fin") {
+          if (d.resultado === "gana") {
+            if (py > 376 && py < 442) { transita(otroModo(st.modo)); return; }        // 🔮 al siguiente juego
+            if (py > 452 && py < 500) {                                               // otro duelo, mismo tapete
+              st.duelo = { fase: "tapete", t: 0, psYo: 300, psRiv: 300, rival: null,
+                rivales: d.rivales, cargando: false, miCarta: null, suCarta: null,
+                miIdx: 1, suIdx: 1, golpeYo: 0, golpeRiv: 0, resultado: null, flot: [], misPts: d.misPts };
+            }
+          } else if (d.t > 40) {
+            // La derrota cierra la partida, como cualquier tropiezo
+            st.vivo = false; setFin(true); setBest(b => Math.max(b, st.score));
+          }
         }
       } else {
         if (st.y >= suelo - SH - 1) st.vy = -17;   // runner y shooter
@@ -2154,10 +2254,24 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
       const r = cv.getBoundingClientRect();
       const cx = e.clientX !== undefined ? e.clientX
         : (e.touches && e.touches[0] ? e.touches[0].clientX : undefined);
+      const cyT = e.clientY !== undefined ? e.clientY
+        : (e.touches && e.touches[0] ? e.touches[0].clientY : undefined);
       if (cx === undefined || !r.width) saltar();
-      else saltar((cx - r.left) * (W / r.width));     // coordenada en espacio del canvas
+      else saltar((cx - r.left) * (W / r.width),
+        cyT !== undefined && r.height ? (cyT - r.top) * (H / r.height) : undefined);
     };
     tapRef.current = onTap;
+    // Arrastre continuo del vuelo: la avioneta persigue el dedo mientras está apoyado
+    const onMove = (e) => {
+      if (!st.arrastre || !st.vivo || TEMAS[st.modo].familia !== "vuelo") return;
+      const r = cv.getBoundingClientRect();
+      const cyM = e.clientY !== undefined ? e.clientY
+        : (e.touches && e.touches[0] ? e.touches[0].clientY : undefined);
+      if (cyM !== undefined && r.height) st.objetivoY = (cyM - r.top) * (H / r.height) - SH * 0.55;
+    };
+    const onUp = () => { st.arrastre = false; };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
     const onKey = (e) => {
       if (e.code === "Space" || e.code === "ArrowUp") { e.preventDefault(); saltar(); }
       if (e.code === "ArrowLeft")  { e.preventDefault(); saltar(0); }
@@ -2323,51 +2437,59 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
           // Muerte 2: comida por el borde izquierdo de la pantalla
           if (st.sx + SH < 6) { st.vivo = false; setFin(true); setBest(b => Math.max(b, st.score)); }
 
-        } else if (tema.familia === "flappy") {
-          // ═══ FAMILIA FLAPPY (mar): toca para nadar hacia arriba; cruza los corales ═══
-          if (st.corales === undefined) st.corales = [];
-          // Física suave: gravedad ligera + velocidad terminal (caída controlable)
-          st.vy += 0.45; if (st.vy > 7) st.vy = 7;
-          st.y += st.vy;
-          if (st.y < 8) { st.y = 8; st.vy = 0; }
+        } else if (tema.familia === "vuelo") {
+          // ═══ FAMILIA VUELO: la avioneta sigue el dedo; sin gravedad, sin suelo ═══
+          if (st.objetivoY === undefined) st.objetivoY = st.y;
+          st.y += (st.objetivoY - st.y) * 0.22;
+          st.y = Math.max(40, Math.min(suelo - 70, st.y));
+          st.vy = 0;
           const ux = st.sx !== undefined ? st.sx : SX;
-          // El agua tiene su propio ritmo: apenas escala con la dificultad global
-          const velMar = Math.min(st.vel, 6.0) * 0.78;
-          const ult = st.corales[st.corales.length - 1];
-          if (st.graciaTransicion <= 0 && (!ult || ult.x < W - (240 - dif * 15 + Math.random() * 55))) {
-            const gapH = 186 - dif * 22;
-            // Anti-injusticia: el nuevo hueco queda a distancia alcanzable del anterior
-            // (subir cuesta más que bajar: máx. 120 hacia arriba, 200 hacia abajo)
-            const prevY = ult ? ult.gapY : H * 0.45;
-            const gapY = Math.max(110, Math.min(suelo - 110, prevY - 120 + Math.random() * 320));
-            st.corales.push({ x: W + 20, gapY, gapH, ok: false });
+          // El aire tiene su propio ritmo, como lo tenía el agua
+          const velAire = Math.min(st.vel, 6.2) * 0.82;
+          const cxA = ux + 42, cyA = st.y + 22;    // centro del conjunto avión+oveja
+          // Cuervos en cinco bandas de altura, con más aire entre oleadas que en el buceo
+          st.aves = st.aves || [];
+          st.cadAve = (st.cadAve || 0) + 1;
+          if (st.graciaTransicion <= 0 && st.cadAve >= 92 - dif * 18) {
+            st.cadAve = 0;
+            const bandas = [90, 190, 290, 390, 490];
+            st.aves.push({ x: W + 30, y: bandas[Math.floor(Math.random() * 5)] + Math.random() * 36 - 18 });
+          }
+          st.aves.forEach(a => { a.x -= velAire; });
+          st.aves = st.aves.filter(a => a.x > -60);
+          // Anillos en arcos de 2-3; el orbe ocupa el sitio del arco cuando toca transición
+          st.anillos = st.anillos || [];
+          st.cadAnillo = (st.cadAnillo || 0) + 1;
+          if (st.graciaTransicion <= 0 && st.cadAnillo >= 74) {
+            st.cadAnillo = 0;
+            const y0 = 60 + Math.random() * (suelo - 250);
             if (st.quiereConsumible) {
-              // El orbe ocupa el centro del hueco: el propio juego te lleva a él
               st.quiereConsumible = false;
-              st.consumibles.push({ x: W + 24, y: gapY - 18, velX: velMar, to: otroModo(st.modo) });
-            } else if (Math.random() < 0.30) {
-              st.monedas.push({ x: W + 96, y: gapY - 12, cogida: false });
+              st.consumibles.push({ x: W + 30, y: y0 + 30, velX: velAire, to: otroModo(st.modo) });
+            } else {
+              const nA = 2 + Math.floor(Math.random() * 2);
+              for (let i = 0; i < nA; i++)
+                st.anillos.push({ x: W + 30 + i * 96, y: y0 + Math.sin(i * 1.4) * 30, ok: false });
             }
           }
-          st.corales.forEach(c => { c.x -= velMar; });
-          st.corales = st.corales.filter(c => c.x > -70);
-          st.monedas.forEach(m => { m.x -= velMar; });
-          st.monedas = st.monedas.filter(m => m.x > -30 && !m.cogida);
-          st.corales.forEach(c => {
-            if (!c.ok && c.x + 44 < ux) { c.ok = true; st.score += 2; setScore(st.score); }
-            const sL = ux + 16, sR = ux + SH - 16, sT = st.y + 14, sB = st.y + SH - 10;
-            const solapaX = sR > c.x && sL < c.x + 44;
-            if (solapaX && (sT < c.gapY - c.gapH / 2 || sB > c.gapY + c.gapH / 2)) {
+          st.anillos.forEach(a => { a.x -= velAire; });
+          st.anillos = st.anillos.filter(a => a.x > -100 && !a.ok);
+          // Choque con cuervo
+          st.aves.forEach(a => {
+            if (Math.abs(a.x + 24 - cxA) < 38 && Math.abs(a.y + 18 - cyA) < 28) {
               st.vivo = false; setFin(true); setBest(b => Math.max(b, st.score));
             }
           });
-          st.monedas.forEach(m => {
-            if (!m.cogida && ux + SH > m.x && ux < m.x + 24 && st.y + SH > m.y && st.y < m.y + 24) {
-              m.cogida = true; st.score += 5; setScore(st.score);
+          // El anillo solo cuenta atravesándolo POR DENTRO; rozar el borde no castiga
+          st.anillos.forEach(a => {
+            const acx = a.x + 44, acy = a.y + 57;   // centro del anillo a escala 4.4 (88×114)
+            if (!a.ok && Math.abs(acx - cxA) < 12 && Math.abs(acy - cyA) < 32) {
+              a.ok = true; st.score += 10; setScore(st.score);
+              st.flotantes.push({ x: acx, y: a.y + 14, t: 0 });
             }
           });
-          // El fondo marino es suelo firme: la oveja corre por él (los corales inferiores siguen matando)
-          if (st.y + SH > suelo) { st.y = suelo - SH; st.vy = 0; }
+          st.flotantes.forEach(f => { f.t++; f.y -= 0.9; });
+          st.flotantes = st.flotantes.filter(f => f.t < 42);
 
         } else if (tema.familia === "shooter") {
           // ═══ FAMILIA SHOOTER (guarida): la oveja dispara sola; salta para esquivar ═══
@@ -2440,87 +2562,52 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
             }
           });
 
-        } else if (tema.familia === "carriles") {
-          // ═══ FAMILIA CARRILES (prado 2D vertical): 3 caminos rectos; ◀ ▶ cambia; monedas sí, lobos no ═══
-          if (st.objetos === undefined) { st.objetos = []; st.carril = 1; st.olaCad = 0; st.faseCamino = 0; }
-          if (st.flotantes === undefined) st.flotantes = [];
-          const CARRIL_X = [62, 170, 278];        // centros de los 3 caminos
-          const OVEJA_Y = H - 190;                 // altura fija de la carrera
-          const velObj = st.vel * 1.15;            // caída recta de lobos y monedas
-          st.faseCamino = (st.faseCamino + velObj / H) % 1;
-          // La oveja se desliza hacia el centro de su camino
-          const objetivoX = CARRIL_X[st.carril === undefined ? 1 : st.carril] - SH / 2;
-          if (st.sx === undefined) st.sx = objetivoX;
-          const dx = objetivoX - st.sx;
-          st.sx += Math.abs(dx) < 15 ? dx : Math.sign(dx) * 15;
-          st.y = OVEJA_Y; st.vy = 0;
-          if (st.flechaFlash && st.flechaFlash.t > 0) st.flechaFlash.t--;
-          // Oleadas
-          st.olaCad++;
-          if (st.graciaTransicion <= 0 && st.olaCad >= 58 - dif * 16) {
-            st.olaCad = 0;
-            if (st.quiereConsumible) {
-              // Oleada portal: el orbe baja por UN camino y los lobos cierran los otros dos
-              st.quiereConsumible = false;
-              const libre = Math.floor(Math.random() * 3);
-              st.consumibles.push({ carril: libre, x: CARRIL_X[libre] - 18, y: -46, to: otroModo(st.modo), laneMode: true });
-              [0, 1, 2].forEach(c => {
-                if (c !== libre) st.objetos.push({ carril: c, tipo: "lobo", y: -46, fase: Math.random() * 6.28 });
-              });
-            } else {
-              const ola = [0, 1, 2].map(() => {
-                const r = Math.random();
-                return r < 0.30 + dif * 0.14 ? "lobo" : r < 0.62 ? "moneda" : null;
-              });
-              if (ola.every(o => o === "lobo")) ola[Math.floor(Math.random() * 3)] = "moneda";
-              if (ola.every(o => o === null)) ola[Math.floor(Math.random() * 3)] = "moneda";
-              let iLobo = 0;
-              ola.forEach((tipo, c) => {
-                if (!tipo) return;
-                if (tipo === "moneda" && Math.random() < 0.35) {
-                  // hilera de 3 monedas por el mismo camino
-                  [0, -46, -92].forEach(off => st.objetos.push({ carril: c, tipo, y: -46 + off, fase: Math.random() * 6.28 }));
-                } else if (tipo === "lobo") {
-                  // Zig-zag garantizado: el segundo lobo llega con ≥ ~0.9 s de margen
-                  const off = iLobo === 0 ? -Math.random() * 40 : -(260 + Math.random() * 120);
-                  iLobo++;
-                  st.objetos.push({ carril: c, tipo, y: -46 + off, fase: Math.random() * 6.28 });
-                } else {
-                  st.objetos.push({ carril: c, tipo, y: -46 - Math.random() * 50, fase: Math.random() * 6.28 });
-                }
-              });
+        } else if (tema.familia === "duelo") {
+          // ═══ FAMILIA DUELO (cartas por turnos): las fases avanzan solas; el toque decide ═══
+          if (!st.duelo) {
+            st.duelo = { fase: "tapete", t: 0, psYo: 300, psRiv: 300, rival: null, rivales: null,
+              cargando: true, miCarta: null, suCarta: null, miIdx: 1, suIdx: 1,
+              golpeYo: 0, golpeRiv: 0, resultado: null, flot: [], misPts: null };
+            cargarRivales();
+          }
+          const d = st.duelo;
+          d.t++;
+          if (d.golpeYo > 0) d.golpeYo--;
+          if (d.golpeRiv > 0) d.golpeRiv--;
+          d.flot.forEach(f => { f.t++; f.y -= 0.8; });
+          d.flot = d.flot.filter(f => f.t < 46);
+          if (d.fase === "revela") {
+            if (d.t === 34) {
+              // La carta rival ya está boca arriba: matriz confirmada (ataque 100, escudo refleja 50, manzana +50)
+              const m = d.miCarta, b = d.suCarta;
+              let dYo = 0, dRiv = 0;
+              if (m === "A" && b === "A") { dYo = -50; dRiv = -50; }
+              else if (m === "A" && b === "D") { dYo = -50; }
+              else if (m === "A" && b === "P") { dRiv = -100; }
+              else if (m === "D" && b === "A") { dRiv = -50; }
+              else if (m === "D" && b === "P") { dRiv = +50; }
+              else if (m === "P" && b === "A") { dYo = -100; }
+              else if (m === "P" && b === "D") { dYo = +50; }
+              else if (m === "P" && b === "P") { dYo = +50; dRiv = +50; }
+              d.psYo = Math.min(300, d.psYo + dYo);
+              d.psRiv = Math.min(300, d.psRiv + dRiv);
+              if (dYo) { d.flot.push({ lado: "yo", tx: (dYo > 0 ? "+" : "") + dYo, mal: dYo < 0, t: 0, y: 0 }); if (dYo < 0) d.golpeYo = 26; }
+              if (dRiv) { d.flot.push({ lado: "riv", tx: (dRiv > 0 ? "+" : "") + dRiv, mal: dRiv < 0, t: 0, y: 0 }); if (dRiv < 0) d.golpeRiv = 26; }
+            }
+            if (d.t >= 96) {
+              if (d.psYo <= 0 || d.psRiv <= 0) {
+                d.fase = "fin"; d.t = 0; d.resultado = d.psYo > 0 ? "gana" : "pierde";
+                // ±100 a los marcadores semanales de LOS DOS, con suelo en 0 (RPC resolver_duelo)
+                resolverDuelo(d.rival, d.resultado === "gana");
+              } else { d.fase = "turno"; d.t = 0; d.miCarta = null; d.suCarta = null; }
             }
           }
-          // Caída recta + resolución de choques (lobo estricto y visual; moneda generosa)
-          st.objetos.forEach(o => { o.y += velObj; });
-          st.objetos = st.objetos.filter(o => {
-            const centroOveja = st.sx + SH / 2;
-            const distX = Math.abs(centroOveja - CARRIL_X[o.carril]);
-            if (o.tipo === "lobo") {
-              const choca = o.y > OVEJA_Y - 34 && o.y < OVEJA_Y + 56 && distX < 38;
-              if (choca) { st.vivo = false; setFin(true); setBest(b => Math.max(b, st.score)); return false; }
-            } else {
-              const coge = o.y > OVEJA_Y - 48 && o.y < OVEJA_Y + 72 && distX < 52;
-              if (coge) {
-                st.score += 4; setScore(st.score);
-                st.flotantes.push({ x: CARRIL_X[o.carril] - 7, y: o.y - 14, t: 0 });
-                return false;
-              }
-            }
-            return o.y < H + 60;
-          });
-          // Orbe portal: cae recto por su camino
-          st.consumibles.forEach(k => {
-            if (k.laneMode) { k.y += velObj; k.x = CARRIL_X[k.carril] - 18; }
-          });
-          st.flotantes.forEach(f => { f.t++; f.y -= 0.9; });
-          st.flotantes = st.flotantes.filter(f => f.t < 42);
-                }
+        }
 
         // ═══ Consumible (común a todos los modos): lleva a OTRO modo al azar ═══
         st.desdeConsumible++;
         if (st.desdeConsumible > 900 && Math.random() < 0.004 && st.consumibles.length === 0
-            && !st.quiereConsumible && tema.familia !== "shooter") {
+            && !st.quiereConsumible && tema.familia !== "shooter" && tema.familia !== "duelo") {
           st.desdeConsumible = 0;
           // El orbe NUNCA flota suelto: cada juego lo integra en su siguiente patrón
           // (salto del lobo, tramo del banco, hueco del coral, camino libre entre lobos, botín del rey)
@@ -2531,20 +2618,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
         st.consumibles = st.consumibles.filter(k => {
           const ox = st.sx !== undefined ? st.sx : SX;
           const cogido = ox + SH > k.x && ox < k.x + 40 && st.y + SH > k.y && st.y < k.y + 40;
-          if (cogido) {
-            st.modo = k.to; st.transicion = 1; st.score += 40; setScore(st.score);
-            st.vallas = []; st.monedas = []; st.suelos = [{ x: -20, w: W + 60, top: suelo }]; st.sx = SX;
-            st.corales = []; st.balas = []; st.balasJefe = []; st.jefe = null; st.jefeNivel = 0;
-            st.cad = 0; st.jefeCad = 0; st.flotantes = [];
-            st.jefeYPos = undefined; st.jefeCarga = 0;
-            st.carril = 1; st.objetos = []; st.olaCad = 0; st.faseCamino = 0; st.flechaFlash = null;
-            st.quiereConsumible = false;
-            st.desdeConsumible = -400; st.graciaTransicion = 90;
-            // Recolocar a la oveja según el juego destino
-            st.y = TEMAS[k.to].familia === "flappy" ? H * 0.4 : suelo - SH;
-            st.vy = 0; st.enSuelo = true;
-            return false;
-          }
+          if (cogido) { transita(k.to); return false; }
           return true;
         });
         st.nubes.forEach(n => { n.x -= st.vel * 0.25; if (n.x < -30) n.x = W + 20; });
@@ -2576,24 +2650,15 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
           ctx.fillRect(cxx - 5, 0, 40, 12);            // capitel
           ctx.fillRect(cxx - 5, suelo - 12, 40, 12);   // base
         }
-      } else if (tema.familia === "flappy") {
-        // Fondo marino: agua en degradado + rayos de luz + burbujas ambientales
+      } else if (tema.familia === "vuelo") {
+        // Cielo diurno con dos capas de nubes (las lejanas, más pálidas y lentas)
         const g = ctx.createLinearGradient(0, 0, 0, H);
-        g.addColorStop(0, tema.cielo); g.addColorStop(1, tema.cieloBottom);
+        g.addColorStop(0, tema.cielo); g.addColorStop(0.62, "#BFE3F0"); g.addColorStop(1, tema.cieloBottom);
         ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-        // Lámina de luz en la superficie del agua
-        const lg = ctx.createLinearGradient(0, 0, 0, 34);
-        lg.addColorStop(0, "rgba(255,255,255,0.18)"); lg.addColorStop(1, "rgba(255,255,255,0)");
-        ctx.fillStyle = lg; ctx.fillRect(0, 0, W, 34);
-        ctx.fillStyle = "rgba(255,255,255,0.05)";
-        ctx.beginPath(); ctx.moveTo(W*0.20, 0); ctx.lineTo(W*0.32, 0); ctx.lineTo(W*0.14, H); ctx.lineTo(W*0.04, H); ctx.closePath(); ctx.fill();
-        ctx.beginPath(); ctx.moveTo(W*0.62, 0); ctx.lineTo(W*0.72, 0); ctx.lineTo(W*0.56, H); ctx.lineTo(W*0.48, H); ctx.closePath(); ctx.fill();
-        ctx.fillStyle = "rgba(255,255,255,0.18)";
-        for (let i = 0; i < 8; i++) {
-          const by = H - ((performance.now() / 18 + i * 133) % (H + 40));
-          const bx = (i * 83 + 40) % W;
-          ctx.beginPath(); ctx.arc(bx, by, 3 + (i % 3) * 2, 0, 7); ctx.fill();
-        }
+        ctx.fillStyle = "rgba(255,255,255,0.30)";
+        st.nubes.forEach(n => { ctx.fillRect((n.x * 0.6 + 60) % (W + 40) - 20, n.y + 230, 40, 9); });
+        ctx.fillStyle = tema.nubeColor;
+        st.nubes.forEach(n => { ctx.fillRect(n.x, n.y, 58, 12); ctx.fillRect(n.x + 12, n.y - 8, 30, 10); });
       } else if (tema.familia === "shooter") {
         // Guarida del jefe: cueva oscura con antorchas parpadeantes
         const g = ctx.createLinearGradient(0, 0, 0, H);
@@ -2619,20 +2684,11 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
           const ex = (e * 67 + 30) % W + Math.sin(performance.now() / 300 + e) * 8;
           ctx.fillRect(ex, ey, 3, 3);
         }
-      } else if (tema.familia === "carriles") {
-        // Pradera 2D a pantalla completa; los tres caminos van encima
-        const gp = ctx.createLinearGradient(0, 0, 0, H);
-        gp.addColorStop(0, tema.prado1); gp.addColorStop(1, tema.prado2);
-        ctx.fillStyle = gp; ctx.fillRect(0, 0, W, H);
-        // Hierba que baja por márgenes y separaciones (vende la carrera)
-        ctx.fillStyle = alpha(T.g2,0.4);
-        const fase2 = st.faseCamino || 0;
-        [7, 112, 220, 328, 13, 118, 226, 333].forEach((gx, gi) => {
-          for (let fi = 0; fi < 5; fi++) {
-            const yy = ((fi / 5 + fase2 + gi * 0.13) % 1) * (H + 30) - 15;
-            ctx.fillRect(gx, yy, 3, 8);
-          }
-        });
+      } else if (tema.familia === "duelo") {
+        // Penumbra violeta arriba (rival) que cae al verde del tapete (tú)
+        const gd = ctx.createLinearGradient(0, 0, 0, H);
+        gd.addColorStop(0, tema.cielo); gd.addColorStop(0.5, "#2A2440"); gd.addColorStop(1, tema.cieloBottom);
+        ctx.fillStyle = gd; ctx.fillRect(0, 0, W, H);
       } else {
         // Atardecer del runner
         const g = ctx.createLinearGradient(0, 0, 0, suelo);
@@ -2666,35 +2722,15 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
           if (m.cogida) return;
           sprite(ctx, SPR.moneda, m.x - 2, m.y - 2, 2.4);
         });
-      } else if (tema.familia === "flappy") {
-        // ── Lecho marino: arena, algas ondulantes y burbujas de puntos ──
-        ctx.fillStyle = "#C9B37A"; ctx.fillRect(0, suelo, W, H - suelo);
-        ctx.fillStyle = "rgba(0,0,0,0.12)";
-        for (let gx = 12; gx < W; gx += 34) ctx.fillRect(gx, suelo + 12 + (gx % 3) * 4, 5, 3);
-        for (let ax = 40; ax < W; ax += 150) {
-          const sway = Math.sin(performance.now() / 400 + ax) * 6;
-          ctx.strokeStyle = "rgba(60,160,90,0.7)"; ctx.lineWidth = 5;
-          ctx.beginPath(); ctx.moveTo(ax, suelo + 4);
-          ctx.quadraticCurveTo(ax + sway, suelo - 22, ax + sway * 1.6, suelo - 44);
-          ctx.stroke();
-        }
-        (st.monedas || []).forEach(m => {
-          if (m.cogida) return;
-          const bs = 10 + Math.sin(performance.now() / 300 + m.x) * 1.5;
-          ctx.fillStyle = "rgba(255,255,255,0.25)";
-          ctx.beginPath(); ctx.arc(m.x + 12, m.y + 12, bs, 0, 7); ctx.fill();
-          ctx.strokeStyle = "rgba(255,255,255,0.8)"; ctx.lineWidth = 2;
-          ctx.beginPath(); ctx.arc(m.x + 12, m.y + 12, bs, 0, 7); ctx.stroke();
-          ctx.fillStyle = "rgba(255,255,255,0.9)";
-          ctx.beginPath(); ctx.arc(m.x + 8, m.y + 8, 2.5, 0, 7); ctx.fill();
-        });
+      } else if (tema.familia === "vuelo") {
+        // Cielo abierto: el vuelo no tiene suelo que pintar
       } else if (tema.familia === "shooter") {
         // ── Suelo de la guarida ──
         ctx.fillStyle = "#241A2E"; ctx.fillRect(0, suelo + 3, W, H - suelo);
         ctx.fillStyle = tema.suelo; ctx.fillRect(0, suelo, W, 5);
         ctx.fillStyle = tema.hierba;
         for (let gx = (performance.now() / 7) % 44; gx < W; gx += 44) ctx.fillRect(gx, suelo + 10, 4, 4);
-      } else if (tema.familia !== "carriles") {
+      } else if (tema.familia !== "duelo") {
         // ── Suelo pradera continuo (runner), con canto iluminado ──
         dibujarSuelo(ctx, suelo, W, H - suelo, tema.suelo);
         matas(ctx, suelo + U * 2, W, tema.hierba, performance.now() / 5);
@@ -2725,19 +2761,11 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
         }
       });
       // ── Entidades de los juegos nuevos ──
-      if (tema.familia === "flappy") {
-        (st.corales || []).forEach((c, ci) => {
-          const col1 = ci % 2 === 0 ? "#E8707A" : "#5FB878";
-          const topH = c.gapY - c.gapH / 2;
-          const botY = c.gapY + c.gapH / 2;
-          // Columnas con bloque(): ya traen contorno, luz y sombra (fuera el strokeRect)
-          bloque(ctx, c.x, -U, 44, topH + U, col1);
-          bloque(ctx, c.x, botY, 44, suelo - botY, col1);
-          // Bultos de la boca: aquí los círculos sí funcionan
-          ctx.fillStyle = col1;
-          [10, 24, 36].forEach(o => { ctx.beginPath(); ctx.arc(c.x + o, topH, 9, 0, 7); ctx.fill(); });
-          [10, 24, 36].forEach(o => { ctx.beginPath(); ctx.arc(c.x + o, botY, 9, 0, 7); ctx.fill(); });
-        });
+      if (tema.familia === "vuelo") {
+        // La mitad TRASERA del anillo va detrás del avión; la delantera se pinta tras la oveja
+        (st.anillos || []).forEach(a => sprite(ctx, SPR.anilloAlto, a.x, a.y, 4.4));
+        (st.aves || []).forEach(a =>
+          sprite(ctx, SPR[aleteo ? "cuervoSube" : "cuervoBaja"], a.x, a.y, 2.4));
       }
       if (tema.familia === "shooter") {
         if (st.jefe) {
@@ -2776,113 +2804,183 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
           ctx.fillStyle = "#FFC04D"; ctx.beginPath(); ctx.arc(b.x + 10, b.y + 6, 4, 0, 7); ctx.fill();
         });
       }
-      if (tema.familia === "carriles") {
+      if (tema.familia === "duelo") {
         const rr = (x, y, w, h, r) => { ctx.beginPath();
           ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
           ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
-        const CARRIL_X = [62, 170, 278], laneW = 88, OVEJA_Y = H - 190;
-        if (!st.iniCarriles2D) {
-          // Primera pasada (cuenta atrás congelada): colocar a la oveja en su camino
-          st.iniCarriles2D = true;
-          if (st.carril === undefined) st.carril = 1;
-          st.sx = CARRIL_X[st.carril] - SH / 2;
-          st.y = OVEJA_Y;
-        }
-        // ── Tres caminos rectos de madera ──
-        CARRIL_X.forEach(cx3 => {
-          const lx = cx3 - laneW / 2;
-          // sombra proyectada sobre la hierba
-          ctx.fillStyle = "rgba(0,0,0,0.16)"; ctx.fillRect(lx + 6, 0, laneW, H);
-          // madera con luz desde la derecha
-          const gw = ctx.createLinearGradient(lx, 0, lx + laneW, 0);
-          gw.addColorStop(0, "#6E4E24"); gw.addColorStop(0.5, tema.madera); gw.addColorStop(1, "#B08A50");
-          ctx.fillStyle = gw; ctx.fillRect(lx, 0, laneW, H);
-          // Vetas de la madera (textura sutil)
-          ctx.strokeStyle = "rgba(60,38,14,0.18)"; ctx.lineWidth = 2;
-          [0.3, 0.55, 0.78].forEach(f => {
-            const vx = lx + laneW * f;
-            ctx.beginPath(); ctx.moveTo(vx, 0); ctx.lineTo(vx, H); ctx.stroke();
-          });
-          // raíles: oscuro a la izquierda, iluminado a la derecha
-          ctx.fillStyle = tema.maderaBorde; ctx.fillRect(lx, 0, 4, H);
-          ctx.fillStyle = "#C89858"; ctx.fillRect(lx + laneW - 3, 0, 3, H);
-          // tablones que bajan, con bisel
-          for (let li = 0; li < 10; li++) {
-            const yy = (((li / 10) + st.faseCamino) % 1) * (H + 40) - 20;
-            ctx.strokeStyle = tema.maderaLinea; ctx.lineWidth = 2.6;
-            ctx.beginPath(); ctx.moveTo(lx + 4, yy); ctx.lineTo(lx + laneW - 4, yy); ctx.stroke();
-            ctx.strokeStyle = "rgba(255,230,180,0.14)"; ctx.lineWidth = 1.6;
-            ctx.beginPath(); ctx.moveTo(lx + 4, yy + 3); ctx.lineTo(lx + laneW - 4, yy + 3); ctx.stroke();
-          }
-        });
-        // ── Objetos a tamaño fijo (funden al entrar por arriba) ──
-        st.objetos.forEach(o => {
-          const ox2 = CARRIL_X[o.carril];
-          if (o.y < -40) return;
-          ctx.globalAlpha = Math.max(0.15, Math.min(1, (o.y + 46) / 90));
-          const vaiven = Math.sin(performance.now() / (o.tipo === "moneda" ? 260 : 120) + (o.fase || 0))
-            * (o.tipo === "moneda" ? 3 : 1.8);
-          const oy2 = o.y + vaiven;
-          if (o.tipo === "moneda") {
-            ctx.fillStyle = "rgba(0,0,0,0.22)";
-            ctx.beginPath(); ctx.ellipse(ox2, oy2 + 24, 14, 5, 0, 0, 7); ctx.fill();
-            sprite(ctx, SPR.moneda, ox2 - 17, oy2 - 8, 2.8);
+        const d = st.duelo || { fase: "tapete", cargando: true, flot: [], psYo: 300, psRiv: 300, golpeYo: 0, golpeRiv: 0 };
+        const XS = [26, 126, 226], CW = 88, CH = 116;
+        const ICONO_CARTA = { A: "⚔️", D: "🛡️", P: "🍎" };
+        const COLOR_CARTA = { A: "#C43A32", D: "#2E6FB0", P: "#2D9B5A" };
+        const ovejitaOro = (cx2, cy2) => {   // dorso: la oveja en oro de marca #C9A227
+          ctx.fillStyle = "#C9A227";
+          ctx.fillRect(cx2 - 14, cy2 - 4, 24, 12); ctx.fillRect(cx2 - 10, cy2 - 10, 18, 7);
+          ctx.fillRect(cx2 + 8, cy2 - 9, 9, 10); ctx.fillRect(cx2 - 10, cy2 + 8, 3, 6); ctx.fillRect(cx2 + 1, cy2 + 8, 3, 6);
+          ctx.fillStyle = "#7A5E10"; ctx.fillRect(cx2 + 13, cy2 - 7, 2, 2);
+        };
+        // Las cartas van con bloque(): contorno, luz arriba-izquierda y sombra abajo-derecha
+        const cartaDorso = (x, y, w, h) => { bloque(ctx, x, y, w, h, "#2D9B5A"); ovejitaOro(x + w / 2, y + h / 2); };
+        const cartaFrente = (x, y, w, h, mov) => {
+          bloque(ctx, x, y, w, h, COLOR_CARTA[mov]);
+          ctx.font = "36px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.fillText(ICONO_CARTA[mov], x + w / 2, y + h / 2 + 2);
+          ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+        };
+        const barraVida = (x, y, wB, ps) => {
+          ctx.fillStyle = "rgba(0,0,0,0.5)"; rr(x - 2, y - 2, wB + 4, 14, 7); ctx.fill();
+          ctx.fillStyle = "#26313D"; rr(x, y, wB, 10, 5); ctx.fill();
+          const f = Math.max(0, ps / 300);
+          ctx.fillStyle = ps <= 75 ? "#E04545" : ps <= 150 ? "#E07A2A" : T.g1;
+          if (f > 0) { rr(x, y, wB * f, 10, 5); ctx.fill(); }
+        };
+        if (d.fase === "tapete") {
+          // ── Tapete de casino: 👑 top 1 · 🥈 top 2 · ❔ aleatorio ──
+          const gt = ctx.createRadialGradient(W / 2, H * 0.38, 30, W / 2, H * 0.38, 330);
+          gt.addColorStop(0, "#2E7D46"); gt.addColorStop(1, "#0B3A1C");
+          ctx.fillStyle = gt; ctx.fillRect(0, 0, W, H);
+          ctx.strokeStyle = "rgba(255,216,77,0.35)"; ctx.lineWidth = 2;
+          rr(10, 10, W - 20, H - 20, 18); ctx.stroke();
+          ctx.textAlign = "center";
+          ctx.fillStyle = "#CFEBD8"; ctx.font = "bold 11px system-ui";
+          ctx.fillText("DUELO DE OVEJAS", W / 2, 118);
+          ctx.fillStyle = "#FFFFFF"; ctx.font = "bold 22px system-ui";
+          ctx.fillText("Elige a tu rival", W / 2, 150);
+          const rv = d.rivales || [];
+          if (d.cargando) {
+            ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.font = "bold 14px system-ui";
+            ctx.fillText("Buscando al rebaño…", W / 2, 330);
+          } else if (rv.length === 0) {
+            ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.font = "bold 12.5px system-ui";
+            ctx.fillText("Aún no hay rivales con puntos esta semana", W / 2, 330);
           } else {
-            // Lobo frontal a tamaño completo
-            const wsc = 52, lx2 = ox2 - wsc / 2, ly2 = oy2;
-            ctx.fillStyle = "rgba(0,0,0,0.25)";
-            ctx.beginPath(); ctx.ellipse(ox2, ly2 + wsc + 4, 30, 6, 0, 0, 7); ctx.fill();
-            ctx.fillStyle = "#5B6470";
-            ctx.beginPath(); ctx.moveTo(lx2 + 5, ly2 + 14); ctx.lineTo(lx2 + 13, ly2 - 5); ctx.lineTo(lx2 + 23, ly2 + 9); ctx.closePath(); ctx.fill();
-            ctx.beginPath(); ctx.moveTo(lx2 + wsc - 5, ly2 + 14); ctx.lineTo(lx2 + wsc - 13, ly2 - 5); ctx.lineTo(lx2 + wsc - 23, ly2 + 9); ctx.closePath(); ctx.fill();
-            ctx.fillStyle = "#6B7480";
-            ctx.beginPath(); ctx.ellipse(ox2, ly2 + 29, 26, 27, 0, 0, 7); ctx.fill();
-            ctx.fillStyle = "#E8EAED";
-            ctx.beginPath(); ctx.ellipse(ox2, ly2 + 41, 14, 12, 0, 0, 7); ctx.fill();
-            const P3 = (x, y, w, h, col) => { ctx.fillStyle = col; ctx.fillRect(x, y, w, h); };
-            P3(ox2 - 12, ly2 + 20, 9, 7, T.au1);
-            P3(ox2 + 3,  ly2 + 20, 9, 7, T.au1);
-            P3(ox2 - 9, ly2 + 22, 4, 5, "#111");
-            P3(ox2 + 6, ly2 + 22, 4, 5, "#111");
-            P3(ox2 - 4, ly2 + 35, 8, 6, "#161616");
-            P3(ox2 - 8, ly2 + 48, 3, 6, "#FFF");
-            P3(ox2 + 5, ly2 + 48, 3, 6, "#FFF");
+            const RXS = [18, 124, 230], RW2 = 92, RY = 250, RH2 = 150;
+            const insignias = ["👑", "🥈", ""];
+            [0, 1, 2].forEach(i => {
+              const rx = RXS[i];
+              const info = i === 0 ? rv[0] : i === 1 ? (rv[1] || null) : null;
+              if (i === 1 && !info) return;                    // con un solo rival: 👑 y ❔
+              if (insignias[i]) {
+                const lat = Math.sin(performance.now() / 260 + i) * 3;
+                ctx.font = "26px system-ui"; ctx.textAlign = "center";
+                ctx.fillText(insignias[i], rx + RW2 / 2, RY - 12 + lat);
+              }
+              if (info) {
+                // Carta del rival: usuario arriba · su oveja real en medio · nombre de la oveja debajo
+                bloque(ctx, rx, RY, RW2, RH2, "#EAE4CC");
+                ctx.fillStyle = "#0f4a2a"; ctx.font = "bold 11px system-ui"; ctx.textAlign = "center";
+                ctx.fillText(String(info.usuario).slice(0, 11), rx + RW2 / 2, RY + 22);
+                pintarTramos(info.px, rx + RW2 / 2 - 26, RY + 32, 1.6);
+                ctx.fillStyle = "#8A6508"; ctx.font = "bold 10.5px system-ui";
+                ctx.fillText("«" + String(info.oveja).slice(0, 10) + "»", rx + RW2 / 2, RY + RH2 - 12);
+                ctx.fillStyle = T.au1; ctx.font = "bold 10px system-ui";
+                ctx.fillText("🏆 " + info.pts + " pts", rx + RW2 / 2, RY + RH2 + 22);
+              } else {
+                cartaDorso(rx, RY, RW2, RH2);
+                ctx.fillStyle = "#EAF7EE"; ctx.font = "bold 11px system-ui"; ctx.textAlign = "center";
+                ctx.fillText("Aleatorio", rx + RW2 / 2, RY + 22);
+                ctx.font = "38px system-ui";
+                ctx.fillText("❔", rx + RW2 / 2, RY + 96);
+                ctx.fillStyle = "rgba(234,247,238,0.8)"; ctx.font = "bold 11px system-ui";
+                ctx.fillText("¿?", rx + RW2 / 2, RY + RH2 - 12);
+              }
+            });
+            ctx.fillStyle = "rgba(255,255,255,0.75)"; ctx.font = "bold 11px system-ui";
+            ctx.fillText("Ganador +100 · Perdedor −100", W / 2, 456);
           }
-        });
-        ctx.globalAlpha = 1;
-        // Sombra de la oveja sobre su camino
-        ctx.fillStyle = "rgba(0,0,0,0.28)";
-        ctx.beginPath();
-        ctx.ellipse((st.sx || 0) + SH / 2, (st.y || 0) + SH - 1, 34, 8, 0, 0, 7);
-        ctx.fill();
-        // "+2" flotantes
-        (st.flotantes || []).forEach(f => {
-          const a = Math.max(0, 1 - f.t / 42);
-          ctx.font = "bold 17px system-ui"; ctx.textAlign = "center";
-          ctx.lineWidth = 4; ctx.strokeStyle = `rgba(247,240,224,${a})`;
-          ctx.strokeText("+4", f.x + 7, f.y);
-          ctx.fillStyle = alpha(T.g3,a);
-          ctx.fillText("+4", f.x + 7, f.y);
           ctx.textAlign = "left";
-        });
-        // ── Flechas ◀ ▶ abajo, donde descansan los pulgares ──
-        [[-1, 12], [1, W - 64]].forEach(([d, bx]) => {
-          const activo = st.flechaFlash && st.flechaFlash.d === d && st.flechaFlash.t > 0;
-          const by = H - 112 + (activo ? 3 : 0);
-          ctx.fillStyle = T.au3;
-          rr(bx, by + 4, 52, 84, 14); ctx.fill();
-          const gb = ctx.createLinearGradient(0, by, 0, by + 84);
-          if (activo) { gb.addColorStop(0, T.g2); gb.addColorStop(1, T.g1); }
-          else { gb.addColorStop(0, "#2E7A0A"); gb.addColorStop(1, "#1C4D05"); }
-          ctx.fillStyle = gb; rr(bx, by, 52, 84, 14); ctx.fill();
-          ctx.strokeStyle = T.au1; ctx.lineWidth = activo ? 3 : 2.5;
-          rr(bx, by, 52, 84, 14); ctx.stroke();
-          ctx.fillStyle = activo ? T.bg : T.au1;
-          ctx.beginPath();
-          if (d < 0) { ctx.moveTo(bx + 35, by + 20); ctx.lineTo(bx + 15, by + 42); ctx.lineTo(bx + 35, by + 64); }
-          else       { ctx.moveTo(bx + 17, by + 20); ctx.lineTo(bx + 37, by + 42); ctx.lineTo(bx + 17, by + 64); }
-          ctx.closePath(); ctx.fill();
-        });
+        } else {
+          // ── Tablero vertical: rival y barra arriba · sus cartas · las tuyas · tu Bo y barra abajo ──
+          const r0 = d.rival || { usuario: "Rival", oveja: "Bo", pts: 0 };
+          ctx.fillStyle = T.cr; ctx.font = "bold 12px system-ui";
+          ctx.fillText("🐑 " + String(r0.usuario).slice(0, 10) + " · «" + String(r0.oveja).slice(0, 10) + "»", 14, 22);
+          ctx.fillStyle = T.au1; ctx.font = "bold 10px system-ui";
+          ctx.fillText("🏆 " + r0.pts, 14, 38);
+          barraVida(96, 30, W - 200, d.psRiv);
+          ctx.fillStyle = "rgba(255,255,255,0.7)"; ctx.font = "bold 9px system-ui";
+          ctx.fillText(Math.max(0, d.psRiv) + "/300", W - 96, 38);
+          const shR = d.golpeRiv > 0 ? Math.sin(d.golpeRiv * 0.9) * 4 : 0;
+          pintarTramos(d.golpeRiv > 0 && r0.pxTriste ? r0.pxTriste : (r0.px || px), W / 2 - 32 + shR, 48, 2);
+          // Cartas del rival boca abajo; en la revelación solo queda la suya y SE VOLTEA
+          const RY1 = 128;
+          [0, 1, 2].forEach(i => {
+            const cxC = XS[i];
+            if (d.fase === "turno") { cartaDorso(cxC, RY1, CW, CH); return; }
+            if (i !== d.suIdx) return;
+            const ft = Math.min(1, d.t / 34);
+            const wf = Math.max(6, Math.abs(Math.cos(Math.PI * ft)) * CW);
+            const xf = cxC + (CW - wf) / 2;
+            if (ft < 0.5) cartaDorso(xf, RY1 + 8, wf, CH);
+            else cartaFrente(xf, RY1 + 8, wf, CH, d.suCarta);
+          });
+          // Tus tres cartas boca arriba: solo el icono, sin descripción
+          const MY1 = 300;
+          [0, 1, 2].forEach(i => {
+            const mov = ["A", "D", "P"][i];
+            if (d.fase !== "turno" && i !== d.miIdx) return;
+            const lift = d.fase !== "turno" && i === d.miIdx ? -8 : 0;
+            cartaFrente(XS[i], MY1 + lift, CW, CH, mov);
+            if (lift) { ctx.strokeStyle = T.au1; ctx.lineWidth = 3; rr(XS[i], MY1 + lift, CW, CH, 6); ctx.stroke(); }
+          });
+          if (d.fase === "turno") {
+            ctx.fillStyle = "rgba(255,255,255,0.55)"; ctx.font = "bold 11px system-ui"; ctx.textAlign = "center";
+            ctx.fillText("Elige una carta", W / 2, 290);
+            ctx.textAlign = "left";
+          }
+          // Tu Bo con sus personalizaciones; feliz de normal, triste el instante del golpe
+          const shY = d.golpeYo > 0 ? Math.sin(d.golpeYo * 0.9) * 4 : 0;
+          pintarTramos(d.golpeYo > 0 ? pxTriste : pxFeliz, W / 2 - 32 + shY, 438, 2);
+          ctx.fillStyle = T.cr; ctx.font = "bold 12px system-ui";
+          ctx.fillText("🐑 " + String(nombre || "Tu Bo").slice(0, 12), 14, 530);
+          if (d.misPts !== null && d.misPts !== undefined) {
+            ctx.fillStyle = T.au1; ctx.font = "bold 10px system-ui";
+            ctx.fillText("🏆 " + d.misPts, 14, 546);
+          }
+          barraVida(96, 522, W - 200, d.psYo);
+          ctx.fillStyle = "rgba(255,255,255,0.7)"; ctx.font = "bold 9px system-ui";
+          ctx.fillText(Math.max(0, d.psYo) + "/300", W - 96, 530);
+          // Sin narración: daños y curaciones flotantes junto a cada oveja, y nada más
+          (d.flot || []).forEach(f => {
+            const a2 = Math.max(0, 1 - f.t / 46);
+            const fy = (f.lado === "yo" ? 470 : 100) - f.y;
+            ctx.font = "bold 19px system-ui"; ctx.textAlign = "center";
+            ctx.lineWidth = 4; ctx.strokeStyle = `rgba(0,0,0,${0.55 * a2})`;
+            ctx.strokeText(f.tx, W / 2 + 58, fy);
+            ctx.fillStyle = f.mal ? `rgba(255,138,138,${a2})` : `rgba(125,245,168,${a2})`;
+            ctx.fillText(f.tx, W / 2 + 58, fy);
+            ctx.textAlign = "left";
+          });
+          if (d.fase === "fin") {
+            ctx.fillStyle = "rgba(10,15,22,0.86)"; ctx.fillRect(0, 0, W, H);
+            ctx.textAlign = "center";
+            const gano = d.resultado === "gana";
+            ctx.font = "44px system-ui"; ctx.fillText(gano ? "🏆" : "😵", W / 2, 252);
+            ctx.fillStyle = "#FFFFFF"; ctx.font = "bold 24px system-ui";
+            ctx.fillText(gano ? "¡Victoria!" : "Derrota…", W / 2, 298);
+            ctx.fillStyle = gano ? T.au1 : "#FF8A8A"; ctx.font = "bold 22px system-ui";
+            ctx.fillText(gano ? "+100 puntos" : "−100 puntos", W / 2, 332);
+            if (d.misPts !== null && d.misPts !== undefined) {
+              ctx.fillStyle = "rgba(255,255,255,0.75)"; ctx.font = "bold 12px system-ui";
+              ctx.fillText("Esta semana llevas " + d.misPts + " pts", W / 2, 358);
+            }
+            if (gano) {
+              // El orbe aparece SOLO al ganar, como al derrotar al Rey Lobo
+              const gb = ctx.createLinearGradient(0, 380, 0, 440);
+              gb.addColorStop(0, "#B08AF0"); gb.addColorStop(1, "#5A2EA8");
+              ctx.fillStyle = "#3E1E80"; rr(52, 386, W - 104, 58, 16); ctx.fill();
+              ctx.fillStyle = gb; rr(52, 380, W - 104, 58, 16); ctx.fill();
+              ctx.fillStyle = "#FFFFFF"; ctx.font = "bold 15px system-ui";
+              ctx.fillText("🔮 Pasar al siguiente juego", W / 2, 415);
+              ctx.fillStyle = "rgba(255,255,255,0.12)"; rr(82, 456, W - 164, 42, 12); ctx.fill();
+              ctx.strokeStyle = "rgba(255,255,255,0.35)"; ctx.lineWidth = 1.5; rr(82, 456, W - 164, 42, 12); ctx.stroke();
+              ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.font = "bold 12.5px system-ui";
+              ctx.fillText("Buscar otro duelo", W / 2, 482);
+            } else if (d.t > 40) {
+              ctx.fillStyle = "rgba(255,255,255,0.6)"; ctx.font = "bold 12px system-ui";
+              ctx.fillText("Toca para terminar la partida", W / 2, 400);
+            }
+            ctx.textAlign = "left";
+          }
+        }
       }
 
       // Consumible: orbe brillante; disco + icono según el juego destino
@@ -2892,9 +2990,9 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
         const CFG = {
           noche:  { halo: "rgba(150,180,255,0.95)", g: ["#3A4A80", "#1E2A55", "#0E1638"], borde: "#8FA8E8" },
           oro:    { halo: "rgba(120,240,160,0.95)", g: ["#3BE07A", "#1E9E52", "#0E6B34"], borde: "#7DF5A8" },
-          mar:    { halo: "rgba(120,230,255,0.95)", g: ["#4FD8E8", "#1E9AB8", "#0A5E78"], borde: "#9AEFF8" },
+          vuelo:  { halo: "rgba(174,220,248,0.95)", g: ["#7EC8F0", "#3A8AC8", "#14507E"], borde: "#AEDCF8" },
           jefe:   { halo: "rgba(255,130,130,0.95)", g: ["#F56A6A", "#C42A2A", "#7E0E0E"], borde: "#FF9A9A" },
-          prado:  { halo: "rgba(232,192,136,0.95)", g: ["#C89858", "#8A6432", "#5A3E1C"], borde: "#E8C088" },
+          duelo:  { halo: "rgba(207,174,248,0.95)", g: ["#B08AF0", "#7A4CD0", "#3E1E80"], borde: "#CFAEF8" },
         }[k.to] || { halo: "rgba(255,224,120,0.95)", g: ["#FFF3B0", "#FFD84D", "#E0A000"], borde: "#B8860B" };
         const glow = ctx.createRadialGradient(cx, cy, 4, cx, cy, r + 14);
         glow.addColorStop(0, CFG.halo); glow.addColorStop(1, "rgba(255,255,255,0)");
@@ -2913,23 +3011,26 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
           ctx.textAlign = "center"; ctx.textBaseline = "middle";
           ctx.fillText("$", cx, cy + 1);
           ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
-        } else if (k.to === "mar") {
-          ctx.strokeStyle = "#FFFFFF"; ctx.lineWidth = 2.5;
-          ctx.beginPath(); ctx.arc(cx - 4, cy + 3, 7, 0, 7); ctx.stroke();
-          ctx.beginPath(); ctx.arc(cx + 7, cy - 6, 4.5, 0, 7); ctx.stroke();
-          ctx.fillStyle = "#FFFFFF"; ctx.beginPath(); ctx.arc(cx + 4, cy + 9, 2.5, 0, 7); ctx.fill();
+        } else if (k.to === "vuelo") {
+          // Avioneta de trazo blanco
+          ctx.strokeStyle = "#FFFFFF"; ctx.lineWidth = 3; ctx.lineCap = "round";
+          ctx.beginPath(); ctx.moveTo(cx - 12, cy + 3); ctx.lineTo(cx + 12, cy + 3); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(cx + 2, cy + 3); ctx.lineTo(cx - 6, cy - 9); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(cx - 10, cy + 3); ctx.lineTo(cx - 14, cy - 4); ctx.stroke();
+          ctx.lineCap = "butt";
         } else if (k.to === "jefe") {
           ctx.strokeStyle = "#FFFFFF"; ctx.lineWidth = 3;
           ctx.beginPath(); ctx.arc(cx, cy, 9, 0, 7); ctx.stroke();
           ctx.beginPath(); ctx.moveTo(cx - 14, cy); ctx.lineTo(cx + 14, cy); ctx.stroke();
           ctx.beginPath(); ctx.moveTo(cx, cy - 14); ctx.lineTo(cx, cy + 14); ctx.stroke();
           ctx.fillStyle = "#FFFFFF"; ctx.beginPath(); ctx.arc(cx, cy, 2.5, 0, 7); ctx.fill();
-        } else if (k.to === "prado") {
-          // Tres caminos que convergen en el horizonte
+        } else if (k.to === "duelo") {
+          // Espadas cruzadas
           ctx.strokeStyle = "#FFFFFF"; ctx.lineWidth = 3; ctx.lineCap = "round";
-          [[-9, -2], [0, 0], [9, 2]].forEach(([bx2, tx2]) => {
-            ctx.beginPath(); ctx.moveTo(cx + bx2, cy + 12); ctx.lineTo(cx + tx2, cy - 11); ctx.stroke();
-          });
+          ctx.beginPath(); ctx.moveTo(cx - 10, cy - 10); ctx.lineTo(cx + 10, cy + 10); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(cx + 10, cy - 10); ctx.lineTo(cx - 10, cy + 10); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(cx - 12, cy + 5); ctx.lineTo(cx - 5, cy + 12); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(cx + 5, cy + 12); ctx.lineTo(cx + 12, cy + 5); ctx.stroke();
           ctx.lineCap = "butt";
         }
       });
@@ -2945,8 +3046,28 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
         ctx.fill();
       }
 
-      const ovejaX = st.sx !== undefined ? st.sx : SX;
-      px.forEach(([x, y, w, c]) => { ctx.fillStyle = c; ctx.fillRect(ovejaX + x * S, st.y + y * S, w * S + 0.5, S + 0.5); });
+      if (tema.familia === "vuelo") {
+        // La oveja va DENTRO del avión: avión → oveja → fuselaje delantero → media anilla
+        const ax = (st.sx !== undefined ? st.sx : SX) - 10, ay = st.y;
+        const PA = 2.6, BA = 1.3;
+        sprite(ctx, SPR.avionGira, ax, ay, PA);
+        const bxA = ax + 20 * PA - 16 * BA;   // centrada en la cabina
+        const byA = ay + 8 * PA - 24 * BA;    // su y=24 cae en el borde del fuselaje (y=8)
+        pintarTramos(st.vivo ? pxFeliz : pxTriste, bxA, byA, BA);
+        sprite(ctx, SPR.avionFrente, ax, ay, PA);
+        (st.anillos || []).forEach(a => sprite(ctx, SPR.anilloBajo, a.x, a.y, 4.4));
+        (st.flotantes || []).forEach(f => {
+          const a2 = Math.max(0, 1 - f.t / 42);
+          ctx.font = "bold 16px system-ui"; ctx.textAlign = "center";
+          ctx.lineWidth = 4; ctx.strokeStyle = `rgba(255,255,255,${a2})`;
+          ctx.strokeText("+10", f.x, f.y);
+          ctx.fillStyle = `rgba(138,101,8,${a2})`; ctx.fillText("+10", f.x, f.y);
+          ctx.textAlign = "left";
+        });
+      } else if (tema.familia !== "duelo") {
+        const ovejaX = st.sx !== undefined ? st.sx : SX;
+        px.forEach(([x, y, w, c]) => { ctx.fillStyle = c; ctx.fillRect(ovejaX + x * S, st.y + y * S, w * S + 0.5, S + 0.5); });
+      }
       // Flash de transición al coger el consumible
       if (st.transicion > 0) {
         ctx.fillStyle = `rgba(255,255,255,${st.transicion * 0.6})`;
@@ -2974,6 +3095,8 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
       cancelAnimationFrame(raf);
       tapRef.current = null;
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
     };
   }, [jugando, color, equipados]);
 
@@ -3037,6 +3160,29 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
               ▶ Jugar <span style={{ fontSize: 19 }}>💎</span>
             </button>
 
+            {/* Factual y sin reproche; la salida es la revancha, no la pérdida */}
+            {avisoDuelos && (
+              <div style={{ margin: "14px 0 0", background: "rgba(176,138,240,0.12)",
+                border: "1.5px solid rgba(176,138,240,0.45)", borderRadius: 14,
+                padding: "11px 14px", textAlign: "left" }}>
+                <div style={{ fontSize: 13, fontWeight: 900 }}>
+                  ⚔️ Te han retado {avisoDuelos.total === 1 ? "1 vez" : `${avisoDuelos.total} veces`}
+                </div>
+                <div style={{ fontSize: 11.5, color: T.t2, fontWeight: 800, marginTop: 2 }}>
+                  {avisoDuelos.victorias} {avisoDuelos.victorias === 1 ? "victoria" : "victorias"} · {avisoDuelos.derrotas} {avisoDuelos.derrotas === 1 ? "derrota" : "derrotas"}
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 900, marginTop: 3,
+                  color: avisoDuelos.saldo >= 0 ? T.g2 : "#FF8A8A" }}>
+                  {avisoDuelos.saldo >= 0 ? "+" : ""}{avisoDuelos.saldo} puntos
+                </div>
+                <button onClick={() => { setModoElegido("duelo"); setAvisoDuelos(null); }}
+                  style={{ marginTop: 8, background: "linear-gradient(160deg,#B08AF0,#5A2EA8)", border: "none",
+                    borderRadius: 12, color: "#fff", fontWeight: 900, fontSize: 12.5, padding: "8px 14px",
+                    cursor: "pointer", fontFamily: "inherit", boxShadow: "0 3px 0 #3E1E80" }}>
+                  ⚔️ Devolver el golpe
+                </button>
+              </div>
+            )}
             {/* ── Selector de juego: las 5 esferas ── */}
             {(() => {
               const JUEGOS = [
@@ -3046,15 +3192,15 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
                 { id: "oro", nombre: "La Cámara del Banco", icono: "💲",
                   desc: "Salta entre bloques y recoge monedas €. Si caes al hueco o te come el borde, fin.",
                   css: "radial-gradient(circle at 35% 30%, #3BE07A, #1E9E52 60%, #0E6B34)", borde: "#7DF5A8" },
-                { id: "mar", nombre: "Buceo entre Corales", icono: "🫧",
-                  desc: "Toca para flotar hacia arriba; sin tocar, bajas y corres por el fondo. Cruza los huecos.",
-                  css: "radial-gradient(circle at 35% 30%, #4FD8E8, #1E9AB8 60%, #0A5E78)", borde: "#9AEFF8" },
+                { id: "vuelo", nombre: "El Vuelo de Bo", icono: "✈️",
+                  desc: "Desliza ↑↓: la avioneta se queda donde la dejes. Esquiva cuervos y atraviesa los anillos dorados por dentro.",
+                  css: "radial-gradient(circle at 35% 30%, #7EC8F0, #3A8AC8 60%, #14507E)", borde: "#AEDCF8" },
                 { id: "jefe", nombre: "El Rey Lobo", icono: "🎯",
                   desc: "Disparas sola. Jefe abajo: salta su bola y acierta desde el suelo. Jefe arriba: no saltes… salvo para darle.",
                   css: "radial-gradient(circle at 35% 30%, #F56A6A, #C42A2A 60%, #7E0E0E)", borde: "#FF9A9A" },
-                { id: "prado", nombre: "Los Tres Caminos", icono: "🐺",
-                  desc: "◀ ▶ cambia de camino. Caza todas las monedas que puedas y esquiva a los lobos.",
-                  css: "radial-gradient(circle at 35% 30%, #C89858, #8A6432 60%, #5A3E1C)", borde: "#E8C088" },
+                { id: "duelo", nombre: "Duelo de Ovejas", icono: "⚔️",
+                  desc: "Elige rival (👑 top 1 · 🥈 top 2 · ❔ aleatorio) y combate por cartas: ⚔️ 🛡️ 🍎. El ganador le quita 100 puntos al perdedor.",
+                  css: "radial-gradient(circle at 35% 30%, #B08AF0, #7A4CD0 60%, #3E1E80)", borde: "#CFAEF8" },
               ];
               const sel = JUEGOS.find(jj => jj.id === modoElegido) || JUEGOS[0];
               return (
@@ -8129,7 +8275,7 @@ function GBHApp(){
   const hoyMadrid=()=>new Date().toLocaleDateString("sv-SE",{timeZone:"Europe/Madrid"});
   const cargarPartidasHoy=async()=>{ if(!profile?.id) return;
     try{
-      const rows=await sbReq("GET",`juego_partidas?profile_id=eq.${profile.id}&fecha=eq.${hoyMadrid()}&select=puntos`)||[];
+      const rows=await sbReq("GET",`juego_partidas?profile_id=eq.${profile.id}&fecha=eq.${hoyMadrid()}&origen=eq.partida&select=puntos`)||[];  // los duelos también viven aquí (origen=duelo): no cuentan como partida diaria
       const arr=Array.isArray(rows)?rows:[];
       setPartidasRestantes(Math.max(0,3-arr.length));
       const hoyPts=arr.reduce((s,r)=>s+(r.puntos||0),0);
@@ -10788,7 +10934,7 @@ function GBHApp(){
           </div>
           <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}>
             <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,width:"100%"}}>
-              <JuegoOveja color={boColor} equipados={boEquipados} nombre={boNombre}
+              <JuegoOveja color={boColor} equipados={boEquipados} nombre={boNombre} perfilId={profile?.id}
                 partidasProp={partidasRestantes} puntosHoy={ptsHoy} puntosSemana={ptsSemana}
                 onFinPartida={finPartida} onPagarYJugar={pagarYJugar}
                 onSalir={()=>setZonaJuego(false)} arrancarRef={arrancarJuegoRef}/>
