@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { tramosBo32 } from "./bo32_render";
+import { SPR, U, sprite, spriteCaja, bloque, suelo as dibujarSuelo, matas } from "./juego32";
 
 // ─── Servidor de generación de programaciones (Railway) ─────────────────────
 // Rellena estos dos valores tras desplegar el servidor (ver GUIA_DESPLIEGUE_RAILWAY.md)
@@ -2037,7 +2038,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
     const TEMAS = {
       noche: {
         familia: "runner",
-        cielo: "#4A2C4E", cieloBottom: "#C25E3A", suelo: T.g3, hierba: alpha(T.g2,0.4),
+        cielo: "#4A2C4E", cieloBottom: "#C25E3A", suelo: T.g3, hierba: "#3E7A2A",   // hex: matas()/tonos() no admite rgba()
         sol: "rgba(255,210,120,0.55)",
         obstaculo: "lobo",            // lobos que saltar
         volador: "cuervo",            // cuervos que rebotan
@@ -2615,43 +2616,17 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
       if (tema.familia === "plataformas") {
         // ── Bloques de suelo macizos (cemento) a distintos niveles, con caras laterales ──
         (st.suelos || []).forEach(s => {
-          // cuerpo de cemento
-          ctx.fillStyle = "#8E9299"; ctx.fillRect(s.x, s.top, s.w, H - s.top);
-          // cara superior más clara
-          ctx.fillStyle = "#B4B8BF"; ctx.fillRect(s.x, s.top, s.w, 7);
-          ctx.fillStyle = "#6E727A"; ctx.fillRect(s.x, s.top + 7, s.w, 2);
-          // caras laterales (para que se lean como bloques sólidos)
-          ctx.fillStyle = "#767A82"; ctx.fillRect(s.x, s.top, 3, H - s.top);
-          ctx.fillStyle = "#5E626A"; ctx.fillRect(s.x + s.w - 3, s.top, 3, H - s.top);
+          // bloque() ya hace a mano lo que hacían los cinco fillRect: contorno, luz y sombra
+          bloque(ctx, s.x, s.top, s.w, H - s.top, "#8E9299");
           // junta de cemento en rejilla
           ctx.fillStyle = "rgba(0,0,0,0.14)";
           for (let bx = s.x + 34; bx < s.x + s.w - 4; bx += 34) ctx.fillRect(bx, s.top + 10, 2, H - s.top - 10);
           for (let byy = s.top + 30; byy < H; byy += 30) ctx.fillRect(s.x + 3, byy, s.w - 6, 2);
         });
-        // ── Monedas 🪙 doradas con símbolo € ──
+        // ── Monedas: el € va dibujado en el sprite, ya no depende de la fuente del móvil ──
         (st.monedas || []).forEach(m => {
           if (m.cogida) return;
-          const cx = m.x + 12, cy = m.y + 12;
-          const ancho = 5 + Math.abs(Math.sin(performance.now() / 220 + m.x)) * 9;  // giro
-          // canto
-          ctx.fillStyle = "#9A6E12"; ctx.beginPath(); ctx.ellipse(cx, cy, ancho + 2.5, 14, 0, 0, 7); ctx.fill();
-          // cara
-          const cg = ctx.createLinearGradient(cx - ancho, cy, cx + ancho, cy);
-          cg.addColorStop(0, "#E0A800"); cg.addColorStop(0.5, T.llama1); cg.addColorStop(1, "#D89A00");
-          ctx.fillStyle = cg; ctx.beginPath(); ctx.ellipse(cx, cy, ancho, 12, 0, 0, 7); ctx.fill();
-          // borde interior
-          ctx.strokeStyle = "#B8860B"; ctx.lineWidth = 1.5;
-          ctx.beginPath(); ctx.ellipse(cx, cy, ancho * 0.72, 8.5, 0, 0, 7); ctx.stroke();
-          // símbolo € si la moneda está de frente
-          if (ancho > 9) {
-            ctx.fillStyle = "#8A6508"; ctx.font = "bold 13px system-ui";
-            ctx.textAlign = "center"; ctx.textBaseline = "middle";
-            ctx.fillText("€", cx, cy + 1);
-            ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-          }
-          // brillo
-          ctx.fillStyle = "rgba(255,255,255,0.6)";
-          ctx.beginPath(); ctx.ellipse(cx - ancho * 0.4, cy - 4, ancho * 0.18, 3, 0, 0, 7); ctx.fill();
+          sprite(ctx, SPR.moneda, m.x - 2, m.y - 2, 2.4);
         });
       } else if (tema.familia === "flappy") {
         // ── Lecho marino: arena, algas ondulantes y burbujas de puntos ──
@@ -2682,119 +2657,51 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
         ctx.fillStyle = tema.hierba;
         for (let gx = (performance.now() / 7) % 44; gx < W; gx += 44) ctx.fillRect(gx, suelo + 10, 4, 4);
       } else if (tema.familia !== "carriles") {
-        // ── Suelo pradera continuo (runner) ──
-        ctx.fillStyle = "#1A3D12"; ctx.fillRect(0, suelo + 3, W, H - suelo);
-        ctx.fillStyle = tema.suelo; ctx.fillRect(0, suelo, W, 5);
-        ctx.fillStyle = tema.hierba;
-        for (let gx = (performance.now() / 5) % 40; gx < W; gx += 40) ctx.fillRect(gx, suelo + 10, 5, 5);
+        // ── Suelo pradera continuo (runner), con canto iluminado ──
+        dibujarSuelo(ctx, suelo, W, H - suelo, tema.suelo);
+        matas(ctx, suelo + U * 2, W, tema.hierba, performance.now() / 5);
       }
       const aleteo = Math.floor(performance.now() / 140) % 2 === 0;
       st.vallas.forEach(v => {
         if (v.tipo === "aguila" || v.tipo === "cuervo") {
-          const esCuervo = v.tipo === "cuervo";
-          const cuerpo = esCuervo ? "#101014" : "#8A5A2E";   // águila marrón
-          const ala = esCuervo ? "#26262E" : "#6B4423";
-          const cabeza = esCuervo ? "#101014" : "#E8DCC0";   // águila cabeza clara
-          if (esCuervo) {  // contorno claro para despegarlo del cielo
-            ctx.fillStyle = "rgba(255,255,255,0.25)";
-            ctx.fillRect(v.x - 2, v.y + 11, 37, 15);
-          }
-          ctx.fillStyle = cuerpo;
-          ctx.fillRect(v.x, v.y + 13, 30, 11);                     // cuerpo
-          ctx.fillRect(v.x - 7, v.y + 15, 8, 6);                   // cola
-          ctx.fillStyle = cabeza;
-          ctx.fillRect(v.x + 26, v.y + 12, 9, 9);                  // cabeza
-          ctx.fillStyle = esCuervo ? "#3A2A0A" : "#F5B800";
-          ctx.fillRect(v.x + 34, v.y + 15, 9, 5);                  // pico
-          ctx.fillStyle = esCuervo ? "#E04545" : "#111111";
-          ctx.fillRect(v.x + 29, v.y + 15, 4, 4);                  // ojo
-          ctx.fillStyle = ala;
-          if (aleteo) ctx.fillRect(v.x + 6, v.y, 18, 13);
-          else ctx.fillRect(v.x + 6, v.y + 21, 18, 10);
+          // Dos fotogramas de verdad: el aleteo lo marca `aleteo` (140 ms), igual que antes
+          const s = SPR[(v.tipo === "cuervo" ? "cuervo" : "aguila") + (aleteo ? "Sube" : "Baja")];
+          sprite(ctx, s, v.x - 1, v.y - 3, 2.4);
         } else if (v.tipo === "lobo") {
-          // Lobo estilo emoji 🐺: cabeza frontal grande sobre una base de cuerpo
+          // Mismo sprite que el Rey Lobo: anclado al suelo y escalado con la altura
           const ch = v.h;
-          const cw = v.w + 34;
-          const bx = v.x - 14, by = suelo - ch;
-          const mx = bx + cw / 2;            // centro X de la cara
-          const P = (x, y, w, h, col) => { ctx.fillStyle = col; ctx.fillRect(x, y, w, h); };
-          const GRIS = "#5B6470", GRISC = "#7B8493", OSC = "#3E4550", BLANCO = "#EDEFF2", ROSA = "#D98C9A";
-          // base del cuerpo (a ras de suelo)
-          P(bx + 8, suelo - 18, cw - 16, 18, GRIS);
-          // orejas
-          ctx.fillStyle = GRIS;
-          ctx.beginPath(); ctx.moveTo(bx + 4, by + 14); ctx.lineTo(bx + 14, by - 14); ctx.lineTo(bx + 30, by + 6); ctx.closePath(); ctx.fill();
-          ctx.beginPath(); ctx.moveTo(bx + cw - 4, by + 14); ctx.lineTo(bx + cw - 14, by - 14); ctx.lineTo(bx + cw - 30, by + 6); ctx.closePath(); ctx.fill();
-          ctx.fillStyle = ROSA;
-          ctx.beginPath(); ctx.moveTo(bx + 12, by + 8); ctx.lineTo(bx + 16, by - 6); ctx.lineTo(bx + 24, by + 6); ctx.closePath(); ctx.fill();
-          ctx.beginPath(); ctx.moveTo(bx + cw - 12, by + 8); ctx.lineTo(bx + cw - 16, by - 6); ctx.lineTo(bx + cw - 24, by + 6); ctx.closePath(); ctx.fill();
-          // cabeza (redondeada)
-          ctx.fillStyle = GRIS;
-          ctx.beginPath(); ctx.ellipse(mx, by + ch * 0.5, cw * 0.42, ch * 0.5, 0, 0, 7); ctx.fill();
-          // frente/entrecejo más claro
-          ctx.fillStyle = GRISC;
-          ctx.beginPath(); ctx.ellipse(mx, by + ch * 0.36, cw * 0.18, ch * 0.24, 0, 0, 7); ctx.fill();
-          // mejillas de pelaje blanco (a los lados del hocico)
-          ctx.fillStyle = BLANCO;
-          ctx.beginPath(); ctx.ellipse(mx, by + ch * 0.72, cw * 0.30, ch * 0.28, 0, 0, 7); ctx.fill();
-          // ojos
-          P(mx - 16, by + ch * 0.34, 11, 8, "#FFFFFF");
-          P(mx + 5, by + ch * 0.34, 11, 8, "#FFFFFF");
-          P(mx - 12, by + ch * 0.35, 5, 6, "#1A1A1A");
-          P(mx + 9, by + ch * 0.35, 5, 6, "#1A1A1A");
-          // nariz + boca
-          P(mx - 5, by + ch * 0.60, 10, 7, "#161616");
-          P(mx - 1, by + ch * 0.67, 2, 9, "#161616");
-          // colmillos
-          P(mx - 7, by + ch - 8, 3, 6, "#FFFFFF");
-          P(mx + 4, by + ch - 8, 3, 6, "#FFFFFF");
+          spriteCaja(ctx, SPR.lobo, v.x - 14, suelo - ch, ch * 26 / 24, ch);
         } else {
-          // Valla de madera
-          ctx.fillStyle = "#8B5A2B";
-          ctx.fillRect(v.x, suelo - v.h, 6, v.h);
-          ctx.fillRect(v.x + v.w - 6, suelo - v.h, 6, v.h);
-          ctx.fillStyle = "#A9713B";
-          ctx.fillRect(v.x - 5, suelo - v.h + 5, v.w + 10, 6);
-          ctx.fillRect(v.x - 5, suelo - Math.floor(v.h / 2), v.w + 10, 6);
+          // Valla de madera con canto y sombra
+          const yv = suelo - v.h;
+          bloque(ctx, v.x, yv, U * 3, v.h, "#8B5A2B");
+          bloque(ctx, v.x + v.w - U * 3, yv, U * 3, v.h, "#8B5A2B");
+          bloque(ctx, v.x - U * 2, yv + U * 2, v.w + U * 4, U * 2.4, "#A9713B");
+          bloque(ctx, v.x - U * 2, yv + v.h / 2, v.w + U * 4, U * 2.4, "#A9713B");
         }
       });
       // ── Entidades de los juegos nuevos ──
       if (tema.familia === "flappy") {
         (st.corales || []).forEach((c, ci) => {
           const col1 = ci % 2 === 0 ? "#E8707A" : "#5FB878";
-          const col2 = ci % 2 === 0 ? "#B84A56" : "#3E8A54";
           const topH = c.gapY - c.gapH / 2;
           const botY = c.gapY + c.gapH / 2;
-          ctx.fillStyle = col1; ctx.fillRect(c.x, 0, 44, topH);
-          ctx.fillStyle = col2; ctx.fillRect(c.x, 0, 7, topH); ctx.fillRect(c.x + 37, 0, 7, topH);
+          // Columnas con bloque(): ya traen contorno, luz y sombra (fuera el strokeRect)
+          bloque(ctx, c.x, -U, 44, topH + U, col1);
+          bloque(ctx, c.x, botY, 44, suelo - botY, col1);
+          // Bultos de la boca: aquí los círculos sí funcionan
           ctx.fillStyle = col1;
           [10, 24, 36].forEach(o => { ctx.beginPath(); ctx.arc(c.x + o, topH, 9, 0, 7); ctx.fill(); });
-          ctx.fillStyle = col1; ctx.fillRect(c.x, botY, 44, suelo - botY);
-          ctx.fillStyle = col2; ctx.fillRect(c.x, botY, 7, suelo - botY); ctx.fillRect(c.x + 37, botY, 7, suelo - botY);
-          ctx.fillStyle = col1;
           [10, 24, 36].forEach(o => { ctx.beginPath(); ctx.arc(c.x + o, botY, 9, 0, 7); ctx.fill(); });
-          // Contorno oscuro: separa el coral del agua con nitidez
-          ctx.strokeStyle = "rgba(0,0,0,0.25)"; ctx.lineWidth = 2;
-          ctx.strokeRect(c.x + 1, -2, 42, topH + 2);
-          ctx.strokeRect(c.x + 1, botY, 42, suelo - botY + 2);
         });
       }
       if (tema.familia === "shooter") {
         if (st.jefe) {
           const jx = W - 130, jy = st.jefeYDraw || H * 0.30;
-          const P2 = (x, y, w, h, col) => { ctx.fillStyle = col; ctx.fillRect(x, y, w, h); };
-          // Rey Lobo: orejas, cabeza, hocico, corona y barra de vida
-          ctx.fillStyle = "#5B6470";
-          ctx.beginPath(); ctx.moveTo(jx + 6, jy + 16); ctx.lineTo(jx + 18, jy - 14); ctx.lineTo(jx + 36, jy + 8); ctx.closePath(); ctx.fill();
-          ctx.beginPath(); ctx.moveTo(jx + 78, jy + 16); ctx.lineTo(jx + 66, jy - 14); ctx.lineTo(jx + 48, jy + 8); ctx.closePath(); ctx.fill();
-          ctx.fillStyle = st.jefe.herido > 0 ? "#A86A6A" : "#6B7480";
-          ctx.beginPath(); ctx.ellipse(jx + 42, jy + 42, 40, 42, 0, 0, 7); ctx.fill();
-          ctx.fillStyle = "#E8EAED";
-          ctx.beginPath(); ctx.ellipse(jx + 42, jy + 60, 22, 20, 0, 0, 7); ctx.fill();
-          P2(jx + 22, jy + 28, 12, 9, T.au1); P2(jx + 50, jy + 28, 12, 9, T.au1);
-          P2(jx + 26, jy + 30, 5, 6, "#111"); P2(jx + 54, jy + 30, 5, 6, "#111");
-          P2(jx + 37, jy + 52, 10, 7, "#161616");
-          P2(jx + 30, jy + 72, 4, 7, "#FFFFFF"); P2(jx + 50, jy + 72, 4, 7, "#FFFFFF");
+          // Rey Lobo: el MISMO sprite que los lobos pequeños, a lo grande, para que no desentonen
+          spriteCaja(ctx, SPR.lobo, jx, jy, 84, 88);
+          if (st.jefe.herido > 0) { ctx.fillStyle = "rgba(200,60,60,0.35)"; ctx.fillRect(jx, jy, 84, 88); }
+          // La corona, la barra de vida y el brillo de la boca son estado de juego, no textura
           ctx.fillStyle = T.au1;
           ctx.beginPath(); ctx.moveTo(jx + 20, jy + 2); ctx.lineTo(jx + 26, jy - 16); ctx.lineTo(jx + 34, jy);
           ctx.lineTo(jx + 42, jy - 18); ctx.lineTo(jx + 50, jy); ctx.lineTo(jx + 58, jy - 16);
@@ -2871,12 +2778,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
           if (o.tipo === "moneda") {
             ctx.fillStyle = "rgba(0,0,0,0.22)";
             ctx.beginPath(); ctx.ellipse(ox2, oy2 + 24, 14, 5, 0, 0, 7); ctx.fill();
-            ctx.fillStyle = "#B8860B"; ctx.beginPath(); ctx.arc(ox2, oy2 + 8, 16, 0, 7); ctx.fill();
-            ctx.fillStyle = "#FFD84D"; ctx.beginPath(); ctx.arc(ox2, oy2 + 6, 14, 0, 7); ctx.fill();
-            ctx.fillStyle = "#8A6508"; ctx.font = "bold 17px system-ui";
-            ctx.textAlign = "center"; ctx.textBaseline = "middle";
-            ctx.fillText("€", ox2, oy2 + 7);
-            ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+            sprite(ctx, SPR.moneda, ox2 - 17, oy2 - 8, 2.8);
           } else {
             // Lobo frontal a tamaño completo
             const wsc = 52, lx2 = ox2 - wsc / 2, ly2 = oy2;
