@@ -763,18 +763,6 @@ const MOVIMIENTO_REDUCIDO = ()=>{
 const ESCALON_S = 0.03;
 const escalon = (i)=>`${Math.min(i,7)*ESCALON_S}s`;
 
-// Contenedor de la pestaña activa. Se monta de nuevo en cada cambio (key={tab}
-// en el padre), reproduce la entrada y SUELTA la clase al terminar.
-// Lo de soltarla no es limpieza: mientras un elemento tiene una animación de
-// transform aplicada, el navegador lo trata como bloque contenedor y los
-// position:fixed que cuelgan de él (los popups de receta, por ejemplo) se
-// posicionan respecto a la pestaña en vez de respecto a la ventana.
-function ZonaPestana({children, style}){
-  const [anim,setAnim]=React.useState(true);
-  React.useEffect(()=>{ const id=setTimeout(()=>setAnim(false),320); return ()=>clearTimeout(id); },[]);
-  return <div className={anim?"tab-in":undefined} style={style}>{children}</div>;
-}
-
 // Monta a 0 y salta al valor real en el siguiente frame: la barra CRECE en vez
 // de aparecer llena. Devuelve false en el primer render y true después.
 function useCrecer(){
@@ -3951,174 +3939,65 @@ function AvatarDisplay({expr="idle", size=200}){
 }
 
 
-// ─── Pixel-art mascota GBH — cuernos curvados, lana rizada, 7 expresiones ────
+// ─── Mascot vectorial de Bo (v2) — cuernos y orejas delante de la lana, ─────
+// ─── volumen por degradado, id único por instancia, 7 expresiones ──────────
 function Mascot({expr="idle",size=200}){
+  // Un id único por instancia: si dos Mascot comparten los ids de los
+  // degradados, el segundo pisa al primero y uno de los dos sale plano.
+  const idRef=useRef(null);
+  if(!idRef.current) idRef.current="bo"+Math.random().toString(36).slice(2,7);
+  const u=idRef.current;
   const aura={idle:false,happy:false,excited:true,celebrating:true,sad:false,sleeping:false,legend:true};
   const glow=aura[expr];
-  const W1="#3A8A40",W2="#4CAF50",W3="#6BBF6E",W4="#2A6B30";
-  const H1="#8B6040",H2="#A07848",H3="#5A3020";
-  const F1="#6DBF72",F2="#88CC8A";
-  const EY="#1A1414",SH="#FFFFFF";
-  const BL="#FF9999",TE="#64B5F6",MO="#4A2A18";  // ARTE del Mascot: TE coincide con
-  const GD="#FFD700",GD2="#FFA000";              // T.platos y GD con T.moneda por
-  // casualidad — NO tokenizar: si el tema cambia, este dibujo no debe cambiar.
-  const HT="#8090A0";
+  const EY="#1A1414",SH="#FFFFFF",BL="#FF9999",TE="#64B5F6",MO="#4A2A18",GD="#FFD700",GD2="#FFA000";
 
-  const Body=()=>(
-    <g>
-      {/* ── HORNS (curvados, estilo carnero) ── */}
-      <path d="M10 27 C3 23 1 12 5 7 C9 2 18 4 19 11 C20 18 15 24 11 27Z" fill={H1}/>
-      <path d="M10 27 C4 23 3 14 7 9 C10 4 17 6 17 11 C12 11 8 15 9 21Z" fill={H2} opacity="0.55"/>
-      <path d="M7 9 C10 4 17 6 18 11" stroke={H3} strokeWidth="1.2" fill="none" strokeLinecap="round"/>
-      <path d="M38 27 C45 23 47 12 43 7 C39 2 30 4 29 11 C28 18 33 24 37 27Z" fill={H1}/>
-      <path d="M38 27 C44 23 45 14 41 9 C38 4 31 6 31 11 C36 11 40 15 39 21Z" fill={H2} opacity="0.55"/>
-      <path d="M41 9 C38 4 31 6 30 11" stroke={H3} strokeWidth="1.2" fill="none" strokeLinecap="round"/>
-      {/* ── OREJAS ── */}
-      <ellipse cx="7"  cy="31" rx="5" ry="8" fill={W1} transform="rotate(-12 7 31)"/>
-      <ellipse cx="41" cy="31" rx="5" ry="8" fill={W1} transform="rotate(12 41 31)"/>
-      <ellipse cx="7"  cy="31" rx="3" ry="5" fill={BL} opacity="0.5" transform="rotate(-12 7 31)"/>
-      <ellipse cx="41" cy="31" rx="3" ry="5" fill={BL} opacity="0.5" transform="rotate(12 41 31)"/>
-      {/* ── CUERPO LANA ── */}
-      <circle cx="24" cy="32" r="20" fill={W1}/>
-      {/* Bultos rizados */}
-      <circle cx="12" cy="19" r="9"  fill={W3}/>
-      <circle cx="24" cy="15" r="10" fill={W3}/>
-      <circle cx="36" cy="19" r="9"  fill={W3}/>
-      <circle cx="7"  cy="31" r="7"  fill={W2}/>
-      <circle cx="41" cy="31" r="7"  fill={W2}/>
-      <circle cx="14" cy="43" r="7"  fill={W2}/>
-      <circle cx="24" cy="46" r="8"  fill={W2}/>
-      <circle cx="34" cy="43" r="7"  fill={W2}/>
-      {/* Espirales de lana */}
-      <path d="M12 17 C12 13 17 11 19 14" stroke={W4} strokeWidth="2"   fill="none" strokeLinecap="round"/>
-      <path d="M24 13 C24 9 29 7 31 10"  stroke={W4} strokeWidth="2"   fill="none" strokeLinecap="round"/>
-      <path d="M36 17 C36 13 41 12 39 15" stroke={W4} strokeWidth="2"  fill="none" strokeLinecap="round"/>
-      <path d="M9  31 C7  27 10 23 13 24" stroke={W4} strokeWidth="1.5" fill="none" strokeLinecap="round"/>
-      <path d="M39 31 C41 27 38 23 35 24" stroke={W4} strokeWidth="1.5" fill="none" strokeLinecap="round"/>
-      {/* ── CARA ── */}
-      <ellipse cx="24" cy="32" rx="14" ry="14" fill={F1}/>
-      <ellipse cx="21" cy="28" rx="8"  ry="6"  fill={F2} opacity="0.3"/>
-      {/* ── NARIZ ── */}
-      <rect x="19" y="36" width="10" height="5" rx="2.5" fill={H1}/>
-      <circle cx="21.5" cy="38" r="1.5" fill={H3} opacity="0.6"/>
-      <circle cx="26.5" cy="38" r="1.5" fill={H3} opacity="0.6"/>
-    </g>
-  );
+  const Defs=()=>(<>
+<radialGradient id={`lana${u}`} cx="34%" cy="26%" r="78%">
+<stop offset="0%" stopColor="#8ADC90"/><stop offset="55%" stopColor="#4CAF50"/>
+<stop offset="100%" stopColor="#2C7A33"/></radialGradient>
+<radialGradient id={`bulto${u}`} cx="34%" cy="28%" r="72%">
+<stop offset="0%" stopColor="#98E69E"/><stop offset="100%" stopColor="#54B958"/></radialGradient>
+<radialGradient id={`cara${u}`} cx="38%" cy="30%" r="74%">
+<stop offset="0%" stopColor="#BCEDB6"/><stop offset="65%" stopColor="#84CE88"/>
+<stop offset="100%" stopColor="#5CAA62"/></radialGradient>
+<radialGradient id={`hoc${u}`} cx="38%" cy="28%" r="80%">
+<stop offset="0%" stopColor="#EAF6D6"/><stop offset="100%" stopColor="#C2E3AB"/></radialGradient>
+<linearGradient id={`cuer${u}`} x1="0" y1="0" x2="0.9" y2="1">
+<stop offset="0%" stopColor="#DCBB84"/><stop offset="45%" stopColor="#A07848"/>
+<stop offset="100%" stopColor="#63421F"/></linearGradient>
+<radialGradient id={`orej${u}`} cx="40%" cy="25%" r="80%">
+<stop offset="0%" stopColor="#57BC5B"/><stop offset="100%" stopColor="#2E7D34"/></radialGradient>
+<linearGradient id={`nar${u}`} x1="0" y1="0" x2="0" y2="1">
+<stop offset="0%" stopColor="#A87A4C"/><stop offset="100%" stopColor="#6B4526"/></linearGradient>
+<linearGradient id={`oro${u}`} x1="0" y1="0" x2="0" y2="1">
+<stop offset="0%" stopColor="#FFE47A"/><stop offset="55%" stopColor="#FFD700"/>
+<stop offset="100%" stopColor="#FFA000"/></linearGradient>
+<linearGradient id={`gorro${u}`} x1="0" y1="0" x2="0.6" y2="1">
+<stop offset="0%" stopColor="#A9B6C4"/><stop offset="100%" stopColor="#5D6C7C"/></linearGradient>
+<filter id={`b1${u}`} x="-30%" y="-30%" width="160%" height="160%">
+<feGaussianBlur stdDeviation="1.1"/></filter>
+<filter id={`b2${u}`} x="-40%" y="-40%" width="180%" height="180%">
+<feGaussianBlur stdDeviation="2.1"/></filter>
+<clipPath id={`cc${u}`}><ellipse cx="24" cy="32.5" rx="13.4" ry="12.4"/></clipPath>
+</>);
+
+  const Body=()=>(<g><ellipse cx="24" cy="46.8" rx="14" ry="2.4" fill="#08240F" opacity=".25" filter={`url(#b1${u})`}/><circle cx="24" cy="31" r="19" fill={`url(#lana${u})`}/><circle cx="11" cy="19" r="8.4" fill={`url(#bulto${u})`}/><circle cx="24" cy="15.4" r="9.2" fill={`url(#bulto${u})`}/><circle cx="37" cy="19" r="8.4" fill={`url(#bulto${u})`}/><circle cx="5.8" cy="29" r="6.4" fill={`url(#bulto${u})`}/><circle cx="42.2" cy="29" r="6.4" fill={`url(#bulto${u})`}/><circle cx="12" cy="41.6" r="6.8" fill={`url(#bulto${u})`}/><circle cx="24" cy="44.6" r="7.6" fill={`url(#bulto${u})`}/><circle cx="36" cy="41.6" r="6.8" fill={`url(#bulto${u})`}/><ellipse cx="24" cy="45" rx="17" ry="6.5" fill="#26702C" opacity=".30" filter={`url(#b2${u})`}/><ellipse cx="14.5" cy="16.5" rx="7.5" ry="5" fill="#FFFFFF" opacity=".22" filter={`url(#b2${u})`}/><path d="M8 27.5 C6.2 24 8.6 20.4 11.6 21" stroke="#2A6B30" strokeWidth="1.4" fill="none" strokeLinecap="round" opacity=".7"/><path d="M40 27.5 C41.8 24 39.4 20.4 36.4 21" stroke="#2A6B30" strokeWidth="1.4" fill="none" strokeLinecap="round" opacity=".7"/><path d="M20 12.4 C20.6 8.8 25.4 8 27 11" stroke="#2A6B30" strokeWidth="1.6" fill="none" strokeLinecap="round" opacity=".55"/><ellipse cx="24" cy="32.5" rx="13.4" ry="12.4" fill={`url(#cara${u})`}/><g clipPath={`url(#cc${u})`}><ellipse cx="24" cy="19.5" rx="14.5" ry="7.5" fill="#3E8F45" opacity=".45" filter={`url(#b2${u})`}/></g><ellipse cx="24" cy="38.2" rx="8.4" ry="5.8" fill={`url(#hoc${u})`}/><path d="M20.6 34.2 h6.8 a2.4 2.4 0 0 1 2.3 2.5 c0 2 -2.5 3.4 -5.7 3.4 s-5.7 -1.4 -5.7 -3.4 a2.4 2.4 0 0 1 2.3 -2.5Z" fill={`url(#nar${u})`}/><ellipse cx="21.6" cy="37.1" rx="1" ry="1.3" fill="#3B2411" opacity=".65"/><ellipse cx="26.4" cy="37.1" rx="1" ry="1.3" fill="#3B2411" opacity=".65"/><ellipse cx="22.2" cy="35.2" rx="2" ry="1" fill="#FFFFFF" opacity=".30"/><g transform="rotate(-22 4.6 34)"><ellipse cx="4.6" cy="34" rx="4.2" ry="6.8" fill={`url(#orej${u})`}/><ellipse cx="4.6" cy="34.8" rx="2.1" ry="4.2" fill="#FF9999" opacity=".45"/></g><g transform="rotate(22 43.4 34)"><ellipse cx="43.4" cy="34" rx="4.2" ry="6.8" fill={`url(#orej${u})`}/><ellipse cx="43.4" cy="34.8" rx="2.1" ry="4.2" fill="#FF9999" opacity=".45"/></g><path d="M17.5 10.5 C9.5 5.5 1.8 10 2.2 18 C2.6 25.4 8.4 29.4 13.2 27.6 C9.2 26.2 6.2 22.4 6.4 18 C6.7 12.6 12 9.6 16.2 13Z" fill={`url(#cuer${u})`}/><path d="M16.6 11.6 C9.6 7.6 3.4 11.4 3.2 17.6" stroke="#E8CB9B" strokeWidth="1.1" fill="none" strokeLinecap="round" opacity=".75"/><path d="M6.8 13.6 C9.4 12 12.4 12.2 14.6 13.8" stroke="#5A3A18" strokeWidth=".8" fill="none" strokeLinecap="round" opacity=".55"/><path d="M4.2 18.6 C6.4 17.6 8.6 18.2 10 19.8" stroke="#5A3A18" strokeWidth=".8" fill="none" strokeLinecap="round" opacity=".55"/><path d="M5.6 23.4 C7.4 22.8 9.4 23.6 10.6 25" stroke="#5A3A18" strokeWidth=".8" fill="none" strokeLinecap="round" opacity=".5"/><g transform="translate(48,0) scale(-1,1)"><path d="M17.5 10.5 C9.5 5.5 1.8 10 2.2 18 C2.6 25.4 8.4 29.4 13.2 27.6 C9.2 26.2 6.2 22.4 6.4 18 C6.7 12.6 12 9.6 16.2 13Z" fill={`url(#cuer${u})`}/><path d="M16.6 11.6 C9.6 7.6 3.4 11.4 3.2 17.6" stroke="#E8CB9B" strokeWidth="1.1" fill="none" strokeLinecap="round" opacity=".75"/><path d="M6.8 13.6 C9.4 12 12.4 12.2 14.6 13.8" stroke="#5A3A18" strokeWidth=".8" fill="none" strokeLinecap="round" opacity=".55"/><path d="M4.2 18.6 C6.4 17.6 8.6 18.2 10 19.8" stroke="#5A3A18" strokeWidth=".8" fill="none" strokeLinecap="round" opacity=".55"/><path d="M5.6 23.4 C7.4 22.8 9.4 23.6 10.6 25" stroke="#5A3A18" strokeWidth=".8" fill="none" strokeLinecap="round" opacity=".5"/></g></g>);
 
   const Expr={
-    idle:(
-      <g>
-        <circle cx="19" cy="28" r="4" fill={EY}/>
-        <circle cx="29" cy="28" r="4" fill={EY}/>
-        <circle cx="18" cy="27" r="1.8" fill={SH}/>
-        <circle cx="28" cy="27" r="1.8" fill={SH}/>
-        <path d="M18 35 Q24 38 30 35" stroke={MO} strokeWidth="2" fill="none" strokeLinecap="round"/>
-      </g>
-    ),
-    happy:(
-      <g>
-        <path d="M14 29 Q19 24 24 29" stroke={EY} strokeWidth="3.5" fill="none" strokeLinecap="round"/>
-        <path d="M24 29 Q29 24 34 29" stroke={EY} strokeWidth="3.5" fill="none" strokeLinecap="round"/>
-        <path d="M15 34 Q24 42 33 34" stroke={MO} strokeWidth="2.5" fill="none" strokeLinecap="round"/>
-        <ellipse cx="13" cy="32" rx="5" ry="3.5" fill={BL} opacity="0.65"/>
-        <ellipse cx="35" cy="32" rx="5" ry="3.5" fill={BL} opacity="0.65"/>
-      </g>
-    ),
-    excited:(
-      <g>
-        <circle cx="19" cy="27" r="5.5" fill={EY}/>
-        <circle cx="29" cy="27" r="5.5" fill={EY}/>
-        <circle cx="17" cy="25" r="2.5" fill={SH}/>
-        <circle cx="27" cy="25" r="2.5" fill={SH}/>
-        <path d="M13 20 Q19 16 25 20" stroke={EY} strokeWidth="2.2" fill="none" strokeLinecap="round"/>
-        <path d="M23 20 Q29 16 35 20" stroke={EY} strokeWidth="2.2" fill="none" strokeLinecap="round"/>
-        <ellipse cx="24" cy="37" rx="5.5" ry="4.5" fill={EY}/>
-        <ellipse cx="24" cy="37" rx="4"   ry="3"   fill="#EF5350"/>
-      </g>
-    ),
-    celebrating:(
-      <g>
-        <path d="M14 28 Q19 23 24 28" stroke={EY} strokeWidth="3.5" fill="none" strokeLinecap="round"/>
-        <path d="M24 28 Q29 23 34 28" stroke={EY} strokeWidth="3.5" fill="none" strokeLinecap="round"/>
-        <path d="M14 34 Q24 43 34 34" stroke={MO} strokeWidth="2.5" fill="none" strokeLinecap="round"/>
-        <text x="1"  y="18" fontSize="10" fill={GD}>★</text>
-        <text x="39" y="18" fontSize="10" fill={GD}>★</text>
-        <text x="-1" y="32" fontSize="8"  fill={GD}>✦</text>
-        <text x="42" y="32" fontSize="8"  fill={GD}>✦</text>
-        <ellipse cx="13" cy="32" rx="5" ry="3.5" fill={BL} opacity="0.7"/>
-        <ellipse cx="35" cy="32" rx="5" ry="3.5" fill={BL} opacity="0.7"/>
-      </g>
-    ),
-    sad:(
-      <g>
-        <circle cx="19" cy="29" r="4" fill={EY}/>
-        <circle cx="29" cy="29" r="4" fill={EY}/>
-        <circle cx="18" cy="28" r="1.8" fill={SH}/>
-        <circle cx="28" cy="28" r="1.8" fill={SH}/>
-        <path d="M14 22 Q19 26 24 22" stroke={EY} strokeWidth="2.2" fill="none" strokeLinecap="round"/>
-        <path d="M24 22 Q29 26 34 22" stroke={EY} strokeWidth="2.2" fill="none" strokeLinecap="round"/>
-        <path d="M18 37 Q24 33 30 37" stroke={MO} strokeWidth="2" fill="none" strokeLinecap="round"/>
-        <path d="M17 32 Q15 38 16 42" stroke={TE} strokeWidth="3" fill="none" strokeLinecap="round"/>
-        <path d="M31 32 Q33 38 32 42" stroke={TE} strokeWidth="3" fill="none" strokeLinecap="round"/>
-        <circle cx="15.5" cy="43" r="3" fill={TE} opacity="0.8"/>
-        <circle cx="32.5" cy="43" r="3" fill={TE} opacity="0.8"/>
-      </g>
-    ),
-    sleeping:(
-      <g>
-        {/* Gorro */}
-        <path d="M14 22 Q24 11 34 22 L31 15 Q24 5 17 15Z" fill={HT}/>
-        <rect x="12" y="21" width="24" height="5" rx="2.5" fill="#607080"/>
-        <circle cx="34" cy="12" r="4" fill={SH}/>
-        {/* Ojos cerrados */}
-        <path d="M13 28 Q19 24 25 28" stroke={EY} strokeWidth="3" fill="none" strokeLinecap="round"/>
-        <path d="M23 28 Q29 24 35 28" stroke={EY} strokeWidth="3" fill="none" strokeLinecap="round"/>
-        <line x1="14" y1="28" x2="12" y2="25" stroke={EY} strokeWidth="1.8" strokeLinecap="round"/>
-        <line x1="19" y1="27" x2="19" y2="24" stroke={EY} strokeWidth="1.8" strokeLinecap="round"/>
-        <line x1="24" y1="28" x2="25" y2="25" stroke={EY} strokeWidth="1.8" strokeLinecap="round"/>
-        <line x1="24" y1="28" x2="23" y2="25" stroke={EY} strokeWidth="1.8" strokeLinecap="round"/>
-        <line x1="29" y1="27" x2="29" y2="24" stroke={EY} strokeWidth="1.8" strokeLinecap="round"/>
-        <line x1="34" y1="28" x2="36" y2="25" stroke={EY} strokeWidth="1.8" strokeLinecap="round"/>
-        <path d="M20 35 Q24 38 28 35" stroke={MO} strokeWidth="2" fill="none" strokeLinecap="round"/>
-        {/* ZZZ */}
-        <text x="38" y="24" fontSize="7"  fill="#607080" fontWeight="bold" fontFamily="monospace">z</text>
-        <text x="40" y="17" fontSize="8"  fill="#607080" fontWeight="bold" fontFamily="monospace">Z</text>
-        <text x="42" y="10" fontSize="9"  fill="#607080" fontWeight="bold" fontFamily="monospace">Z</text>
-      </g>
-    ),
-    legend:(
-      <g>
-        {/* Corona detallada con joyas */}
-        <rect x="14" y="12" width="20" height="7" rx="2" fill={GD}/>
-        <polygon points="14,13 17,4 20,13" fill={GD}/>
-        <polygon points="21,13 24,2 27,13" fill={GD}/>
-        <polygon points="28,13 31,4 34,13" fill={GD}/>
-        <rect x="14" y="16" width="20" height="3" rx="1" fill={GD2}/>
-        {/* Joyas */}
-        <circle cx="17.5" cy="6"    r="2.2" fill="#1A1A1A"/>
-        <circle cx="24"   cy="4.5"  r="2.5" fill="#4CAF50"/>
-        <circle cx="30.5" cy="6"    r="2.2" fill="#E91E63"/>
-        <circle cx="17"   cy="14"   r="1.8" fill="#2196F3"/>
-        <circle cx="24"   cy="13.5" r="1.8" fill="#FF5722"/>
-        <circle cx="31"   cy="14"   r="1.8" fill="#9C27B0"/>
-        {/* Guiño izquierdo */}
-        <path d="M13 28 Q19 24 25 28" stroke={EY} strokeWidth="3" fill="none" strokeLinecap="round"/>
-        {/* Ojo derecho abierto */}
-        <circle cx="30" cy="27" r="4.5" fill={EY}/>
-        <circle cx="28.5" cy="25.5" r="2" fill={SH}/>
-        {/* Smirk */}
-        <path d="M17 35 Q26 41 33 35" stroke={MO} strokeWidth="2.5" fill="none" strokeLinecap="round"/>
-        {/* Destellos */}
-        <text x="1"  y="27" fontSize="10" fill={GD}>✦</text>
-        <text x="39" y="24" fontSize="9"  fill={GD}>★</text>
-      </g>
-    ),
+    idle:(<g><circle cx="18" cy="28.5" r="4.2" fill="#1A1414"/><circle cx="16.40" cy="26.82" r="1.68" fill="#FFFFFF"/><circle cx="19.43" cy="30.10" r="0.71" fill="#FFFFFF" opacity=".7"/><circle cx="30" cy="28.5" r="4.2" fill="#1A1414"/><circle cx="28.40" cy="26.82" r="1.68" fill="#FFFFFF"/><circle cx="31.43" cy="30.10" r="0.71" fill="#FFFFFF" opacity=".7"/><path d="M20 40.8 Q24 43.4 28 40.8" stroke="#4A2A18" strokeWidth="1.8" fill="none" strokeLinecap="round"/></g>),
+    happy:(<g><path d="M14 29.6 Q18 25 22 29.6" stroke="#1A1414" strokeWidth="3.2" fill="none" strokeLinecap="round"/><path d="M26 29.6 Q30 25 34 29.6" stroke="#1A1414" strokeWidth="3.2" fill="none" strokeLinecap="round"/><path d="M18.5 40.4 Q24 45 29.5 40.4" stroke="#4A2A18" strokeWidth="2.2" fill="none" strokeLinecap="round"/><ellipse cx="14.4" cy="34" rx="4" ry="2.8" fill="#FF9999" opacity="0.6"/><ellipse cx="33.6" cy="34" rx="4" ry="2.8" fill="#FF9999" opacity="0.6"/></g>),
+    excited:(<g><path d="M12.8 21.6 Q18 18 23 21.6" stroke="#1A1414" strokeWidth="2" fill="none" strokeLinecap="round"/><path d="M25 21.6 Q30 18 35.2 21.6" stroke="#1A1414" strokeWidth="2" fill="none" strokeLinecap="round"/><circle cx="18" cy="28.2" r="5" fill="#1A1414"/><circle cx="16.10" cy="26.20" r="2.00" fill="#FFFFFF"/><circle cx="19.70" cy="30.10" r="0.85" fill="#FFFFFF" opacity=".7"/><circle cx="30" cy="28.2" r="5" fill="#1A1414"/><circle cx="28.10" cy="26.20" r="2.00" fill="#FFFFFF"/><circle cx="31.70" cy="30.10" r="0.85" fill="#FFFFFF" opacity=".7"/><ellipse cx="24" cy="41.4" rx="4.6" ry="3.4" fill="#1A1414"/><ellipse cx="24" cy="42.4" rx="3" ry="2" fill="#EF5350"/><polygon points="3.50,11.80 4.29,13.91 6.54,14.01 4.78,15.42 5.38,17.59 3.50,16.34 1.62,17.59 2.22,15.42 0.46,14.01 2.71,13.91" fill="#FFD700" opacity="1.0"/><polygon points="44.50,11.80 45.29,13.91 47.54,14.01 45.78,15.42 46.38,17.59 44.50,16.34 42.62,17.59 43.22,15.42 41.46,14.01 43.71,13.91" fill="#FFD700" opacity="1.0"/><polygon points="1.50,23.90 2.02,25.29 3.50,25.35 2.34,26.27 2.73,27.70 1.50,26.88 0.27,27.70 0.66,26.27 -0.50,25.35 0.98,25.29" fill="#FFD700" opacity="0.85"/><polygon points="46.50,23.90 47.02,25.29 48.50,25.35 47.34,26.27 47.73,27.70 46.50,26.88 45.27,27.70 45.66,26.27 44.50,25.35 45.98,25.29" fill="#FFD700" opacity="0.85"/></g>),
+    celebrating:(<g><path d="M14 29 Q18 24.4 22 29" stroke="#1A1414" strokeWidth="3.2" fill="none" strokeLinecap="round"/><path d="M26 29 Q30 24.4 34 29" stroke="#1A1414" strokeWidth="3.2" fill="none" strokeLinecap="round"/><path d="M17.6 40 Q24 46.4 30.4 40Z" fill="#4A2A18"/><path d="M20.6 44.4 Q24 46.4 27.4 44.4Z" fill="#EF5350"/><ellipse cx="14.4" cy="34" rx="4" ry="2.8" fill="#FF9999" opacity="0.7"/><ellipse cx="33.6" cy="34" rx="4" ry="2.8" fill="#FF9999" opacity="0.7"/><polygon points="4.00,8.60 4.84,10.84 7.23,10.95 5.36,12.44 6.00,14.75 4.00,13.43 2.00,14.75 2.64,12.44 0.77,10.95 3.16,10.84" fill="#FFD700" opacity="1.0"/><polygon points="44.00,8.60 44.84,10.84 47.23,10.95 45.36,12.44 46.00,14.75 44.00,13.43 42.00,14.75 42.64,12.44 40.77,10.95 43.16,10.84" fill="#FFD700" opacity="1.0"/><polygon points="1.50,20.80 2.04,22.25 3.59,22.32 2.38,23.29 2.79,24.78 1.50,23.92 0.21,24.78 0.62,23.29 -0.59,22.32 0.96,22.25" fill="#FFE47A" opacity="1.0"/><polygon points="46.50,20.80 47.04,22.25 48.59,22.32 47.38,23.29 47.79,24.78 46.50,23.92 45.21,24.78 45.62,23.29 44.41,22.32 45.96,22.25" fill="#FFE47A" opacity="1.0"/><polygon points="9.00,2.00 9.49,3.32 10.90,3.38 9.80,4.26 10.18,5.62 9.00,4.84 7.82,5.62 8.20,4.26 7.10,3.38 8.51,3.32" fill="#FFD700" opacity="0.8"/><polygon points="39.00,2.00 39.49,3.32 40.90,3.38 39.80,4.26 40.18,5.62 39.00,4.84 37.82,5.62 38.20,4.26 37.10,3.38 38.51,3.32" fill="#FFD700" opacity="0.8"/></g>),
+    sad:(<g><path d="M13.6 23.4 Q18 26.4 22.4 24.4" stroke="#1A1414" strokeWidth="2" fill="none" strokeLinecap="round"/><path d="M34.4 23.4 Q30 26.4 25.6 24.4" stroke="#1A1414" strokeWidth="2" fill="none" strokeLinecap="round"/><circle cx="18" cy="29.4" r="4" fill="#1A1414"/><circle cx="16.48" cy="27.80" r="1.60" fill="#FFFFFF"/><circle cx="19.36" cy="30.92" r="0.68" fill="#FFFFFF" opacity=".7"/><circle cx="30" cy="29.4" r="4" fill="#1A1414"/><circle cx="28.48" cy="27.80" r="1.60" fill="#FFFFFF"/><circle cx="31.36" cy="30.92" r="0.68" fill="#FFFFFF" opacity=".7"/><path d="M15.8 32 Q14 37.4 15.2 41.4" stroke="#64B5F6" strokeWidth="2.4" fill="none" strokeLinecap="round" opacity=".85"/><circle cx="15.2" cy="42.6" r="2.6" fill="#64B5F6" opacity=".85"/><circle cx="14.4" cy="41.8" r=".9" fill="#FFFFFF" opacity=".7"/><path d="M32.2 32 Q34 37.4 32.8 41.4" stroke="#64B5F6" strokeWidth="2.4" fill="none" strokeLinecap="round" opacity=".85"/><circle cx="32.8" cy="42.6" r="2.6" fill="#64B5F6" opacity=".85"/><circle cx="32" cy="41.8" r=".9" fill="#FFFFFF" opacity=".7"/><path d="M20.4 42 Q24 39.4 27.6 42" stroke="#4A2A18" strokeWidth="1.8" fill="none" strokeLinecap="round"/></g>),
+    sleeping:(<g><path d="M11 22.5 C12.5 11 21 6 29 6.6 C34 7 38.6 9.2 40.2 12.4 C36 12 31.5 14 28 17 C24 20.4 17 22.8 11 22.5Z" fill={`url(#gorro${u})`}/><path d="M12.6 20.4 C14 11.4 21.6 7.4 28.6 7.8" fill="none" stroke="#C3D0DC" strokeWidth="1" strokeLinecap="round" opacity=".55"/><rect x="9.4" y="19.8" width="27.6" height="4.4" rx="2.2" fill="#E9EEF3"/><rect x="9.4" y="19.8" width="27.6" height="1.9" rx="1" fill="#FFFFFF" opacity=".6"/><circle cx="40.4" cy="13.2" r="3.4" fill="#E9EEF3"/><circle cx="39.3" cy="12.1" r="1.3" fill="#FFFFFF" opacity=".85"/><path d="M14 29.4 Q18 26 22 29.4" stroke="#1A1414" strokeWidth="2.6" fill="none" strokeLinecap="round"/><path d="M26 29.4 Q30 26 34 29.4" stroke="#1A1414" strokeWidth="2.6" fill="none" strokeLinecap="round"/><path d="M21 41 Q24 43.2 27 41" stroke="#4A2A18" strokeWidth="1.8" fill="none" strokeLinecap="round"/><text x="38.5" y="26" fontSize="6" fill="#8FA3B5" fontWeight="bold" fontFamily="Arial">z</text><text x="41" y="19.5" fontSize="7.5" fill="#A8BCCD" fontWeight="bold" fontFamily="Arial">Z</text><text x="43.5" y="11.5" fontSize="9" fill="#C3D4E1" fontWeight="bold" fontFamily="Arial">Z</text></g>),
+    legend:(<g><path d="M12.5 20 L12.5 9.5 L18 14.5 L24 6.5 L30 14.5 L35.5 9.5 L35.5 20 Z" fill={`url(#oro${u})`}/><rect x="12.5" y="17.4" width="23" height="3.4" rx="1.4" fill="#FFA000"/><path d="M12.5 9.5 L18 14.5 L24 6.5" fill="none" stroke="#FFF3B0" strokeWidth="1" strokeLinecap="round" opacity=".8"/><circle cx="12.5" cy="8.6" r="1.9" fill="#E91E63"/><circle cx="11.9" cy="8" r=".7" fill="#FFFFFF" opacity=".8"/><circle cx="24" cy="5.4" r="2.2" fill="#4CAF50"/><circle cx="23.3" cy="4.7" r=".8" fill="#FFFFFF" opacity=".8"/><circle cx="35.5" cy="8.6" r="1.9" fill="#2196F3"/><circle cx="34.9" cy="8" r=".7" fill="#FFFFFF" opacity=".8"/><circle cx="18" cy="19.1" r="1.2" fill="#9C27B0"/><circle cx="30" cy="19.1" r="1.2" fill="#FF5722"/><path d="M14 29.4 Q18 25.2 22 29.4" stroke="#1A1414" strokeWidth="3" fill="none" strokeLinecap="round"/><circle cx="30" cy="28.4" r="4.4" fill="#1A1414"/><circle cx="28.33" cy="26.64" r="1.76" fill="#FFFFFF"/><circle cx="31.50" cy="30.07" r="0.75" fill="#FFFFFF" opacity=".7"/><path d="M19 40.4 Q25.5 45.4 30.4 39.6" stroke="#4A2A18" strokeWidth="2.2" fill="none" strokeLinecap="round"/><polygon points="4.00,20.80 4.79,22.91 7.04,23.01 5.28,24.42 5.88,26.59 4.00,25.34 2.12,26.59 2.72,24.42 0.96,23.01 3.21,22.91" fill="#FFD700" opacity="1.0"/><polygon points="44.50,17.20 45.19,19.05 47.16,19.13 45.62,20.36 46.15,22.27 44.50,21.18 42.85,22.27 43.38,20.36 41.84,19.13 43.81,19.05" fill="#FFD700" opacity="1.0"/><polygon points="42.00,31.00 42.49,32.32 43.90,32.38 42.80,33.26 43.18,34.62 42.00,33.84 40.82,34.62 41.20,33.26 40.10,32.38 41.51,32.32" fill="#FFE47A" opacity="0.9"/></g>),
   };
 
   return(
     <div style={{position:"relative",width:size,height:size,flexShrink:0}}>
-      {glow&&<div style={{position:"absolute",inset:-Math.round(size*0.12),borderRadius:"50%",background:`radial-gradient(circle,${expr==="legend"?"${alpha(T.au1,0.45)}":"${alpha(T.g1,0.35)}"} 0%,transparent 65%)`,animation:"aura 2.5s ease-in-out infinite",pointerEvents:"none"}}/>}
+      {glow&&<div style={{position:"absolute",inset:-Math.round(size*0.12),borderRadius:"50%",background:`radial-gradient(circle,${expr==="legend"?alpha(T.au1,0.45):alpha(T.g1,0.35)} 0%,transparent 65%)`,animation:"aura 2.5s ease-in-out infinite",pointerEvents:"none"}}/>}
       <svg viewBox="0 0 48 48" width={size} height={size} style={{display:"block",overflow:"visible"}}>
+        <defs><Defs/></defs>
         <Body/>
         {Expr[expr]||Expr.idle}
       </svg>
@@ -10013,15 +9892,9 @@ function GBHApp(){
        mientras el paciente lee. Curva de rebote suave (1.12); la de 1.56 se
        reserva para celebraciones. Ninguna pasa de 400 ms. */
     button:active{transform:translateY(2px) scale(0.985)!important;transition:transform 0.08s ease-out!important}
-    /* ⚠️ AMBAS animaciones DEBEN terminar en transform:none. Un transform
-       residual (aunque sea scale(1)) convierte al elemento en bloque
-       contenedor y rompe cualquier position:fixed que cuelgue de él: el
-       popup 🛒 Comprar del recetario se quedaba fuera de pantalla. Por eso
-       .stagger-in NO usa popIn, que acaba en scale(1). */
     @keyframes tabIn{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
-    @keyframes entraItem{from{opacity:0;transform:scale(0.94) translateY(5px)}to{opacity:1;transform:none}}
     .tab-in{animation:tabIn 0.2s cubic-bezier(0.34,1.12,0.64,1) both}
-    .stagger-in{animation:entraItem 0.26s both cubic-bezier(0.34,1.12,0.64,1)}
+    .stagger-in{animation:popIn 0.26s both cubic-bezier(0.34,1.12,0.64,1)}
     .bar-grow{transition:width 0.6s cubic-bezier(0.22,1,0.36,1)}
     /* prefers-reduced-motion del SISTEMA: apaga SOLO esta capa nueva. Las
        celebraciones y los pops de registro siguen intactos a propósito —
@@ -11327,7 +11200,7 @@ function GBHApp(){
           .tab-in reproduce la entrada (200 ms). Sin animación de SALIDA a
           propósito: esperar a que se vaya la anterior es latencia percibida.
           No bloquea el toque — es solo pintura, la nav sigue viva. */}
-      <ZonaPestana key={tab} style={{padding:"4px 18px 0"}}>
+      <div key={tab} className="tab-in" style={{padding:"4px 18px 0"}}>
 
         {/* ── HOME ──────────────────────────────────────────────────────────── */}
         {tab==="home"&&<>
@@ -12446,7 +12319,7 @@ function GBHApp(){
         )}
         {tab==="plan"&&<div data-tuto="plan-zona"><PlanTab profile={profile} lang={lang} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} descartadas={descartadas} setDescartadas={setDescartadas} showT={showT} sfx={sfx} t={t} setTab={setTab} onMealRegistered={onMealRegistered} vistaInicial={planVista} onVistaConsumida={()=>setPlanVista(null)} onTutoEvent={tutoEvento}/></div>}
         {tab==="consulta"&&<ConsultaTab profile={profile} lang={lang} sfx={sfx}/>}
-      </ZonaPestana>
+      </div>
 
       {/* ── BOTTOM NAV ────────────────────────────────────────────────────── */}
       <div className="nav-scroll" style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:420,background:"rgba(8,18,8,0.97)",backdropFilter:"blur(30px)",borderTop:`3px solid ${T.bW}`,zIndex:100,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
