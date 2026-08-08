@@ -2002,6 +2002,14 @@ function buildPixels(colorId, equipados) {
   return tramosBo32(col, equipados || [], "normal");
 }
 
+// ─── Corona del Rey Lobo ─────────────────────────────────────────────────────
+// Dibujada en la MISMA rejilla que el sprite del lobo (1 px = 4 px de canvas),
+// con contorno, luz arriba-izquierda, sombra abajo-derecha y tres gemas: el
+// zigzag vectorial de antes era plano y desentonaba con la cabeza de píxeles.
+// Formato [x, y, ancho, tono] igual que los tramos de bo32/juego32.
+const CORONA_PAL = { O:"#4A3A08", L:"#E8C766", B:T.au1, S:T.au3, R:"#D9484F", V:"#3FA96A" };
+const CORONA = [[1,0,1,"O"],[6,0,1,"O"],[11,0,1,"O"],[0,1,1,"O"],[1,1,1,"L"],[2,1,1,"O"],[5,1,1,"O"],[6,1,1,"L"],[7,1,1,"O"],[10,1,1,"O"],[11,1,1,"L"],[12,1,1,"O"],[0,2,1,"O"],[1,2,1,"L"],[2,2,1,"B"],[5,2,1,"O"],[6,2,1,"L"],[7,2,1,"B"],[10,2,1,"O"],[11,2,1,"L"],[12,2,1,"B"],[0,3,1,"O"],[1,3,1,"L"],[2,3,10,"B"],[12,3,1,"S"],[0,4,1,"O"],[1,4,1,"L"],[2,4,1,"B"],[3,4,1,"R"],[4,4,2,"B"],[6,4,1,"V"],[7,4,2,"B"],[9,4,1,"R"],[10,4,2,"B"],[12,4,1,"S"],[0,5,1,"O"],[1,5,1,"L"],[2,5,10,"B"],[12,5,1,"S"],[0,6,1,"O"],[1,6,11,"S"],[12,6,1,"O"]];
+
 // ─── 🎮 El Salto del Rebaño (runner offline, estilo dino) ────────────────────
 function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJugar, arrancarRef,
   puntosHoy = 0, puntosSemana = 0, onFinPartida }) {
@@ -2668,9 +2676,15 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
           const s = SPR[(v.tipo === "cuervo" ? "cuervo" : "aguila") + (aleteo ? "Sube" : "Baja")];
           sprite(ctx, s, v.x - 1, v.y - 3, 2.4);
         } else if (v.tipo === "lobo") {
-          // Mismo sprite que el Rey Lobo: anclado al suelo y escalado con la altura
-          const ch = v.h;
-          spriteCaja(ctx, SPR.lobo, v.x - 14, suelo - ch, ch * 26 / 24, ch);
+          // Mismo sprite que el Rey Lobo, anclado al suelo y escalado con la altura.
+          // El hitbox mide 20 px: a proporción, la cabeza llegaba a ser 3,5 veces más
+          // ancha y engañaba al saltar. Se estrecha (ESTRECHO) y se centra en el hitbox.
+          const ch = v.h, ESTRECHO = 0.85, escL = ch / SPR.lobo.h;   // por debajo de 0,8 el pixel-art se deforma
+          ctx.save();
+          ctx.translate(v.x + v.w / 2, suelo - ch);
+          ctx.scale(ESTRECHO, 1);
+          sprite(ctx, SPR.lobo, -SPR.lobo.w * escL / 2, 0, escL);
+          ctx.restore();
         } else {
           // Valla de madera con canto y sombra
           const yv = suelo - v.h;
@@ -2697,15 +2711,19 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
       }
       if (tema.familia === "shooter") {
         if (st.jefe) {
-          const jx = W - 130, jy = st.jefeYDraw || H * 0.30;
-          // Rey Lobo: el MISMO sprite que los lobos pequeños, a lo grande, para que no desentonen
-          spriteCaja(ctx, SPR.lobo, jx, jy, 84, 88);
-          if (st.jefe.herido > 0) { ctx.fillStyle = "rgba(200,60,60,0.35)"; ctx.fillRect(jx, jy, 84, 88); }
+          // jx = jefeX: el dibujo se alinea con el hitbox de las balas (antes iba 26 px a la izquierda)
+          const jx = W - 104, jy = st.jefeYDraw || H * 0.30;
+          // Rey Lobo: el MISMO sprite que los lobos pequeños, a lo grande, para que no desentonen.
+          // Escala 4 exacta: el dibujo ocupa jx-2..jx+86 y jy-10..jy+86, o sea el hitbox
+          // completo, y las orejas suben hasta la base de la corona.
+          sprite(ctx, SPR.lobo, jx - 10, jy - 10, 4);
+          if (st.jefe.herido > 0) { ctx.fillStyle = "rgba(200,60,60,0.35)"; ctx.fillRect(jx - 2, jy - 10, 88, 96); }
           // La corona, la barra de vida y el brillo de la boca son estado de juego, no textura
-          ctx.fillStyle = T.au1;
-          ctx.beginPath(); ctx.moveTo(jx + 20, jy + 2); ctx.lineTo(jx + 26, jy - 16); ctx.lineTo(jx + 34, jy);
-          ctx.lineTo(jx + 42, jy - 18); ctx.lineTo(jx + 50, jy); ctx.lineTo(jx + 58, jy - 16);
-          ctx.lineTo(jx + 64, jy + 2); ctx.closePath(); ctx.fill();
+          // Corona: 13x7 en la rejilla del sprite, centrada entre las orejas (grid x7..x19)
+          CORONA.forEach(([cx, cy, cw, cc]) => {
+            ctx.fillStyle = CORONA_PAL[cc];
+            ctx.fillRect(jx - 10 + (cx + 7) * 4, jy - 10 + (cy - 2) * 4, cw * 4, 4);
+          });
           ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(jx - 2, jy - 36, 88, 10);
           ctx.fillStyle = T.red; ctx.fillRect(jx, jy - 34, 84, 6);
           ctx.fillStyle = T.g1; ctx.fillRect(jx, jy - 34, 84 * (st.jefe.hp / st.jefe.max), 6);
