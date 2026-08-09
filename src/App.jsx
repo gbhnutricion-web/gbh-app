@@ -3182,9 +3182,15 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
   const cuentaRef = useRef(5);
   useEffect(() => { cuentaRef.current = cuenta; }, [cuenta]);
 
+  // Ref del modo elegido: arrancar() vive en un closure fijado al montar
+  // (arrancarRef se asigna una sola vez), así que lee el modo por ref para
+  // no quedarse con el valor inicial. Y nada de TEMAS aquí: está dentro del
+  // efecto del juego y no existe en este ámbito.
+  const modoElegidoRef = useRef(modoElegido);
+  useEffect(() => { modoElegidoRef.current = modoElegido; }, [modoElegido]);
   const arrancar = () => {
     // El duelo es por turnos: no necesita cuenta atrás, el tapete ya es su antesala
-    const n0 = TEMAS[modoElegido]?.familia === "duelo" ? 0 : 5;
+    const n0 = modoElegidoRef.current === "duelo" ? 0 : 5;
     setFin(false); setScore(0); cuentaRef.current = n0; setCuenta(n0); setJugando(true);
   };
   useEffect(() => { if (arrancarRef) arrancarRef.current = arrancar; }, []);
