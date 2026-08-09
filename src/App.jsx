@@ -2223,7 +2223,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
             if (i === 0) elegido = rv[0];
             else if (i === 1) elegido = rv[1] || rv[0];
             else elegido = rv[Math.floor(Math.random() * rv.length)];
-            if (elegido) { d.rival = elegido; d.fase = "turno"; d.t = 0; d.psYo = 300; d.psRiv = 300; }
+            if (elegido) { d.rival = elegido; d.fase = "turno"; d.t = 0; d.psYo = 300; d.psRiv = 300; jfx("rival"); }
           }
         } else if (d.fase === "turno") {
           if (py > 294 && py < 420) {
@@ -2232,14 +2232,23 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
             d.suCarta = ["A", "D", "P"][Math.floor(Math.random() * 3)];
             d.suIdx = Math.floor(Math.random() * 3);
             d.fase = "revela"; d.t = 0;
+            jfx("carta");
           }
         } else if (d.fase === "fin") {
           if (d.resultado === "gana") {
             if (py > 376 && py < 442) { transita(otroModo(st.modo)); return; }        // 🔮 al siguiente juego
-            if (py > 452 && py < 500) {                                               // otro duelo, mismo tapete
-              st.duelo = { fase: "tapete", t: 0, psYo: 300, psRiv: 300, rival: null,
-                rivales: d.rivales, cargando: false, miCarta: null, suCarta: null,
-                miIdx: 1, suIdx: 1, golpeYo: 0, golpeRiv: 0, resultado: null, flot: [], misPts: d.misPts };
+            if (py > 452 && py < 500) {
+              // Otro duelo: SIEMPRE contra un rival aleatorio (y distinto del recién
+              // vencido si hay más), para que nadie pueda cebarse con el mismo paciente
+              const rv2 = (d.rivales || []).filter(r => !d.rival || r.id !== d.rival.id);
+              const pool = rv2.length ? rv2 : (d.rivales || []);
+              if (pool.length) {
+                const nuevoRival = pool[Math.floor(Math.random() * pool.length)];
+                st.duelo = { fase: "turno", t: 0, psYo: 300, psRiv: 300, rival: nuevoRival,
+                  rivales: d.rivales, cargando: false, miCarta: null, suCarta: null,
+                  miIdx: 1, suIdx: 1, golpeYo: 0, golpeRiv: 0, resultado: null, flot: [], misPts: d.misPts };
+                jfx("rival");
+              }
             }
           } else if (d.t > 40) {
             // La derrota cierra la partida, como cualquier tropiezo
@@ -2593,10 +2602,13 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
               d.psRiv = Math.min(300, d.psRiv + dRiv);
               if (dYo) { d.flot.push({ lado: "yo", tx: (dYo > 0 ? "+" : "") + dYo, mal: dYo < 0, t: 0, y: 0 }); if (dYo < 0) d.golpeYo = 26; }
               if (dRiv) { d.flot.push({ lado: "riv", tx: (dRiv > 0 ? "+" : "") + dRiv, mal: dRiv < 0, t: 0, y: 0 }); if (dRiv < 0) d.golpeRiv = 26; }
+              if (dYo < 0 || dRiv < 0) jfx("golpe");
+              else if (dYo > 0 || dRiv > 0) jfx("cura");
             }
             if (d.t >= 96) {
               if (d.psYo <= 0 || d.psRiv <= 0) {
                 d.fase = "fin"; d.t = 0; d.resultado = d.psYo > 0 ? "gana" : "pierde";
+                jfx(d.resultado === "gana" ? "victoria" : "derrota");
                 // ±100 a los marcadores semanales de LOS DOS, con suelo en 0 (RPC resolver_duelo)
                 resolverDuelo(d.rival, d.resultado === "gana");
               } else { d.fase = "turno"; d.t = 0; d.miCarta = null; d.suCarta = null; }
@@ -2838,8 +2850,17 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
           const gt = ctx.createRadialGradient(W / 2, H * 0.38, 30, W / 2, H * 0.38, 330);
           gt.addColorStop(0, "#2E7D46"); gt.addColorStop(1, "#0B3A1C");
           ctx.fillStyle = gt; ctx.fillRect(0, 0, W, H);
+          ctx.strokeStyle = "rgba(255,255,255,0.045)"; ctx.lineWidth = 1;
+          for (let li = -H; li < W; li += 26) {
+            ctx.beginPath(); ctx.moveTo(li, 0); ctx.lineTo(li + H, H); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(li + H, 0); ctx.lineTo(li, H); ctx.stroke();
+          }
           ctx.strokeStyle = "rgba(255,216,77,0.35)"; ctx.lineWidth = 2;
           rr(10, 10, W - 20, H - 20, 18); ctx.stroke();
+          ctx.fillStyle = "rgba(255,216,77,0.5)";
+          [[22, 22], [W - 22, 22], [22, H - 22], [W - 22, H - 22]].forEach(([ex, ey]) => {
+            ctx.beginPath(); ctx.moveTo(ex, ey - 5); ctx.lineTo(ex + 5, ey); ctx.lineTo(ex, ey + 5); ctx.lineTo(ex - 5, ey); ctx.closePath(); ctx.fill();
+          });
           ctx.textAlign = "center";
           ctx.fillStyle = "#CFEBD8"; ctx.font = "bold 11px system-ui";
           ctx.fillText("DUELO DE OVEJAS", W / 2, 118);
@@ -2891,6 +2912,9 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
         } else {
           // ── Tablero vertical: rival y barra arriba · sus cartas · las tuyas · tu Bo y barra abajo ──
           const r0 = d.rival || { usuario: "Rival", oveja: "Bo", pts: 0 };
+          ctx.fillStyle = "rgba(0,0,0,0.32)";
+          rr(8, 6, W - 16, 40, 12); ctx.fill();
+          rr(8, 512, W - 16, 42, 12); ctx.fill();
           ctx.fillStyle = T.cr; ctx.font = "bold 12px system-ui";
           ctx.fillText("🐑 " + String(r0.usuario).slice(0, 10) + " · «" + String(r0.oveja).slice(0, 10) + "»", 14, 22);
           ctx.fillStyle = T.au1; ctx.font = "bold 10px system-ui";
@@ -2899,6 +2923,8 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
           ctx.fillStyle = "rgba(255,255,255,0.7)"; ctx.font = "bold 9px system-ui";
           ctx.fillText(Math.max(0, d.psRiv) + "/300", W - 96, 38);
           const shR = d.golpeRiv > 0 ? Math.sin(d.golpeRiv * 0.9) * 4 : 0;
+          ctx.fillStyle = "rgba(0,0,0,0.30)";
+          ctx.beginPath(); ctx.ellipse(W / 2, 114, 34, 7, 0, 0, Math.PI * 2); ctx.fill();
           pintarTramos(d.golpeRiv > 0 && r0.pxTriste ? r0.pxTriste : (r0.px || px), W / 2 - 32 + shR, 48, 2);
           // Cartas del rival boca abajo; en la revelación solo queda la suya y SE VOLTEA
           const RY1 = 128;
@@ -2919,15 +2945,37 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
             if (d.fase !== "turno" && i !== d.miIdx) return;
             const lift = d.fase !== "turno" && i === d.miIdx ? -8 : 0;
             cartaFrente(XS[i], MY1 + lift, CW, CH, mov);
+            if (d.fase === "turno") {
+              const pj = 0.3 + 0.25 * Math.sin(performance.now() / 260 + i * 1.4);
+              ctx.strokeStyle = `rgba(255,216,77,${pj})`; ctx.lineWidth = 2.5;
+              rr(XS[i] + 2, MY1 + 2, CW - 4, CH - 4, 6); ctx.stroke();
+            }
             if (lift) { ctx.strokeStyle = T.au1; ctx.lineWidth = 3; rr(XS[i], MY1 + lift, CW, CH, 6); ctx.stroke(); }
           });
+          if (d.fase === "revela") {
+            // Medallón VS entre las dos manos, como separador del tablero
+            ctx.fillStyle = "#1A1000";
+            ctx.beginPath(); ctx.arc(W / 2, 272, 17, 0, Math.PI * 2); ctx.fill();
+            const gv = ctx.createLinearGradient(0, 256, 0, 288);
+            gv.addColorStop(0, "#FFD84D"); gv.addColorStop(1, "#C9A227");
+            ctx.fillStyle = gv;
+            ctx.beginPath(); ctx.arc(W / 2, 270, 16, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = "#3A2A00"; ctx.font = "bold 13px system-ui";
+            ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.fillText("VS", W / 2, 271);
+            ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+          }
           if (d.fase === "turno") {
-            ctx.fillStyle = "rgba(255,255,255,0.55)"; ctx.font = "bold 11px system-ui"; ctx.textAlign = "center";
-            ctx.fillText("Elige una carta", W / 2, 290);
+            ctx.fillStyle = "rgba(0,0,0,0.45)";
+            rr(W / 2 - 62, 261, 124, 22, 11); ctx.fill();
+            ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.font = "bold 11px system-ui"; ctx.textAlign = "center";
+            ctx.fillText("Elige una carta", W / 2, 276);
             ctx.textAlign = "left";
           }
           // Tu Bo con sus personalizaciones; feliz de normal, triste el instante del golpe
           const shY = d.golpeYo > 0 ? Math.sin(d.golpeYo * 0.9) * 4 : 0;
+          ctx.fillStyle = "rgba(0,0,0,0.30)";
+          ctx.beginPath(); ctx.ellipse(W / 2, 504, 34, 7, 0, 0, Math.PI * 2); ctx.fill();
           pintarTramos(d.golpeYo > 0 ? pxTriste : pxFeliz, W / 2 - 32 + shY, 438, 2);
           ctx.fillStyle = T.cr; ctx.font = "bold 12px system-ui";
           ctx.fillText("🐑 " + String(nombre || "Tu Bo").slice(0, 12), 14, 530);
@@ -2973,7 +3021,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
               ctx.fillStyle = "rgba(255,255,255,0.12)"; rr(82, 456, W - 164, 42, 12); ctx.fill();
               ctx.strokeStyle = "rgba(255,255,255,0.35)"; ctx.lineWidth = 1.5; rr(82, 456, W - 164, 42, 12); ctx.stroke();
               ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.font = "bold 12.5px system-ui";
-              ctx.fillText("Buscar otro duelo", W / 2, 482);
+              ctx.fillText("🎲 Otro duelo · rival aleatorio", W / 2, 482);
             } else if (d.t > 40) {
               ctx.fillStyle = "rgba(255,255,255,0.6)"; ctx.font = "bold 12px system-ui";
               ctx.fillText("Toca para terminar la partida", W / 2, 400);
@@ -3050,12 +3098,36 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
         // La oveja va DENTRO del avión: avión → oveja → fuselaje delantero → media anilla
         const ax = (st.sx !== undefined ? st.sx : SX) - 10, ay = st.y;
         const PA = 2.6, BA = 1.3;
-        sprite(ctx, SPR.avionGira, ax, ay, PA);
+        // Inclinación suave hacia donde vuela + hélice de dos fotogramas (solo dibujo)
+        const inc = Math.max(-0.16, Math.min(0.16, ((st.objetivoY !== undefined ? st.objetivoY : st.y) - st.y) * 0.006));
+        const pcx = ax + 19 * PA, pcy = ay + 11 * PA;
+        ctx.save();
+        ctx.translate(pcx, pcy); ctx.rotate(st.vivo ? inc : 0.32); ctx.translate(-pcx, -pcy);
+        sprite(ctx, aleteo ? SPR.avion : SPR.avionGira, ax, ay, PA);
         const bxA = ax + 20 * PA - 16 * BA;   // centrada en la cabina
         const byA = ay + 8 * PA - 24 * BA;    // su y=24 cae en el borde del fuselaje (y=8)
         pintarTramos(st.vivo ? pxFeliz : pxTriste, bxA, byA, BA);
         sprite(ctx, SPR.avionFrente, ax, ay, PA);
-        (st.anillos || []).forEach(a => sprite(ctx, SPR.anilloBajo, a.x, a.y, 4.4));
+        ctx.restore();
+        // Estela de la hélice: rachitas de aire que salen del morro
+        ctx.fillStyle = "rgba(255,255,255,0.35)";
+        for (let ei = 0; ei < 3; ei++) {
+          const ew = 10 + ((performance.now() / 40 + ei * 30) % 26);
+          ctx.fillRect(ax - 6 - ew, pcy - 8 + ei * 8 + Math.sin(performance.now() / 90 + ei) * 2, ew * 0.55, 2);
+        }
+        (st.anillos || []).filter(a => !a.ok).forEach(a => sprite(ctx, SPR.anilloBajo, a.x, a.y, 4.4));
+        // Chispas doradas del anillo recién atravesado
+        (st.chispas || []).forEach(c => {
+          if (c.tipo === "onda") {
+            const rw = 12 + c.t * 4.2;
+            ctx.strokeStyle = `rgba(255,216,77,${Math.max(0, 0.75 - c.t * 0.042)})`;
+            ctx.lineWidth = 3.5;
+            ctx.beginPath(); ctx.arc(c.x, c.y, rw, 0, Math.PI * 2); ctx.stroke();
+          } else {
+            ctx.fillStyle = `rgba(255,${200 + (c.t % 3) * 18},77,${Math.max(0, 1 - c.t / 30)})`;
+            ctx.fillRect(c.x - 2, c.y - 2, 4, 4);
+          }
+        });
         (st.flotantes || []).forEach(f => {
           const a2 = Math.max(0, 1 - f.t / 42);
           ctx.font = "bold 16px system-ui"; ctx.textAlign = "center";
@@ -3110,7 +3182,11 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
   const cuentaRef = useRef(5);
   useEffect(() => { cuentaRef.current = cuenta; }, [cuenta]);
 
-  const arrancar = () => { setFin(false); setScore(0); cuentaRef.current = 5; setCuenta(5); setJugando(true); };
+  const arrancar = () => {
+    // El duelo es por turnos: no necesita cuenta atrás, el tapete ya es su antesala
+    const n0 = TEMAS[modoElegido]?.familia === "duelo" ? 0 : 5;
+    setFin(false); setScore(0); cuentaRef.current = n0; setCuenta(n0); setJugando(true);
+  };
   useEffect(() => { if (arrancarRef) arrancarRef.current = arrancar; }, []);
 
   return (
