@@ -36,6 +36,20 @@ const TRANS = {
     forgotPassword:"¿Olvidaste tu contraseña?",
     forgotPasswordSent:"📧 Te hemos enviado un email para restablecer tu contraseña.",
     forgotPasswordErr:"No se pudo enviar el email. Inténtalo de nuevo.",
+    // PIN de acceso
+    pinLabel:"PIN de acceso", pinPH:"4–6 dígitos",
+    pinWrong:"PIN incorrecto. Inténtalo de nuevo.",
+    pinNoNet:"Sin conexión. No se pudo verificar el PIN.",
+    pinForgot:"¿Has olvidado tu PIN?",
+    pinEnterHint:"Introduce tu PIN para entrar",
+    pinCreateTitle:"Protege tu cuenta 🔐",
+    pinCreateDesc:"Crea un PIN de 4 a 6 dígitos. Te lo pediremos al entrar con tu correo en un dispositivo nuevo, para que nadie más pueda acceder a tus datos.",
+    pinNew:"Nuevo PIN", pinRepeat:"Repite el PIN",
+    pinMismatch:"Los PIN no coinciden.",
+    pinFormat:"El PIN debe tener entre 4 y 6 dígitos.",
+    pinSaveBtn:"Guardar mi PIN 🔐", pinLater:"Ahora no",
+    pinSaved:"PIN guardado", pinSavedSub:"Tu cuenta queda protegida",
+    pinSaveErr:"No se pudo guardar el PIN. Inténtalo de nuevo.",
     // Migración usuarios existentes sin contraseña
     migrateTitle:"¡Protege tu cuenta! 🔐",
     migrateDesc:"Para mayor seguridad, crea una contraseña para tu cuenta. Tus datos, racha y progreso no se tocarán.",
@@ -156,6 +170,8 @@ const TRANS = {
     cocinarMasNormal:"Normal",
     cocinarMasCantidades:"Cantidades x{x} de tu ración (1 persona)",
     cocinarMasNota:"Es tu misma ración multiplicada, para batch cooking o para servir a alguien más. Tus kcal siguen siendo las de una ración.",
+    cocinarMasPregunta:"¿Cuántas raciones quieres cocinar?",
+    cocinarDosOpSolo:"Individual", cocinarDosOpPareja:"Para los dos",
     listaSoloMia:"Solo la mía",
     listaDeDos:"Para los dos",
     listaDeDosNota:"Esta lista suma tu programación y la de {n}. Lo que tachéis se sincroniza entre los dos, para que nadie compre lo que el otro ya ha comprado. Se actualiza al abrir la lista.",
@@ -296,6 +312,20 @@ const TRANS = {
     forgotPassword:"Forgot your password?",
     forgotPasswordSent:"📧 We've sent you a password reset email.",
     forgotPasswordErr:"Couldn't send the email. Please try again.",
+    // Access PIN
+    pinLabel:"Access PIN", pinPH:"4–6 digits",
+    pinWrong:"Wrong PIN. Please try again.",
+    pinNoNet:"No connection. Couldn't verify your PIN.",
+    pinForgot:"Forgot your PIN?",
+    pinEnterHint:"Enter your PIN to continue",
+    pinCreateTitle:"Protect your account 🔐",
+    pinCreateDesc:"Create a 4-6 digit PIN. We'll ask for it when you log in with your email on a new device, so nobody else can access your data.",
+    pinNew:"New PIN", pinRepeat:"Repeat PIN",
+    pinMismatch:"PINs don't match.",
+    pinFormat:"The PIN must be 4 to 6 digits.",
+    pinSaveBtn:"Save my PIN 🔐", pinLater:"Not now",
+    pinSaved:"PIN saved", pinSavedSub:"Your account is now protected",
+    pinSaveErr:"Couldn't save the PIN. Please try again.",
     // Migration for existing users without password
     migrateTitle:"Protect your account! 🔐",
     migrateDesc:"For added security, create a password for your account. Your data, streak and progress won't be touched.",
@@ -416,6 +446,8 @@ const TRANS = {
     cocinarMasNormal:"Normal",
     cocinarMasCantidades:"Quantities x{x} of your portion (1 person)",
     cocinarMasNota:"This is your own portion multiplied, for batch cooking or to serve someone else. Your kcal are still for one portion.",
+    cocinarMasPregunta:"How many servings do you want to cook?",
+    cocinarDosOpSolo:"Just me", cocinarDosOpPareja:"For both",
     listaSoloMia:"Just mine",
     listaDeDos:"For both",
     listaDeDosNota:"This list adds up your plan and {n}'s. Whatever you tick is synced between you both, so neither buys what the other already got. It refreshes when you open the list.",
@@ -1464,6 +1496,20 @@ const sbReq = async(method, path, body=null) => {
     }
     return null;
   }
+};
+
+// RPC directo para el PIN: SIN cola offline (verificar/crear PIN exige red;
+// encolar un check de PIN para "más tarde" no tiene sentido y ensuciaría la cola).
+const sbPinRpc = async (fn, body) => {
+  try{
+    const r = await fetch(`${SB}/rest/v1/rpc/${fn}`,{
+      method:"POST",
+      headers:{ "apikey":KEY, "Authorization":`Bearer ${KEY}`, "Content-Type":"application/json" },
+      body: JSON.stringify(body),
+    });
+    if(!r.ok) return null;
+    return await r.json();
+  }catch{ return null; }
 };
 
 
@@ -7424,6 +7470,14 @@ function GBHApp(){
   const [progT0,     setProgT0]     = useState(0);           // aviso de runner dormido
   const [aName,    setAName]    = useState("");
   const [aEmail,   setAEmail]   = useState("");
+  const emailChkTimer = useRef(null);   // debounce de comprobación en vivo
+  const emailChkSeq   = useRef(0);      // descarta respuestas obsoletas
+  const emailChkLast  = useRef("");     // último email comprobado (no vaciar el PIN sin motivo)
+  const [aPin,     setAPin]     = useState("");     // PIN tecleado en el login
+  const [aPinNeed, setAPinNeed] = useState(false);  // la cuenta tiene PIN
+  const [pinPrompt,setPinPrompt]= useState(false);  // modal "crea tu PIN"
+  const [pinV1,setPinV1]=useState(""); const [pinV2,setPinV2]=useState("");
+  const [pinBusy,setPinBusy]=useState(false); const [pinSetErr,setPinSetErr]=useState("");
   const [altaEmailInicial,setAltaEmailInicial]=useState("");  // email precargado en el alta con Bo
   const [aWeight,  setAWeight]  = useState("");
   const [aGoal,    setAGoal]    = useState("");
@@ -8905,9 +8959,14 @@ function GBHApp(){
     //  localStorage de los pacientes antiguos: son inertes, no hay que migrar.)
     // Auto-popup ruleta: mostrar si no se ha visto hoy (scoped a usuario)
     const todayKey = toKey();
+    // PIN de acceso: si la cuenta no lo tiene, proponer crearlo (1 vez/día).
+    // Ese día la ruleta automática cede el paso para no apilar dos modales.
+    const pinAsked = lsGet("gbh:pinAsk:"+p.id+":"+todayKey, false);
+    const pedirPin = !p.pin_set && !pinAsked;
+    if(pedirPin){ lsSet("gbh:pinAsk:"+p.id+":"+todayKey,true); setTimeout(()=>setPinPrompt(true), 700); }
     const alreadySeen  = lsGet("gbh:ruletaSeen:"+p.id+":"+todayKey, false);
     const alreadyDone  = lsGet("gbh:ruleta:"+p.id+":"+todayKey, false);
-    if(!alreadySeen && !alreadyDone){
+    if(!pedirPin && !alreadySeen && !alreadyDone){
       setTimeout(()=>setShowRuleta(true), 600);
     }
     // Vaciar cola pendiente al cargar el perfil
@@ -8919,27 +8978,57 @@ function GBHApp(){
   const checkEmail = async (email) => {
     if(!email.includes("@")) return;
     const em = email.trim().toLowerCase();
+    const seq = ++emailChkSeq.current;
     setAuthErr("");
     // Sistema SIN contraseñas: solo miramos si el email ya tiene cuenta para
     // recuperarla (modo "returning" = entra directo) o es nuevo (pide datos).
+    if(emailChkLast.current !== em){ setAPin(""); emailChkLast.current = em; }
     const localId = lsGet(`gbh:em:${em}`, null);
     const localP  = localId ? lsGet(`gbh:p:${localId}`, null) : null;
-    if(localP?.id){
+    // Solo confiamos en la copia local si YA sabe si hay PIN (cachés antiguas
+    // no traen pin_set → hay que preguntar al servidor igualmente).
+    if(localP?.id && typeof localP.pin_set === "boolean"){
       setAName(localP.name || "");
+      setAPinNeed(localP.pin_set);
       setAuthMode("returning");
       return;
     }
     setAuthMode("checking");
-    const r = await sbReq("GET", `profiles?email=eq.${em}&select=id,name`);
+    const r = await sbReq("GET", `profiles?email=eq.${em}&select=id,name,pin_set`);
+    if(seq !== emailChkSeq.current) return;  // el email cambió mientras tanto
     if(r?.length){
       setAName(r[0].name || "");
+      setAPinNeed(!!r[0].pin_set);
       lsSet(`gbh:em:${em}`, r[0].id);
       const prev = lsGet(`gbh:p:${r[0].id}`, null);
       lsSet(`gbh:p:${r[0].id}`, prev ? {...prev, ...r[0]} : r[0]);
       setAuthMode("returning");
+    } else if(localP?.id){
+      // Sin red pero con copia local antigua: dejamos entrar (comportamiento
+      // previo) — el PIN protege el acceso desde dispositivos nuevos con red.
+      setAName(localP.name || "");
+      setAPinNeed(false);
+      setAuthMode("returning");
     } else {
       setAuthMode("new");
     }
+  };
+
+  // Guarda el PIN elegido en el modal "Protege tu cuenta" (RPC gbh_set_pin)
+  const guardarPin = async () => {
+    setPinSetErr("");
+    if(!/^\d{4,6}$/.test(pinV1)) { setPinSetErr(t("pinFormat")); return; }
+    if(pinV1!==pinV2)             { setPinSetErr(t("pinMismatch")); return; }
+    setPinBusy(true);
+    const em = (profile?.email||"").trim().toLowerCase();
+    const res = await sbPinRpc("gbh_set_pin",{ p_email:em, p_old_pin:null, p_new_pin:pinV1 });
+    setPinBusy(false);
+    // 'exists' = ya había PIN creado desde otro dispositivo → cuenta protegida
+    if(res!=="ok" && res!=="exists"){ setPinSetErr(t("pinSaveErr")); return; }
+    const np = {...profile, pin_set:true};
+    setProfile(np); lsSet(`gbh:p:${np.id}`, np);
+    setPinPrompt(false); setPinV1(""); setPinV2("");
+    try{ showT&&showT({icon:"🔐",title:t("pinSaved"),sub:t("pinSavedSub")}); }catch{}
   };
 
   // Helper compartido: entrar en la app con un perfil dado. Lo usan el login
@@ -8971,6 +9060,15 @@ function GBHApp(){
       setRuletaDone(lsGet(`gbh:ruleta:${ep.id}:${today}`, false));
       setRuletaAutoShown(lsGet(`gbh:ruletaSeen:${ep.id}:${today}`, false));
       setScreen("main");
+      // PIN de acceso: cuentas sin PIN (antiguas o recién creadas con Bo) →
+      // proponer crearlo nada más entrar, máximo una vez al día.
+      try{
+        const tk0 = toKey();
+        if(!ep.pin_set && !lsGet("gbh:pinAsk:"+ep.id+":"+tk0,false)){
+          lsSet("gbh:pinAsk:"+ep.id+":"+tk0, true);
+          setTimeout(()=>setPinPrompt(true), 700);
+        }
+      }catch{}
       setTimeout(()=>{ restoreFromServer(ep.id).catch(()=>{}); }, 1500);
   };
 
@@ -9060,8 +9158,14 @@ function GBHApp(){
     setLoading(true); setAuthErr("");
     try{
 
-    // ── USUARIO EXISTENTE → entra directo (sin contraseña) ──
+    // ── USUARIO EXISTENTE → verifica PIN (si lo tiene) y entra ──
     if(authMode==="returning"){
+      if(aPinNeed){
+        if(!/^\d{4,6}$/.test(aPin)){ setAuthErr(t("pinFormat")); setLoading(false); return; }
+        const okPin = await sbPinRpc("gbh_check_pin",{ p_email:email, p_pin:aPin });
+        if(okPin===null){ setAuthErr(t("pinNoNet")); setLoading(false); return; }
+        if(okPin!==true){ setAuthErr(t("pinWrong")); setLoading(false); return; }
+      }
       const localId = lsGet(`gbh:em:${email}`, null);
       let perfil = localId ? lsGet(`gbh:p:${localId}`, null) : null;
       // Copia local COMPLETA = perfil real (tiene las claves xp y gems). Un stub
@@ -10377,12 +10481,19 @@ function GBHApp(){
         <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>{t("email")}</div>
         <input type="email" value={aEmail}
           onChange={e=>{
-            setAEmail(e.target.value);
-            if(document.activeElement?.type==="email"){
-              setAuthMode("new");setAuthErr("");
+            const v=e.target.value;
+            setAEmail(v); setAuthErr("");
+            emailChkSeq.current++;                      // invalida respuestas en vuelo
+            if(emailChkTimer.current) clearTimeout(emailChkTimer.current);
+            if(v.includes("@")&&v.trim().length>=5){
+              setAuthMode("checking");                  // feedback inmediato
+              emailChkTimer.current=setTimeout(()=>checkEmail(v),600);
+            } else {
+              setAuthMode("new");                       // aún no parece un email
             }
           }}
-          onBlur={e=>checkEmail(e.target.value)}
+          onKeyDown={e=>{ if(e.key==="Enter"){ if(emailChkTimer.current) clearTimeout(emailChkTimer.current); checkEmail(e.target.value); } }}
+          onBlur={e=>{ if(emailChkTimer.current) clearTimeout(emailChkTimer.current); checkEmail(e.target.value); }}
           placeholder={t("emailPH")} style={{...inp,marginBottom:authMode==="returning"?0:16}}/>
 
         {/* ── Usuario existente: bienvenida, entra directo (sin contraseña) ── */}
@@ -10393,8 +10504,26 @@ function GBHApp(){
             <div>
               <div style={{fontSize:13,fontWeight:900,color:T.g2}}>{t("welcomeBack",{n:aName.split(" ")[0]})}</div>
               <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:2}}>
-                {lang==="en"?"Tap below to enter":"Pulsa abajo para entrar"}
+                {aPinNeed ? t("pinEnterHint") : (lang==="en"?"Tap below to enter":"Pulsa abajo para entrar")}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── PIN de acceso: la cuenta lo tiene → pedirlo antes de entrar ── */}
+        {authMode==="returning"&&aPinNeed&&(
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>{t("pinLabel")}</div>
+            <input type="password" inputMode="numeric" pattern="[0-9]*" maxLength={6} value={aPin}
+              onChange={e=>{ setAPin(e.target.value.replace(/\D/g,"").slice(0,6)); setAuthErr(""); }}
+              onKeyDown={e=>e.key==="Enter"&&doAuth()}
+              placeholder={t("pinPH")}
+              style={{...inp,marginBottom:8,textAlign:"center",letterSpacing:"0.35em",fontWeight:900}}/>
+            <div style={{textAlign:"center"}}>
+              <a href={`mailto:${GBH_EMAIL}?subject=${encodeURIComponent("He olvidado mi PIN — GBH Nutrición")}&body=${encodeURIComponent("Hola Alejandro, he olvidado mi PIN de acceso a la app. Mi correo es: "+aEmail.trim().toLowerCase())}`}
+                style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",textDecoration:"underline"}}>
+                {t("pinForgot")}
+              </a>
             </div>
           </div>
         )}
@@ -10440,7 +10569,7 @@ function GBHApp(){
           const isReturning = authMode==="returning";
           // El alta nueva vive en la conversación con Bo: aquí solo se entra
           if(!isReturning && authMode!=="migrate") return null;
-          const dis = loading || authMode==="checking" || !aEmail.trim();
+          const dis = loading || authMode==="checking" || !aEmail.trim() || (isReturning && aPinNeed && aPin.length<4);
           const label = loading ? t("verifying") : t("recoverAccount");
           return(
             <button onClick={doAuth} disabled={dis}
@@ -11031,6 +11160,50 @@ function GBHApp(){
           personalidad={boPersonalidad} setPersonalidad={setBoPersonalidad}
           nivel={boNivel}
           onCerrar={()=>{ setPanelBo(false); guardarBo(); }}/>
+      )}
+      {pinPrompt&&profile&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:420,
+          display:"flex",justifyContent:"center",alignItems:"flex-start",overflowY:"auto",
+          padding:"max(10vh, 48px) 20px 40px"}}>
+          <Card style={{width:"100%",maxWidth:340}}>
+            <div style={{fontSize:36,textAlign:"center",marginBottom:6}}>🔐</div>
+            <div style={{fontSize:17,fontWeight:900,textAlign:"center",marginBottom:6}}>{t("pinCreateTitle")}</div>
+            <div style={{fontSize:12.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.55,textAlign:"center",marginBottom:16}}>
+              {t("pinCreateDesc")}
+            </div>
+            <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:6}}>{t("pinNew")}</div>
+            <input type="password" inputMode="numeric" pattern="[0-9]*" maxLength={6} value={pinV1}
+              onChange={e=>{ setPinV1(e.target.value.replace(/\D/g,"").slice(0,6)); setPinSetErr(""); }}
+              placeholder={t("pinPH")}
+              style={{...inp,marginBottom:12,textAlign:"center",letterSpacing:"0.35em",fontWeight:900}}/>
+            <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:6}}>{t("pinRepeat")}</div>
+            <input type="password" inputMode="numeric" pattern="[0-9]*" maxLength={6} value={pinV2}
+              onChange={e=>{ setPinV2(e.target.value.replace(/\D/g,"").slice(0,6)); setPinSetErr(""); }}
+              onKeyDown={e=>e.key==="Enter"&&guardarPin()}
+              placeholder={t("pinPH")}
+              style={{...inp,marginBottom:12,textAlign:"center",letterSpacing:"0.35em",fontWeight:900}}/>
+            {pinSetErr&&(
+              <div style={{background:alpha(T.red,0.12),border:`1.5px solid ${alpha(T.red,0.4)}`,
+                borderRadius:12,padding:"9px 13px",marginBottom:12,fontSize:12,color:"#FF8080",
+                fontFamily:"'DM Sans',sans-serif",textAlign:"center"}}>⚠️ {pinSetErr}</div>
+            )}
+            <button onClick={guardarPin} disabled={pinBusy||pinV1.length<4}
+              style={{width:"100%",padding:"15px 20px",borderRadius:16,border:`3px solid ${T.g3}`,
+                cursor:(pinBusy||pinV1.length<4)?"not-allowed":"pointer",fontSize:15,fontWeight:900,
+                background:(pinBusy||pinV1.length<4)?"rgba(255,255,255,0.12)":`linear-gradient(135deg,${T.g1},${T.g2})`,
+                color:(pinBusy||pinV1.length<4)?T.t2:"white",
+                boxShadow:(pinBusy||pinV1.length<4)?"none":`0 5px 0 ${T.g3}`,
+                fontFamily:"'Nunito',sans-serif",marginBottom:8}}>
+              {pinBusy ? t("verifying") : t("pinSaveBtn")}
+            </button>
+            <button onClick={()=>{ setPinPrompt(false); setPinV1(""); setPinV2(""); setPinSetErr(""); }}
+              style={{width:"100%",padding:"11px 20px",borderRadius:14,border:"2px solid rgba(255,255,255,0.18)",
+                background:"transparent",color:T.t2,fontSize:13,fontWeight:800,cursor:"pointer",
+                fontFamily:"'Nunito',sans-serif"}}>
+              {t("pinLater")}
+            </button>
+          </Card>
+        </div>
       )}
       {showWeekChest&&<ChestOpenModal streak={7} onClose={()=>setShowWeekChest(false)} onCollect={onWeekChestCollect} onGoHome={()=>{setShowWeekChest(false);setTab("home");}}/>}
       {showRuleta&&<RuletaModal
@@ -15291,23 +15464,26 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
                 Solo si la pareja tiene la MISMA receta en la MISMA toma del
                 MISMO día. Si no, ni aparece. */}
             {mismaReceta&&(
-              <div style={{background:cocinarDos?alpha(T.g1,0.10):'rgba(255,255,255,0.05)',
-                border:`1.5px solid ${cocinarDos?'${alpha(T.g1,0.45)}':'rgba(255,255,255,0.12)'}`,
-                borderRadius:14,padding:'11px 13px',marginBottom:12,transition:'all 0.15s'}}>
-                <button onClick={()=>{sfx&&sfx('tap');setCocinarDos(v=>!v);setCocinarDeMas(1);}}
-                  style={{display:'flex',alignItems:'center',gap:10,width:'100%',background:'none',
-                    border:'none',padding:0,cursor:'pointer',textAlign:'left'}}>
-                  <span style={{width:42,height:24,borderRadius:14,flexShrink:0,position:'relative',
-                    background:cocinarDos?T.g1:'rgba(255,255,255,0.18)',transition:'all 0.15s'}}>
-                    <span style={{position:'absolute',top:3,left:cocinarDos?21:3,width:18,height:18,
-                      borderRadius:'50%',background:T.wh,transition:'left 0.15s'}}/>
-                  </span>
-                  <span style={{flex:1,minWidth:0,fontSize:13,fontWeight:900,color:cocinarDos?T.g2:T.t1,
-                    fontFamily:"'Nunito',sans-serif"}}>
-                    {t("cocinarDosToggle",{n:pareja?.nombre||''})}
-                  </span>
-                </button>
-                {cocinarDos&&(<div style={{marginTop:9,paddingTop:9,borderTop:'1px solid rgba(255,255,255,0.10)'}}>
+              <div style={{background:cocinarDos?alpha(T.g1,0.08):'rgba(255,255,255,0.04)',
+                border:`1.5px solid ${cocinarDos?alpha(T.au1,0.5):alpha(T.au1,0.28)}`,
+                borderRadius:14,padding:'12px 13px',marginBottom:12,transition:'all 0.15s'}}>
+                <div style={{fontSize:12.5,fontWeight:900,color:T.au1,fontFamily:"'Nunito',sans-serif",marginBottom:9}}>
+                  🍽️ {t("cocinarMasPregunta")}
+                </div>
+                <div style={{display:'flex',gap:8}}>
+                  {[{v:false,l:t("cocinarDosOpSolo")},{v:true,l:t("cocinarDosOpPareja")}].map(({v,l})=>(
+                    <button key={String(v)} onClick={()=>{sfx&&sfx('tap');setCocinarDos(v);setCocinarDeMas(1);}} style={{
+                      flex:1,padding:'9px 6px',borderRadius:12,cursor:'pointer',transition:'all 0.15s',
+                      background:cocinarDos===v?T.g3:'rgba(255,255,255,0.05)',
+                      border:cocinarDos===v?`2px solid ${T.au2}`:'1.5px solid rgba(255,255,255,0.14)',
+                      color:cocinarDos===v?T.wh:T.t2,fontSize:13,fontWeight:900,
+                      boxShadow:cocinarDos===v?'0 3px 0 rgba(0,0,0,0.35)':'none',
+                      fontFamily:"'Nunito',sans-serif"}}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+                {cocinarDos&&(<div style={{marginTop:10,paddingTop:9,borderTop:'1px solid rgba(255,255,255,0.10)'}}>
                   <div style={{fontSize:12,fontWeight:800,color:T.au1,marginBottom:4,fontFamily:"'DM Sans',sans-serif"}}>
                     🍽️ {t("cocinarDosReparto",{a:repartoTuyo,b:100-repartoTuyo,n:pareja?.nombre||''})}
                   </div>
@@ -15322,28 +15498,29 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
                 </div>)}
               </div>
             )}
-            {/* ── §5.3 · Cocinar de más: aquí SÍ es literalmente el doble de la
-                misma ración (batch cooking o pareja sin cuenta) ────────────── */}
+            {/* ── §5.3 · Raciones a cocinar: aquí SÍ es literalmente el doble
+                de la misma ración (batch cooking o pareja sin cuenta) ──────── */}
             {!mismaReceta&&!!tomaReceta.ingredientes&&(
-              <div style={{background:'rgba(255,255,255,0.05)',border:'1.5px solid rgba(255,255,255,0.12)',
-                borderRadius:14,padding:'11px 13px',marginBottom:12}}>
-                <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-                  <span style={{fontSize:13,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif",flex:1,minWidth:120}}>
-                    🍲 {t("cocinarMasTitulo")}
-                  </span>
+              <div style={{background:'rgba(255,255,255,0.04)',border:`1.5px solid ${alpha(T.au1,0.28)}`,
+                borderRadius:14,padding:'12px 13px',marginBottom:12}}>
+                <div style={{fontSize:12.5,fontWeight:900,color:T.au1,fontFamily:"'Nunito',sans-serif",marginBottom:9}}>
+                  🍲 {t("cocinarMasPregunta")}
+                </div>
+                <div style={{display:'flex',gap:8}}>
                   {[1,2,3].map(x=>(
                     <button key={x} onClick={()=>{sfx&&sfx('tap');setCocinarDeMas(x);}} style={{
-                      minWidth:44,padding:'6px 12px',borderRadius:11,cursor:'pointer',
-                      background:cocinarDeMas===x?alpha(T.g1,0.18):'rgba(255,255,255,0.06)',
-                      border:`1.5px solid ${cocinarDeMas===x?'${alpha(T.g1,0.5)}':'rgba(255,255,255,0.14)'}`,
-                      color:cocinarDeMas===x?T.g2:T.t2,fontSize:12.5,fontWeight:900,
+                      flex:1,padding:'9px 0',borderRadius:12,cursor:'pointer',transition:'all 0.15s',
+                      background:cocinarDeMas===x?T.g3:'rgba(255,255,255,0.05)',
+                      border:cocinarDeMas===x?`2px solid ${T.au2}`:'1.5px solid rgba(255,255,255,0.14)',
+                      color:cocinarDeMas===x?T.wh:T.t2,fontSize:13,fontWeight:900,
+                      boxShadow:cocinarDeMas===x?'0 3px 0 rgba(0,0,0,0.35)':'none',
                       fontFamily:"'Nunito',sans-serif"}}>
-                      {x===1?t("cocinarMasNormal"):`x${x}`}
+                      x{x}
                     </button>
                   ))}
                 </div>
                 {cocinarDeMas>1&&(
-                  <div style={{marginTop:8,fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.45}}>
+                  <div style={{marginTop:9,fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.45}}>
                     {t("cocinarMasNota")}
                   </div>
                 )}
