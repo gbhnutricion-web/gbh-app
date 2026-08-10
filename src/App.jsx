@@ -8961,9 +8961,11 @@ function GBHApp(){
     const todayKey = toKey();
     // PIN de acceso: si la cuenta no lo tiene, proponer crearlo (1 vez/día).
     // Ese día la ruleta automática cede el paso para no apilar dos modales.
-    const pinAsked = lsGet("gbh:pinAsk:"+p.id+":"+todayKey, false);
+    // La marca 1/día se graba SOLO cuando el usuario responde (guardar o
+    // "Ahora no"), no al mostrar: si la app se cierra sin verlo, reaparece.
+    const pinAsked = lsGet("gbh:pinAsk2:"+p.id+":"+todayKey, false);
     const pedirPin = !p.pin_set && !pinAsked;
-    if(pedirPin){ lsSet("gbh:pinAsk:"+p.id+":"+todayKey,true); setTimeout(()=>setPinPrompt(true), 700); }
+    if(pedirPin){ setTimeout(()=>setPinPrompt(true), 700); }
     const alreadySeen  = lsGet("gbh:ruletaSeen:"+p.id+":"+todayKey, false);
     const alreadyDone  = lsGet("gbh:ruleta:"+p.id+":"+todayKey, false);
     if(!pedirPin && !alreadySeen && !alreadyDone){
@@ -9027,6 +9029,7 @@ function GBHApp(){
     if(res!=="ok" && res!=="exists"){ setPinSetErr(t("pinSaveErr")); return; }
     const np = {...profile, pin_set:true};
     setProfile(np); lsSet(`gbh:p:${np.id}`, np);
+    try{ lsSet("gbh:pinAsk2:"+np.id+":"+toKey(), true); }catch{}
     setPinPrompt(false); setPinV1(""); setPinV2("");
     try{ showT&&showT({icon:"🔐",title:t("pinSaved"),sub:t("pinSavedSub")}); }catch{}
   };
@@ -9064,8 +9067,7 @@ function GBHApp(){
       // proponer crearlo nada más entrar, máximo una vez al día.
       try{
         const tk0 = toKey();
-        if(!ep.pin_set && !lsGet("gbh:pinAsk:"+ep.id+":"+tk0,false)){
-          lsSet("gbh:pinAsk:"+ep.id+":"+tk0, true);
+        if(!ep.pin_set && !lsGet("gbh:pinAsk2:"+ep.id+":"+tk0,false)){
           setTimeout(()=>setPinPrompt(true), 700);
         }
       }catch{}
@@ -11196,7 +11198,8 @@ function GBHApp(){
                 fontFamily:"'Nunito',sans-serif",marginBottom:8}}>
               {pinBusy ? t("verifying") : t("pinSaveBtn")}
             </button>
-            <button onClick={()=>{ setPinPrompt(false); setPinV1(""); setPinV2(""); setPinSetErr(""); }}
+            <button onClick={()=>{ try{ lsSet("gbh:pinAsk2:"+(profile?.id||"")+":"+toKey(), true); }catch{}
+                setPinPrompt(false); setPinV1(""); setPinV2(""); setPinSetErr(""); }}
               style={{width:"100%",padding:"11px 20px",borderRadius:14,border:"2px solid rgba(255,255,255,0.18)",
                 background:"transparent",color:T.t2,fontSize:13,fontWeight:800,cursor:"pointer",
                 fontFamily:"'Nunito',sans-serif"}}>
