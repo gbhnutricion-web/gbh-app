@@ -7989,6 +7989,12 @@ function GBHApp(){
     setRuletaDone(lsGet(`gbh:ruleta:${lp.id}:${today}`, false));
     setRuletaAutoShown(lsGet(`gbh:ruletaSeen:${lp.id}:${today}`, false));
     setScreen("main");
+    // PIN de acceso: si la cuenta no lo tiene, proponer crearlo (la marca 1/día
+    // solo se quema al responder). OJO: este efecto es el camino REAL del
+    // auto-login; loadP (más abajo) es código muerto sin llamadas.
+    if(!lp.pin_set && !lsGet("gbh:pinAsk2:"+lp.id+":"+today, false)){
+      setTimeout(()=>setPinPrompt(true), 700);
+    }
     // Sincronizar en segundo plano
     setTimeout(()=>{ restoreFromServer(lp.id).catch(()=>{}); }, 2000);
     }catch(err){
