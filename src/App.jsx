@@ -2046,6 +2046,38 @@ function Sheep({ estado, equipados, color, size = 200, mini = false }) {
   );
 }
 
+// ─── jfx: audio local del Duelo de Ovejas ────────────────────────────────────
+// Se perdió en una integración y su ausencia era letal: jfx("golpe") lanzaba un
+// ReferenceError DENTRO del bucle rAF en el frame 34 de la fase "revela" (justo
+// al aplicar el daño), el bucle moría sin reprogramarse y el duelo quedaba
+// congelado con las cartas boca arriba y 300/300. Blindado con try/catch para
+// que un fallo de audio jamás vuelva a tumbar el juego.
+let _jfxCtx = null;
+const jfx = (nombre) => {
+  try{
+    _jfxCtx = _jfxCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const actx = _jfxCtx;
+    if (actx.state === "suspended") actx.resume().catch(()=>{});
+    const SONS = {
+      rival:    [[330,0,0.07,"square",0.05],[440,0.07,0.09,"square",0.05]],
+      carta:    [[660,0,0.06,"triangle",0.06]],
+      golpe:    [[150,0,0.05,"sawtooth",0.08],[85,0.05,0.10,"sawtooth",0.07]],
+      cura:     [[523,0,0.06,"sine",0.05],[784,0.06,0.09,"sine",0.05]],
+      victoria: [[523,0,0.09,"square",0.05],[659,0.09,0.09,"square",0.05],[784,0.18,0.14,"square",0.06]],
+      derrota:  [[330,0,0.12,"square",0.05],[220,0.12,0.18,"square",0.05]],
+    };
+    (SONS[nombre] || []).forEach(([f,delay,dur,tipo,vol]) => {
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = tipo; o.frequency.value = f;
+      const t0 = actx.currentTime + delay;
+      g.gain.setValueAtTime(vol, t0);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+      o.connect(g); g.connect(actx.destination);
+      o.start(t0); o.stop(t0 + dur + 0.02);
+    });
+  }catch{}
+};
+
 // ─── Avatar de ranking: la oveja del paciente, no su inicial ─────────────────
 // En TODAS las tablas (🔥 Racha · ⚖️ Peso · 🎮 Juego) el avatar es la Bo
 // personalizada de cada paciente. El marco de nivel (FRAMES) se conserva
@@ -8245,6 +8277,7 @@ function GBHApp(){
   const [zonaJuego,setZonaJuego]=useState(false);
   const [panelBo,setPanelBo]=useState(false);
   const [partidasRestantes,setPartidasRestantes]=useState(3);
+  const partidaEnCursoRef=useRef(false);  // hay partida pagada sin registrar (anti-exploit de la X)
   const [ptsHoy,setPtsHoy]=useState(0);
   const [ptsSemana,setPtsSemana]=useState(0);
   const arrancarJuegoRef=useRef(null);
@@ -8433,9 +8466,11 @@ function GBHApp(){
     setProfile(p=>p?{...p,gems:(p.gems||0)-1}:p);
     sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:g-1});
     setPartidasRestantes(r=>Math.max(0,r-1));
+    partidaEnCursoRef.current=true;
     arrancarJuegoRef.current&&arrancarJuegoRef.current();
   };
   const finPartida=async(pts)=>{ if(!profile?.id) return;
+    partidaEnCursoRef.current=false;
     try{
       const res=await sbReq("POST","rpc/registrar_partida_juego",{p_profile_id:profile.id,p_puntos:pts});
       if(res&&res.ok){
@@ -11149,7 +11184,21 @@ function GBHApp(){
         <div style={{position:"fixed",inset:0,zIndex:9000,background:T.bg,display:"flex",flexDirection:"column"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"calc(14px + env(safe-area-inset-top, 0px)) 16px 8px"}}>
             <div style={{fontWeight:900,fontSize:16,color:T.g2}}>🐑 Zona de juego</div>
-            <button onClick={()=>setZonaJuego(false)} style={{width:38,height:38,borderRadius:12,background:"rgba(255,255,255,0.07)",border:"1.5px solid rgba(255,255,255,0.12)",color:T.cr,fontSize:16,cursor:"pointer"}}>✕</button>
+            <button onClick={()=>{
+              // Anti-exploit: si hay una partida pagada sin terminar, salir la
+              // registra con 0 puntos (consume la partida diaria en Supabase).
+              // Antes la X dejaba el contador intacto y en el Duelo permitía
+              // farmear +100 por victoria sin gastar partidas.
+              if(partidaEnCursoRef.current){
+                const seguir=window.confirm(lang==="en"
+                  ?"Leave now? The game in progress will count as played."
+                  :"¿Salir ahora? La partida en curso se dará por jugada.");
+                if(!seguir) return;
+                partidaEnCursoRef.current=false;
+                finPartida(0);
+              }
+              setZonaJuego(false);
+            }} style={{width:38,height:38,borderRadius:12,background:"rgba(255,255,255,0.07)",border:"1.5px solid rgba(255,255,255,0.12)",color:T.cr,fontSize:16,cursor:"pointer"}}>✕</button>
           </div>
           <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}>
             <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,width:"100%"}}>
