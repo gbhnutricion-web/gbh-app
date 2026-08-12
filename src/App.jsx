@@ -1488,7 +1488,12 @@ const sbReq = async(method, path, body=null) => {
       method, headers, body: body ? JSON.stringify(body) : null,
     });
     if(!r.ok) throw new Error(`${r.status}`);
-    return method==="DELETE" ? true : r.json();
+    if(method==="DELETE") return true;
+    // `return r.json()` devolvía una PROMESA sin await: si el cuerpo no era
+    // JSON válido (200 vacío, respuesta de un proxy/portal cautivo, HTML de
+    // error), el rechazo se producía FUERA de este try y llegaba intacto al
+    // llamante, abortando la función que hubiera hecho `await sbReq(...)`.
+    try{ return await r.json(); }catch{ return null; }
   } catch(e) {
     // Sin red o error — encolar si es escritura
     if(method !== "GET" && body){
@@ -9268,7 +9273,14 @@ function GBHApp(){
     const today=toKey();
     // Persistir tLog del día en su propia clave — nunca se pierde
     lsSet(`gbh:tlog:${profile.id}:${today}`, nl);
-    const l=[...logs];
+    // La foto más fresca del día está en localStorage: marcarTomaHome y
+    // persistDia (plan diario) escriben ahí de forma SÍNCRONA justo antes de
+    // llegar aquí, mientras que `logs` sigue siendo el array del render
+    // anterior. Usando `logs` a secas, saveLog reescribía el día SIN la última
+    // toma registrada: la tarjeta volvía de 5/5 a 4/5 y el espejo del día no
+    // llegaba a considerarse completo.
+    const _base=lsGet(`gbh:logs:${profile.id}`,null);
+    const l=(Array.isArray(_base)&&_base.length>=logs.length)?[..._base]:[...logs];
     const idx=l.findIndex(x=>x.date===today);
     // Preservar campos que no gestiona saveLog (meals del registro por tomas, note…)
     const prev = idx>=0 ? l[idx] : {};
@@ -9386,22 +9398,38 @@ function GBHApp(){
     // Ya marcada HOY: la celebración es una transición de una vez al día, pero
     // el toque no puede quedar mudo (parecía que "las animaciones no cargan").
     if(was){ sfx("tap"); haptic("toma"); return; }
-    const nl={...tLog,[key]:true};setTLog(nl);await saveLog(nl,steps);
+    const nl={...tLog,[key]:true};setTLog(nl);
     if(key==="diet") sfx("complete"); else sfx("missionDone");
     // Háptica proporcional al hito (Tarea A): la dieta dispara la celebración
     // de racha → patrón largo; el resto de misiones, doble pulso. Estamos
     // dentro del gesto del usuario (tap en la misión o en la última toma), y
     // `was` garantiza que la celebración vibra UNA sola vez al día.
     haptic(key==="diet"?"celebracion":"doble");
-    await addXG(key==="diet"?15:5,key==="diet"?5:2);
+    // ⚠️ LA CELEBRACIÓN VA ANTES DE CUALQUIER await — no lo reordenes.
+    // Estaba al final, detrás de saveLog() y addXG(): DOS viajes de red. Si
+    // cualquiera de esas promesas se rompía (p. ej. una respuesta 200 sin
+    // cuerpo JSON válido, cuyo rechazo escapaba al try/catch de sbReq), la
+    // función abortaba con el día YA marcado y el overlay no se encendía
+    // jamás. Por eso sí salía con el triple toque en el 🔥 (ese camino no
+    // toca la red) y no al cerrar el registro de tomas. Ahora el overlay se
+    // enciende dentro del gesto y la persistencia ocurre después, sin poder
+    // cancelarlo.
     if(key==="diet"){sfx("streakCelebration");setStreakAnimN(streak+1);setStreakAnim(true);setTimeout(()=>setStreakAnim(false),5000);}
     const wasAllDone=tLog.diet&&tLog.steps&&tLog.hydration&&tLog.sleep;
-    if(nl.diet&&nl.steps&&nl.hydration&&nl.sleep&&!wasAllDone){
-      await addXG(20,10);
+    const todoHecho=nl.diet&&nl.steps&&nl.hydration&&nl.sleep&&!wasAllDone;
+    if(todoHecho){
       sfx("confetti");
       setTimeout(()=>{setMissionsAnim(true);setTimeout(()=>setMissionsAnim(false),2800);},key==="diet"?2700:0);
     }
-    await chkBadges(streak,weights,badges);
+    // Persistencia y recompensas: van detrás y en try/catch, para que un fallo
+    // de red no pueda volver a tumbar la parte visible. El día ya está en
+    // localStorage y las escrituras fallidas quedan en la cola offline.
+    try{
+      await saveLog(nl,steps);
+      await addXG(key==="diet"?15:5,key==="diet"?5:2);
+      if(todoHecho) await addXG(20,10);
+      await chkBadges(streak,weights,badges);
+    }catch{}
   },[tLog,steps,streak,weights,badges,saveLog,addXG,chkBadges]);
 
   // ── Desglose de dieta por tomas ──────────────────────────────────────────────
