@@ -9330,8 +9330,24 @@ function GBHApp(){
     if(newLv.l>oldLv.l){
       sfx("levelUp");
       const rew=LEVEL_REWARDS[newLv.l];
-      setLevelUpNum(newLv.l); setLevelUpRew(rew); setLevelUpAnim(true);
-      setTimeout(()=>setLevelUpAnim(false),3600);
+      // ── Alerta de nivel: SOLO al cruzar una decena ─────────────────────────
+      // Con el ritmo real de XP se sube de nivel casi en cada gesto, así que el
+      // overlay a pantalla completa saltaba constantemente y dejaba de premiar
+      // para pasar a estorbar. Ahora la celebración se reserva para el cruce de
+      // decena (10, 20, 30…). Se compara por DECENA y no con `%10===0` a
+      // propósito: si un golpe de XP hace saltar del 8 al 12, la decena se ha
+      // cruzado igual y el hito debe celebrarse.
+      // Los niveles intermedios NO se silencian: mantienen su sonido, su
+      // recompensa íntegra y un toast discreto que no interrumpe.
+      const cruzaDecena = Math.floor(newLv.l/10) > Math.floor(oldLv.l/10);
+      if(cruzaDecena){
+        setLevelUpNum(newLv.l); setLevelUpRew(rew); setLevelUpAnim(true);
+        setTimeout(()=>setLevelUpAnim(false),3600);
+      } else {
+        showT({icon:"⚡",
+               title:lang==="en"?`Level ${newLv.l}`:`Nivel ${newLv.l}`,
+               sub:translateLvName(newLv.n,lang)});
+      }
       // Entregar gemas de la recompensa
       if(rew?.gems){
         const rewP={...u,gems:(u.gems||0)+rew.gems};
