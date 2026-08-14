@@ -589,6 +589,10 @@ function translateLvName(name, lang){
 // ─── Datos de contacto GBH — editar aquí ─────────────────────────────────────
 const GBH_WHATSAPP = "34697848500";
 const GBH_CALENDLY = "https://calendly.com/gbh-nutricion/20min";
+// Fisioterapia — equipo GBH en Pamplona (Nerea Ulzurrun). Número en
+// formato internacional sin "+" ni espacios: lo exige wa.me.
+const GBH_FISIO_WHATSAPP = "34648941543";
+const GBH_FISIO_NOMBRE   = "Nerea Ulzurrun";
 
 // ─── Sistema de sonido GBH — Web Audio API (sin archivos externos) ────────────
 const AudioCtx = (() => {
@@ -13007,6 +13011,54 @@ function TarjetaInvitarAmigo({profile,lang,sfx}){
   );
 }
 
+// ─── Tarjeta "Fisioterapia" — servicio del equipo GBH en Pamplona ───────────
+// Va dentro de un TarjetaDesplegable en ConsultaTab: el contenido solo se ve
+// al desplegar. El CTA abre WhatsApp de la fisioterapeuta (NO el de Alejandro)
+// con un mensaje pre-rellenado que ya la sitúa: nombre + paciente de GBH.
+function TarjetaFisioterapia({profile,lang,sfx}){
+  const nombre=(profile?.name||'').trim();
+  const pres = lang==='en'
+    ? (nombre?`I'm ${nombre}, a GBH Nutrición patient in Pamplona`:`I'm a GBH Nutrición patient in Pamplona`)
+    : (nombre?`Soy ${nombre}, paciente de GBH Nutrición en Pamplona`:`Soy paciente de GBH Nutrición en Pamplona`);
+  const msg = encodeURIComponent(lang==='en'
+    ? `Hi Nerea! ${pres} and I'd like to book a physiotherapy session 🩺`
+    : `¡Hola Nerea! ${pres} y me gustaría programar una consulta de fisioterapia 🩺`);
+  return(
+    <div style={{width:'100%',boxSizing:'border-box',background:alpha(T.blue,0.06),
+      border:`2px solid ${alpha(T.blue,0.35)}`,borderRadius:20,padding:'20px',
+      boxShadow:'0 4px 0 rgba(0,0,0,0.3)',textAlign:'left',marginTop:10}}>
+      <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:12}}>
+        <div style={{fontSize:34,flexShrink:0}}>🧑‍⚕️</div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:900,fontSize:16,color:T.t1,fontFamily:"'Nunito',sans-serif"}}>
+            {lang==='en'?'Physiotherapy in Pamplona':'Fisioterapia en Pamplona'}
+          </div>
+          <div style={{fontSize:12,color:T.blue,fontWeight:800,fontFamily:"'DM Sans',sans-serif"}}>
+            {GBH_FISIO_NOMBRE}
+          </div>
+        </div>
+      </div>
+      <div style={{fontSize:12.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.55,marginBottom:14}}>
+        {lang==='en'
+          ? 'For those of you doing the programme in Pamplona: the GBH team also has physiotherapists. If you\u2019d like to book a session, message us and we\u2019ll find you a slot.'
+          : 'Para los que lleváis el servicio en Pamplona, nuestro equipo de GBH también cuenta con profesionales de fisioterapia. Si quieres programar una consulta, escríbenos y te buscamos hueco.'}
+      </div>
+      <a href={`https://wa.me/${GBH_FISIO_WHATSAPP}?text=${msg}`} target="_blank" rel="noopener noreferrer"
+        onClick={()=>sfx&&sfx("tap")}
+        style={{width:'100%',boxSizing:'border-box',background:'linear-gradient(135deg,#25D366,#1DA851)',
+          color:T.t1,fontWeight:900,fontSize:14.5,borderRadius:16,padding:'14px 18px',
+          textDecoration:'none',boxShadow:'0 4px 0 #128C4B',fontFamily:"'Nunito',sans-serif",
+          display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
+        <span style={{fontSize:19}}>💬</span>
+        {lang==='en'?'Book physiotherapy':'Programar fisioterapia'}
+      </a>
+      <div style={{fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif",textAlign:'center',marginTop:8}}>
+        {lang==='en'?'Service available in Pamplona only':'Servicio disponible solo en Pamplona'}
+      </div>
+    </div>
+  );
+}
+
 // ─── ConsultaTab — contacto con el nutricionista (exclusivo premium) ────────
 // ═══════════════════════════════════════════════════════════════════════════
 function ConsultaTab({profile,lang,sfx}){
@@ -13094,6 +13146,11 @@ function ConsultaTab({profile,lang,sfx}){
         {lang==='en'?'We reply the same day · @gbhnutricion':'Te respondemos en el día · @gbhnutricion'}
       </div>
       <div style={{width:'100%',maxWidth:300,marginTop:6}}>
+        <TarjetaDesplegable sfx={sfx} icono="🧑‍⚕️"
+          titulo={lang==='en'?'Physiotherapy':'Fisioterapia'}
+          sub={lang==='en'?'GBH team in Pamplona':'Equipo GBH en Pamplona'}>
+          <TarjetaFisioterapia profile={profile} lang={lang} sfx={sfx}/>
+        </TarjetaDesplegable>
         <TarjetaDesplegable sfx={sfx} icono="🍽️"
           titulo={lang==='en'?'Cook for two':'Cocinar para los dos'}
           sub={parejaEstado==='vinculada'?(lang==='en'?'Linked ✓':'Vinculada ✓')
@@ -13169,6 +13226,11 @@ function ConsultaTab({profile,lang,sfx}){
         </button>
 
         {/* Invita a un amigo (referidos) */}
+        <TarjetaDesplegable sfx={sfx} icono="🧑‍⚕️"
+          titulo={lang==='en'?'Physiotherapy':'Fisioterapia'}
+          sub={lang==='en'?'GBH team in Pamplona':'Equipo GBH en Pamplona'}>
+          <TarjetaFisioterapia profile={profile} lang={lang} sfx={sfx}/>
+        </TarjetaDesplegable>
         <TarjetaDesplegable sfx={sfx} icono="🍽️"
           titulo={lang==='en'?'Cook for two':'Cocinar para los dos'}
           sub={parejaEstado==='vinculada'?(lang==='en'?'Linked ✓':'Vinculada ✓')
