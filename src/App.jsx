@@ -13675,6 +13675,15 @@ const REGLAS_EMOJI_PLATO = [
   [/leche|cacao|cafe/, '🥛'],
   [/aguacate/, '🥑'],
 ];
+// ── MENÚ DESGLOSADO: etiqueta de cada plato en ambos idiomas ──────────────
+// El backend manda etiquetas en español ('1º','2º','Plato','Postre'); aquí se
+// traducen para EN y se expanden para ES ('1er plato'). Fallback: tal cual.
+const MENU_ETQ = {
+  es: {'1º':'1er plato','2º':'2º plato','Plato':'Plato','Postre':'Postre'},
+  en: {'1º':'1st course','2º':'2nd course','Plato':'Main','Postre':'Dessert'},
+};
+const menuEtiqueta = (et, lang) => (MENU_ETQ[lang==='en'?'en':'es'][et]) || et || '';
+
 const emojiPlato = (nombre, tipo) => {
   if(tipo==='Postre'||tipo==='Dessert') return '🍰';
   const n = String(nombre||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
@@ -14209,6 +14218,10 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
   const [parejaPlanJ,setParejaPlanJ]=React.useState(null);
   const [cocinarDos,setCocinarDos]=React.useState(false);
   const [cocinarDeMas,setCocinarDeMas]=React.useState(1); // 1 | 2 | 3 (§5.3)
+  // ── MENÚ DESGLOSADO (tomas de objetivo alto: 1º y 2º) ──
+  // {etiquetas:[..], platos:[..], kcalTotal} o null si la toma es de un plato.
+  const [tomaMenu,setTomaMenu]=React.useState(null);
+  const [platoSel,setPlatoSel]=React.useState(0);
   React.useEffect(()=>{
     let vivo=true;
     if(!profile?.id){ setPareja(null); setParejaPlanJ(null); return; }
@@ -14438,8 +14451,8 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
       setGenerando(false);
     }
   }
-  React.useEffect(()=>{setView(null);setOpenToma(null);setTomaReceta(null);},[idx]);
-  React.useEffect(()=>{setOpenToma(null);setTomaReceta(null);},[selDay]);
+  React.useEffect(()=>{setView(null);setOpenToma(null);setTomaReceta(null);setTomaMenu(null);},[idx]);
+  React.useEffect(()=>{setOpenToma(null);setTomaReceta(null);setTomaMenu(null);},[selDay]);
   React.useEffect(()=>{
     if(!profile) return;
     if(!tieneAcceso){setLoading(false);return;}
@@ -14670,12 +14683,49 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
     return mapa;
   }
 
+  // Normaliza un plato del menú desglosado al formato de tomaReceta.
+  // Los platos vienen del plan YA escalados a la ración del paciente (kcal,
+  // macros e ingredientes), igual que las celdas normales de planes nuevos.
+  const platoMenuAReceta = (pl)=>({
+    nombre:       pl.Nombre_Receta||'',
+    tipo:         pl.Tipo||'',
+    calorias:     Math.round(parseFloat(pl.Calorias_Totales)||0),
+    proteinas_g:  Math.round(parseFloat(pl.Proteinas_g)||0),
+    hidratos_g:   Math.round(parseFloat(pl.Hidratos_g)||0),
+    grasas_g:     Math.round(parseFloat(pl.Grasas_g)||0),
+    ingredientes: pl.Ingredientes||'',
+    instrucciones:pl.Instrucciones||(lang==='en'?'No preparation steps available.':'Sin pasos de preparación disponibles.'),
+    racion_texto: pl.racion_texto||'',
+    racion_factor:parseFloat(pl.racion_factor)||1,
+    raciones:     parseInt(pl.raciones||1)||1,
+    kcal_objetivo:Math.round(parseFloat(pl.Calorias_Totales)||0),
+    slug:null, publica:false,   // los platos del menú no tienen escaparate propio
+  });
+
   async function abrirToma(toma){
     onTutoEvent&&onTutoEvent('receta_abierta');   // tour: receta del día abierta
     const meal=planJ?.[toma]?.[String(selDay)];
     if(!meal?.Nombre_Receta) return;
     setOpenToma(toma);setTomaReceta(null);setLoadingToma(true);
     setCocinarDos(false);setCocinarDeMas(1);   // cada plato se decide aparte
+
+    // ── MENÚ DESGLOSADO: la celda trae los TOTALES (un único registro para
+    // toda la toma) y `platos` con cada plato completo. Se muestran como
+    // pestañas — cada plato con SUS ingredientes y SU preparación — y el
+    // cumplimiento sigue siendo UNO para todo el menú (nada que cambiar en
+    // el registro: meals[toma]=estado ya engloba la toma entera).
+    if(meal.compuesta && Array.isArray(meal.platos) && meal.platos.length>=2){
+      setTomaMenu({
+        etiquetas:(Array.isArray(meal.etiquetas)&&meal.etiquetas.length>=2)?meal.etiquetas:['1º','2º'],
+        platos:   meal.platos,
+        kcalTotal:Math.round(parseFloat(meal.Calorias_Totales)||0),
+      });
+      setPlatoSel(0);
+      setTomaReceta(platoMenuAReceta(meal.platos[0]));
+      setLoadingToma(false);
+      return;
+    }
+    setTomaMenu(null);
 
     // El plan generado YA trae la receta escalada a la ración del paciente:
     // kcal, macros e ingredientes con las cantidades que le corresponden.
@@ -15428,7 +15478,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
         idReceta={miniCompra.id} t={t} onClose={()=>setMiniCompra(null)}
         etiquetaRacion={miniCompra.etiquetaRacion}/>}
       <WeekNav/>
-      <BtnVolver onClick={()=>{if(openToma){setOpenToma(null);setTomaReceta(null);}else setView(null);}}/>
+      <BtnVolver onClick={()=>{if(openToma){setOpenToma(null);setTomaReceta(null);setTomaMenu(null);}else setView(null);}}/>
       {!openToma&&(<>
         <div style={{overflowX:'auto',WebkitOverflowScrolling:'touch',padding:'0 16px 16px'}}>
           <div style={{display:'flex',gap:8,minWidth:'min-content'}}>
@@ -15482,9 +15532,20 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
                 <div style={{fontSize:26,width:44,height:44,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:14,background:'rgba(255,255,255,0.06)',flexShrink:0}}>{PLAN_TOMA_IC[toma]||'🍴'}</div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:10,color:T.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:3,fontFamily:"'DM Sans',sans-serif"}}>{toma}</div>
+                  {(hasMeal&&meal?.compuesta&&Array.isArray(meal?.platos)&&meal.platos.length>=2)?(
+                    <div style={{display:'flex',flexDirection:'column',gap:2}}>
+                      {meal.platos.map((pl,i)=>(
+                        <div key={i} style={{fontSize:12.5,fontWeight:800,color:T.t1,fontFamily:"'Nunito',sans-serif",whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                          <span style={{color:T.au1,fontWeight:900,marginRight:4}}>{menuEtiqueta((Array.isArray(meal.etiquetas)&&meal.etiquetas[i])||(i===0?'1º':'2º'),lang)}</span>
+                          <span style={{marginRight:4}}>{emojiPlato(pl.Nombre_Receta,pl.Tipo)}</span>{pl.Nombre_Receta}
+                        </div>
+                      ))}
+                    </div>
+                  ):(
                   <div style={{fontSize:14,fontWeight:hasMeal?800:400,color:hasMeal?T.t1:T.t3,fontFamily:"'Nunito',sans-serif",whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
                     {hasMeal&&<span style={{marginRight:4}}>{emojiPlato(meal.Nombre_Receta, meal.Tipo)}</span>}{hasMeal?meal.Nombre_Receta:'—'}
                   </div>
+                  )}
                 </div>
                 {hasMeal&&<div style={{color:T.t3,fontSize:18,flexShrink:0}}>›</div>}
               </button>
@@ -15565,6 +15626,37 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
             <span style={{fontSize:22}}>{PLAN_TOMA_IC[openToma]||'🍴'}</span>
             <div style={{fontSize:11,color:T.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',fontFamily:"'DM Sans',sans-serif"}}>{openToma}</div>
           </div>
+          {/* ── MENÚ DESGLOSADO: pestañas de platos ─────────────────────────
+              Cada pestaña carga su plato en tomaReceta y TODO lo de abajo
+              (macros, ración, ingredientes, preparación, guardar/descartar)
+              se reutiliza tal cual. El check de cumplimiento es de la TOMA:
+              un solo registro engloba los dos platos. */}
+          {tomaMenu&&(<>
+            <div style={{display:'flex',gap:8,marginBottom:10}}>
+              {tomaMenu.platos.map((pl,i)=>{const on=i===platoSel;return(
+                <button key={i} onClick={()=>{if(i===platoSel)return;sfx&&sfx('tap');setPlatoSel(i);setTomaReceta(platoMenuAReceta(pl));setCocinarDos(false);setCocinarDeMas(1);}} style={{
+                  flex:1,minWidth:0,padding:'10px 10px',borderRadius:14,cursor:'pointer',textAlign:'left',
+                  background:on?'linear-gradient(135deg,'+T.g1+','+T.g2+')':'rgba(255,255,255,0.05)',
+                  border:on?'2px solid '+T.au2:'1.5px solid rgba(255,255,255,0.12)',
+                  boxShadow:on?'0 3px 0 '+T.g3:'none',transition:'all 0.15s'}}>
+                  <div style={{fontSize:10,fontWeight:900,color:on?T.wh:T.au1,textTransform:'uppercase',letterSpacing:'0.08em',fontFamily:"'DM Sans',sans-serif",marginBottom:2}}>
+                    {menuEtiqueta(tomaMenu.etiquetas[i],lang)} · {Math.round(parseFloat(pl.Calorias_Totales)||0)} kcal
+                  </div>
+                  <div style={{fontSize:12.5,fontWeight:900,color:on?T.wh:T.t1,fontFamily:"'Nunito',sans-serif",whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                    {emojiPlato(pl.Nombre_Receta,pl.Tipo)} {pl.Nombre_Receta}
+                  </div>
+                </button>);})}
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:8,background:'rgba(255,255,255,0.04)',
+              border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:14,padding:'8px 12px',marginBottom:12}}>
+              <span style={{fontSize:15,lineHeight:1}}>🍽️</span>
+              <span style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>
+                {lang==='en'
+                  ?`Full menu: ${tomaMenu.kcalTotal} kcal · both courses are ONE meal — a single check logs them together`
+                  :`Menú completo: ${tomaMenu.kcalTotal} kcal · los dos platos son UNA toma — un solo check registra todo`}
+              </span>
+            </div>
+          </>)}
           <div style={{background:T.bgCard,borderRadius:20,padding:'20px 18px',marginBottom:12,border:'1px solid rgba(255,255,255,0.07)'}}>
             <div style={{display:'flex',alignItems:'flex-start',gap:14,marginBottom:16}}>
               <div style={{fontSize:48,lineHeight:1,flexShrink:0}}>{emojiPlato(tomaReceta.nombre, tomaReceta.tipo)}</div>
@@ -15702,7 +15794,12 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
 
           {/* Botones: cambiar receta (10💎), guardar (20💎) y descartar (gratis) */}
           <div style={{display:'flex',gap:10,marginTop:12}}>
-            <button onClick={cambiarRecetaToma}
+            {/* Cambiar receta: oculto en MENÚS DESGLOSADOS — cambiar un solo
+                plato desincronizaría los totales guardados del plan (kcal y
+                macros de la celda). Posible v2: cambio plato a plato con
+                recomposición del menú. Guardar/descartar SÍ operan sobre el
+                plato visible (son recetas reales del recetario). */}
+            {!tomaMenu&&<button onClick={cambiarRecetaToma}
               style={{flex:1,background:(!enTrial&&gems<10)?'rgba(255,255,255,0.05)':'rgba(100,181,246,0.15)',
                       border:(!enTrial&&gems<10)?'1.5px solid rgba(255,255,255,0.08)':'1.5px solid rgba(100,181,246,0.4)',
                       borderRadius:16,padding:'14px 10px',cursor:(!enTrial&&gems<10)?'default':'pointer',
@@ -15712,7 +15809,7 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
                 {lang==='en'?'Change':'Cambiar'}
               </span>
               <span style={{fontSize:10,color:enTrial?T.g1:T.t3,fontWeight:enTrial?900:400}}>{enTrial?(lang==='en'?'Free · trial':'Gratis · prueba'):'10 💎'}</span>
-            </button>
+            </button>}
             <button onClick={recetaYaGuardada?undefined:guardarRecetaToma}
               style={{flex:1,background:recetaYaGuardada?alpha(T.g1,0.15):(gems<20?'rgba(255,255,255,0.05)':alpha(T.au1,0.12)),
                       border:recetaYaGuardada?'1.5px solid '+T.bG:(gems<20?'1.5px solid rgba(255,255,255,0.08)':`1.5px solid ${alpha(T.au1,0.35)}`),
