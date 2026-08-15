@@ -10281,6 +10281,8 @@ function GBHApp(){
     })();
   },[tab]);  // eslint-disable-line react-hooks/exhaustive-deps
   const [langSwitching, setLangSwitching] = useState(false);
+  const [iabCopiado, setIabCopiado] = useState(false);
+  const [iabSeguir, setIabSeguir] = useState(false);
 
   // Cambia idioma con pantalla de carga intermedia
   const switchLang = async (newLang) => {
@@ -10306,59 +10308,63 @@ function GBHApp(){
   const inp={width:"100%",background:"rgba(255,255,255,0.07)",border:`2px solid ${T.bW}`,borderRadius:16,padding:"15px 18px",color:T.cr,fontSize:16,fontWeight:700,fontFamily:"'DM Sans',sans-serif"};
 
   // ── INSTAGRAM IN-APP BROWSER DETECTION ───────────────────────────────────────
-  // Instagram (y Facebook) abren los enlaces en su propio webview, que tiene un
-  // localStorage aislado del navegador real. Esto causa que los datos del usuario
-  // no estén disponibles y la sesión parezca vacía.
-  // Solución: detectar el IAB y mostrar una pantalla que invite a abrir en Safari/Chrome.
+  // Instagram y Facebook abren los enlaces en su propio webview, con el
+  // localStorage aislado del navegador real: la sesión aparecería vacía y los
+  // datos "desaparecidos". Por eso se intercepta y se invita a salir.
+  //
+  // CLAVE (15-ago-2026): no hay forma FIABLE de salir de un webview por código.
+  // El intent:// de Android falla sin Chrome y el x-safari-https:// de iOS no es
+  // oficial. Por eso el botón es solo el primer intento y la vía manual está
+  // SIEMPRE visible: es la única que funciona seguro.
   const isInstagramIAB = useMemo(() => {
     const ua = navigator.userAgent || "";
     return /Instagram|FBAN|FBAV|FB_IAB|FB4A|FBIOS/.test(ua);
   }, []);
 
-  if (isInstagramIAB) {
-    const currentUrl = window.location.href;
+  if (isInstagramIAB && !iabSeguir) {
     const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
-    const isAndroid = /Android/.test(navigator.userAgent);
 
-    // En iOS: el esquema x-safari-https:// fuerza abrir en Safari
-    // En Android: el intent:// es más fiable pero no universal; usamos el link directo
-    // Añadimos ?install=1 para que al llegar al navegador real se muestre el modal PWA
-    const openInBrowser = () => {
-      const installUrl = (() => {
-        try {
-          const u = new URL(currentUrl);
-          u.searchParams.set("install", "1");
-          return u.toString();
-        } catch { return currentUrl + (currentUrl.includes("?") ? "&" : "?") + "install=1"; }
-      })();
+    // ?iab=1 marca a quien llega tras dar el salto: es la única forma de saber
+    // cuántos se pierden aquí, que hoy es un agujero ciego del único canal.
+    const urlSalida = (() => {
+      try {
+        const u = new URL(window.location.href);
+        u.searchParams.set("install", "1");
+        u.searchParams.set("iab", "1");
+        return u.toString();
+      } catch {
+        return "https://gbh-app.vercel.app/?install=1&iab=1";
+      }
+    })();
+    const urlCorta = urlSalida.replace(/^https?:\/\//, "").split("?")[0];
+
+    const abrirFuera = () => {
       if (isIOS) {
-        window.location.href = installUrl.replace(/^https?:\/\//, "x-safari-https://");
-        setTimeout(() => {
-          try { navigator.clipboard.writeText(installUrl); } catch {}
-        }, 800);
-      } else if (isAndroid) {
-        window.location.href =
-          "intent://" +
-          installUrl.replace(/^https?:\/\//, "") +
-          "#Intent;scheme=https;package=com.android.chrome;end";
+        window.location.href = urlSalida.replace(/^https?:\/\//, "x-safari-https://");
       } else {
-        try { navigator.clipboard.writeText(installUrl); } catch {}
+        window.location.href =
+          "intent://" + urlSalida.replace(/^https?:\/\//, "") +
+          "#Intent;scheme=https;action=android.intent.action.VIEW;end";
       }
     };
 
-    // Frases de broma para salir del IAB, rotando según el segundo actual
-    const jokes = lang === "en" ? [
-      { title: "Instagram, not today 🐑", sub: "My sheep refuses to live inside a social network." },
-      { title: "Wrong door! 🚪", sub: "Your data is waiting for you in a real browser. Let's go." },
-      { title: "Houston, we have a browser 🚀", sub: "Instagram is cool but your progress lives elsewhere." },
-      { title: "Escape from Instagram! 🏃", sub: "One tap and your sheep is free." },
-    ] : [
-      { title: "Instagram, hoy no 🐑", sub: "Mi oveja se niega a vivir dentro de una red social." },
-      { title: "Tu objetivo está a un solo clic ✨", sub: "Toca el botón y tu navegador abrirá la app completa: tu programación, tus recetas y tu progreso." },
-      { title: "¡Ya casi estás dentro! 🌱", sub: "Un último paso: entra desde tu navegador y tendrás tu plan de nutrición al completo." },
-      { title: "Bo ya te está esperando 🐑", sub: "Tu plan semanal, tus recetas y tu propia mascota viven en la app. Toca y entra." },
-    ];
-    const joke = jokes[new Date().getSeconds() % jokes.length];
+    const copiar = async () => {
+      try {
+        await navigator.clipboard.writeText(urlSalida);
+        setIabCopiado(true);
+        setTimeout(() => setIabCopiado(false), 2500);
+      } catch {
+        // Si el webview no da permiso, se selecciona para copiar a mano.
+        const el = document.getElementById("gbh-url-salida");
+        if (el) {
+          const r = document.createRange();
+          r.selectNodeContents(el);
+          const s = window.getSelection();
+          s.removeAllRanges();
+          s.addRange(r);
+        }
+      }
+    };
 
     return (
       <LangCtx.Provider value={lang}>
@@ -10368,43 +10374,92 @@ function GBHApp(){
           minHeight: "100vh", maxWidth: 420, margin: "0 auto",
           display: "flex", flexDirection: "column",
           alignItems: "center", justifyContent: "center",
-          padding: "32px 24px", color: T.t1, textAlign: "center",
+          padding: "28px 22px", color: T.t1, textAlign: "center",
         }}>
           <style>{CSS}</style>
 
-          <Sheep estado="feliz" equipados={[]} color="blanca" size={140} />
+          <Sheep estado="feliz" equipados={[]} color="blanca" size={120} />
 
-          <div style={{ marginTop: 24, marginBottom: 10, fontSize: 26, fontWeight: 900, color: T.wh, lineHeight: 1.3 }}>
-            {joke.title}
+          {/* Texto FIJO. Antes rotaba con getSeconds() y salían frases que no
+              decían qué hacer, además de cambiar en cada recarga. */}
+          <div style={{ marginTop: 20, marginBottom: 8, fontSize: 25, fontWeight: 900, color: T.wh, lineHeight: 1.25 }}>
+            {lang === "en" ? "You're almost in 🌱" : "Ya casi estás dentro 🌱"}
           </div>
-
           <div style={{
-            fontSize: 14, color: T.t2,
-            fontFamily: "'DM Sans',sans-serif",
-            lineHeight: 1.6, marginBottom: 36, maxWidth: 280,
+            fontSize: 14, color: T.t2, fontFamily: "'DM Sans',sans-serif",
+            lineHeight: 1.55, marginBottom: 26, maxWidth: 300,
           }}>
-            {joke.sub}
+            {lang === "en"
+              ? "Instagram opens links in its own viewer, and your progress can't be saved there. Open it in your browser and you'll have your plan, your recipes and your sheep."
+              : "Instagram abre los enlaces en su propio visor, y ahí tu progreso no se puede guardar. Ábrelo en tu navegador y tendrás tu plan, tus recetas y tu oveja."}
           </div>
 
           <button
-            onClick={openInBrowser}
+            onClick={abrirFuera}
             style={{
-              width: "100%", maxWidth: 320,
-              padding: "18px 24px", borderRadius: 20,
+              width: "100%", maxWidth: 320, padding: "17px 22px", borderRadius: 20,
               border: `3px solid ${T.g3}`,
               background: `linear-gradient(135deg,${T.g1},${T.g2})`,
-              color: T.t1, fontSize: 17, fontWeight: 900,
-              cursor: "pointer",
-              boxShadow: `0 8px 0 ${T.g3}`,
-              fontFamily: "'Nunito',sans-serif",
+              color: T.t1, fontSize: 17, fontWeight: 900, cursor: "pointer",
+              boxShadow: `0 8px 0 ${T.g3}`, fontFamily: "'Nunito',sans-serif",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
               animation: "glow 2.5s ease-in-out infinite",
-            }}
-          >
-            <span style={{ fontSize: 22 }}>{isIOS ? "🧭" : "🌐"}</span>
+            }}>
+            <span style={{ fontSize: 21 }}>{isIOS ? "🧭" : "🌐"}</span>
+            {lang === "en" ? "Open in browser" : "Abrir en el navegador"}
+          </button>
+
+          {/* ── LA VÍA MANUAL, SIEMPRE VISIBLE ──────────────────────────────
+              Es el cambio importante del brief: el botón de arriba puede no
+              hacer nada y sin esto el usuario se queda sin salida. */}
+          <div style={{
+            width: "100%", maxWidth: 320, marginTop: 22, padding: "15px 16px",
+            background: "rgba(255,255,255,0.06)",
+            border: `1px solid ${T.bW}`, borderRadius: 16,
+            fontFamily: "'DM Sans',sans-serif",
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: T.wh, marginBottom: 8 }}>
+              {lang === "en" ? "Didn't open?" : "¿No se ha abierto?"}
+            </div>
+            <div style={{ fontSize: 13, color: T.t2, lineHeight: 1.55 }}>
+              {lang === "en"
+                ? <>Tap <b style={{ color: T.wh }}>{isIOS ? "⋯ (bottom right)" : "⋮ (top right)"}</b> and choose <b style={{ color: T.wh }}>“Open in browser”</b>.</>
+                : <>Toca <b style={{ color: T.wh }}>{isIOS ? "⋯ (abajo a la derecha)" : "⋮ (arriba a la derecha)"}</b> y elige <b style={{ color: T.wh }}>«Abrir en el navegador»</b>.</>}
+            </div>
+
+            <div style={{ fontSize: 12, color: T.t2, marginTop: 12, marginBottom: 6 }}>
+              {lang === "en" ? "Or copy this address:" : "O copia esta dirección:"}
+            </div>
+            {/* Seleccionable a propósito: si `clipboard` falla, se copia a mano. */}
+            <div id="gbh-url-salida" style={{
+              fontSize: 14, fontWeight: 700, color: T.au1,
+              userSelect: "all", WebkitUserSelect: "all",
+              wordBreak: "break-all", marginBottom: 10,
+            }}>{urlCorta}</div>
+
+            <button onClick={copiar} style={{
+              width: "100%", padding: "11px 14px", borderRadius: 12,
+              border: `2px solid ${T.bW}`, background: "rgba(255,255,255,0.08)",
+              color: iabCopiado ? T.au1 : T.t1, fontSize: 14, fontWeight: 800,
+              cursor: "pointer", fontFamily: "'Nunito',sans-serif",
+            }}>
+              {iabCopiado
+                ? (lang === "en" ? "✓ Copied" : "✓ Copiado")
+                : (lang === "en" ? "Copy address" : "Copiar dirección")}
+            </button>
+          </div>
+
+          {/* Salida de emergencia: mejor una experiencia limitada que un muro. */}
+          <button
+            onClick={() => setIabSeguir(true)}
+            style={{
+              marginTop: 18, background: "none", border: "none",
+              color: T.t2, fontSize: 12, textDecoration: "underline",
+              cursor: "pointer", fontFamily: "'DM Sans',sans-serif",
+            }}>
             {lang === "en"
-              ? (isIOS ? "Open in Safari" : "Open in Chrome")
-              : "🚀 Entrar en GBH Nutrición"}
+              ? "Continue here anyway (progress may not be saved)"
+              : "Continuar aquí de todos modos (el progreso puede no guardarse)"}
           </button>
         </div>
       </LangCtx.Provider>
