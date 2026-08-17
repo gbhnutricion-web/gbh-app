@@ -2283,6 +2283,34 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
       if (TEMAS[to].familia === "vuelo") st.objetivoY = st.y;
       st.vy = 0; st.enSuelo = true;
     };
+    // ── Equilibrio del duelo (medido por simulación, 200.000 combates) ────────
+    // El rival NO es una persona: es un bot con la piel de otro paciente. Si su
+    // carta fuese uniforme al azar, cualquier patrón fijo lo revienta (el escudo
+    // ganaba el 100% y el ataque el 73%). Tres reglas lo cierran:
+    //   · MAX_TURNOS: el combate no puede eternizarse; al llegar gana quien tenga
+    //     más PS, y si están igualados es empate (nadie roba nada a nadie).
+    //   · D vs D cuesta 25 a los dos: turtlear ya no es gratis.
+    //   · P_LEE: el rival responde a tu carta más repetida con la que la vence
+    //     (⚔️→🛡️→🍎→⚔️). A 0.35 ninguna estrategia fija supera al juego honesto.
+    // Con P_LEE = 0 vuelve al rival aleatorio de antes.
+    const MAX_TURNOS = 12;
+    const P_LEE = 0.35;
+    const CONTRA = { A: "D", D: "P", P: "A" };
+    const cartaRival = (d) => {
+      const v = d.vistas || {};
+      const tot = (v.A || 0) + (v.D || 0) + (v.P || 0);
+      if (tot > 0 && Math.random() < P_LEE) {
+        const fav = ["A", "D", "P"].sort((x, y) => (v[y] || 0) - (v[x] || 0))[0];
+        return CONTRA[fav];
+      }
+      return ["A", "D", "P"][Math.floor(Math.random() * 3)];
+    };
+    // ── Bo entrenador: rival de reserva cuando el rebaño aún no tiene puntos ──
+    // Sin id → resolverDuelo corta antes de llamar a la RPC: no se le quitan
+    // puntos a nadie. El botín de partida sí cuenta, así que se sigue jugando
+    // por puntos y nadie se queda encerrado en el tapete tras gastar el diamante.
+    const RIVAL_BOT = { id: null, bot: true, usuario: "Bo", oveja: "entrenador", pts: 0,
+      px: buildPixels("verde", []), pxTriste: buildPixelsEstado("verde", [], "triste") };
     // ── Duelo: rivales reales del ranking semanal (top 1, top 2 y el rebaño) ──
     const cargarRivales = async () => {
       try {
@@ -2300,7 +2328,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
             pxTriste: buildPixelsEstado(p.bo_color, p.bo_equipados, "triste") };
         }).filter(Boolean);
         if (st.duelo) { st.duelo.rivales = rivales; st.duelo.cargando = false; }
-      } catch { if (st.duelo) st.duelo.cargando = false; }
+      } catch { if (st.duelo) { st.duelo.rivales = []; st.duelo.cargando = false; } }
     };
     // Misma forma que apply_referral: una RPC SECURITY DEFINER mueve los dos marcadores
     const resolverDuelo = (rival, gana) => {
@@ -2323,7 +2351,15 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
         const d = st.duelo; if (!d || py === undefined) return;
         if (d.fase === "tapete") {
           const rv = d.rivales || [];
-          if (d.cargando || rv.length === 0) return;
+          if (d.cargando) return;
+          if (rv.length === 0) {
+            // Carta única centrada: sin esto el tapete se quedaba muerto y había
+            // que salir del juego habiendo pagado el diamante sin jugar nada
+            if (py > 240 && py < 412 && px > 112 && px < 228) {
+              d.rival = RIVAL_BOT; d.fase = "turno"; d.t = 0; d.psYo = 300; d.psRiv = 300; jfx("rival");
+            }
+            return;
+          }
           if (py > 240 && py < 412) {
             const i = px < 115 ? 0 : px < 227 ? 1 : 2;
             let elegido = null;
@@ -2336,24 +2372,30 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
           if (py > 294 && py < 420) {
             const i = px < 115 ? 0 : px < 227 ? 1 : 2;
             d.miIdx = i; d.miCarta = ["A", "D", "P"][i];
-            d.suCarta = ["A", "D", "P"][Math.floor(Math.random() * 3)];
+            d.suCarta = cartaRival(d);
+            if (!d.vistas) d.vistas = { A: 0, D: 0, P: 0 };
+            d.vistas[d.miCarta]++;
+            d.turno = (d.turno || 0) + 1;
             d.suIdx = Math.floor(Math.random() * 3);
             d.fase = "revela"; d.t = 0;
             jfx("carta");
           }
         } else if (d.fase === "fin") {
-          if (d.resultado === "gana") {
+          if (d.resultado === "gana" || d.resultado === "empate") {
             if (py > 376 && py < 442) { transita(otroModo(st.modo)); return; }        // 🔮 al siguiente juego
             if (py > 452 && py < 500) {
               // Otro duelo: SIEMPRE contra un rival aleatorio (y distinto del recién
               // vencido si hay más), para que nadie pueda cebarse con el mismo paciente
               const rv2 = (d.rivales || []).filter(r => !d.rival || r.id !== d.rival.id);
               const pool = rv2.length ? rv2 : (d.rivales || []);
-              if (pool.length) {
-                const nuevoRival = pool[Math.floor(Math.random() * pool.length)];
+              // Sin rebaño con puntos, la revancha es contra Bo: encadenar duelos
+              // nunca deja el tapete sin salida
+              const nuevoRival = pool.length ? pool[Math.floor(Math.random() * pool.length)] : RIVAL_BOT;
+              {
                 st.duelo = { fase: "turno", t: 0, psYo: 300, psRiv: 300, rival: nuevoRival,
                   rivales: d.rivales, cargando: false, miCarta: null, suCarta: null,
-                  miIdx: 1, suIdx: 1, golpeYo: 0, golpeRiv: 0, resultado: null, flot: [], misPts: d.misPts };
+                  miIdx: 1, suIdx: 1, golpeYo: 0, golpeRiv: 0, resultado: null, flot: [], misPts: d.misPts,
+                  turno: 0, vistas: { A: 0, D: 0, P: 0 } };
                 jfx("rival");
               }
             }
@@ -2683,6 +2725,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
           if (!st.duelo) {
             st.duelo = { fase: "tapete", t: 0, psYo: 300, psRiv: 300, rival: null, rivales: null,
               cargando: true, miCarta: null, suCarta: null, miIdx: 1, suIdx: 1,
+              turno: 0, vistas: { A: 0, D: 0, P: 0 },
               golpeYo: 0, golpeRiv: 0, resultado: null, flot: [], misPts: null };
             cargarRivales();
           }
@@ -2701,6 +2744,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
               else if (m === "A" && b === "D") { dYo = -50; }
               else if (m === "A" && b === "P") { dRiv = -100; }
               else if (m === "D" && b === "A") { dRiv = -50; }
+              else if (m === "D" && b === "D") { dYo = -25; dRiv = -25; }   // turtlear ya no es gratis
               else if (m === "D" && b === "P") { dRiv = +50; }
               else if (m === "P" && b === "A") { dYo = -100; }
               else if (m === "P" && b === "D") { dYo = +50; }
@@ -2713,11 +2757,18 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
               else if (dYo > 0 || dRiv > 0) jfx("cura");
             }
             if (d.t >= 96) {
-              if (d.psYo <= 0 || d.psRiv <= 0) {
-                d.fase = "fin"; d.t = 0; d.resultado = d.psYo > 0 ? "gana" : "pierde";
-                jfx(d.resultado === "gana" ? "victoria" : "derrota");
-                // ±100 a los marcadores semanales de LOS DOS, con suelo en 0 (RPC resolver_duelo)
-                resolverDuelo(d.rival, d.resultado === "gana");
+              const ko = d.psYo <= 0 || d.psRiv <= 0;
+              const limite = !ko && (d.turno || 0) >= MAX_TURNOS;
+              if (ko || limite) {
+                d.fase = "fin"; d.t = 0; d.porLimite = limite;
+                d.resultado = ko ? (d.psYo > 0 ? "gana" : "pierde")
+                  : (d.psYo > d.psRiv ? "gana" : d.psYo < d.psRiv ? "pierde" : "empate");
+                jfx(d.resultado === "gana" ? "victoria" : d.resultado === "pierde" ? "derrota" : "carta");
+                // El empate no mueve un solo punto: ni a ti ni al rival
+                if (d.resultado !== "empate") {
+                  // ±100 a los marcadores semanales de LOS DOS, con suelo en 0 (RPC resolver_duelo)
+                  resolverDuelo(d.rival, d.resultado === "gana");
+                }
                 if (d.resultado === "gana") {
                   // Botín de partida creciente: la 2ª victoria vale el doble que la 1ª.
                   // Antes ganar tres duelos seguidos puntuaba igual que ganar uno.
@@ -2986,8 +3037,24 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
             ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.font = "bold 14px system-ui";
             ctx.fillText("Buscando al rebaño…", W / 2, 330);
           } else if (rv.length === 0) {
-            ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.font = "bold 12.5px system-ui";
-            ctx.fillText("Aún no hay rivales con puntos esta semana", W / 2, 330);
+            ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.font = "bold 12px system-ui";
+            ctx.fillText("Aún no hay rivales con puntos esta semana", W / 2, 192);
+            ctx.fillStyle = "rgba(255,255,255,0.62)"; ctx.font = "bold 11px system-ui";
+            ctx.fillText("Entrena contra Bo: nadie pierde puntos", W / 2, 212);
+            const rxB = 124, RWB = 92, RYB = 250, RHB = 150;
+            const latB = Math.sin(performance.now() / 260) * 3;
+            ctx.font = "26px system-ui";
+            ctx.fillText("🐑", rxB + RWB / 2, RYB - 12 + latB);
+            bloque(ctx, rxB, RYB, RWB, RHB, "#EAE4CC");
+            ctx.fillStyle = "#0f4a2a"; ctx.font = "bold 11px system-ui";
+            ctx.fillText("Bo", rxB + RWB / 2, RYB + 22);
+            pintarTramos(RIVAL_BOT.px, rxB + RWB / 2 - 26, RYB + 32, 1.6);
+            ctx.fillStyle = "#8A6508"; ctx.font = "bold 10.5px system-ui";
+            ctx.fillText("«entrenador»", rxB + RWB / 2, RYB + RHB - 12);
+            ctx.fillStyle = T.au1; ctx.font = "bold 10px system-ui";
+            ctx.fillText("Amistoso", rxB + RWB / 2, RYB + RHB + 22);
+            ctx.fillStyle = "rgba(255,255,255,0.75)"; ctx.font = "bold 11px system-ui";
+            ctx.fillText("Sin robo de puntos · el botín de partida sí cuenta", W / 2, 456);
           } else {
             const RXS = [18, 124, 230], RW2 = 92, RY = 250, RH2 = 150;
             const insignias = ["👑", "🥈", ""];
@@ -3037,6 +3104,12 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
           barraVida(96, 30, W - 200, d.psRiv);
           ctx.fillStyle = "rgba(255,255,255,0.7)"; ctx.font = "bold 9px system-ui";
           ctx.fillText(Math.max(0, d.psRiv) + "/300", W - 96, 38);
+          // El límite de turnos tiene que verse: decide el combate si nadie cae
+          ctx.textAlign = "right";
+          ctx.fillStyle = (d.turno || 0) >= MAX_TURNOS - 2 ? "#FFD84D" : "rgba(255,255,255,0.5)";
+          ctx.font = "bold 9.5px system-ui";
+          ctx.fillText("Turno " + Math.min(d.turno || 0, MAX_TURNOS) + "/" + MAX_TURNOS, W - 14, 22);
+          ctx.textAlign = "left";
           const shR = d.golpeRiv > 0 ? Math.sin(d.golpeRiv * 0.9) * 4 : 0;
           ctx.fillStyle = "rgba(0,0,0,0.30)";
           ctx.beginPath(); ctx.ellipse(W / 2, 114, 34, 7, 0, 0, Math.PI * 2); ctx.fill();
@@ -3116,11 +3189,25 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
             ctx.fillStyle = "rgba(10,15,22,0.86)"; ctx.fillRect(0, 0, W, H);
             ctx.textAlign = "center";
             const gano = d.resultado === "gana";
-            ctx.font = "44px system-ui"; ctx.fillText(gano ? "🏆" : "😵", W / 2, 252);
+            const tablas = d.resultado === "empate";
+            ctx.font = "44px system-ui"; ctx.fillText(tablas ? "🤝" : gano ? "🏆" : "😵", W / 2, 252);
             ctx.fillStyle = "#FFFFFF"; ctx.font = "bold 24px system-ui";
-            ctx.fillText(gano ? "¡Victoria!" : "Derrota…", W / 2, 298);
-            ctx.fillStyle = gano ? T.au1 : "#FF8A8A"; ctx.font = "bold 22px system-ui";
-            ctx.fillText(gano ? "+100 puntos" : "−100 puntos", W / 2, 332);
+            ctx.fillText(tablas ? "Empate" : gano ? "¡Victoria!" : "Derrota…", W / 2, 298);
+            const amistoso = !!(d.rival && d.rival.bot);
+            if (tablas) {
+              ctx.fillStyle = "rgba(255,255,255,0.82)"; ctx.font = "bold 15px system-ui";
+              ctx.fillText("Sin cambios en el marcador", W / 2, 332);
+            } else if (amistoso) {
+              ctx.fillStyle = "rgba(255,255,255,0.82)"; ctx.font = "bold 15px system-ui";
+              ctx.fillText("Amistoso · sin robo de puntos", W / 2, 332);
+            } else {
+              ctx.fillStyle = gano ? T.au1 : "#FF8A8A"; ctx.font = "bold 22px system-ui";
+              ctx.fillText(gano ? "+100 puntos" : "−100 puntos", W / 2, 332);
+            }
+            if (d.porLimite) {
+              ctx.fillStyle = "rgba(255,255,255,0.5)"; ctx.font = "bold 10.5px system-ui";
+              ctx.fillText("Límite de " + MAX_TURNOS + " turnos · decide quien tenga más PS", W / 2, 224);
+            }
             // Los dos marcadores, separados y legibles: el robo semanal arriba,
             // el botín de esta partida (que crece con la racha) justo debajo.
             if (gano && d.botin) {
@@ -3132,8 +3219,8 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
               ctx.fillStyle = "rgba(255,255,255,0.75)"; ctx.font = "bold 12px system-ui";
               ctx.fillText("Esta semana llevas " + d.misPts + " pts", W / 2, gano && d.botin ? 369 : 358);
             }
-            if (gano) {
-              // El orbe aparece SOLO al ganar, como al derrotar al Rey Lobo
+            if (gano || tablas) {
+              // El orbe aparece al ganar o al empatar: la derrota es la única que cierra
               const gb = ctx.createLinearGradient(0, 380, 0, 440);
               gb.addColorStop(0, "#B08AF0"); gb.addColorStop(1, "#5A2EA8");
               ctx.fillStyle = "#3E1E80"; rr(52, 386, W - 104, 58, 16); ctx.fill();
@@ -3403,7 +3490,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
                   desc: "Disparas sola. Jefe abajo: salta su bola y acierta desde el suelo. Jefe arriba: no saltes… salvo para darle.",
                   css: "radial-gradient(circle at 35% 30%, #F56A6A, #C42A2A 60%, #7E0E0E)", borde: "#FF9A9A" },
                 { id: "duelo", nombre: "Duelo de Ovejas", icono: "⚔️",
-                  desc: "Elige rival (👑 top 1 · 🥈 top 2 · ❔ aleatorio) y combate por cartas: ⚔️ 🛡️ 🍎. El ganador le quita 100 puntos al perdedor. Encadenar duelos suma botín creciente a la partida (40, 80, 120…).",
+                  desc: "Elige rival y combate por cartas: ⚔️ 🛡️ 🍎. El rival aprende tu patrón, 🛡️ contra 🛡️ desgasta a los dos y a los 12 turnos gana quien tenga más PS. El ganador le quita 100 puntos al perdedor; encadenar duelos suma botín creciente a la partida (40, 80, 120…).",
                   css: "radial-gradient(circle at 35% 30%, #B08AF0, #7A4CD0 60%, #3E1E80)", borde: "#CFAEF8" },
               ];
               const sel = JUEGOS.find(jj => jj.id === modoElegido) || JUEGOS[0];
