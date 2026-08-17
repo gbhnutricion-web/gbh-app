@@ -2134,7 +2134,8 @@ const CORONA = [[1,0,1,"O"],[6,0,1,"O"],[11,0,1,"O"],[0,1,1,"O"],[1,1,1,"L"],[2,
 
 // ─── 🎮 El Salto del Rebaño (runner offline, estilo dino) ────────────────────
 function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJugar, arrancarRef,
-  puntosHoy = 0, puntosSemana = 0, onFinPartida, perfilId = null }) {
+  puntosHoy = 0, puntosSemana = 0, onFinPartida, perfilId = null,
+  scoreRef = null, onScoreVivo = null }) {
   const canvasRef = useRef(null);
   const tapRef = useRef(null);      // handler del toque expuesto al JSX (sobrevive re-renders)
   const [modoElegido, setModoElegido] = useState("noche");   // juego seleccionado en la pantalla previa
@@ -2168,6 +2169,15 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
 
   // Al terminar cada partida, sus puntos se suman al marcador diario y semanal
   useEffect(() => { if (fin) onFinPartida && onFinPartida(score); }, [fin]);
+
+  // El padre necesita el marcador VIVO: si el paciente sale con la ✕ o cierra la
+  // app a media partida, la partida se registra igualmente con lo conseguido
+  // hasta ese instante (nunca con 0, y nunca sin registrar → sin exploits).
+  useEffect(() => {
+    const vivo = jugando && !fin ? score : null;
+    if (scoreRef) scoreRef.current = vivo;
+    if (onScoreVivo) onScoreVivo(vivo);
+  }, [score, jugando, fin]);
 
   useEffect(() => {
     if (!jugando) return;
@@ -2242,9 +2252,19 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
       monedas: [], suelos: [{ x: -20, w: W + 60, top: suelo }], sx: SX, enSuelo: true,
       corales: [], balas: [], balasJefe: [], jefe: null, jefeNivel: 0, flotantes: [],
       carril: 1, objetos: [], olaCad: 0, faseCamino: 0, flechaFlash: null,
-      vel: 4.2, score: 0, vivo: true, nubes: [
+      vel: 4.2, score: 0, vivo: true, duelosGanados: 0, nubes: [
       { x: 50, y: 70 }, { x: 190, y: 130 }, { x: 280, y: 45 }],
     };
+    // ── Economía del duelo ────────────────────────────────────────────────────
+    // Hay DOS marcadores distintos y no deben mezclarse:
+    //   1) El robo PvP (±100 semanales) lo resuelve el servidor en resolver_duelo.
+    //      Es de suma cero: lo que gano yo lo pierde el rival. No pasa por st.score
+    //      o se contaría dos veces al cerrar la partida (registrar_partida_juego).
+    //   2) El botín de partida (esto): puntos de arcade que SÍ suben el marcador
+    //      de arriba a la derecha y escalan con la racha de duelos de esta partida.
+    //      1ª victoria 40 · 2ª 80 · 3ª 120 … así encadenar duelos renta de verdad.
+    const PTS_DUELO_BASE = 40;
+    const botinDuelo = (n) => PTS_DUELO_BASE * n;
     if (TEMAS[modoInicial].familia === "vuelo") { st.y = H * 0.4; st.objetivoY = st.y; }
 
     // ── Transición a otro juego (la usan el orbe Y la victoria del duelo) ──
@@ -2698,6 +2718,14 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
                 jfx(d.resultado === "gana" ? "victoria" : "derrota");
                 // ±100 a los marcadores semanales de LOS DOS, con suelo en 0 (RPC resolver_duelo)
                 resolverDuelo(d.rival, d.resultado === "gana");
+                if (d.resultado === "gana") {
+                  // Botín de partida creciente: la 2ª victoria vale el doble que la 1ª.
+                  // Antes ganar tres duelos seguidos puntuaba igual que ganar uno.
+                  st.duelosGanados++;
+                  d.racha = st.duelosGanados;
+                  d.botin = botinDuelo(st.duelosGanados);
+                  st.score += d.botin; setScore(st.score);
+                }
               } else { d.fase = "turno"; d.t = 0; d.miCarta = null; d.suCarta = null; }
             }
           }
@@ -3093,9 +3121,16 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
             ctx.fillText(gano ? "¡Victoria!" : "Derrota…", W / 2, 298);
             ctx.fillStyle = gano ? T.au1 : "#FF8A8A"; ctx.font = "bold 22px system-ui";
             ctx.fillText(gano ? "+100 puntos" : "−100 puntos", W / 2, 332);
+            // Los dos marcadores, separados y legibles: el robo semanal arriba,
+            // el botín de esta partida (que crece con la racha) justo debajo.
+            if (gano && d.botin) {
+              ctx.fillStyle = "#7DF5A8"; ctx.font = "bold 13px system-ui";
+              ctx.fillText("+" + d.botin + " a la partida" +
+                (d.racha > 1 ? "  ·  " + d.racha + "ª seguida" : ""), W / 2, 352);
+            }
             if (d.misPts !== null && d.misPts !== undefined) {
               ctx.fillStyle = "rgba(255,255,255,0.75)"; ctx.font = "bold 12px system-ui";
-              ctx.fillText("Esta semana llevas " + d.misPts + " pts", W / 2, 358);
+              ctx.fillText("Esta semana llevas " + d.misPts + " pts", W / 2, gano && d.botin ? 369 : 358);
             }
             if (gano) {
               // El orbe aparece SOLO al ganar, como al derrotar al Rey Lobo
@@ -3368,7 +3403,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
                   desc: "Disparas sola. Jefe abajo: salta su bola y acierta desde el suelo. Jefe arriba: no saltes… salvo para darle.",
                   css: "radial-gradient(circle at 35% 30%, #F56A6A, #C42A2A 60%, #7E0E0E)", borde: "#FF9A9A" },
                 { id: "duelo", nombre: "Duelo de Ovejas", icono: "⚔️",
-                  desc: "Elige rival (👑 top 1 · 🥈 top 2 · ❔ aleatorio) y combate por cartas: ⚔️ 🛡️ 🍎. El ganador le quita 100 puntos al perdedor.",
+                  desc: "Elige rival (👑 top 1 · 🥈 top 2 · ❔ aleatorio) y combate por cartas: ⚔️ 🛡️ 🍎. El ganador le quita 100 puntos al perdedor. Encadenar duelos suma botín creciente a la partida (40, 80, 120…).",
                   css: "radial-gradient(circle at 35% 30%, #B08AF0, #7A4CD0 60%, #3E1E80)", borde: "#CFAEF8" },
               ];
               const sel = JUEGOS.find(jj => jj.id === modoElegido) || JUEGOS[0];
@@ -8287,6 +8322,7 @@ function GBHApp(){
   const [panelBo,setPanelBo]=useState(false);
   const [partidasRestantes,setPartidasRestantes]=useState(3);
   const partidaEnCursoRef=useRef(false);  // hay partida pagada sin registrar (anti-exploit de la X)
+  const scoreVivoRef=useRef(null);        // marcador de la partida en curso (null si no hay)
   const [ptsHoy,setPtsHoy]=useState(0);
   const [ptsSemana,setPtsSemana]=useState(0);
   const arrancarJuegoRef=useRef(null);
@@ -8458,6 +8494,7 @@ function GBHApp(){
 
   const hoyMadrid=()=>new Date().toLocaleDateString("sv-SE",{timeZone:"Europe/Madrid"});
   const cargarPartidasHoy=async()=>{ if(!profile?.id) return;
+    await saldarPartidaHuerfana();
     try{
       const rows=await sbReq("GET",`juego_partidas?profile_id=eq.${profile.id}&fecha=eq.${hoyMadrid()}&origen=eq.partida&select=puntos`)||[];  // los duelos también viven aquí (origen=duelo): no cuentan como partida diaria
       const arr=Array.isArray(rows)?rows:[];
@@ -8468,6 +8505,27 @@ function GBHApp(){
       setPtsSemana(Array.isArray(sem)&&sem[0]?(sem[0].puntos_semana||0):hoyPts);
     }catch{}
   };
+  // Testigo persistente de partida en curso. El ref solo vive en memoria: si el
+  // paciente mata la app (o se le apaga el móvil) el ref desaparece y la partida
+  // nunca llegaba a registrarse → al volver tenía sus 3 partidas intactas.
+  // Con el testigo en localStorage, el diamante se gasta AL ENTRAR y la partida
+  // se salda sola en el siguiente arranque, con los puntos que hubiera hecho.
+  const kPartida=()=>`gbh:partida_en_curso:${profile?.id}`;
+  const abrirPartida=()=>{ if(profile?.id) lsSet(kPartida(),{fecha:hoyMadrid(),pts:0}); };
+  const cerrarPartida=()=>{ try{ if(profile?.id) localStorage.removeItem(kPartida()); }catch{} };
+  const anotarPuntos=(pts)=>{ if(!profile?.id) return;
+    const t=lsGet(kPartida(),null); if(t) lsSet(kPartida(),{...t,pts:pts||0}); };
+  // Se ejecuta antes de leer el contador diario: si quedó una partida abierta,
+  // se cierra ya. Si era de un día anterior, el cupo de aquel día ya caducó y
+  // solo se limpia el testigo — no se le roba una partida de hoy.
+  const saldarPartidaHuerfana=async()=>{
+    const t=lsGet(kPartida(),null); if(!t) return;
+    if(t.fecha!==hoyMadrid()){ cerrarPartida(); return; }
+    cerrarPartida();
+    try{ await sbReq("POST","rpc/registrar_partida_juego",
+      {p_profile_id:profile.id,p_puntos:Math.max(0,t.pts||0)}); }catch{}
+  };
+
   const pagarYJugar=()=>{
     if(partidasRestantes<=0) return;
     const g=profile?.gems||0;
@@ -8476,10 +8534,12 @@ function GBHApp(){
     sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:g-1});
     setPartidasRestantes(r=>Math.max(0,r-1));
     partidaEnCursoRef.current=true;
+    abrirPartida();          // el diamante ya está gastado: no hay vuelta atrás
     arrancarJuegoRef.current&&arrancarJuegoRef.current();
   };
   const finPartida=async(pts)=>{ if(!profile?.id) return;
     partidaEnCursoRef.current=false;
+    cerrarPartida();
     try{
       const res=await sbReq("POST","rpc/registrar_partida_juego",{p_profile_id:profile.id,p_puntos:pts});
       if(res&&res.ok){
@@ -11293,12 +11353,13 @@ function GBHApp(){
               // Antes la X dejaba el contador intacto y en el Duelo permitía
               // farmear +100 por victoria sin gastar partidas.
               if(partidaEnCursoRef.current){
+                const pts=Math.max(0,scoreVivoRef.current||0);
                 const seguir=window.confirm(lang==="en"
-                  ?"Leave now? The game in progress will count as played."
-                  :"¿Salir ahora? La partida en curso se dará por jugada.");
+                  ?`Leave now? The diamond is already spent — the game will be saved with ${pts} points.`
+                  :`¿Salir ahora? El diamante ya está gastado — la partida se guardará con ${pts} puntos.`);
                 if(!seguir) return;
                 partidaEnCursoRef.current=false;
-                finPartida(0);
+                finPartida(pts);
               }
               setZonaJuego(false);
             }} style={{width:38,height:38,borderRadius:12,background:"rgba(255,255,255,0.07)",border:"1.5px solid rgba(255,255,255,0.12)",color:T.cr,fontSize:16,cursor:"pointer"}}>✕</button>
@@ -11308,6 +11369,7 @@ function GBHApp(){
               <JuegoOveja color={boColor} equipados={boEquipados} nombre={boNombre} perfilId={profile?.id}
                 partidasProp={partidasRestantes} puntosHoy={ptsHoy} puntosSemana={ptsSemana}
                 onFinPartida={finPartida} onPagarYJugar={pagarYJugar}
+                scoreRef={scoreVivoRef} onScoreVivo={(p)=>{ if(p!==null) anotarPuntos(p); }}
                 onSalir={()=>setZonaJuego(false)} arrancarRef={arrancarJuegoRef}/>
             </div>
           </div>
