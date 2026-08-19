@@ -1108,11 +1108,20 @@ const escalarIngredientesJS = (texto, factor) => {
     return t;
   }).join(",");
 };
+// Gemelo de _racion_texto en gbh_automatizacion.py: la tabla llega hasta ×3
+// porque las tomas de objetivo alto (≥900 kcal, pautas de muchas kcal en pocas
+// tomas) admiten ración triple. Si aquí se quedase en ×2, una receta que el
+// servidor manda como "ración triple" pasaría a leerse "x3,00 de la receta" en
+// cuanto el paciente la reajustase en la app. Cambiar los dos a la vez.
 const racionTextoJS = (factor, lang) => {
   const es = [[0.5,"media ración"],[0.67,"2/3 de la receta"],[0.75,"3/4 de la receta"],
-              [1.25,"ración y cuarto"],[1.5,"ración y media"],[1.75,"casi ración doble"],[2,"ración doble"]];
+              [1.25,"ración y cuarto"],[1.5,"ración y media"],[1.75,"casi ración doble"],[2,"ración doble"],
+              [2.25,"ración doble y cuarto"],[2.5,"ración doble y media"],
+              [2.75,"casi ración triple"],[3,"ración triple"]];
   const en = [[0.5,"half portion"],[0.67,"2/3 of the recipe"],[0.75,"3/4 of the recipe"],
-              [1.25,"1¼ portion"],[1.5,"1½ portion"],[1.75,"almost double portion"],[2,"double portion"]];
+              [1.25,"1¼ portion"],[1.5,"1½ portion"],[1.75,"almost double portion"],[2,"double portion"],
+              [2.25,"2¼ portions"],[2.5,"2½ portions"],
+              [2.75,"almost triple portion"],[3,"triple portion"]];
   for(const [v,txt] of (lang==="en"?en:es)){ if(Math.abs(factor-v)<=0.06) return txt; }
   return (lang==="en"?"x":"x")+factor.toFixed(2).replace(".",",")+(lang==="en"?" of the recipe":" de la receta");
 };
