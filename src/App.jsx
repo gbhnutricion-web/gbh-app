@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { tramosBo32 } from "./bo32_render";
 import { SPR, U, sprite, spriteCaja, bloque, suelo as dibujarSuelo, matas } from "./juego32";
 
@@ -6944,6 +6945,7 @@ function WeightChart({chartData,setWeightMode,goalWeight,shareName,lang}){
             </button>
             {/* Modal de previsualización de la tarjeta */}
             {shareCard&&(
+              <Portal>
               <div onClick={()=>setShareCard(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:2000,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"20px 16px"}}>
                 <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:380,display:"flex",flexDirection:"column",gap:12}}>
                   <img src={shareCard.dataUrl} alt="" style={{width:"100%",borderRadius:20,border:"2px solid rgba(255,255,255,0.2)",boxShadow:"0 12px 40px rgba(0,0,0,0.6)",animation:"popIn 0.2s ease"}}/>
@@ -6958,6 +6960,7 @@ function WeightChart({chartData,setWeightMode,goalWeight,shareName,lang}){
                   <button onClick={()=>setShareCard(null)} style={{padding:"10px",borderRadius:14,background:"none",border:"none",color:"rgba(255,255,255,0.6)",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>✕ {lang==='en'?'Close':'Cerrar'}</button>
                 </div>
               </div>
+              </Portal>
             )}
           </>
         );
@@ -7343,6 +7346,19 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── SavedRecipeCard — tarjeta expandible del recetario personal ─────────────
+// ─── Portal — toda ventana emergente cuelga de <body> ────────────────────────
+// Blindaje de la corrección del 20-ago-2026: una ventana emergente NUNCA debe
+// depender de dónde está el componente que la abre. Colgándola de <body> queda
+// fuera del alcance de cualquier ancestro que pueda convertirse en bloque
+// contenedor (transform, filter, will-change, contain…), así que su
+// position:fixed siempre se resuelve contra la PANTALLA, no contra un
+// contenedor de 5.000 px como el recetario completo.
+// Los eventos siguen burbujeando por el árbol de React: no cambia nada de
+// comportamiento, solo dónde se pinta.
+// REGLA: toda ventana emergente nueva se envuelve en <Portal>.
+const Portal = ({children}) =>
+  (typeof document==="undefined" ? children : createPortal(children, document.body));
+
 // ─── Mini lista de la compra por receta (botón 🛒 Comprar) ────────────────────
 // Popup con los ingredientes de UNA receta como checklist interactiva. Los
 // marcados se guardan SOLO en el dispositivo (localStorage, clave por receta),
@@ -7357,6 +7373,7 @@ function MiniListaCompra({nombre, ingredientes, idReceta, t, onClose, etiquetaRa
   const toggle=(i)=>setChecks(c=>{const n={...c};if(n[i])delete n[i];else n[i]=true;lsSet(key,n);return n;});
   const regen=()=>{ if(!conf){setConf(true);return;} setChecks({});lsSet(key,{});setConf(false); };
   return(
+    <Portal>
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.72)",zIndex:2000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
       <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:520,maxHeight:"80vh",overflowY:"auto",
         background:"linear-gradient(180deg,#1d3a14,#142a0e)",border:"2px solid rgba(255,255,255,0.14)",borderBottom:"none",
@@ -7405,6 +7422,7 @@ function MiniListaCompra({nombre, ingredientes, idReceta, t, onClose, etiquetaRa
         </button>
       </div>
     </div>
+    </Portal>
   );
 }
 
@@ -10389,8 +10407,21 @@ function GBHApp(){
        reserva para celebraciones. Ninguna pasa de 400 ms. */
     button:active{transform:translateY(2px) scale(0.985)!important;transition:transform 0.08s ease-out!important}
     @keyframes tabIn{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
-    .tab-in{animation:tabIn 0.2s cubic-bezier(0.34,1.12,0.64,1) both}
-    .stagger-in{animation:popIn 0.26s both cubic-bezier(0.34,1.12,0.64,1)}
+    /* ⚠️ fill-mode = BACKWARDS, nunca "both" (fallo del 20-ago-2026).
+       Una animación de transform que se queda RELLENANDO convierte a su
+       elemento en el bloque contenedor de todo descendiente position:fixed.
+       .tab-in envuelve el contenido de TODAS las pestañas: con "both", los
+       popups (🛒 lista de la compra de una receta, y cualquier otro) dejaban
+       de anclarse a la pantalla y se anclaban al alto COMPLETO de la pestaña
+       — en el recetario completo, miles de píxeles: velo negro por toda la
+       página y la ventana al final del todo, fuera de la vista.
+       Con "backwards" la entrada se ve idéntica (el estado final de ambos
+       keyframes es el estado natural del elemento) pero no queda nada
+       rellenando al acabar, así que position:fixed vuelve a ser la pantalla.
+       Regla: ninguna clase que envuelva contenido puede animar transform con
+       fill-mode both/forwards. */
+    .tab-in{animation:tabIn 0.2s cubic-bezier(0.34,1.12,0.64,1) backwards}
+    .stagger-in{animation:popIn 0.26s backwards cubic-bezier(0.34,1.12,0.64,1)}
     .bar-grow{transition:width 0.6s cubic-bezier(0.22,1,0.36,1)}
     /* prefers-reduced-motion del SISTEMA: apaga SOLO esta capa nueva. Las
        celebraciones y los pops de registro siguen intactos a propósito —
@@ -14339,6 +14370,7 @@ function OverlayGenerando({lang}){
   const [i,setI]=React.useState(0);
   React.useEffect(()=>{ const id=setInterval(()=>setI(x=>(x+1)%msgs.length),2600); return ()=>clearInterval(id); },[msgs.length]);
   return(
+    <Portal>
     <div style={{position:"fixed",inset:0,background:"rgba(6,20,9,0.93)",zIndex:3000,
       display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"32px"}}>
       <div style={{fontSize:64,animation:"tomaBob 1.4s ease-in-out infinite",marginBottom:18}}>👨‍🍳</div>
@@ -14357,6 +14389,7 @@ function OverlayGenerando({lang}){
           :"No cierres la app: suele tardar menos de un minuto ⏱️"}
       </div>
     </div>
+    </Portal>
   );
 }
 
