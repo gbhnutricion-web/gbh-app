@@ -7945,8 +7945,8 @@ function GBHApp(){
       lsSet(kRep,true);                        // con respuesta (ok o 4xx): no insistir en bucle
       if(rr?.ok){
         setProfile(p=>{ if(!p) return p; const u={...p,plan:'standard',trial_ends_at:fin}; try{lsSet(`gbh:p:${u.id}`,u);}catch{} return u; });
-        sbDirect("POST","referral_events",{profile_id:profile.id,event:'trial_reparado',
-          detail:'red de reparación del alta (tutorial §2.1)'}).catch(()=>{});
+        sbDirect("POST","rpc/log_referral_event",{p_profile:profile.id,p_tipo:'trial_reparado',
+          p_detalle:'red de reparación del alta (tutorial §2.1)'}).catch(()=>{});
       }
     }catch{}
   })();
@@ -9494,8 +9494,8 @@ function GBHApp(){
       // Si la prueba se perdió (núcleo/memoria), queda traza consultable
       if(usado==='nucleo'||usado==='memoria'){
         try{ lsSet(`gbh:alta:degradada:${np.id}`,{usado,err:ultErr,ts:Date.now()}); }catch{}
-        sbDirect("POST","referral_events",{profile_id:np.id,event:'alta_sin_trial',
-          detail:(`intento=${usado} status=${ultErr?.status??'?'} ${ultErr?.body??''}`).slice(0,900)}).catch(()=>{});
+        sbDirect("POST","rpc/log_referral_event",{p_profile:np.id,p_tipo:'alta_sin_trial',
+          p_detalle:(`intento=${usado} status=${ultErr?.status??'?'} ${ultErr?.body??''}`).slice(0,900)}).catch(()=>{});
       }
       // Si el intento fue sin_opcionales, reintentar los opcionales best-effort
       if(usado==='sin_opcionales'){
@@ -13343,9 +13343,13 @@ function TarjetaInvitarAmigo({profile,lang,sfx}){
   const compartir=async()=>{
     sfx&&sfx("tap");
     const msg = (msgEd??msgBase).trim()||msgBase;
-    // Medición sin origen: un compartido es un compartido (best-effort)
-    sbDirect("POST","referral_events",{profile_id:profile.id,event:'ref_compartido',
-      detail:msg===msgBase?'mensaje base':'mensaje editado'}).catch(()=>{});
+    // Medición sin origen: un compartido es un compartido (best-effort).
+    // Va por RPC y NO por la tabla: `referral_events` tiene una CHECK que solo
+    // admite los tipos del esquema —el evento se llama `share_tap`, no
+    // `ref_compartido`— y `anon` no puede leer de vuelta lo que inserta. La RPC
+    // valida el tipo y el perfil, y escribe con permisos del dueño.
+    sbDirect("POST","rpc/log_referral_event",{p_profile:profile.id,p_tipo:'share_tap',
+      p_detalle:msg===msgBase?'mensaje base':'mensaje editado'}).catch(()=>{});
     try{ if(navigator.share){ await navigator.share({text:msg}); return; } }
     catch(e){ if(e?.name==="AbortError") return; }
     try{
