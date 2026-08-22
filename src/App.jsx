@@ -2252,7 +2252,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
       monedas: [], suelos: [{ x: -20, w: W + 60, top: suelo }], sx: SX, enSuelo: true,
       corales: [], balas: [], balasJefe: [], jefe: null, jefeNivel: 0, flotantes: [],
       carril: 1, objetos: [], olaCad: 0, faseCamino: 0, flechaFlash: null,
-      vel: 4.2, score: 0, vivo: true, duelosGanados: 0, nubes: [
+      vel: 4.2, score: 0, frames: 0, vivo: true, duelosGanados: 0, nubes: [
       { x: 50, y: 70 }, { x: 190, y: 130 }, { x: 280, y: 45 }],
     };
     // ── Economía del duelo ────────────────────────────────────────────────────
@@ -2262,9 +2262,67 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
     //      o se contaría dos veces al cerrar la partida (registrar_partida_juego).
     //   2) El botín de partida (esto): puntos de arcade que SÍ suben el marcador
     //      de arriba a la derecha y escalan con la racha de duelos de esta partida.
-    //      1ª victoria 40 · 2ª 80 · 3ª 120 … así encadenar duelos renta de verdad.
-    const PTS_DUELO_BASE = 40;
+    //      1ª victoria 120 · 2ª 240 · 3ª 360 … así encadenar duelos renta de verdad.
+    //      Era 40 hasta el 22-ago-2026: ver la tabla de pagos, unas líneas abajo.
+    const PTS_DUELO_BASE = 120;
     const botinDuelo = (n) => PTS_DUELO_BASE * n;
+    // ── Economía del vuelo (recalibrada 22-ago-2026) ─────────────────────────
+    // El anillo pagaba 10. Medido por simulación del desove (200 partidas de
+    // 5 min, jugador que toma todos los anillos): arcos de 2-3 anillos cada ~74
+    // fotogramas ⇒ 1.205 pts/min, x2,6 el runner (467), x4,8 el oro (253) y el
+    // jefe (235). Tres razones que se suman:
+    //   · el premio por evento era 2,5 veces el del runner (10 vs 4) sin que el
+    //     evento costase más;
+    //   · la cadencia del vuelo es por FOTOGRAMA, no por distancia, así que el
+    //     grifo no espera a que el juego acelere: paga a tope desde el segundo
+    //     uno, mientras el runner arranca a velocidad 4,2 de 7,6.
+    //   · y encima es el modo MÁS seguro: sin gravedad, la avioneta se queda
+    //     donde la dejas y su aire está capado a 5,08 cuando el resto llega a 7,6.
+    // Máxima recompensa con mínimo riesgo, que es el sesgo que vacía el ranking.
+    // Con 4 queda a la par del runner (482 vs 467 pts/min medidos). Es el único
+    // número que hay que tocar para recalibrar el modo: súbelo a 5 si se quiere
+    // dejarlo un 30 % por encima, bájalo a 3 para ponerlo al nivel del oro.
+    const PTS_ANILLO = 4;
+    // ── Tabla de pagos de los cinco modos (rebalanceada 22-ago-2026) ─────────
+    // Medida con `equilibrio_juegos.py` (junto a este fichero), que replica los
+    // desovadores y calcula el grifo de cada modo con jugador perfecto.
+    //   ANTES: vuelo 1.205 · runner 467 · oro 253 · jefe 235 · duelo 92 pts/min.
+    //   AHORA: oro 504 · vuelo 482 · runner 467 (referencia, sin tocar) ·
+    //          jefe 408 (al 65 % de acierto) · duelo 247 pts por PARTIDA.
+    // El vuelo pagaba x2,6 el segundo y x5 el cuarto: quien elegía la esfera
+    // azul subía en el ranking semanal por elegirla, no por jugar mejor.
+    // Tres cosas que hay que tener presentes antes de volver a tocar estos números:
+    //   · El runner es el ÚNICO modo que paga por SOBREVIVIR; los demás pagan
+    //     por RECOGER, así que sus cifras son TECHOS y en la mano de un paciente
+    //     caen. Por eso oro y vuelo se dejan justo por encima del runner.
+    //   · El duelo no se iguala por ritmo sino por PARTIDA: no tiene
+    //     supervivencia libre — la primera derrota lo cierra, a los ~54 s —, así
+    //     que igualar su pts/min obligaría a un botín absurdo. 247 pts/partida es
+    //     la media real observada en `juego_partidas` (238 sobre 399 partidas).
+    //     Y su techo, 4 victorias encadenadas = 1.200, encaja con el máximo
+    //     histórico jamás registrado por nadie: 1.473.
+    //   · Estos números YA NO tocan la dificultad. Hasta hoy `dif` era
+    //     `score/200`, así que subir un pago adelantaba la rampa de rebote (el
+    //     oro se ponía difícil a los 24 s en vez de a los 48). Desde esta entrega
+    //     `dif` cuenta FOTOGRAMAS — ver `DIF_FRAMES`, unas líneas más abajo —, de
+    //     modo que se puede recalibrar la economía sin mover el juego.
+    const PTS_VALLA = 4;      // runner: rebasar un lobo o un cuervo
+    const PTS_MONEDA = 6;     // oro: recoger una moneda         (era 3)
+    const PTS_IMPACTO = 3;    // jefe: bola de lana que acierta   (era 2)
+    const PTS_REY = 50;       // jefe: rey abatido                (era 20)
+    // ── Rampa de dificultad: por TIEMPO, no por puntos (22-ago-2026) ─────────
+    // `dif` era `st.score / 200`, o sea que la dificultad estaba atada a la
+    // tabla de pagos de aquí arriba: al rebalancear los modos, el que pasaba a
+    // pagar más se volvía difícil antes SIN QUE NADIE LO HUBIERA DECIDIDO (el
+    // oro llegaba a dif=1 en 24 s en vez de 48). Son dos perillas distintas y
+    // ahora están separadas: cambiar puntos ya no cambia la dificultad.
+    // Calibrado contra el RUNNER, que es el modo de referencia y el único que
+    // no se ha tocado: con sus pagos de siempre llegaba a dif=1 a los 41 s
+    // (2.460 fotogramas, medido sobre 400 partidas simuladas). El exponente 1,4
+    // reproduce su CURVA ENTERA, no solo el punto final — desviación máxima
+    // 0,028 sobre 1 frente a la rampa de puntos. Sin él, una rampa lineal se
+    // adelantaría hasta 0,12 a mitad de partida y el runner sería otro juego.
+    const DIF_FRAMES = 2460;   // ~41 s a 60 fps
     if (TEMAS[modoInicial].familia === "vuelo") { st.y = H * 0.4; st.objetivoY = st.y; }
 
     // ── Transición a otro juego (la usan el orbe Y la victoria del duelo) ──
@@ -2447,7 +2505,8 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
         if (st.transicion > 0) st.transicion -= 0.04;
         const tema = TEMAS[st.modo];
         if (st.graciaTransicion > 0) st.graciaTransicion--;
-        const dif = Math.min(st.score / 200, 1);
+        st.frames++;
+        const dif = Math.min(Math.pow(st.frames / DIF_FRAMES, 1.4), 1);
 
         if (tema.familia === "runner") {
           // ═══ FAMILIA RUNNER (día / noche): saltar obstáculos de tierra; los voladores REBOTAN ═══
@@ -2470,7 +2529,9 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
               st.consumibles.push({ x: W + 14 + 34, y: suelo - SH - 108, to: otroModo(st.modo) });
               st.mismos = 0;
             } else {
-            const pVolador = st.score >= 3 ? 0.30 + dif * 0.25 : 0;
+            // >= PTS_VALLA, no >= 3: es "ya he rebasado un obstáculo", y así no
+            // vuelve a depender de cuánto pague la valla.
+            const pVolador = st.score >= PTS_VALLA ? 0.30 + dif * 0.25 : 0;
             const ultTipo = ultima ? (ultima.vuela ? "aire" : "tierra") : null;
             let quiereAire = Math.random() < pVolador;
             if (st.mismos >= 2) { quiereAire = ultTipo !== "aire"; st.mismos = 0; }
@@ -2495,7 +2556,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
           st.vallas.forEach(v => { v.x -= st.vel * (v.vuela ? 1.18 : 1); });
           st.vallas = st.vallas.filter(v => v.x > -50);
           st.vallas.forEach(v => {
-            if (!v.ok && v.x + v.w < st.sx) { v.ok = true; st.score += 4; setScore(st.score); }
+            if (!v.ok && v.x + v.w < st.sx) { v.ok = true; st.score += PTS_VALLA; setScore(st.score); }
             const margen = 12;
             const sL = st.sx + margen, sR = st.sx + SH - margen;
             const sT = st.y + 10, sB = st.y + SH - 6;
@@ -2588,7 +2649,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
           // Recoger monedas
           st.monedas.forEach(m => {
             if (!m.cogida && st.sx + SH > m.x && st.sx < m.x + 24 && st.y + SH > m.y && st.y < m.y + 24) {
-              m.cogida = true; st.score += 3; setScore(st.score);
+              m.cogida = true; st.score += PTS_MONEDA; setScore(st.score);
             }
           });
           // Muerte 1: caer por un hueco
@@ -2699,7 +2760,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
             const acy = a.y + 57;                  // centro del anillo a escala 4.4 (88×114)
             const cruza = (acxPrev >= cxA && acx <= cxA) || Math.abs(acx - cxA) < 12;
             if (cruza && Math.abs(acy - cyA) < ANI_RY) {
-              a.ok = true; st.score += 10; setScore(st.score);
+              a.ok = true; st.score += PTS_ANILLO; setScore(st.score);
               st.flotantes.push({ x: acx, y: a.y + 14, t: 0 });
               // Chispas del anillo: el dibujo ya existía pero nadie las creaba
               st.chispas = st.chispas || [];
@@ -2755,9 +2816,9 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
           st.balas = st.balas.filter(b => {
             const da = b.x > jefeX && b.x < jefeX + 84 && b.y > jefeY - 10 && b.y < jefeY + 86;
             if (da) {
-              st.jefe.hp--; st.score += 2; setScore(st.score); st.jefe.herido = 6;
+              st.jefe.hp--; st.score += PTS_IMPACTO; setScore(st.score); st.jefe.herido = 6;
               if (st.jefe.hp <= 0) {
-                st.jefeNivel++; st.jefe = null; st.score += 20; setScore(st.score);
+                st.jefeNivel++; st.jefe = null; st.score += PTS_REY; setScore(st.score);
                 // Botín real: el rey suelta un orbe de transición hacia otro juego
                 if (st.consumibles.length === 0) {
                   const oy = Math.min(Math.max(jefeY + 20, suelo - SH - 140), suelo - SH - 30);
@@ -3423,8 +3484,8 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
           const a2 = Math.max(0, 1 - f.t / 42);
           ctx.font = "bold 16px system-ui"; ctx.textAlign = "center";
           ctx.lineWidth = 4; ctx.strokeStyle = `rgba(255,255,255,${a2})`;
-          ctx.strokeText("+10", f.x, f.y);
-          ctx.fillStyle = `rgba(138,101,8,${a2})`; ctx.fillText("+10", f.x, f.y);
+          ctx.strokeText("+" + PTS_ANILLO, f.x, f.y);
+          ctx.fillStyle = `rgba(138,101,8,${a2})`; ctx.fillText("+" + PTS_ANILLO, f.x, f.y);
           ctx.textAlign = "left";
         });
       } else if (tema.familia !== "duelo") {
@@ -3572,7 +3633,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
                   desc: "Disparas sola. Jefe abajo: salta su bola y acierta desde el suelo. Jefe arriba: no saltes… salvo para darle.",
                   css: "radial-gradient(circle at 35% 30%, #F56A6A, #C42A2A 60%, #7E0E0E)", borde: "#FF9A9A" },
                 { id: "duelo", nombre: "Duelo de Ovejas", icono: "⚔️",
-                  desc: "Elige rival y combate por cartas: ⚔️ 🛡️ 🍎. El rival aprende tu patrón, 🛡️ contra 🛡️ desgasta a los dos y a los 12 turnos gana quien tenga más PS. El ganador le quita 100 puntos al perdedor; encadenar duelos suma botín creciente a la partida (40, 80, 120…).",
+                  desc: "Elige rival y combate por cartas: ⚔️ 🛡️ 🍎. El rival aprende tu patrón, 🛡️ contra 🛡️ desgasta a los dos y a los 12 turnos gana quien tenga más PS. El ganador le quita 100 puntos al perdedor; encadenar duelos suma botín creciente a la partida (120, 240, 360…).",
                   css: "radial-gradient(circle at 35% 30%, #B08AF0, #7A4CD0 60%, #3E1E80)", borde: "#CFAEF8" },
               ];
               const sel = JUEGOS.find(jj => jj.id === modoElegido) || JUEGOS[0];
@@ -3585,7 +3646,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
                       <button key={jj.id} onClick={() => setModoElegido(jj.id)}
                         style={{ width: 46, height: 46, borderRadius: "50%", padding: 0, cursor: "pointer",
                           background: jj.css, fontFamily: "inherit",
-                          border: `2.5px solid ${modoElegido === jj.id ? "${T.au1}" : jj.borde}`,
+                          border: `2.5px solid ${modoElegido === jj.id ? T.au1 : jj.borde}`,
                           boxShadow: modoElegido === jj.id
                             ? `0 0 12px ${alpha(T.au1,0.65)}, 0 3px 0 ${T.au3}`
                             : "0 3px 6px rgba(0,0,0,0.4)",
