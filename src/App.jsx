@@ -3584,7 +3584,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
               <span style={{ color: T.t2 }}>Hoy: <b style={{ color: T.cr }}>{puntosHoy} pts</b></span>
               <span style={{ color: T.t2 }}>Semana: <b style={{ color: T.au1 }}>{puntosSemana} pts</b></span>
             </div>
-            <button onClick={onPagarYJugar} disabled={partidasProp === 0}
+            <button onClick={() => onPagarYJugar(modoElegido)} disabled={partidasProp === 0}
               style={{ background: partidasProp > 0 ? `linear-gradient(180deg,${T.g2},${T.g1})` : "rgba(255,255,255,0.1)",
                 border: "none", borderRadius: 18, color: partidasProp > 0 ? T.bg : T.t3,
                 fontWeight: 900, fontSize: 18, padding: "15px 40px",
@@ -8742,7 +8742,7 @@ function GBHApp(){
   // Con el testigo en localStorage, el diamante se gasta AL ENTRAR y la partida
   // se salda sola en el siguiente arranque, con los puntos que hubiera hecho.
   const kPartida=()=>`gbh:partida_en_curso:${profile?.id}`;
-  const abrirPartida=()=>{ if(profile?.id) lsSet(kPartida(),{fecha:hoyMadrid(),pts:0}); };
+  const abrirPartida=(modo)=>{ if(profile?.id) lsSet(kPartida(),{fecha:hoyMadrid(),pts:0,modo:modo||null}); };
   const cerrarPartida=()=>{ try{ if(profile?.id) localStorage.removeItem(kPartida()); }catch{} };
   const anotarPuntos=(pts)=>{ if(!profile?.id) return;
     const t=lsGet(kPartida(),null); if(t) lsSet(kPartida(),{...t,pts:pts||0}); };
@@ -8764,11 +8764,11 @@ function GBHApp(){
     cerrarPartida();
     registrandoRef.current=true;
     try{ await sbReq("POST","rpc/registrar_partida_juego",
-      {p_profile_id:profile.id,p_puntos:Math.max(0,t.pts||0)}); }catch{}
+      {p_profile_id:profile.id,p_puntos:Math.max(0,t.pts||0),p_modo:t.modo||null}); }catch{}
     registrandoRef.current=false;
   };
 
-  const pagarYJugar=()=>{
+  const pagarYJugar=(modo)=>{
     if(partidasRestantes<=0) return;
     const g=profile?.gems||0;
     if(g<1) return;
@@ -8776,7 +8776,7 @@ function GBHApp(){
     sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:g-1});
     setPartidasRestantes(r=>Math.max(0,r-1));
     partidaEnCursoRef.current=true;
-    abrirPartida();          // el diamante ya está gastado: no hay vuelta atrás
+    abrirPartida(modo);      // el diamante ya está gastado: no hay vuelta atrás
     arrancarJuegoRef.current&&arrancarJuegoRef.current();
   };
   const finPartida=async(pts)=>{ if(!profile?.id) return;
@@ -8785,9 +8785,10 @@ function GBHApp(){
     partidaEnCursoRef.current=false;
     const puntos=Math.max(0,Math.round(Number(pts)||0));
     anotarPuntos(puntos);                   // el testigo lleva los puntos ANTES de tocar la red
+    const modo=(lsGet(kPartida(),null)||{}).modo||null;   // del testigo, y ANTES de cerrarlo
     cerrarPartida();                        // a partir de aquí el reintento es de la cola offline
     try{
-      const res=await sbReq("POST","rpc/registrar_partida_juego",{p_profile_id:profile.id,p_puntos:puntos});
+      const res=await sbReq("POST","rpc/registrar_partida_juego",{p_profile_id:profile.id,p_puntos:puntos,p_modo:modo});
       if(res&&res.ok){
         setPtsHoy(res.puntos_hoy||0);
         setPtsSemana(res.puntos_semana||0);

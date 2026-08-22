@@ -8,7 +8,7 @@
 //  inicialización del SDK en App.jsx. Este worker ya solo hace caché/PWA.
 //  No reintroducir sin decisión expresa.
 
-const CACHE_VERSION = "gbh-v2026-08-22d";  // Zona de juego, entrega única del rebalanceo (22b y 22c se quedaron en disco, nunca salieron): vuelo 10->4 por anillo, oro 3->6 por moneda, jefe 2->3 y 20->50, duelo 40n->120n. Y la rampa de dificultad pasa a contar FOTOGRAMAS en vez de puntos, para que rebalancear la economía no mueva el juego. Corregida la errata del borde dorado en el selector.
+const CACHE_VERSION = "gbh-v2026-08-22e";  // juego_partidas.modo: cada partida graba en qué modo se jugó (RPC registrar_partida_juego con p_modo). Sin este bump el bundle nuevo no llega a quien ya tiene la app cacheada y la columna se quedaría vacía sin que nada fallara visiblemente.
 const APP_SHELL = ["/", "/index.html", "/manifest.json"];
 
 // ── Install: precachea el app shell y activa la versión nueva de inmediato ─────
