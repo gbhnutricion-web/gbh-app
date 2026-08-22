@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { createPortal } from "react-dom";
 import { tramosBo32 } from "./bo32_render";
 import { SPR, U, sprite, spriteCaja, bloque, suelo as dibujarSuelo, matas } from "./juego32";
 
@@ -1109,20 +1108,11 @@ const escalarIngredientesJS = (texto, factor) => {
     return t;
   }).join(",");
 };
-// Gemelo de _racion_texto en gbh_automatizacion.py: la tabla llega hasta ×3
-// porque las tomas de objetivo alto (≥900 kcal, pautas de muchas kcal en pocas
-// tomas) admiten ración triple. Si aquí se quedase en ×2, una receta que el
-// servidor manda como "ración triple" pasaría a leerse "x3,00 de la receta" en
-// cuanto el paciente la reajustase en la app. Cambiar los dos a la vez.
 const racionTextoJS = (factor, lang) => {
   const es = [[0.5,"media ración"],[0.67,"2/3 de la receta"],[0.75,"3/4 de la receta"],
-              [1.25,"ración y cuarto"],[1.5,"ración y media"],[1.75,"casi ración doble"],[2,"ración doble"],
-              [2.25,"ración doble y cuarto"],[2.5,"ración doble y media"],
-              [2.75,"casi ración triple"],[3,"ración triple"]];
+              [1.25,"ración y cuarto"],[1.5,"ración y media"],[1.75,"casi ración doble"],[2,"ración doble"]];
   const en = [[0.5,"half portion"],[0.67,"2/3 of the recipe"],[0.75,"3/4 of the recipe"],
-              [1.25,"1¼ portion"],[1.5,"1½ portion"],[1.75,"almost double portion"],[2,"double portion"],
-              [2.25,"2¼ portions"],[2.5,"2½ portions"],
-              [2.75,"almost triple portion"],[3,"triple portion"]];
+              [1.25,"1¼ portion"],[1.5,"1½ portion"],[1.75,"almost double portion"],[2,"double portion"]];
   for(const [v,txt] of (lang==="en"?en:es)){ if(Math.abs(factor-v)<=0.06) return txt; }
   return (lang==="en"?"x":"x")+factor.toFixed(2).replace(".",",")+(lang==="en"?" of the recipe":" de la receta");
 };
@@ -2286,6 +2276,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
       st.jefeYPos = undefined; st.jefeCarga = 0;
       st.carril = 1; st.objetos = []; st.olaCad = 0; st.faseCamino = 0; st.flechaFlash = null;
       st.aves = []; st.anillos = []; st.objetivoY = undefined; st.arrastre = false; st.duelo = null;
+      st.chispas = []; st.cadAve = 0; st.cadAnillo = 0; st.cadAveTope = 92; st.cadAniTope = 74;
       st.quiereConsumible = false;
       st.desdeConsumible = -400; st.graciaTransicion = 90;
       // Recolocar a la oveja según el juego destino
@@ -2614,47 +2605,115 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
           const ux = st.sx !== undefined ? st.sx : SX;
           // El aire tiene su propio ritmo, como lo tenía el agua
           const velAire = Math.min(st.vel, 6.2) * 0.82;
-          const cxA = ux + 42, cyA = st.y + 22;    // centro del conjunto avión+oveja
+          // Centro HONESTO del conjunto avión+oveja. El fuselaje ocupa de y+21 a
+          // y+36 y la oveja asoma por encima de la cabina: el centro real cae en
+          // y+26, no en y+22. Con el centro desplazado 4 px hacia arriba, los
+          // cuervos que pasaban por encima mataban sin llegar a tocar.
+          const cxA = ux + 42, cyA = st.y + 26;
+          // Caja de choque del cuervo, medida sobre el dibujo (20×15 a escala 2,4 =
+          // 48×36): el cuerpo mata, las puntas de las alas no. Antes 38×28.
+          const AVE_RX = 34, AVE_RY = 23;
+          const ANI_RY = 32;                       // media altura del hueco dorado
+          // ── Regla de oro del vuelo: un cuervo NUNCA ocupa el corredor de un anillo ──
+          // Cuervos y anillos avanzan a la MISMA velocidad, así que la distancia
+          // entre ellos no cambia en toda su vida: basta comprobarlo al nacer.
+          // Sin esta regla aparecían anillos imposibles de tomar (el cuervo tapando
+          // justo la entrada) y choques que parecían injustos porque el ave venía
+          // escondida dentro del oro.
+          const RESERVA_X = 108, RESERVA_Y = 60;
+          const libre = (cx2, cy2, lista) => !lista.some(o =>
+            Math.abs(o.x - cx2) < RESERVA_X && Math.abs(o.y - cy2) < RESERVA_Y);
+          const centrosAnillos = () => (st.anillos || []).map(a => ({ x: a.x + 44, y: a.y + 57 }))
+            .concat((st.consumibles || []).map(k => ({ x: k.x + 18, y: k.y + 18 })));
+          const centrosAves = () => (st.aves || []).map(a => ({ x: a.x + 24, y: a.y + 18 }));
           // Cuervos en cinco bandas de altura, con más aire entre oleadas que en el buceo
           st.aves = st.aves || [];
           st.cadAve = (st.cadAve || 0) + 1;
-          if (st.graciaTransicion <= 0 && st.cadAve >= 92 - dif * 18) {
+          if (st.cadAveTope === undefined) st.cadAveTope = 92;
+          if (st.graciaTransicion <= 0 && st.cadAve >= st.cadAveTope) {
             st.cadAve = 0;
-            const bandas = [90, 190, 290, 390, 490];
-            st.aves.push({ x: W + 30, y: bandas[Math.floor(Math.random() * 5)] + Math.random() * 36 - 18 });
+            // Cadencia irregular: antes cuervos y anillos iban los dos a 74
+            // fotogramas a partir de 200 puntos, se acompasaban y el resto de la
+            // partida repetía siempre el mismo patrón (y siempre el mismo estorbo).
+            st.cadAveTope = 66 - dif * 6 + Math.random() * 32;
+            const bandas = [90, 190, 290, 390, 490].map(b => b + Math.random() * 36 - 18);
+            for (let i = bandas.length - 1; i > 0; i--) {          // barajado honesto
+              const j = Math.floor(Math.random() * (i + 1));
+              const tmp = bandas[i]; bandas[i] = bandas[j]; bandas[j] = tmp;
+            }
+            const anil = centrosAnillos();
+            const yLibre = bandas.find(yy => libre(W + 30 + 24, yy + 18, anil));
+            // Si las cinco bandas están tomadas, esta tanda se queda sin cuervo:
+            // mejor un hueco de aire que una muerte imposible de esquivar.
+            if (yLibre !== undefined) st.aves.push({ x: W + 30, y: yLibre });
           }
           st.aves.forEach(a => { a.x -= velAire; });
           st.aves = st.aves.filter(a => a.x > -60);
           // Anillos en arcos de 2-3; el orbe ocupa el sitio del arco cuando toca transición
           st.anillos = st.anillos || [];
           st.cadAnillo = (st.cadAnillo || 0) + 1;
-          if (st.graciaTransicion <= 0 && st.cadAnillo >= 74) {
+          if (st.cadAniTope === undefined) st.cadAniTope = 74;
+          if (st.graciaTransicion <= 0 && st.cadAnillo >= st.cadAniTope) {
             st.cadAnillo = 0;
-            const y0 = 60 + Math.random() * (suelo - 250);
-            if (st.quiereConsumible) {
-              st.quiereConsumible = false;
-              st.consumibles.push({ x: W + 30, y: y0 + 30, velX: velAire, to: otroModo(st.modo) });
-            } else {
-              const nA = 2 + Math.floor(Math.random() * 2);
-              for (let i = 0; i < nA; i++)
-                st.anillos.push({ x: W + 30 + i * 96, y: y0 + Math.sin(i * 1.4) * 30, ok: false });
+            st.cadAniTope = 62 + Math.random() * 24;
+            const avs = centrosAves();
+            const nA = 2 + Math.floor(Math.random() * 2);
+            // Se prueban varias alturas y se coge la primera cuyo arco COMPLETO
+            // queda despejado de cuervos; si ninguna sirve, no hay arco esta vez.
+            let y0 = null;
+            for (let intento = 0; intento < 8 && y0 === null; intento++) {
+              const cand = 60 + Math.random() * (suelo - 250);
+              const chocan = st.quiereConsumible
+                ? !libre(W + 30 + 18, cand + 48, avs)
+                : Array.from({ length: nA }, (_, i) =>
+                    ({ x: W + 30 + i * 96 + 44, y: cand + Math.sin(i * 1.4) * 30 + 57 }))
+                    .some(c => !libre(c.x, c.y, avs));
+              if (!chocan) y0 = cand;
+            }
+            if (y0 !== null) {
+              if (st.quiereConsumible) {
+                st.quiereConsumible = false;
+                st.consumibles.push({ x: W + 30, y: y0 + 30, velX: velAire, to: otroModo(st.modo) });
+              } else {
+                for (let i = 0; i < nA; i++)
+                  st.anillos.push({ x: W + 30 + i * 96, y: y0 + Math.sin(i * 1.4) * 30, ok: false, xPrev: W + 30 + i * 96 });
+              }
             }
           }
-          st.anillos.forEach(a => { a.x -= velAire; });
+          st.anillos.forEach(a => { a.xPrev = a.x; a.x -= velAire; });
           st.anillos = st.anillos.filter(a => a.x > -100 && !a.ok);
           // Choque con cuervo
           st.aves.forEach(a => {
-            if (Math.abs(a.x + 24 - cxA) < 38 && Math.abs(a.y + 18 - cyA) < 28) {
+            if (Math.abs(a.x + 24 - cxA) < AVE_RX && Math.abs(a.y + 18 - cyA) < AVE_RY) {
               st.vivo = false; setFin(true); setBest(b => Math.max(b, st.score));
             }
           });
-          // El anillo solo cuenta atravesándolo POR DENTRO; rozar el borde no castiga
+          // El anillo solo cuenta atravesándolo POR DENTRO; rozar el borde no castiga.
+          // Detección por BARRIDO: antes se exigía |Δx| < 12 en un fotograma suelto y,
+          // con el aire ya a tope, un tirón del móvil bastaba para saltarse la ventana
+          // y que el anillo NO contase. Ahora cuenta si el centro cruza el morro entre
+          // un fotograma y el siguiente, aunque el salto sea grande.
           st.anillos.forEach(a => {
-            const acx = a.x + 44, acy = a.y + 57;   // centro del anillo a escala 4.4 (88×114)
-            if (!a.ok && Math.abs(acx - cxA) < 12 && Math.abs(acy - cyA) < 32) {
+            if (a.ok) return;
+            const acx = a.x + 44, acxPrev = (a.xPrev !== undefined ? a.xPrev : a.x) + 44;
+            const acy = a.y + 57;                  // centro del anillo a escala 4.4 (88×114)
+            const cruza = (acxPrev >= cxA && acx <= cxA) || Math.abs(acx - cxA) < 12;
+            if (cruza && Math.abs(acy - cyA) < ANI_RY) {
               a.ok = true; st.score += 10; setScore(st.score);
               st.flotantes.push({ x: acx, y: a.y + 14, t: 0 });
+              // Chispas del anillo: el dibujo ya existía pero nadie las creaba
+              st.chispas = st.chispas || [];
+              st.chispas.push({ x: acx, y: acy, t: 0, tipo: "onda" });
+              for (let ci = 0; ci < 8; ci++)
+                st.chispas.push({ x: acx, y: acy, t: 0,
+                  vx: Math.cos(ci * 0.785) * 2.4, vy: Math.sin(ci * 0.785) * 2.4 });
             }
+          });
+          st.chispas = (st.chispas || []).filter(c => {
+            c.t++;
+            if (c.vx !== undefined) { c.x += c.vx - velAire * 0.5; c.y += c.vy; }
+            else c.x -= velAire;
+            return c.t < 26;
           });
           st.flotantes.forEach(f => { f.t++; f.y -= 0.9; });
           st.flotantes = st.flotantes.filter(f => f.t < 42);
@@ -2950,10 +3009,10 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
       });
       // ── Entidades de los juegos nuevos ──
       if (tema.familia === "vuelo") {
-        // La mitad TRASERA del anillo va detrás del avión; la delantera se pinta tras la oveja
-        (st.anillos || []).forEach(a => sprite(ctx, SPR.anilloAlto, a.x, a.y, 4.4));
-        (st.aves || []).forEach(a =>
-          sprite(ctx, SPR[aleteo ? "cuervoSube" : "cuervoBaja"], a.x, a.y, 2.4));
+        // La mitad TRASERA del anillo va detrás del avión; la delantera se pinta tras
+        // la oveja. Los cuervos ya NO se pintan aquí: iban por debajo de la mitad
+        // baja del anillo y el oro los tapaba justo al entrar (ver capa de delante).
+        (st.anillos || []).filter(a => !a.ok).forEach(a => sprite(ctx, SPR.anilloAlto, a.x, a.y, 4.4));
       }
       if (tema.familia === "shooter") {
         if (st.jefe) {
@@ -3335,6 +3394,19 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
           ctx.fillRect(ax - 6 - ew, pcy - 8 + ei * 8 + Math.sin(performance.now() / 90 + ei) * 2, ew * 0.55, 2);
         }
         (st.anillos || []).filter(a => !a.ok).forEach(a => sprite(ctx, SPR.anilloBajo, a.x, a.y, 4.4));
+        // ── Cuervos: la capa de DELANTE, por encima del anillo y del avión ──
+        // Es lo único que mata: tiene que verse siempre, y sobre todo cuando se
+        // cruza con el oro. Un halo claro lo despega del anillo y del cielo.
+        (st.aves || []).forEach(a => {
+          const hx = a.x + 24, hy = a.y + 18;
+          const halo = ctx.createRadialGradient(hx, hy, 6, hx, hy, 30);
+          halo.addColorStop(0, "rgba(255,255,255,0.55)");
+          halo.addColorStop(0.6, "rgba(255,255,255,0.22)");
+          halo.addColorStop(1, "rgba(255,255,255,0)");
+          ctx.fillStyle = halo;
+          ctx.beginPath(); ctx.ellipse(hx, hy, 30, 24, 0, 0, 7); ctx.fill();
+          sprite(ctx, SPR[aleteo ? "cuervoSube" : "cuervoBaja"], a.x, a.y, 2.4);
+        });
         // Chispas doradas del anillo recién atravesado
         (st.chispas || []).forEach(c => {
           if (c.tipo === "onda") {
@@ -6945,7 +7017,6 @@ function WeightChart({chartData,setWeightMode,goalWeight,shareName,lang}){
             </button>
             {/* Modal de previsualización de la tarjeta */}
             {shareCard&&(
-              <Portal>
               <div onClick={()=>setShareCard(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:2000,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"20px 16px"}}>
                 <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:380,display:"flex",flexDirection:"column",gap:12}}>
                   <img src={shareCard.dataUrl} alt="" style={{width:"100%",borderRadius:20,border:"2px solid rgba(255,255,255,0.2)",boxShadow:"0 12px 40px rgba(0,0,0,0.6)",animation:"popIn 0.2s ease"}}/>
@@ -6960,7 +7031,6 @@ function WeightChart({chartData,setWeightMode,goalWeight,shareName,lang}){
                   <button onClick={()=>setShareCard(null)} style={{padding:"10px",borderRadius:14,background:"none",border:"none",color:"rgba(255,255,255,0.6)",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>✕ {lang==='en'?'Close':'Cerrar'}</button>
                 </div>
               </div>
-              </Portal>
             )}
           </>
         );
@@ -7346,19 +7416,6 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════════════════════
 // ─── SavedRecipeCard — tarjeta expandible del recetario personal ─────────────
-// ─── Portal — toda ventana emergente cuelga de <body> ────────────────────────
-// Blindaje de la corrección del 20-ago-2026: una ventana emergente NUNCA debe
-// depender de dónde está el componente que la abre. Colgándola de <body> queda
-// fuera del alcance de cualquier ancestro que pueda convertirse en bloque
-// contenedor (transform, filter, will-change, contain…), así que su
-// position:fixed siempre se resuelve contra la PANTALLA, no contra un
-// contenedor de 5.000 px como el recetario completo.
-// Los eventos siguen burbujeando por el árbol de React: no cambia nada de
-// comportamiento, solo dónde se pinta.
-// REGLA: toda ventana emergente nueva se envuelve en <Portal>.
-const Portal = ({children}) =>
-  (typeof document==="undefined" ? children : createPortal(children, document.body));
-
 // ─── Mini lista de la compra por receta (botón 🛒 Comprar) ────────────────────
 // Popup con los ingredientes de UNA receta como checklist interactiva. Los
 // marcados se guardan SOLO en el dispositivo (localStorage, clave por receta),
@@ -7373,7 +7430,6 @@ function MiniListaCompra({nombre, ingredientes, idReceta, t, onClose, etiquetaRa
   const toggle=(i)=>setChecks(c=>{const n={...c};if(n[i])delete n[i];else n[i]=true;lsSet(key,n);return n;});
   const regen=()=>{ if(!conf){setConf(true);return;} setChecks({});lsSet(key,{});setConf(false); };
   return(
-    <Portal>
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.72)",zIndex:2000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
       <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:520,maxHeight:"80vh",overflowY:"auto",
         background:"linear-gradient(180deg,#1d3a14,#142a0e)",border:"2px solid rgba(255,255,255,0.14)",borderBottom:"none",
@@ -7422,7 +7478,6 @@ function MiniListaCompra({nombre, ingredientes, idReceta, t, onClose, etiquetaRa
         </button>
       </div>
     </div>
-    </Portal>
   );
 }
 
@@ -8437,6 +8492,7 @@ function GBHApp(){
   const [partidasRestantes,setPartidasRestantes]=useState(3);
   const partidaEnCursoRef=useRef(false);  // hay partida pagada sin registrar (anti-exploit de la X)
   const scoreVivoRef=useRef(null);        // marcador de la partida en curso (null si no hay)
+  const registrandoRef=useRef(false);     // candado: una partida se registra UNA vez
   const [ptsHoy,setPtsHoy]=useState(0);
   const [ptsSemana,setPtsSemana]=useState(0);
   const arrancarJuegoRef=useRef(null);
@@ -8633,11 +8689,22 @@ function GBHApp(){
   // se cierra ya. Si era de un día anterior, el cupo de aquel día ya caducó y
   // solo se limpia el testigo — no se le roba una partida de hoy.
   const saldarPartidaHuerfana=async()=>{
+    // Una partida VIVA no es huérfana. Si esto se disparaba a mitad de juego (al
+    // volver a abrir la zona, por ejemplo) registraba la partida con los puntos
+    // de ese instante y luego el fin de partida registraba OTRA: dos partidas
+    // gastadas por una sola jugada.
+    if(partidaEnCursoRef.current||registrandoRef.current) return;
     const t=lsGet(kPartida(),null); if(!t) return;
     if(t.fecha!==hoyMadrid()){ cerrarPartida(); return; }
+    // El testigo solo existe cuando la RPC NUNCA llegó a llamarse (app matada a
+    // media partida). En cuanto se llama, el reintento es cosa de la cola
+    // offline, así que aquí se cierra siempre: reintentar por nuestra cuenta
+    // duplicaría la fila que la cola ya tiene pendiente.
     cerrarPartida();
+    registrandoRef.current=true;
     try{ await sbReq("POST","rpc/registrar_partida_juego",
       {p_profile_id:profile.id,p_puntos:Math.max(0,t.pts||0)}); }catch{}
+    registrandoRef.current=false;
   };
 
   const pagarYJugar=()=>{
@@ -8652,16 +8719,40 @@ function GBHApp(){
     arrancarJuegoRef.current&&arrancarJuegoRef.current();
   };
   const finPartida=async(pts)=>{ if(!profile?.id) return;
+    if(registrandoRef.current) return;      // el fin de partida y la ✕ pueden dispararse a la vez
+    registrandoRef.current=true;
     partidaEnCursoRef.current=false;
-    cerrarPartida();
+    const puntos=Math.max(0,Math.round(Number(pts)||0));
+    anotarPuntos(puntos);                   // el testigo lleva los puntos ANTES de tocar la red
+    cerrarPartida();                        // a partir de aquí el reintento es de la cola offline
     try{
-      const res=await sbReq("POST","rpc/registrar_partida_juego",{p_profile_id:profile.id,p_puntos:pts});
+      const res=await sbReq("POST","rpc/registrar_partida_juego",{p_profile_id:profile.id,p_puntos:puntos});
       if(res&&res.ok){
         setPtsHoy(res.puntos_hoy||0);
         setPtsSemana(res.puntos_semana||0);
         setPartidasRestantes(res.partidas_restantes!=null?res.partidas_restantes:0);
+      }else{
+        // La RPC no confirmó. Puede ser un corte de red (sbReq ya ha encolado la
+        // llamada y la cola la reenviará) o un rechazo del servidor. Antes esto se
+        // tragaba en silencio: el marcador se quedaba con el valor de antes y el
+        // paciente veía "las mismas partidas de antes" y cero puntos, sin saber si
+        // se había gastado el diamante. Ahora se avisa y se releen los contadores
+        // de la tabla, que es la única verdad.
+        console.warn("registrar_partida_juego no confirmó:",res);
+        const enCola=(lsGet(getQueueKey(),[])||[]).some(o=>o.path==="rpc/registrar_partida_juego");
+        showT({icon:"📡",title:"Partida pendiente de guardar",
+          sub:enCola
+            ?`Tus ${puntos} pts se enviarán solos en cuanto vuelva la conexión.`
+            :`No hemos podido confirmar tus ${puntos} pts. Revisa el marcador en un momento.`});
+        try{ await flushQueue(); }catch{}
+        await cargarPartidasHoy();
       }
-    }catch{}
+    }catch(e){
+      console.warn("registrar_partida_juego falló:",e);
+      showT({icon:"📡",title:"Partida pendiente de guardar",
+        sub:`Tus ${puntos} pts se enviarán solos en cuanto vuelva la conexión.`});
+    }
+    registrandoRef.current=false;
   };
   const fn=profile?.name?.split(" ")[0]||"";
 
@@ -10407,21 +10498,8 @@ function GBHApp(){
        reserva para celebraciones. Ninguna pasa de 400 ms. */
     button:active{transform:translateY(2px) scale(0.985)!important;transition:transform 0.08s ease-out!important}
     @keyframes tabIn{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
-    /* ⚠️ fill-mode = BACKWARDS, nunca "both" (fallo del 20-ago-2026).
-       Una animación de transform que se queda RELLENANDO convierte a su
-       elemento en el bloque contenedor de todo descendiente position:fixed.
-       .tab-in envuelve el contenido de TODAS las pestañas: con "both", los
-       popups (🛒 lista de la compra de una receta, y cualquier otro) dejaban
-       de anclarse a la pantalla y se anclaban al alto COMPLETO de la pestaña
-       — en el recetario completo, miles de píxeles: velo negro por toda la
-       página y la ventana al final del todo, fuera de la vista.
-       Con "backwards" la entrada se ve idéntica (el estado final de ambos
-       keyframes es el estado natural del elemento) pero no queda nada
-       rellenando al acabar, así que position:fixed vuelve a ser la pantalla.
-       Regla: ninguna clase que envuelva contenido puede animar transform con
-       fill-mode both/forwards. */
-    .tab-in{animation:tabIn 0.2s cubic-bezier(0.34,1.12,0.64,1) backwards}
-    .stagger-in{animation:popIn 0.26s backwards cubic-bezier(0.34,1.12,0.64,1)}
+    .tab-in{animation:tabIn 0.2s cubic-bezier(0.34,1.12,0.64,1) both}
+    .stagger-in{animation:popIn 0.26s both cubic-bezier(0.34,1.12,0.64,1)}
     .bar-grow{transition:width 0.6s cubic-bezier(0.22,1,0.36,1)}
     /* prefers-reduced-motion del SISTEMA: apaga SOLO esta capa nueva. Las
        celebraciones y los pops de registro siguen intactos a propósito —
@@ -14370,7 +14448,6 @@ function OverlayGenerando({lang}){
   const [i,setI]=React.useState(0);
   React.useEffect(()=>{ const id=setInterval(()=>setI(x=>(x+1)%msgs.length),2600); return ()=>clearInterval(id); },[msgs.length]);
   return(
-    <Portal>
     <div style={{position:"fixed",inset:0,background:"rgba(6,20,9,0.93)",zIndex:3000,
       display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"32px"}}>
       <div style={{fontSize:64,animation:"tomaBob 1.4s ease-in-out infinite",marginBottom:18}}>👨‍🍳</div>
@@ -14389,7 +14466,6 @@ function OverlayGenerando({lang}){
           :"No cierres la app: suele tardar menos de un minuto ⏱️"}
       </div>
     </div>
-    </Portal>
   );
 }
 
