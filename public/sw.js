@@ -8,7 +8,7 @@
 //  inicialización del SDK en App.jsx. Este worker ya solo hace caché/PWA.
 //  No reintroducir sin decisión expresa.
 
-const CACHE_VERSION = "gbh-v2026-08-22e";  // juego_partidas.modo: cada partida graba en qué modo se jugó (RPC registrar_partida_juego con p_modo). Sin este bump el bundle nuevo no llega a quien ya tiene la app cacheada y la columna se quedaría vacía sin que nada fallara visiblemente.
+const CACHE_VERSION = "gbh-v2026-08-23a";  // clave anon legacy -> sb_publishable_ (App.jsx:869). Sin este bump, quien ya tenga la app cacheada sigue con la clave LEGACY: funcionaria hoy y reventaria al desactivar las JWT legacy (fase 3), mientras una instalacion nueva va bien — el fallo mas confuso posible.
 const APP_SHELL = ["/", "/index.html", "/manifest.json"];
 
 // ── Install: precachea el app shell y activa la versión nueva de inmediato ─────
