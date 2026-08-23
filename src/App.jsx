@@ -866,7 +866,7 @@ import { ComposedChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 
 
 // ─── Supabase ────────────────────────────────────────────────────────────────
 const SB  = "https://kszytoufvqogcitzbzqs.supabase.co";
-const KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtzenl0b3VmdnFvZ2NpdHpienFzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1OTQzOTgsImV4cCI6MjA5NDE3MDM5OH0.OcOUrgbyAL6aPBSW_hSNapmwSYMV5mNjLrJCmRghg-c";
+const KEY = "sb_publishable_pwP1RUUIoI84hzQWk9IYqg_Pe1yrCc5";
 
 // ─── Stripe (suscripción Estándar 7 €/mes) ───────────────────────────────────
 const STRIPE_PAYMENT_LINK = "https://buy.stripe.com/aFa00k9SL8B32ud4nDbQY00";
