@@ -7667,6 +7667,19 @@ function GBHApp(){
   const [profile, setProfile] = useState(null);
   const [tLog,    setTLog]    = useState({diet:false,steps:false,hydration:false,sleep:false});
   const [steps,   setSteps]   = useState(0);
+  // ── Clave del día VIVA (24-ago-2026) ─────────────────────────────────
+  // Todo lo que dependía de "hoy" se calculaba UNA sola vez, al montar la app,
+  // y no se volvía a derivar nunca. Como la app solo se recarga cuando cambia
+  // la versión del service worker, una PWA que pasa la noche en memoria (el
+  // caso normal en iPhone) amanecía con el estado de AYER: `tLog`, `mealsHoy`,
+  // los pasos y los flags de quiz/ruleta. El paciente veía sus comidas ya
+  // marcadas sin haber tocado nada y —lo grave— el primer saveLog del día
+  // nuevo (basta con que el móvil sume pasos) estampaba el `diet_followed` de
+  // ayer sobre la fila de HOY: racha, XP y adherencia falseadas.
+  // `hoyKey` cambia al cruzar la medianoche y es la dependencia de todo lo
+  // diario. NO INVENTAR OTRA FUENTE DE "HOY" EN ESTADO: o se deriva en cada
+  // render, o cuelga de esta clave.
+  const [hoyKey,  setHoyKey]  = useState(()=>toKey());
   const [weights, setWeights] = useState([]);
   const [badges,  setBadges]  = useState([]);
   const [logs,    setLogs]    = useState([]);
@@ -9779,19 +9792,59 @@ function GBHApp(){
     }catch{}
   },[tLog,steps,streak,weights,badges,saveLog,addXG,chkBadges]);
 
+  // ── Cambio de día en caliente (24-ago-2026) ───────────────────────
+  // Vigía de la fecha: cada 30 s y al volver la app a primer plano. Al cruzar
+  // la medianoche RESIEMBRA el estado diario desde el almacenamiento del día
+  // nuevo — no lo pone a cero a ciegas: si ya hay registro de hoy (otro
+  // dispositivo, o el propio móvil antes de quedarse en segundo plano), manda
+  // ese. Mismo mecanismo que los recordatorios de las 20:00 y de suplementos,
+  // que ya comprobaban la hora así.
+  useEffect(()=>{
+    const chk=()=>{
+      const k=toKey();
+      if(k===hoyKey) return;
+      setHoyKey(k);
+      const id=profile?.id;
+      if(!id) return;
+      const tl=lsGet(`gbh:tlog:${id}:${k}`,null);
+      setTLog(tl&&typeof tl==='object'
+        ? {diet:!!tl.diet,steps:!!tl.steps,hydration:!!tl.hydration,sleep:!!tl.sleep}
+        : {diet:false,steps:false,hydration:false,sleep:false});
+      const arr=lsGet(`gbh:logs:${id}`,[]);
+      setSteps((Array.isArray(arr)?arr:[]).find(x=>x&&x.date===k)?.sc||0);
+      setQuizDone(lsGet(`gbh:quiz:${id}:${k}`,false));
+      setQuizBannerDismissed(lsGet(`gbh:quizBanner:${id}:${k}`,false));
+      setRuletaDone(lsGet(`gbh:ruleta:${id}:${k}`,false));
+      setRuletaAutoShown(lsGet(`gbh:ruletaSeen:${id}:${k}`,false));
+      setRecipeRefreshes(lsGet(`gbh:recipe:refreshes:${k}`,0));
+    };
+    const iv=setInterval(chk,30000);
+    const onVis=()=>{ if(!document.hidden) chk(); };
+    document.addEventListener("visibilitychange",onVis);
+    window.addEventListener("focus",onVis);
+    return ()=>{ clearInterval(iv);
+      document.removeEventListener("visibilitychange",onVis);
+      window.removeEventListener("focus",onVis); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[hoyKey, profile?.id]);
+
   // ── Desglose de dieta por tomas ──────────────────────────────────────────────
   // Tomas que el paciente tiene HOY según su pauta (una toma al 0% no genera
   // recetas en el plan y por tanto no aparece). null → botón clásico de dieta.
   const tomasHoy = React.useMemo(()=>{
     if(!planTomas) return null;
-    const dowJS=new Date().getDay(); const d=String(dowJS===0?7:dowJS);
+    const dowJS=new Date(hoyKey+"T12:00:00").getDay(); const d=String(dowJS===0?7:dowJS);
     const ts=PLAN_TOMAS.filter(tm=>planTomas?.[tm]?.[d]);
     return ts.length?ts:null;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[planTomas, tab]);  // 'tab' fuerza recomputar al volver a Inicio (cambio de día)
+  },[planTomas, hoyKey]);  // antes dependía de 'tab': un apaño que solo recomputaba
+                           // al volver a Inicio. Ahora el día es explícito.
 
   // Registro de comidas de hoy (fuente: logs, sincronizado con daily_logs.meals_log)
-  const mealsHoy = React.useMemo(()=>logs.find(l=>l.date===toKey())?.meals||{},[logs]);
+  // ⚠️ Las deps incluyen `hoyKey`: con solo [logs], `toKey()` quedaba capturado
+  // en el último cálculo y pasada la medianoche este memo seguía devolviendo
+  // las comidas de AYER (los ✅ fantasma que reportó un paciente el 24-ago).
+  const mealsHoy = React.useMemo(()=>logs.find(l=>l.date===hoyKey)?.meals||{},[logs,hoyKey]);
 
   // ── Recordatorio diario 20:00 — registro pendiente ─────────────────────────
   // Mismo mecanismo que el aviso de nueva programación: a partir de las 20:00,
@@ -12205,7 +12258,7 @@ function GBHApp(){
 
           <div data-tuto="sueno" className="stagger-in" style={{animationDelay:escalon(1)}}><MRow num="2" icon="🌙" label={t("sleepLabel")} done={tLog.sleep} onToggle={()=>toggleM("sleep")} xpR={5}/></div>
           <div data-tuto="pasos" className="stagger-in" style={{animationDelay:escalon(2)}} onClickCapture={()=>tutoTapAvanza('B1_pasos')}><StepsWidget done={tLog.steps} stepCount={steps} onToggle={()=>toggleM("steps")} onUpdateSteps={updSteps}/></div>
-          <div data-tuto="agua" className="stagger-in" style={{animationDelay:escalon(3)}} onClickCapture={()=>tutoTapAvanza('B1_agua')}><HydrationWidget done={tLog.hydration} onToggle={()=>toggleM("hydration")}/></div>
+          <div data-tuto="agua" className="stagger-in" style={{animationDelay:escalon(3)}} onClickCapture={()=>tutoTapAvanza('B1_agua')}><HydrationWidget key={hoyKey} done={tLog.hydration} onToggle={()=>toggleM("hydration")}/></div>
 
           {/* ── Quiz + Ruleta ── */}
           <div style={{display:"flex",gap:8,marginBottom:10}}>
@@ -13126,7 +13179,7 @@ function GBHApp(){
             onVerSeguimiento={espejoAbrirSeguimiento}
             onClose={()=>{sfx("tap");setEspejoDia(null);}}/>
         )}
-        {tab==="plan"&&<div data-tuto="plan-zona"><PlanTab profile={profile} lang={lang} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} descartadas={descartadas} setDescartadas={setDescartadas} showT={showT} sfx={sfx} t={t} setTab={setTab} onMealRegistered={onMealRegistered} vistaInicial={planVista} onVistaConsumida={()=>setPlanVista(null)} onTutoEvent={tutoEvento}/></div>}
+        {tab==="plan"&&<div data-tuto="plan-zona"><PlanTab profile={profile} lang={lang} hoyKey={hoyKey} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} descartadas={descartadas} setDescartadas={setDescartadas} showT={showT} sfx={sfx} t={t} setTab={setTab} onMealRegistered={onMealRegistered} vistaInicial={planVista} onVistaConsumida={()=>setPlanVista(null)} onTutoEvent={tutoEvento}/></div>}
         {tab==="consulta"&&<ConsultaTab profile={profile} lang={lang} sfx={sfx}/>}
       </div>
 
@@ -14570,7 +14623,7 @@ function OverlayGenerando({lang}){
   );
 }
 
-function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartadas,setDescartadas,showT,sfx,t,setTab,onMealRegistered,vistaInicial,onVistaConsumida,onTutoEvent}){
+function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,descartadas,setDescartadas,showT,sfx,t,setTab,onMealRegistered,vistaInicial,onVistaConsumida,onTutoEvent}){
   const isPremium=profile?.plan==='premium';
   const isStandard=profile?.plan==='standard';
   const tieneAcceso=isPremium||isStandard;
@@ -14629,9 +14682,19 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
   // Días que faltan hasta el próximo lunes (para el mensaje)
   const proximoLunes = lunesActual + 7*24*60*60*1000;
   const diasDesbloqueo = planBloqueado ? Math.max(1, Math.ceil((proximoLunes - Date.now())/(24*60*60*1000))) : 0;
-  const todayJS=new Date().getDay();
+  const _hoyD=()=>hoyKey?new Date(hoyKey+"T12:00:00"):new Date();
+  const todayJS=_hoyD().getDay();
   const todayPlan=todayJS===0?7:todayJS;
   const [selDay,setSelDay]=React.useState(todayPlan);
+  // Al cruzar la medianoche con la pestaña abierta, el día seleccionado salta
+  // al nuevo "hoy". Antes se quedaba clavado en el de ayer que, si la noche era
+  // la del domingo, ya pertenecía a la semana anterior.
+  const _diaRef=React.useRef(hoyKey);
+  React.useEffect(()=>{
+    if(_diaRef.current===hoyKey) return;
+    _diaRef.current=hoyKey;
+    setSelDay(todayPlan);
+  },[hoyKey,todayPlan]);
   const [openToma,setOpenToma]=React.useState(null);
   const [tomaReceta,setTomaReceta]=React.useState(null);
   const [loadingToma,setLoadingToma]=React.useState(false);
@@ -14674,10 +14737,14 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
   // daily_logs (columnas meals_log jsonb, day_note text) por la MISMA vía de
   // upsert que ya usa el resto de la app. No toca diet/steps/sleep ni la lógica
   // de rachas, XP o calorías: es una capa de información para el nutricionista.
+  // ⚠️ Deps [hoyKey], no []. Congelado al montar, con la app viva pasada la
+  // medianoche del domingo la tira de días y `selDateKey` seguían apuntando a
+  // la semana ANTERIOR: lo que el paciente marcaba hoy se escribía 7 días atrás.
   const lunesSemana = React.useMemo(()=>{
-    const d=new Date(); const dow=d.getDay(); const off=dow===0?6:dow-1;
+    const d=_hoyD(); const dow=d.getDay(); const off=dow===0?6:dow-1;
     return new Date(d.getFullYear(),d.getMonth(),d.getDate()-off);
-  },[]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[hoyKey]);
   const fechaDeDia = (n)=>{ const d=new Date(lunesSemana); d.setDate(d.getDate()+(n-1)); return d; };
   const selDateKey = toKey(fechaDeDia(selDay));
   const finDeHoy   = (()=>{ const d=new Date(); d.setHours(23,59,59,999); return d; })();
@@ -14737,7 +14804,9 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
           return next;
         });
       });
-  },[profile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  },[profile?.id,hoyKey]); // eslint-disable-line react-hooks/exhaustive-deps
+                           // `hoyKey`: al cruzar la medianoche se relee la semana
+                           // (que puede ser otra) en vez de arrastrar la vieja.
 
   // Al cambiar de día (o llegar datos remotos), refleja la nota de ese día en el textarea.
   React.useEffect(()=>{ setNotaTmp(regDia[selDateKey]?.note||''); setNotaOK(false); },[selDateKey, regDia[selDateKey]?.note]); // eslint-disable-line react-hooks/exhaustive-deps
