@@ -7489,11 +7489,25 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
 // marcados se guardan SOLO en el dispositivo (localStorage, clave por receta),
 // deliberadamente sin Supabase: es un dato personal de compra y ahorra carga.
 // Al reabrir la receta recuerda lo tachado; "Regenerar" limpia para recomprar.
-function MiniListaCompra({nombre, ingredientes, idReceta, t, onClose, etiquetaRacion}){
+function MiniListaCompra({nombre, ingredientes, idReceta, t, onClose, etiquetaRacion, lang='es'}){
   const items=React.useMemo(()=>(ingredientes||"").split(/[,;](?![^(]*\))/).map(s=>s.trim()).filter(Boolean),[ingredientes]);
   const key=`gbh:minilista:${idReceta||nombre}`;
   const [checks,setChecks]=React.useState(()=>lsGet(key,{}));
   const [conf,setConf]=React.useState(false);
+  // 💶 Coste estimado de ESTA compra + gasto real (feedback → receta_gasto).
+  // Vive aquí, en la pestaña Comprar, porque es donde el paciente tiene el
+  // ticket en la mano (orden de Alejandro, 24-ago).
+  const costeMini=React.useMemo(()=>costeRecetaJS(ingredientes||""),[ingredientes]);
+  const [gastoMini,setGastoMini]=React.useState("");
+  const [gastoMiniOk,setGastoMiniOk]=React.useState(false);
+  const guardarGastoMini=()=>{
+    const v=parseFloat(String(gastoMini).replace(",","."));
+    if(!(v>0)||!_perfilActualId) return;
+    sbReq('POST','receta_gasto?on_conflict=profile_id,receta',
+      {profile_id:_perfilActualId, receta:normNombreG(nombre), estimado_eur:costeMini.total||null,
+       real_eur:v, actualizado_en:new Date().toISOString()});
+    setGastoMiniOk(true);
+  };
   const marc=items.filter((_,i)=>checks[i]).length;
   const toggle=(i)=>setChecks(c=>{const n={...c};if(n[i])delete n[i];else n[i]=true;lsSet(key,n);return n;});
   const regen=()=>{ if(!conf){setConf(true);return;} setChecks({});lsSet(key,{});setConf(false); };
@@ -7537,6 +7551,38 @@ function MiniListaCompra({nombre, ingredientes, idReceta, t, onClose, etiquetaRa
             );
           })}
         </div>
+        {/* 💶 Coste estimado + gasto real de esta receta */}
+        {costeMini.total>0&&(
+          <div style={{marginTop:12,background:alpha(T.g1,0.08),border:`1.5px solid ${alpha(T.g1,0.3)}`,borderRadius:14,padding:"11px 13px"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+              <div style={{fontSize:12.5,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif"}}>
+                💶 {lang==='en'?'Estimated cost':'Coste estimado'}
+              </div>
+              <div style={{fontSize:15,fontWeight:900,color:T.g1,fontFamily:"'Nunito',sans-serif",flexShrink:0}}>~{eurES(costeMini.total)} €</div>
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginTop:9}}>
+              <div style={{flex:1,fontSize:11.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>
+                ✏️ {lang==='en'?'What did it really cost you?':'¿Cuánto te ha costado de verdad?'}
+              </div>
+              <input value={gastoMini} onChange={e=>{setGastoMini(e.target.value);setGastoMiniOk(false);}}
+                inputMode="decimal" placeholder="0,00"
+                style={{width:62,padding:"7px 9px",borderRadius:10,border:"1.5px solid rgba(255,255,255,0.2)",
+                  background:"rgba(255,255,255,0.06)",color:T.t1,fontSize:13.5,fontWeight:900,textAlign:"right",
+                  fontFamily:"'Nunito',sans-serif",outline:"none"}}/>
+              <span style={{fontSize:12.5,color:T.t2}}>€</span>
+              <button onClick={guardarGastoMini} disabled={gastoMiniOk} style={{padding:"7px 11px",borderRadius:10,cursor:"pointer",
+                background:gastoMiniOk?alpha(T.g1,0.15):T.g1,border:"none",color:gastoMiniOk?T.g1:"#0d2b12",
+                fontWeight:900,fontSize:12,fontFamily:"'Nunito',sans-serif"}}>
+                {gastoMiniOk?"✓":(lang==='en'?'Save':'Guardar')}
+              </button>
+            </div>
+            {gastoMiniOk&&(
+              <div style={{fontSize:10.5,color:T.g1,fontFamily:"'DM Sans',sans-serif",marginTop:7}}>
+                ✓ {lang==='en'?'Saved — helps us fine-tune this recipe\'s price':'Guardado — nos ayuda a afinar el precio de esta receta'}
+              </div>
+            )}
+          </div>
+        )}
         <button onClick={regen} style={{
           width:"100%",marginTop:14,padding:"12px 18px",borderRadius:14,cursor:"pointer",
           background:conf?"rgba(255,140,60,0.18)":"rgba(255,255,255,0.06)",
@@ -7553,6 +7599,11 @@ function MiniListaCompra({nombre, ingredientes, idReceta, t, onClose, etiquetaRa
 // es local a ese componente). Para comparar guardadas/descartadas por nombre
 // cuando el recipe_id no coincide (entradas 'plan_slug' creadas desde el plan).
 const normNombreG = (s)=>(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+
+// Perfil activo, visible para componentes fuera del \u00e1rbol principal (p. ej.
+// MiniListaCompra al guardar el gasto real). Lo asigna el componente ra\u00edz en
+// cada render; null hasta que hay sesi\u00f3n \u2014 con null, el guardado no env\u00eda.
+let _perfilActualId = null;
 
 function SavedRecipeCard({rec, t, T, removeFromBook, lang, gems, isSaved, isDiscarded, onSave, onDiscard}){
   const [expanded, setExpanded] = React.useState(false);
@@ -7654,7 +7705,7 @@ function SavedRecipeCard({rec, t, T, removeFromBook, lang, gems, isSaved, isDisc
         </div>
       )}
       {showCompra&&<MiniListaCompra nombre={rec.nombre} ingredientes={rec.ingredientes}
-        idReceta={rec.id_receta||rec.recipe_id} t={t} onClose={()=>setShowCompra(false)}
+        idReceta={rec.id_receta||rec.recipe_id} t={t} lang={lang} onClose={()=>setShowCompra(false)}
         etiquetaRacion={racionEtiqueta(t,{raciones:rec.raciones,base:true})}/>}
     </Card>
   );
@@ -12731,6 +12782,17 @@ function GBHApp(){
                         </div>
                       ))}
                     </div>
+                    {/* 💶 Coste estimado (misma base de precios que lista y PDF) */}
+                    {(()=>{
+                      const _c=costeRecetaJS(r.ingredientes||'');
+                      const _rr=Math.max(1,parseInt(r.raciones)||1);
+                      const _e=_c.total>0?_c.total/_rr:0;
+                      return _e>0?(
+                        <div style={{textAlign:'center',marginTop:-6,marginBottom:14,fontSize:12.5,fontWeight:900,
+                          color:T.g1,fontFamily:"'Nunito',sans-serif"}}>
+                          💶 {lang==='en'?'Estimated cost':'Coste estimado'}: ~{eurES(_e)} €{_rr>1?(lang==='en'?'/serv':'/ración'):''}
+                        </div>):null;
+                    })()}
                     {/* Botón guardar en recetario */}
                     <button
                       onClick={alreadySaved ? undefined : saveRecipeToBook}
@@ -15100,6 +15162,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
   // ── 💶 Gasto estimado de la compra (fijo con la instantánea) + gasto real ──
   // El gasto real que apunta el paciente es el feedback que calibra la base de
   // precios (tabla lista_compra_gasto; el nutricionista la cruza con el Excel).
+  _perfilActualId = profile?.id || null;   // para MiniListaCompra (gasto real)
   const gastoEst = React.useMemo(()=>costeListaItems(listaItems),[listaItems]);
   const gastoRealKey=`gbh:gastoreal:${profile?.id}:${plan?.semana??"x"}${sufijoModo}`;
   const [gastoReal,setGastoReal]=React.useState("");
@@ -15116,24 +15179,8 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
     showT&&showT({icon:"💶",title:lang==='en'?'Saved!':'¡Guardado!',
       sub:lang==='en'?'Thanks — it helps us fine-tune the estimate':'Gracias — nos ayuda a afinar la estimación'});
   };
-  // ── 💶 Gasto real por RECETA (detalle del plato) ────────────────────────────
-  // Estado a nivel de componente: la vista daily es una rama condicional y no
-  // admite hooks dentro (aviso más abajo, §5.2). El feedback va a receta_gasto
-  // y contrasta el estimado por receta para recalibrar su precio por ración.
-  const [gastoRec,setGastoRec]=React.useState("");
-  const [gastoRecOk,setGastoRecOk]=React.useState(false);
-  React.useEffect(()=>{ setGastoRec(""); setGastoRecOk(false); },[tomaReceta?.nombre]);
-  const guardarGastoReceta=()=>{
-    const v=parseFloat(String(gastoRec).replace(",","."));
-    if(!(v>0)||!profile?.id||!tomaReceta?.nombre) return;
-    const est=costeRecetaJS(tomaReceta?.ingredientes||'').total;
-    sbReq('POST','receta_gasto?on_conflict=profile_id,receta',
-      {profile_id:profile.id, receta:normNombre(tomaReceta.nombre), estimado_eur:est||null,
-       real_eur:v, actualizado_en:new Date().toISOString()});
-    setGastoRecOk(true); sfx&&sfx("missionDone");
-    showT&&showT({icon:"💶",title:lang==='en'?'Saved!':'¡Guardado!',
-      sub:lang==='en'?'Helps us fine-tune this recipe\'s price':'Nos ayuda a afinar el precio de esta receta'});
-  };
+  // (El gasto real por RECETA vive en MiniListaCompra —la pestaña 🛒 Comprar—
+  //  por orden de Alejandro: es donde el paciente tiene el ticket en la mano.)
   // Formato del badge: cada fila puede combinar varias expresiones del mismo
   // ingrediente entre recetas → "120 g + 1 tarrina". Despensa → compra realista.
   const fmtParte=(p)=>{
@@ -16070,7 +16117,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
     const ingList=ingTexto?.split(/[,;](?![^(]*\))/).map(s=>s.trim()).filter(Boolean)||[];
     return(<div style={{paddingBottom:16}}>
       {miniCompra&&<MiniListaCompra nombre={miniCompra.nombre} ingredientes={miniCompra.ingredientes}
-        idReceta={miniCompra.id} t={t} onClose={()=>setMiniCompra(null)}
+        idReceta={miniCompra.id} t={t} lang={lang} onClose={()=>setMiniCompra(null)}
         etiquetaRacion={miniCompra.etiquetaRacion}/>}
       <WeekNav/>
       <BtnVolver onClick={()=>{if(openToma){setOpenToma(null);setTomaReceta(null);setTomaMenu(null);}else setView(null);}}/>
@@ -16381,8 +16428,8 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
               {ingList.map((ing,i)=>(<div key={i} className="stagger-in" style={{animationDelay:escalon(i),display:'flex',alignItems:'flex-start',gap:10}}><div style={{width:6,height:6,borderRadius:'50%',background:PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1,flexShrink:0,marginTop:6}}/><div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>{ing}</div></div>))}
             </div>
           </div>)}
-          {/* 💶 Coste estimado de TU ración + gasto real (feedback → receta_gasto).
-              IIFE sin hooks: estamos dentro de la rama condicional 'daily'. */}
+          {/* 💶 Coste estimado de TU ración (informativo; el gasto real se
+              apunta en la pestaña 🛒 Comprar). IIFE sin hooks: rama 'daily'. */}
           {(()=>{
             const _ce=costeRecetaJS(tomaReceta?.ingredientes||'');
             if(!(_ce.total>0)) return null;
@@ -16394,21 +16441,8 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
                 </div>
                 <div style={{fontSize:16,fontWeight:900,color:T.g1,fontFamily:"'Nunito',sans-serif",flexShrink:0}}>~{eurES(_ce.total)} €</div>
               </div>
-              <div style={{display:'flex',alignItems:'center',gap:8,marginTop:10}}>
-                <div style={{flex:1,fontSize:11.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>
-                  ✏️ {lang==='en'?'Did it cost you something else?':'¿Te ha costado otra cosa?'}
-                </div>
-                <input value={gastoRec} onChange={e=>{setGastoRec(e.target.value);setGastoRecOk(false);}}
-                  inputMode="decimal" placeholder="0,00"
-                  style={{width:64,padding:'7px 9px',borderRadius:10,border:'1.5px solid rgba(255,255,255,0.2)',
-                    background:'rgba(255,255,255,0.06)',color:T.t1,fontSize:13.5,fontWeight:900,textAlign:'right',
-                    fontFamily:"'Nunito',sans-serif",outline:'none'}}/>
-                <span style={{fontSize:12.5,color:T.t2}}>€</span>
-                <button onClick={guardarGastoReceta} disabled={gastoRecOk} style={{padding:'7px 11px',borderRadius:10,cursor:'pointer',
-                  background:gastoRecOk?alpha(T.g1,0.15):T.g1,border:'none',color:gastoRecOk?T.g1:'#0d2b12',
-                  fontWeight:900,fontSize:12,fontFamily:"'Nunito',sans-serif"}}>
-                  {gastoRecOk?'✓':(lang==='en'?'Save':'Guardar')}
-                </button>
+              <div style={{fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginTop:6,lineHeight:1.4}}>
+                {lang==='en'?'Log what it really cost you from the 🛒 Buy button.':'Apunta lo que te cueste de verdad desde el botón 🛒 Comprar.'}
               </div>
             </div>);
           })()}
