@@ -8,7 +8,7 @@
 //  inicialización del SDK en App.jsx. Este worker ya solo hace caché/PWA.
 //  No reintroducir sin decisión expresa.
 
-const CACHE_VERSION = "gbh-v2026-08-24b";  // cambio de dia en caliente: la app deja de amanecer con el estado de ayer (comidas marcadas solas y diet_followed de ayer escrito sobre la fila de hoy). Bump IMPRESCINDIBLE: los moviles afectados son justamente los que llevan dias sin recargar, y sin version nueva del SW no recargan nunca.
+const CACHE_VERSION = "gbh-v2026-08-24c";  // cola offline: los daily_logs del mismo dia se FUSIONAN en vez de sustituirse (sin conexion, un {meals_log} y un {diet_followed} del mismo dia se pisaban y se perdia uno).
 const APP_SHELL = ["/", "/index.html", "/manifest.json"];
 
 // ── Install: precachea el app shell y activa la versión nueva de inmediato ─────

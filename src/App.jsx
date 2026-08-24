@@ -1359,9 +1359,16 @@ function enqueue(op){
     // Logs/pesos: deduplicar POR DÍA (log_date en el cuerpo). Antes todos
     // compartían path y el último día pisaba a los anteriores -> se perdían
     // días registrados sin conexión (y con ello se rompían rachas).
+    // FUSIONAR campos, no sustituir (24-ago-2026): por este MISMO path viajan
+    // cuerpos distintos del mismo día — {meals_log} desde el registro de tomas
+    // y {diet_followed,steps_done,…} desde saveLog. Con `q[idx] = op`, el
+    // segundo REEMPLAZABA al primero y sin conexión se perdía uno de los dos.
+    // Mismo remedio que la rama de PATCH de perfil de aquí arriba. El último
+    // valor de cada CAMPO gana (meals_log siempre viaja completo, así que
+    // pisarlo entero es correcto); lo que no viene, sobrevive.
     const dia = op.body && op.body.log_date;
     const idx = q.findIndex(x => x.method === "POST" && x.path === op.path && x.body && x.body.log_date === dia);
-    if(idx >= 0) q[idx] = op; else q.push(op);
+    if(idx >= 0) q[idx] = { ...op, body: { ...(q[idx].body||{}), ...(op.body||{}) } }; else q.push(op);
   } else {
     // RPC (incrementos), DELETE y demás: NUNCA fusionar.
     q.push(op);
