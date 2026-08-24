@@ -14127,7 +14127,10 @@ function costeListaItems(items){
     }
     total+=g/1000*p[0];
   }
-  return {total:Math.round(total*100)/100, sinPrecio};
+  // ×1,15: margen a-priori por formatos de compra (se compra el paquete/malla
+  // entera, no los gramos) — mismo FACTOR_COMPRA que gbh_precios.py aplica al
+  // PDF. Solo listas semanales; el coste por ración (costeRecetaJS) no lo lleva.
+  return {total:Math.round(total*1.15*100)/100, sinPrecio};
 }
 const eurES=(v)=>(Math.round(v*100)/100).toFixed(2).replace(".",",");
 
@@ -16072,8 +16075,8 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
               </div>
               <div style={{fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginTop:8,lineHeight:1.5}}>
                 {lang==='en'
-                  ?'Based on average Spanish supermarket prices. Logging your real spend helps us fine-tune it each week.'
-                  :'Basado en precios medios de supermercado en España. Apuntar tu gasto real nos ayuda a afinar la estimación cada semana.'}
+                  ?'Average Spanish supermarket prices, plus a small margin for whole-package formats. Logging your real spend helps us fine-tune it each week.'
+                  :'Precios medios de supermercado en España, con un pequeño margen por los formatos de compra (paquetes enteros). Apuntar tu gasto real nos ayuda a afinar la estimación cada semana.'}
               </div>
             </div>
           )}
