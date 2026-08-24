@@ -13963,6 +13963,41 @@ function agregarListaCompra(planJ, planB){
   return items.filter(x=>!esDesp(x)).sort(alfa).concat(items.filter(esDesp).sort(alfa));
 }
 
+// ─── Precios de ingredientes (GENERADO desde GBH_Precios_Ingredientes.xlsx) ───
+// NO editar a mano: regenerar con `py gbh_precios.py --js` si cambia el Excel.
+// Formato: nombre canónico → [€/kg, g por unidad, g si «al gusto»].
+const _PRECIOS_ING={"Aceite de oliva":[6,10,10],"Aceitunas":[5,10,0],"Acelgas":[2.2,150,0],"Aguacate":[5.5,150,0],"Ajetes":[8,15,0],"Ajo":[4.5,5,0],"Alcachofas":[3.5,120,0],"Alcaparras":[12,5,0],"Almejas":[7,10,0],"Alubias":[2.5,120,0],"Alubias pintas":[2.5,120,0],"Anchoas":[25,10,0],"Apio":[2,50,0],"Arroz":[1.6,80,0],"Atún":[9.5,60,0],"Avena":[2.2,40,0],"Azúcar":[1.1,10,0],"Bacalao":[12,150,0],"Bacon":[7,15,0],"Barritas de cereales":[8,25,0],"Bebida vegetal":[1.3,1000,0],"Bechamel":[3,50,0],"Berenjena":[1.3,250,0],"Berros":[12,20,0],"Boniato":[2,250,0],"Brócoli":[2.2,400,0],"Calabacín":[1.8,300,0],"Calabaza":[1.5,400,0],"Calamar":[10,150,0],"Caldo":[1.2,250,0],"Carne picada":[7,125,0],"Cebolla":[1.3,150,0],"Cerdo":[6.5,150,0],"Chalotas":[4,30,0],"Champiñones/setas":[3.5,20,0],"Chile/jalapeño":[6,15,2],"Chocolate/cacao":[8,10,0],"Chorizo":[9,30,0],"Cinta de lomo":[6.5,150,0],"Coco":[7,10,0],"Col/repollo":[1.5,800,0],"Coliflor":[2.2,800,0],"Conejo":[7.5,1200,0],"Cordero":[15.5,150,0],"Crema de cacahuete":[6.5,15,0],"Crema ácida":[5,10,0],"Cuajada":[3.5,125,0],"Cuscús":[2.5,60,0],"Dorada":[10,180,0],"Edulcorante":[15,2,1],"Endibias":[4,80,0],"Especias":[25,3,1],"Espinacas":[4.5,150,0],"Espárragos":[5,20,0],"Focaccia":[6,120,120],"Fresas":[4,15,0],"Fruta desecada":[8,10,0],"Frutos rojos":[9,10,0],"Frutos secos":[12,15,0],"Galletas":[4.5,15,0],"Gambas":[13,15,0],"Garbanzos":[2.5,120,0],"Gelatina":[15,10,0],"Germinados":[15,10,5],"Granada":[3,250,0],"Guindilla":[6,3,1],"Guisantes":[2.5,100,0],"Habas":[3,100,0],"Harina":[0.9,15,0],"Heura":[12,90,0],"Hierbas aromáticas":[25,5,2],"Higos":[6,40,0],"Hinojo":[3,250,0],"Huevos":[4.5,60,0],"Hummus":[6.5,60,0],"Jamón":[10,15,0],"Jengibre":[6,10,2],"Judías verdes":[4.85,100,0],"Kiwi":[3.5,75,0],"Leche":[1.05,1000,0],"Lechuga/hojas verdes":[4,300,0],"Lenguado":[13,150,0],"Lentejas":[2.5,120,0],"Levadura/bicarbonato":[8,8,0],"Lima":[3,70,0],"Limón":[2,100,10],"Lubina":[11,180,0],"Mahonesa":[4,15,0],"Maicena":[2.5,10,0],"Mango":[3.5,300,0],"Mantequilla":[8.5,10,0],"Manzana":[2,180,0],"Marisco variado":[12,75,0],"Mayonesa":[4,15,0],"Maíz":[3.5,70,0],"Mejillones":[4,15,0],"Melocotón":[2.5,150,0],"Melón":[1.5,2000,0],"Menestra de verduras":[2.5,100,0],"Merluza":[9,150,0],"Mermelada":[4.5,20,0],"Mero":[16,150,0],"Miel":[7,15,0],"Morcilla":[7,60,0],"Mortadela":[5.5,20,0],"Mostaza":[4,10,0],"Naranja/mandarina":[1.8,180,0],"Nata":[3,200,0],"Natillas":[2.5,125,0],"Obleas":[8,15,0],"Palmitos":[8,30,0],"Pan/tostadas":[3.5,30,0],"Papaya":[4.5,800,0],"Pasta":[1.6,80,0],"Pasta de sésamo (tahini)":[10,15,0],"Patata":[1.2,180,0],"Pavo":[8,150,0],"Pepino":[1.1,300,0],"Pera":[2.2,160,0],"Pescado":[10,150,0],"Pesto":[8,15,0],"Pimienta":[30,2,0.5],"Pimiento":[2,150,0],"Piña":[2,1500,0],"Plátano":[2.2,120,0],"Pollo":[7,150,0],"Proteína en polvo":[20,30,0],"Puerro":[2.2,150,0],"Pulpo":[20,150,0],"Queso":[9,20,0],"Queso fresco (ricotta/cottage)":[6,250,0],"Quinoa":[5,60,0],"Rape":[15,150,0],"Sal":[0.6,2,1],"Salchichas":[5.5,50,0],"Salmón":[14,180,0],"Salsa de soja":[4,15,5],"Sandía":[1.2,2500,0],"Sardinas":[6,60,0],"Seitán":[9,125,0],"Semillas":[8,10,3],"Sirope de agave":[8,7,0],"Soja":[4,15,5],"Surimi":[6,17,0],"Ternera":[10.5,150,0],"Tofu":[7,125,0],"Tomate":[2.2,150,0],"Tortillas/wraps":[6,45,0],"Trucha":[6.5,200,0],"Vainilla":[40,4,1],"Vinagre":[1.5,10,5],"Vinagreta":[5,15,10],"Vino":[3,150,50],"Yogur":[2.2,125,0],"Yuca":[2.5,300,0],"Zanahoria":[1.1,100,0]};
+
+// Coste estimado de la lista: la MISMA base de precios que el PDF (el Excel
+// GBH_Precios_Ingredientes.xlsx es la única fuente; esto es su export --js).
+// Se calcula sobre los items YA agregados de la instantánea. Lo que no tiene
+// precio se cuenta aparte y no se inventa.
+function costeListaItems(items){
+  let total=0, sinPrecio=0;
+  for(const it of (items||[])){
+    const nombre=(it.entry?it.entry[1]:it.nombre)||"";
+    const p=_PRECIOS_ING[nombre]||_PRECIOS_ING[nombre.replace(" / ","/")];
+    if(!p){ sinPrecio++; continue; }
+    const gu=(it.entry&&it.entry[5])||p[1]||100;   // peso/ud: el del canon manda
+    let g=0;
+    if(it.entry){
+      const c=it.c||{};
+      g=(c.g||0)+(c.ml||0)+((c.ud||0)+(c.sub||0))*gu+(c.cda||0)*15+(c.cdta||0)*5;
+      if(!g) g=p[2]||0;                            // solo menciones "al gusto"
+    } else if(it.partes){
+      for(const pt of it.partes){
+        if(pt.tipo==="desp"||pt.tipo==="veces"){ g+=(p[2]||0)*(pt.veces||1); continue; }
+        if(pt.tipo==="peso"){ g+=pt.cant||0; continue; }              // ya en g/ml
+        if(pt.tipo==="med"){ g+=(pt.uni==="cda"?15:5)*(pt.cant||0); continue; }
+        g+=(pt.cant||1)*gu;                                            // ud / cont
+      }
+    }
+    total+=g/1000*p[0];
+  }
+  return {total:Math.round(total*100)/100, sinPrecio};
+}
+const eurES=(v)=>(Math.round(v*100)/100).toFixed(2).replace(".",",");
+
 // ── Cocinar para los dos: suma de DOS raciones ya escaladas ──────────────────
 // NO es un multiplicador. Las raciones de una pareja casi nunca coinciden
 // (~2.480 kcal él / ~1.850 kcal ella de media en la base), así que un "x2"
@@ -14959,6 +14994,25 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[listaSnapKey, planJ?1:0, modoDos, parejaPlanJ?1:0]);
   const listaItems = listaSnap||[];
+  // ── 💶 Gasto estimado de la compra (fijo con la instantánea) + gasto real ──
+  // El gasto real que apunta el paciente es el feedback que calibra la base de
+  // precios (tabla lista_compra_gasto; el nutricionista la cruza con el Excel).
+  const gastoEst = React.useMemo(()=>costeListaItems(listaItems),[listaItems]);
+  const gastoRealKey=`gbh:gastoreal:${profile?.id}:${plan?.semana??"x"}${sufijoModo}`;
+  const [gastoReal,setGastoReal]=React.useState("");
+  const [gastoOk,setGastoOk]=React.useState(false);
+  React.useEffect(()=>{ setGastoReal(lsGet(gastoRealKey,"")); setGastoOk(false); },[gastoRealKey]);
+  const guardarGastoReal=()=>{
+    const v=parseFloat(String(gastoReal).replace(",","."));
+    if(!(v>0)||!profile?.id) return;
+    lsSet(gastoRealKey,String(gastoReal));
+    sbReq('POST','lista_compra_gasto?on_conflict=profile_id,semana,modo',
+      {profile_id:profile.id, semana:parseInt(plan?.semana)||0, modo:modoDos?'pareja':'solo',
+       estimado_eur:gastoEst.total||null, real_eur:v, actualizado_en:new Date().toISOString()});
+    setGastoOk(true); sfx&&sfx("missionDone");
+    showT&&showT({icon:"💶",title:lang==='en'?'Saved!':'¡Guardado!',
+      sub:lang==='en'?'Thanks — it helps us fine-tune the estimate':'Gracias — nos ayuda a afinar la estimación'});
+  };
   // Formato del badge: cada fila puede combinar varias expresiones del mismo
   // ingrediente entre recetas → "120 g + 1 tarrina". Despensa → compra realista.
   const fmtParte=(p)=>{
@@ -15817,6 +15871,38 @@ function PlanTab({profile,lang,setProfile,savedRecipes,setSavedRecipes,descartad
               );
             })}
           </div>
+          {/* 💶 Gasto estimado + gasto real: el feedback del paciente calibra la estimación */}
+          {gastoEst.total>0&&(
+            <div style={{marginTop:14,background:alpha(T.g1,0.08),border:`1.5px solid ${alpha(T.g1,0.3)}`,borderRadius:16,padding:'12px 14px'}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
+                <div style={{fontSize:13,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif"}}>
+                  💶 {lang==='en'?'Estimated cost of this list':'Gasto estimado de esta compra'}
+                </div>
+                <div style={{fontSize:17,fontWeight:900,color:T.g2,fontFamily:"'Nunito',sans-serif",flexShrink:0}}>{eurES(gastoEst.total)} €</div>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:8,marginTop:10}}>
+                <div style={{flex:1,fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>
+                  ✏️ {lang==='en'?'What did you actually spend?':'¿Cuánto has gastado de verdad?'}
+                </div>
+                <input value={gastoReal} onChange={e=>{setGastoReal(e.target.value);setGastoOk(false);}}
+                  inputMode="decimal" placeholder="0,00"
+                  style={{width:70,padding:'8px 10px',borderRadius:10,border:'1.5px solid rgba(255,255,255,0.2)',
+                    background:'rgba(255,255,255,0.06)',color:T.t1,fontSize:14,fontWeight:900,textAlign:'right',
+                    fontFamily:"'Nunito',sans-serif",outline:'none'}}/>
+                <span style={{fontSize:13,color:T.t2}}>€</span>
+                <button onClick={guardarGastoReal} disabled={gastoOk} style={{padding:'8px 12px',borderRadius:10,cursor:'pointer',
+                  background:gastoOk?alpha(T.g1,0.15):T.g1,border:'none',color:gastoOk?T.g2:'#0d2b12',
+                  fontWeight:900,fontSize:12.5,fontFamily:"'Nunito',sans-serif"}}>
+                  {gastoOk?'✓':(lang==='en'?'Save':'Guardar')}
+                </button>
+              </div>
+              <div style={{fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginTop:8,lineHeight:1.5}}>
+                {lang==='en'
+                  ?'Based on average Spanish supermarket prices. Logging your real spend helps us fine-tune it each week.'
+                  :'Basado en precios medios de supermercado en España. Apuntar tu gasto real nos ayuda a afinar la estimación cada semana.'}
+              </div>
+            </div>
+          )}
           {/* Regenerar: desmarca todo para repetir la semana (doble toque de confirmación) */}
           <button onClick={regenerarLista} style={{
             width:'100%',marginTop:16,padding:'14px 20px',borderRadius:16,cursor:'pointer',

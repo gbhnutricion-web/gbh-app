@@ -8,7 +8,7 @@
 //  inicialización del SDK en App.jsx. Este worker ya solo hace caché/PWA.
 //  No reintroducir sin decisión expresa.
 
-const CACHE_VERSION = "gbh-v2026-08-23a";  // clave anon legacy -> sb_publishable_ (App.jsx:869). Sin este bump, quien ya tenga la app cacheada sigue con la clave LEGACY: funcionaria hoy y reventaria al desactivar las JWT legacy (fase 3), mientras una instalacion nueva va bien — el fallo mas confuso posible.
+const CACHE_VERSION = "gbh-v2026-08-24a";  // lista de la compra con gasto estimado + gasto real (feedback a lista_compra_gasto)
 const APP_SHELL = ["/", "/index.html", "/manifest.json"];
 
 // ── Install: precachea el app shell y activa la versión nueva de inmediato ─────
