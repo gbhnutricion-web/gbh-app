@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { tramosBo32 } from "./bo32_render";
 import { SPR, U, sprite, spriteCaja, bloque, suelo as dibujarSuelo, matas } from "./juego32";
 
@@ -7511,7 +7512,11 @@ function MiniListaCompra({nombre, ingredientes, idReceta, t, onClose, etiquetaRa
   const marc=items.filter((_,i)=>checks[i]).length;
   const toggle=(i)=>setChecks(c=>{const n={...c};if(n[i])delete n[i];else n[i]=true;lsSet(key,n);return n;});
   const regen=()=>{ if(!conf){setConf(true);return;} setChecks({});lsSet(key,{});setConf(false); };
-  return(
+  // Portal a document.body: el popup se abre desde tarjetas con animación
+  // (.stagger-in retiene transform:scale(1) por el fill-mode 'both'), y un
+  // transform convierte al ancestro en contenedor de los position:fixed — el
+  // overlay se anclaba a la tarjeta y caía al fondo en recetarios largos.
+  return createPortal(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.72)",zIndex:2000,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
       <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:520,maxHeight:"80vh",overflowY:"auto",
         background:"linear-gradient(180deg,#1d3a14,#142a0e)",border:"2px solid rgba(255,255,255,0.14)",borderBottom:"none",
@@ -7591,7 +7596,8 @@ function MiniListaCompra({nombre, ingredientes, idReceta, t, onClose, etiquetaRa
           {conf?t("listConfirm"):t("listReset")}
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
