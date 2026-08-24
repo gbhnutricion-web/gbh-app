@@ -7572,6 +7572,10 @@ function SavedRecipeCard({rec, t, T, removeFromBook, lang, gems, isSaved, isDisc
   const tc  = tipoColor[rec.tipo] || T.g1;
   const ti  = emojiPlato(rec.nombre, rec.tipo);
   const ing = rec.ingredientes?.split(/[,;](?![^(]*\))/).map(s=>s.trim()).filter(Boolean) || [];
+  // 💶 Coste informativo por ración (misma base de precios que lista y PDF)
+  const costeRec = costeRecetaJS(rec.ingredientes||"");
+  const racRec = Math.max(1, parseInt(rec.raciones)||1);
+  const eurRacion = costeRec.total>0 ? costeRec.total/racRec : 0;
 
   return(
     <Card style={{padding:"16px 16px"}}>
@@ -7584,6 +7588,7 @@ function SavedRecipeCard({rec, t, T, removeFromBook, lang, gems, isSaved, isDisc
           <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
             <div style={{background:`${tc}22`,border:`1px solid ${tc}55`,borderRadius:20,padding:"2px 10px",fontSize:10,fontWeight:900,color:tc,textTransform:"uppercase",letterSpacing:"0.08em"}}>{rec.tipo}</div>
             <div style={{fontSize:11,color:T.au1,fontWeight:700}}>{rec.calorias} kcal</div>
+            {eurRacion>0&&<div style={{fontSize:11,color:T.g1,fontWeight:900}}>💶 ~{eurES(eurRacion)} €{racRec>1?(lang==='en'?'/serv':'/ración'):''}</div>}
             <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>P:{rec.proteinas_g}g · H:{rec.hidratos_g}g · G:{rec.grasas_g}g</div>
           </div>
         </div>
@@ -14058,6 +14063,28 @@ function costeListaItems(items){
 }
 const eurES=(v)=>(Math.round(v*100)/100).toFixed(2).replace(".",",");
 
+// Coste estimado de UNA receta (el texto de ingredientes tal y como lo ve el
+// paciente: su ración ya escalada). Mismo diccionario que la lista y el PDF.
+function costeRecetaJS(texto){
+  let total=0, sin=0;
+  for(const seg of segmentarIngredientesJS(texto||"")){
+    const P=parsearIngredienteJS(seg);
+    if(P.esAgua) continue;
+    const can=_canonMatch(seg);
+    const nombre=can?can[1]:P.nombre;
+    const p=_PRECIOS_ING[nombre]||_PRECIOS_ING[(nombre||"").replace(" / ","/")];
+    if(!p){ sin++; continue; }
+    const gu=(can&&can[5])||p[1]||100;
+    let g=0;
+    if(P.tipo==="peso") g=P.cant||0;                          // ya en g/ml
+    else if(P.tipo==="med") g=(P.uni==="cda"?15:5)*(P.cant||0);
+    else if(P.cant!=null) g=P.cant*gu;                        // ud/cont/sub
+    else g=p[2]||0;                                            // «al gusto»
+    total+=g/1000*p[0];
+  }
+  return {total:Math.round(total*100)/100, sin};
+}
+
 // ── Cocinar para los dos: suma de DOS raciones ya escaladas ──────────────────
 // NO es un multiplicador. Las raciones de una pareja casi nunca coinciden
 // (~2.480 kcal él / ~1.850 kcal ella de media en la base), así que un "x2"
@@ -15088,6 +15115,24 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
     setGastoOk(true); sfx&&sfx("missionDone");
     showT&&showT({icon:"💶",title:lang==='en'?'Saved!':'¡Guardado!',
       sub:lang==='en'?'Thanks — it helps us fine-tune the estimate':'Gracias — nos ayuda a afinar la estimación'});
+  };
+  // ── 💶 Gasto real por RECETA (detalle del plato) ────────────────────────────
+  // Estado a nivel de componente: la vista daily es una rama condicional y no
+  // admite hooks dentro (aviso más abajo, §5.2). El feedback va a receta_gasto
+  // y contrasta el estimado por receta para recalibrar su precio por ración.
+  const [gastoRec,setGastoRec]=React.useState("");
+  const [gastoRecOk,setGastoRecOk]=React.useState(false);
+  React.useEffect(()=>{ setGastoRec(""); setGastoRecOk(false); },[tomaReceta?.nombre]);
+  const guardarGastoReceta=()=>{
+    const v=parseFloat(String(gastoRec).replace(",","."));
+    if(!(v>0)||!profile?.id||!tomaReceta?.nombre) return;
+    const est=costeRecetaJS(tomaReceta?.ingredientes||'').total;
+    sbReq('POST','receta_gasto?on_conflict=profile_id,receta',
+      {profile_id:profile.id, receta:normNombre(tomaReceta.nombre), estimado_eur:est||null,
+       real_eur:v, actualizado_en:new Date().toISOString()});
+    setGastoRecOk(true); sfx&&sfx("missionDone");
+    showT&&showT({icon:"💶",title:lang==='en'?'Saved!':'¡Guardado!',
+      sub:lang==='en'?'Helps us fine-tune this recipe\'s price':'Nos ayuda a afinar el precio de esta receta'});
   };
   // Formato del badge: cada fila puede combinar varias expresiones del mismo
   // ingrediente entre recetas → "120 g + 1 tarrina". Despensa → compra realista.
@@ -16336,6 +16381,37 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
               {ingList.map((ing,i)=>(<div key={i} className="stagger-in" style={{animationDelay:escalon(i),display:'flex',alignItems:'flex-start',gap:10}}><div style={{width:6,height:6,borderRadius:'50%',background:PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1,flexShrink:0,marginTop:6}}/><div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>{ing}</div></div>))}
             </div>
           </div>)}
+          {/* 💶 Coste estimado de TU ración + gasto real (feedback → receta_gasto).
+              IIFE sin hooks: estamos dentro de la rama condicional 'daily'. */}
+          {(()=>{
+            const _ce=costeRecetaJS(tomaReceta?.ingredientes||'');
+            if(!(_ce.total>0)) return null;
+            return(
+            <div style={{background:T.bgCard,borderRadius:20,padding:'14px 18px',border:'1px solid rgba(255,255,255,0.07)',marginBottom:12}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
+                <div style={{fontSize:12.5,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif"}}>
+                  💶 {lang==='en'?'Estimated cost of your serving':'Coste estimado de tu ración'}
+                </div>
+                <div style={{fontSize:16,fontWeight:900,color:T.g1,fontFamily:"'Nunito',sans-serif",flexShrink:0}}>~{eurES(_ce.total)} €</div>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:8,marginTop:10}}>
+                <div style={{flex:1,fontSize:11.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>
+                  ✏️ {lang==='en'?'Did it cost you something else?':'¿Te ha costado otra cosa?'}
+                </div>
+                <input value={gastoRec} onChange={e=>{setGastoRec(e.target.value);setGastoRecOk(false);}}
+                  inputMode="decimal" placeholder="0,00"
+                  style={{width:64,padding:'7px 9px',borderRadius:10,border:'1.5px solid rgba(255,255,255,0.2)',
+                    background:'rgba(255,255,255,0.06)',color:T.t1,fontSize:13.5,fontWeight:900,textAlign:'right',
+                    fontFamily:"'Nunito',sans-serif",outline:'none'}}/>
+                <span style={{fontSize:12.5,color:T.t2}}>€</span>
+                <button onClick={guardarGastoReceta} disabled={gastoRecOk} style={{padding:'7px 11px',borderRadius:10,cursor:'pointer',
+                  background:gastoRecOk?alpha(T.g1,0.15):T.g1,border:'none',color:gastoRecOk?T.g1:'#0d2b12',
+                  fontWeight:900,fontSize:12,fontFamily:"'Nunito',sans-serif"}}>
+                  {gastoRecOk?'✓':(lang==='en'?'Save':'Guardar')}
+                </button>
+              </div>
+            </div>);
+          })()}
           <div style={{background:T.bgCard,borderRadius:20,padding:'18px 18px',border:'1px solid rgba(255,255,255,0.07)'}}>
             <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:12}}>{lang==='en'?'Preparation':'Preparación'}</div>
             <div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.7,whiteSpace:'pre-wrap'}}>{tomaReceta.instrucciones}</div>
