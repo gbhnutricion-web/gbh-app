@@ -7749,6 +7749,11 @@ function GBHApp(){
   // diario. NO INVENTAR OTRA FUENTE DE "HOY" EN ESTADO: o se deriva en cada
   // render, o cuelga de esta clave.
   const [hoyKey,  setHoyKey]  = useState(()=>toKey());
+  // Espejo de `hoyKey` legible desde callbacks memoizados (saveLog) sin tener
+  // que recrearlos, y hueco donde el vigia deja su propia funcion de relevo
+  // para que saveLog pueda forzarla. Mismo patron que espejoLogsRef mas abajo.
+  const hoyKeyRef    = useRef(hoyKey); hoyKeyRef.current = hoyKey;
+  const cambioDiaRef = useRef(null);
   const [weights, setWeights] = useState([]);
   const [badges,  setBadges]  = useState([]);
   const [logs,    setLogs]    = useState([]);
@@ -9684,6 +9689,25 @@ function GBHApp(){
   const saveLog=useCallback(async(nl,sc)=>{
     if(!profile)return;
     const today=toKey();
+    // ── Guardia de cambio de día (25-ago-2026) ─────────────────────────
+    // `today` se calcula FRESCO, pero `nl` viene del estado en memoria. Si el
+    // vigía de la fecha (más abajo) no ha corrido todavía, esas dos cosas son
+    // de días DISTINTOS y este upsert estampa las cuatro banderas de AYER
+    // sobre la fila de HOY: el paciente amanece con el objetivo cumplido.
+    // El arreglo del 24-ago hizo el relevo *eventual* (interval de 30 s +
+    // visibilitychange + focus), no inmediato: en un PWA de iPhone reanudado
+    // desde suspensión los timers están congelados y `visibilitychange` no es
+    // fiable, así que el primer toque de la mañana gana la carrera. El camino
+    // real es `updSteps`, que en su rama sin cambio de meta llama a
+    // saveLog(tLog, sc) con el tLog de ayer entero.
+    // Reproducido con reloj falso antes de tocar nada (MAESTRO-2026-197).
+    // Si el estado en memoria es de otro día NO se escribe: se fuerza el
+    // relevo y el toque se pierde — el paciente lo repite sobre el día ya a 0.
+    // Perder un toque es reversible; una racha falsa, no.
+    if(hoyKeyRef.current && hoyKeyRef.current!==today){
+      try{ cambioDiaRef.current && cambioDiaRef.current(); }catch{}
+      return;
+    }
     // Persistir tLog del día en su propia clave — nunca se pierde
     lsSet(`gbh:tlog:${profile.id}:${today}`, nl);
     // La foto más fresca del día está en localStorage: marcarTomaHome y
@@ -9887,13 +9911,21 @@ function GBHApp(){
       setRuletaAutoShown(lsGet(`gbh:ruletaSeen:${id}:${k}`,false));
       setRecipeRefreshes(lsGet(`gbh:recipe:refreshes:${k}`,0));
     };
+    cambioDiaRef.current=chk;   // saveLog puede forzar el relevo antes de escribir
+    chk();                      // y se comprueba también al montar/resembrar
     const iv=setInterval(chk,30000);
     const onVis=()=>{ if(!document.hidden) chk(); };
     document.addEventListener("visibilitychange",onVis);
     window.addEventListener("focus",onVis);
+    // `pageshow` es el evento que iOS SÍ dispara al restaurar la página desde
+    // bfcache (ahí `load` no se dispara, y en un PWA de pantalla de inicio
+    // `visibilitychange` tampoco es fiable). Sin él el relevo dependía del
+    // interval de 30 s, que iOS congela mientras la app duerme.
+    window.addEventListener("pageshow",onVis);
     return ()=>{ clearInterval(iv);
       document.removeEventListener("visibilitychange",onVis);
-      window.removeEventListener("focus",onVis); };
+      window.removeEventListener("focus",onVis);
+      window.removeEventListener("pageshow",onVis); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[hoyKey, profile?.id]);
 
