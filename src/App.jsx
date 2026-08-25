@@ -9686,9 +9686,36 @@ function GBHApp(){
     else { setAuthErr(t("forgotPasswordErr")); }
   };
 
-  const saveLog=useCallback(async(nl,sc)=>{
+  // ── Relevo de día BAJO DEMANDA (25-ago-2026, tarde) ───────────────────────
+  // Devuelve el estado diario FRESCO de HOY cuando el estado en memoria es de
+  // otro día. Tres valores, y los tres significan algo distinto:
+  //   false  → no hay cambio de día; el llamante sigue con su estado de siempre.
+  //   objeto → hubo cambio de día: {hoy, tl, sc} reconstruido DESDE CERO leyendo
+  //            `gbh:tlog:<id>:<hoy>` y `gbh:logs:<id>`, claves que por
+  //            construcción sólo pueden contener datos de HOY. Ni una bandera
+  //            del estado en memoria (que es de ayer) entra aquí.
+  //   null   → la fecha ha vuelto a cambiar DURANTE el relevo (medianoche a
+  //            mitad del gesto): se aborta, como hacía la guardia sola.
+  // No reintenta ni se llama a sí misma: un solo pase.
+  const relevoDia=useCallback(()=>{
+    const hoy=toKey();
+    if(!hoyKeyRef.current || hoyKeyRef.current===hoy) return false;
+    try{ cambioDiaRef.current && cambioDiaRef.current(); }catch{}
+    if(toKey()!==hoy) return null;
+    const id=profile?.id;
+    const g=id?lsGet(`gbh:tlog:${id}:${hoy}`,null):null;
+    const tl=(g&&typeof g==='object')
+      ? {diet:!!g.diet,steps:!!g.steps,hydration:!!g.hydration,sleep:!!g.sleep}
+      : {diet:false,steps:false,hydration:false,sleep:false};
+    const arr=id?lsGet(`gbh:logs:${id}`,[]):[];
+    const sc=(Array.isArray(arr)?arr:[]).find(x=>x&&x.date===hoy)?.sc||0;
+    return {hoy,tl,sc};
+  },[profile?.id]);
+
+  const saveLog=useCallback(async(nl,sc,delta)=>{
     if(!profile)return;
     const today=toKey();
+    let payload=nl, punt=sc;
     // ── Guardia de cambio de día (25-ago-2026) ─────────────────────────
     // `today` se calcula FRESCO, pero `nl` viene del estado en memoria. Si el
     // vigía de la fecha (más abajo) no ha corrido todavía, esas dos cosas son
@@ -9701,15 +9728,35 @@ function GBHApp(){
     // real es `updSteps`, que en su rama sin cambio de meta llama a
     // saveLog(tLog, sc) con el tLog de ayer entero.
     // Reproducido con reloj falso antes de tocar nada (MAESTRO-2026-197).
-    // Si el estado en memoria es de otro día NO se escribe: se fuerza el
-    // relevo y el toque se pierde — el paciente lo repite sobre el día ya a 0.
-    // Perder un toque es reversible; una racha falsa, no.
+    //
+    // ── 25-ago-2026, tarde: la guardia ya no TIRA el toque ────────────────
+    // Descartarlo tenía un coste que no hace falta pagar: el paciente que deja
+    // la app abierta toda la noche tocaba por la mañana y no pasaba nada, y
+    // para quien ya se ha quejado dos veces «toco y no responde» se lee como
+    // que la app sigue rota. Ahora: relevo → estado limpio de HOY → se aplica
+    // encima SÓLO la diferencia que traía ese toque (`delta`) → se escribe.
+    // La prioridad NO cambia: lo único que puede viajar al día nuevo son las
+    // claves que el llamante declara en `delta`; el resto se reconstruye desde
+    // el almacén del día nuevo, jamás desde `nl` (que es el tLog de ayer).
+    // Sin `delta` no se sabe cuál fue la diferencia ⇒ se aborta como antes.
+    // Un solo pase: relevoDia() no reintenta y saveLog no se rellama.
     if(hoyKeyRef.current && hoyKeyRef.current!==today){
-      try{ cambioDiaRef.current && cambioDiaRef.current(); }catch{}
-      return;
+      const fresco=relevoDia();
+      if(!fresco) return;                              // relevo incoherente → abortar
+      if(!delta || typeof delta!=='object') return;    // sin diferencia declarada → abortar
+      const parche={}; let tocado=false;
+      for(const k of ['diet','steps','hydration','sleep']){
+        if(Object.prototype.hasOwnProperty.call(delta,k)){ parche[k]=!!delta[k]; tocado=true; }
+      }
+      punt = Object.prototype.hasOwnProperty.call(delta,'sc')
+        ? Math.max(0,Math.min(99999,Number(delta.sc)||0))
+        : fresco.sc;                                   // NUNCA el `sc` de ayer
+      if(!tocado && punt===fresco.sc) return;          // nada nuevo que aplicar
+      payload={...fresco.tl,...parche};
+      setTLog(payload); setSteps(punt);                // que la pantalla enseñe el día nuevo YA con el toque
     }
     // Persistir tLog del día en su propia clave — nunca se pierde
-    lsSet(`gbh:tlog:${profile.id}:${today}`, nl);
+    lsSet(`gbh:tlog:${profile.id}:${today}`, payload);
     // La foto más fresca del día está en localStorage: marcarTomaHome y
     // persistDia (plan diario) escriben ahí de forma SÍNCRONA justo antes de
     // llegar aquí, mientras que `logs` sigue siendo el array del render
@@ -9721,10 +9768,10 @@ function GBHApp(){
     const idx=l.findIndex(x=>x.date===today);
     // Preservar campos que no gestiona saveLog (meals del registro por tomas, note…)
     const prev = idx>=0 ? l[idx] : {};
-    const e={...prev,profile_id:profile.id,date:today,...nl,sc};
+    const e={...prev,profile_id:profile.id,date:today,...payload,sc:punt};
     if(idx>=0)l[idx]=e;else l.push(e);
     setLogs(l);lsSet(`gbh:logs:${profile.id}`,l);
-    await sbReq("POST","daily_logs?on_conflict=profile_id,log_date",{profile_id:profile.id,log_date:today,diet_followed:nl.diet,steps_done:nl.steps,hydration_done:nl.hydration,sleep_done:nl.sleep,sc:sc||0});
+    await sbReq("POST","daily_logs?on_conflict=profile_id,log_date",{profile_id:profile.id,log_date:today,diet_followed:payload.diet,steps_done:payload.steps,hydration_done:payload.hydration,sleep_done:payload.sleep,sc:punt||0});
     // ── Racha: la fuente de verdad es Supabase (trigger sobre daily_logs, que
     //    respeta las restauraciones manuales del nutricionista). El cliente NO
     //    la escribe: muestra un valor optimista al instante y, si hay red, lo
@@ -9740,7 +9787,7 @@ function GBHApp(){
       }).catch(()=>{});
     }
     setPendingSync(lsGet(getQueueKey(),[]).length);
-  },[profile,logs]);
+  },[profile,logs,relevoDia]);
 
   const addXG=useCallback(async(ax,ag)=>{
     if(!profile)return;
@@ -9847,11 +9894,21 @@ function GBHApp(){
 
 
   const toggleM=useCallback(async(key)=>{
-    const was=tLog[key];
+    // ⚠️ El relevo va ANTES del `was`, y no es un detalle. Con el estado de
+    // ayer en memoria y el día ya cerrado 4/4, `was` valía true y la función
+    // salía por la primera línea: el toque de la mañana no llegaba siquiera a
+    // la guardia de saveLog, así que ni se escribía NI se forzaba el relevo.
+    // Sonaba un "tap" y no pasaba nada. Resolviendo la fecha aquí, la base es
+    // la de HOY (a cero) y el toque cuenta a la primera.
+    const fresco=relevoDia();
+    if(fresco===null) return;                       // medianoche a mitad del gesto → abortar
+    const base   = fresco ? fresco.tl : tLog;
+    const scBase = fresco ? fresco.sc : steps;      // jamás el contador de ayer
+    const was=base[key];
     // Ya marcada HOY: la celebración es una transición de una vez al día, pero
     // el toque no puede quedar mudo (parecía que "las animaciones no cargan").
     if(was){ sfx("tap"); haptic("toma"); return; }
-    const nl={...tLog,[key]:true};setTLog(nl);
+    const nl={...base,[key]:true};setTLog(nl);
     if(key==="diet") sfx("complete"); else sfx("missionDone");
     // Háptica proporcional al hito (Tarea A): la dieta dispara la celebración
     // de racha → patrón largo; el resto de misiones, doble pulso. Estamos
@@ -9868,7 +9925,7 @@ function GBHApp(){
     // enciende dentro del gesto y la persistencia ocurre después, sin poder
     // cancelarlo.
     if(key==="diet"){sfx("streakCelebration");setStreakAnimN(streak+1);setStreakAnim(true);setTimeout(()=>setStreakAnim(false),5000);}
-    const wasAllDone=tLog.diet&&tLog.steps&&tLog.hydration&&tLog.sleep;
+    const wasAllDone=base.diet&&base.steps&&base.hydration&&base.sleep;
     const todoHecho=nl.diet&&nl.steps&&nl.hydration&&nl.sleep&&!wasAllDone;
     if(todoHecho){
       sfx("confetti");
@@ -9878,12 +9935,15 @@ function GBHApp(){
     // de red no pueda volver a tumbar la parte visible. El día ya está en
     // localStorage y las escrituras fallidas quedan en la cola offline.
     try{
-      await saveLog(nl,steps);
+      // El tercer argumento es LA DIFERENCIA que trae este toque, y sólo ella:
+      // una bandera puesta a true. Si al llegar a saveLog hay cambio de día,
+      // es lo ÚNICO que se reaplica sobre el día nuevo.
+      await saveLog(nl,scBase,{[key]:true});
       await addXG(key==="diet"?15:5,key==="diet"?5:2);
       if(todoHecho) await addXG(20,10);
       await chkBadges(streak,weights,badges);
     }catch{}
-  },[tLog,steps,streak,weights,badges,saveLog,addXG,chkBadges]);
+  },[tLog,steps,streak,weights,badges,saveLog,addXG,chkBadges,relevoDia]);
 
   // ── Cambio de día en caliente (24-ago-2026) ───────────────────────
   // Vigía de la fecha: cada 30 s y al volver la app a primer plano. Al cruzar
@@ -10042,6 +10102,15 @@ function GBHApp(){
   // registradas — sea cual sea el estado (seguida, menos, cambiada, fuera, saltada).
   // Registrar con honestidad cuenta: lo que rompe la racha es NO registrar.
   const chkTomasCompletas = useCallback((meals)=>{
+    // Con el estado en memoria de otro día, `tomasHoy` es la pauta de AYER
+    // (depende de hoyKey) y compararla contra las tomas de HOY podría cerrar
+    // la dieta antes de tiempo. Aquí NO se pierde nada: la comida ya quedó
+    // guardada por marcarTomaHome/persistDia bajo la fecha de hoy. Se fuerza
+    // el relevo y la pauta buena decide en el siguiente registro.
+    if(hoyKeyRef.current && hoyKeyRef.current!==toKey()){
+      try{ cambioDiaRef.current && cambioDiaRef.current(); }catch{}
+      return;
+    }
     if(!tomasHoy || tLog.diet) return;
     if(tomasHoy.every(tm=>meals && meals[tm])) toggleM("diet");
   },[tomasHoy, tLog.diet, toggleM]);
@@ -10234,11 +10303,19 @@ function GBHApp(){
   },[chkTomasCompletas, profile?.id]);
 
   const updSteps=useCallback(async(val)=>{
-    const sc=Math.max(0,Math.min(99999,val));setSteps(sc);
+    const sc=Math.max(0,Math.min(99999,val));
+    // Éste es el camino por el que se coló la racha fantasma de Juan Gil: su
+    // rama de abajo llamaba a saveLog con el tLog de AYER ENTERO. Ahora la base
+    // se resuelve antes (día nuevo a cero si toca) y lo que viaja como
+    // diferencia es sólo el contador —y la bandera de pasos si cambia—.
+    const fresco=relevoDia();
+    if(fresco===null) return;                      // medianoche a mitad del gesto → abortar
+    const base = fresco ? fresco.tl : tLog;
+    setSteps(sc);
     const done=sc>=10000;
-    if(done!==tLog.steps){const nl={...tLog,steps:done};setTLog(nl);await saveLog(nl,sc);if(done){sfx("missionDone");haptic("doble");await addXG(5,2);showT({icon:"👟",title:"¡10.000 pasos!",sub:"Meta de pasos alcanzada ✅"});}}
-    else{ sfx("step"); await saveLog(tLog,sc); }
-  },[tLog,saveLog,addXG]);
+    if(done!==base.steps){const nl={...base,steps:done};setTLog(nl);await saveLog(nl,sc,{steps:done,sc});if(done){sfx("missionDone");haptic("doble");await addXG(5,2);showT({icon:"👟",title:"¡10.000 pasos!",sub:"Meta de pasos alcanzada ✅"});}}
+    else{ sfx("step"); await saveLog(base,sc,{sc}); }
+  },[tLog,saveLog,addXG,relevoDia]);
 
   const saveW=async(isEdit=false)=>{
     const val=parseFloat(wInput);if(!isWeekend()||isNaN(val)||val<20||val>300)return;
