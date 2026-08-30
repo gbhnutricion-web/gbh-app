@@ -1,0 +1,25 @@
+# Dependencias y compilado web
+node_modules/
+dist/
+
+# Proyectos nativos: NO se versionan a propósito.
+# Se regeneran en cada build (`cap add`) y se parchean con
+# scripts/prep-native.mjs, que es el único sitio donde vive esa configuración.
+android/
+ios/
+build/
+
+# Firmas y secretos: no entran nunca en el repositorio.
+# Viven en Codemagic (almacén de claves + clave de API de App Store Connect).
+*.keystore
+*.jks
+*.p12
+*.mobileprovision
+*.cer
+AuthKey_*.p8
+google-services.json
+GoogleService-Info.plist
+
+# Copias de trabajo (App.jsx pesa 1,1 MB: una copia por commit hincha el repo)
+*.bak
+*.bak_*

@@ -1,0 +1,119 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# GBH Nutrición · fábrica de las apps de tienda
+#
+# POR QUÉ CODEMAGIC Y NO EL PC: compilar para iOS exige macOS y Xcode. El PC de
+# trabajo es Windows y no tiene ni Node ni Java. Estas dos recetas construyen
+# las dos apps en la nube, así que el proceso funciona igual desde Pamplona que
+# desde fuera de España, y no depende de que haya un ordenador concreto encendido.
+#
+# NADA SE DISPARA SOLO: no hay `triggering:` a propósito. Las dos recetas se
+# lanzan a mano desde codemagic.io. Un push a `main` NO publica nada.
+#
+# Los proyectos `android/` e `ios/` NO están en el repositorio: se generan en
+# cada build con `cap add` y se parchean con `scripts/prep-native.mjs`.
+# ─────────────────────────────────────────────────────────────────────────────
+
+definitions:
+  cache: &cache
+    cache_paths:
+      - $HOME/.npm
+
+workflows:
+
+  # ══ ANDROID ════════════════════════════════════════════════════════════════
+  android:
+    name: "GBH · Android (AAB para Google Play)"
+    max_build_duration: 60
+    instance_type: linux_x2
+    environment:
+      groups:
+        - gbh_play            # GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+      android_signing:
+        - gbh_keystore        # el almacén de firma, subido en Codemagic
+      node: 22
+      java: 21
+    cache: *cache
+    scripts:
+      - name: Dependencias
+        script: npm ci
+      - name: Compilar la web (Vite)
+        script: npm run build
+      - name: Generar el proyecto Android
+        script: |
+          if [ ! -d android ]; then npx cap add android; fi
+      - name: Parches nativos (API 36 + versionCode)
+        script: BUILD_NUMBER=$PROJECT_BUILD_NUMBER npm run native:prep
+      - name: Iconos y pantalla de carga
+        script: npx capacitor-assets generate --android --iconBackgroundColor '#081208' --splashBackgroundColor '#081208'
+      - name: Sincronizar web -> nativo
+        script: npx cap sync android
+      - name: Comprobar que el targetSdk es 36 (lo exige Play desde el 31-ago-2026)
+        script: |
+          grep -q 'targetSdkVersion = 36' android/variables.gradle \
+            || { echo "targetSdkVersion NO es 36 — Play rechazaría el AAB"; exit 1; }
+      - name: Construir el AAB firmado
+        script: cd android && ./gradlew bundleRelease
+    artifacts:
+      - android/app/build/outputs/bundle/**/*.aab
+      - android/app/build/outputs/**/mapping.txt
+    publishing:
+      email:
+        recipients: [gbh.nutricion@gmail.com]
+        notify: { success: true, failure: true }
+      google_play:
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        track: internal          # NUNCA production desde aquí: se promociona a mano
+        submit_as_draft: true
+
+  # ══ iOS ════════════════════════════════════════════════════════════════════
+  ios:
+    name: "GBH · iOS (IPA para TestFlight)"
+    max_build_duration: 90
+    instance_type: mac_mini_m2
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: es.gbhnutricion.app
+      node: 22
+      xcode: latest
+      cocoapods: default
+    cache: *cache
+    scripts:
+      - name: Dependencias
+        script: npm ci
+      - name: Compilar la web (Vite)
+        script: npm run build
+      - name: Generar el proyecto iOS
+        script: |
+          if [ ! -d ios ]; then npx cap add ios; fi
+      - name: Parches nativos (Info.plist + build number)
+        script: BUILD_NUMBER=$PROJECT_BUILD_NUMBER npm run native:prep
+      - name: Iconos y pantalla de carga
+        script: npx capacitor-assets generate --ios --iconBackgroundColor '#081208' --splashBackgroundColor '#081208'
+      - name: Sincronizar web -> nativo (incluye pod install)
+        script: npx cap sync ios
+      - name: Comprobar los permisos de cámara y fotos en el Info.plist
+        script: |
+          for k in NSCameraUsageDescription NSPhotoLibraryUsageDescription ITSAppUsesNonExemptEncryption; do
+            grep -q "$k" ios/App/App/Info.plist || { echo "Falta $k en Info.plist"; exit 1; }
+          done
+      - name: Preparar firma
+        script: |
+          keychain initialize
+          xcode-project use-profiles
+      - name: Construir el IPA
+        script: |
+          xcode-project build-ipa \
+            --workspace "ios/App/App.xcworkspace" \
+            --scheme "App"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      email:
+        recipients: [gbh.nutricion@gmail.com]
+        notify: { success: true, failure: true }
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        submit_to_app_store: false   # la subida a revisión se hace a mano

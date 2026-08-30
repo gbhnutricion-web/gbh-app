@@ -6,14 +6,24 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "native:add": "cap add android && cap add ios",
+    "native:prep": "node scripts/prep-native.mjs",
+    "native:sync": "cap sync",
+    "native:assets": "capacitor-assets generate --iconBackgroundColor '#081208' --splashBackgroundColor '#081208'"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/ios": "^8.5.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "recharts": "^2.10.0"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.5.0",
     "@vitejs/plugin-react": "^4.2.0",
     "vite": "^5.0.0"
   }
