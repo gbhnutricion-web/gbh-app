@@ -6840,7 +6840,7 @@ async function generarTarjetaProgreso({nombre, chartData, goalWeight, lang}){
 
   // ── Pie de marca ──
   x.textAlign="center"; x.fillStyle="rgba(201,168,76,0.85)"; x.font=F(800,28);
-  x.fillText("gbh-app.vercel.app", W/2, H-56);
+  x.fillText("app.gbhnutricion.es", W/2, H-56);
 
   const dataUrl=cv.toDataURL("image/png");
   const blob=await new Promise(res=>cv.toBlob(res,"image/png"));
@@ -6906,7 +6906,7 @@ async function generarTarjetaHito({icono, cifra, etiqueta, sub, nombre, dorada, 
   x.fillStyle="rgba(201,168,76,0.9)"; x.font=F(800,36);
   x.fillText(lang==='en'?"Track yours at":"Consigue el tuyo en", W/2, H-210);
   x.fillStyle="#fafdf6"; x.font=F(900,44);
-  x.fillText("gbh-app.vercel.app", W/2, H-146);
+  x.fillText("app.gbhnutricion.es", W/2, H-146);
 
   const dataUrl=cv.toDataURL("image/png");
   const blob=await new Promise(res=>cv.toBlob(res,"image/png"));
@@ -10899,7 +10899,7 @@ function GBHApp(){
         u.searchParams.set("iab", "1");
         return u.toString();
       } catch {
-        return "https://gbh-app.vercel.app/?install=1&iab=1";
+        return "https://app.gbhnutricion.es/?install=1&iab=1";
       }
     })();
     const urlCorta = urlSalida.replace(/^https?:\/\//, "").split("?")[0];
@@ -13589,8 +13589,8 @@ function TarjetaInvitarAmigo({profile,lang,sfx}){
   const [msgEd,setMsgEd]=React.useState(null);
   if(!profile?.referral_code) return null;
   const msgBase = lang==='en'
-    ? `I'm following my nutrition plan with GBH Nutrición 🌱 Sign up with my code ${profile.referral_code} and your first month of Premium is half price (€17.50): https://gbh-app.vercel.app`
-    : `Estoy siguiendo mi plan de nutrición con GBH Nutrición 🌱 Regístrate con mi código ${profile.referral_code} y tu primer mes de Premium te sale a mitad de precio (17,50 €): https://gbh-app.vercel.app`;
+    ? `I'm following my nutrition plan with GBH Nutrición 🌱 Sign up with my code ${profile.referral_code} and your first month of Premium is half price (€17.50): https://app.gbhnutricion.es`
+    : `Estoy siguiendo mi plan de nutrición con GBH Nutrición 🌱 Regístrate con mi código ${profile.referral_code} y tu primer mes de Premium te sale a mitad de precio (17,50 €): https://app.gbhnutricion.es`;
   const compartir=async()=>{
     sfx&&sfx("tap");
     const msg = (msgEd??msgBase).trim()||msgBase;
@@ -17075,7 +17075,7 @@ function BotonCompartirReceta({rec,lang,sfx,style}){
   if(!rec?.slug||!rec?.publica) return null;
   const compartir=async()=>{
     sfx&&sfx("tap");
-    const url=`https://gbh-app.vercel.app/recetas/${rec.slug}`;
+    const url=`https://app.gbhnutricion.es/recetas/${rec.slug}`;
     const msg=lang==='en'
       ?`${emojiPlato(rec.nombre,rec.tipo)} ${rec.nombre} — ${Math.round(rec.calorias)} kcal, ${Math.round(rec.proteinas_g)} g protein. Full recipe from my GBH Nutrición plan: ${url}`
       :`${emojiPlato(rec.nombre,rec.tipo)} ${rec.nombre} — ${Math.round(rec.calorias)} kcal y ${Math.round(rec.proteinas_g)} g de proteína. Receta completa de mi plan de GBH Nutrición: ${url}`;
@@ -17152,7 +17152,7 @@ function RecetasPublicas(){
     </div>
   );
   const compartir=async(rec)=>{
-    const url=`https://gbh-app.vercel.app/recetas/${rec.slug}`;
+    const url=`https://app.gbhnutricion.es/recetas/${rec.slug}`;
     const msg=`${emojiPlato(rec.nombre,rec.tipo)} ${rec.nombre} — ${Math.round(rec.calorias)} kcal y ${Math.round(rec.proteinas_g)} g de proteína, receta completa de GBH Nutrición: ${url}`;
     try{ if(navigator.share){ await navigator.share({text:msg}); return; } }
     catch(e){ if(e?.name==="AbortError") return; }
