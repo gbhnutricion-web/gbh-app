@@ -1320,6 +1320,14 @@ const WLABELS=["L","M","X","J","V","S","D"];
 const lsGet=(k,f)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):f;}catch{return f;}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
 
+// ?lang=es|en en la URL fija el idioma al arrancar (el CV enlaza ?lang=en).
+// Corre a nivel de módulo, ANTES de cualquier lsGet("gbh:lang"): el parámetro
+// GANA a localStorage y se guarda ahí para persistir en visitas posteriores.
+try{
+  const urlLang=new URLSearchParams(window.location.search).get("lang");
+  if(urlLang==="es"||urlLang==="en") lsSet("gbh:lang",urlLang);
+}catch{}
+
 // Cookie helpers — sobreviven al borrado de caché del navegador
 const cookieSet=(k,v,days=365)=>{try{const d=new Date();d.setTime(d.getTime()+days*864e5);document.cookie=`${k}=${encodeURIComponent(JSON.stringify(v))};expires=${d.toUTCString()};path=/;SameSite=Lax`;}catch{}};
 const cookieGet=(k,f=null)=>{try{const m=document.cookie.match(new RegExp('(?:^|; )'+k+'=([^;]*)'));return m?JSON.parse(decodeURIComponent(m[1])):f;}catch{return f;}};
