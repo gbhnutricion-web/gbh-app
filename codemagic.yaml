@@ -35,7 +35,7 @@ workflows:
     cache: *cache
     scripts:
       - name: Dependencias
-        script: npm ci
+        script: npm install
       - name: Compilar la web (Vite)
         script: npm run build
       - name: Generar el proyecto Android
@@ -85,7 +85,7 @@ workflows:
     cache: *cache
     scripts:
       - name: Dependencias
-        script: npm ci
+        script: npm install
       - name: Compilar la web (Vite)
         script: npm run build
       - name: Generar el proyecto iOS
