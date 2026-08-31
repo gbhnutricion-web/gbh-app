@@ -70,6 +70,11 @@ workflows:
     name: "GBH · iOS (IPA para TestFlight)"
     max_build_duration: 90
     instance_type: mac_mini_m2
+    # La clave de API de App Store Connect se guarda en Codemagic
+    # (Teams > Integrations > Apple Developer Portal) con ESTE nombre.
+    # Sin este bloque, `auth: integration` y la firma automatica fallan.
+    integrations:
+      app_store_connect: gbh_asc
     environment:
       ios_signing:
         distribution_type: app_store
