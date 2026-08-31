@@ -861,7 +861,7 @@ function useSFX(){
 }
 const GBH_EMAIL    = "gbh.nutricion@gmail.com";
 const GBH_NOMBRE   = "GBH Nutrición";
-const GBH_PRIVACY_URL = "https://drive.google.com/file/d/1RXWjKRHGYCe1F20l2w9VOuqA0qshwSvm/view?usp=sharing";
+const GBH_PRIVACY_URL = "https://app.gbhnutricion.es/legal/";
 // ─────────────────────────────────────────────────────────────────────────────
 import { ComposedChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
