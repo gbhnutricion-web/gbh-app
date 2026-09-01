@@ -27,8 +27,8 @@ workflows:
     # linux_x2 no entra en el plan gratuito; el Mac M2 si (500 min/mes)
     instance_type: mac_mini_m2
     environment:
-      groups:
-        - gbh_play            # GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+      # gbh_play (GCLOUD_SERVICE_ACCOUNT_CREDENTIALS) se anadira cuando
+      # exista la cuenta de Play y su service account (CHECKLIST B3).
       android_signing:
         - gbh_keystore        # el almacén de firma, subido en Codemagic
       node: 22
@@ -62,10 +62,8 @@ workflows:
       email:
         recipients: [gbh.nutricion@gmail.com]
         notify: { success: true, failure: true }
-      google_play:
-        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
-        track: internal          # NUNCA production desde aquí: se promociona a mano
-        submit_as_draft: true
+      # google_play: se reactivara cuando exista la cuenta de Play;
+      # la PRIMERA subida del AAB es manual de todos modos.
 
   # ══ iOS ════════════════════════════════════════════════════════════════════
   ios:
