@@ -95,7 +95,7 @@ workflows:
         script: BUILD_NUMBER=$PROJECT_BUILD_NUMBER npm run native:prep
       - name: Iconos y pantalla de carga
         script: npx capacitor-assets generate --ios --iconBackgroundColor '#081208' --splashBackgroundColor '#081208'
-      - name: Sincronizar web -> nativo (incluye pod install)
+      - name: Sincronizar web -> nativo (Capacitor 8 usa SPM, sin pods ni workspace)
         script: npx cap sync ios
       - name: Comprobar los permisos de cámara y fotos en el Info.plist
         script: |
@@ -110,7 +110,7 @@ workflows:
       - name: Construir el IPA
         script: |
           xcode-project build-ipa \
-            --workspace "ios/App/App.xcworkspace" \
+            --project "ios/App/App.xcodeproj" \
             --scheme "App"
     artifacts:
       - build/ios/ipa/*.ipa
