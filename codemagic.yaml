@@ -102,10 +102,11 @@ workflows:
           for k in NSCameraUsageDescription NSPhotoLibraryUsageDescription ITSAppUsesNonExemptEncryption; do
             grep -q "$k" ios/App/App/Info.plist || { echo "Falta $k en Info.plist"; exit 1; }
           done
-      - name: Preparar firma
-        script: |
-          keychain initialize
-          xcode-project use-profiles
+      - name: Aplicar perfiles de firma al proyecto
+        # keychain initialize NO va aqui: crea un llavero vacio y machaca el
+        # que la firma automatica (environment.ios_signing) acaba de preparar.
+        # Fallo del build #5 en 'Construir el IPA'.
+        script: xcode-project use-profiles
       - name: Construir el IPA
         script: |
           xcode-project build-ipa \
