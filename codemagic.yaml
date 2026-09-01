@@ -24,7 +24,8 @@ workflows:
   android:
     name: "GBH · Android (AAB para Google Play)"
     max_build_duration: 60
-    instance_type: linux_x2
+    # linux_x2 no entra en el plan gratuito; el Mac M2 si (500 min/mes)
+    instance_type: mac_mini_m2
     environment:
       groups:
         - gbh_play            # GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
