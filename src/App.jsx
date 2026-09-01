@@ -7827,7 +7827,7 @@ function GBHApp(){
     if(typeof v === "number") return (Date.now() - v) < 14*24*60*60*1000;
     return false;
   });
-  const [pwaInstalled, setPwaInstalled] = useState(()=>{try{return window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone===true;}catch{return false;}});
+  const [pwaInstalled, setPwaInstalled] = useState(()=>{try{return ES_NATIVO || window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone===true;}catch{return ES_NATIVO;}});  // en el contenedor nativo la app YA está instalada: fuera banner y modal
   // Flag: viene de Instagram via redirect → mostrar modal PWA prominente al cargar
   const [showInstallModal, setShowInstallModal] = useState(()=>{
     try{
@@ -7837,7 +7837,7 @@ function GBHApp(){
         const clean = window.location.pathname + window.location.hash;
         window.history.replaceState(null,"",clean);
         // Solo si no está ya instalada
-        if(window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone===true) return false;
+        if(ES_NATIVO || window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone===true) return false;
         return true;
       }
     }catch{}
