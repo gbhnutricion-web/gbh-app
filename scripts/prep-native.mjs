@@ -63,6 +63,31 @@ if (existsSync(ANDROID)) {
      .replace(/versionName\s+"[^"]*"/, `versionName "${VERSION_NAME}"`)
   );
 
+  // 2b) Firma de release con el keystore que inyecta Codemagic (android_signing).
+  // Sin signingConfig, bundleRelease produce un AAB SIN FIRMAR que Play rechaza.
+  // Idempotente: no vuelve a insertarlo si ya está.
+  editar(join(ANDROID, "app", "build.gradle"), (t) => {
+    if (t.includes("cmSigning")) return t;
+    const bloque = `
+    // cmSigning — inyectado por scripts/prep-native.mjs
+    signingConfigs {
+        release {
+            if (System.getenv("CM_KEYSTORE_PATH")) {
+                storeFile file(System.getenv("CM_KEYSTORE_PATH"))
+                storePassword System.getenv("CM_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("CM_KEY_ALIAS")
+                keyPassword System.getenv("CM_KEY_PASSWORD")
+            }
+        }
+    }
+`;
+    let out = t.replace(/(android\s*\{)/, `$1${bloque}`);
+    out = out.replace(/(buildTypes\s*\{\s*release\s*\{)/,
+      `$1
+            signingConfig signingConfigs.release`);
+    return out;
+  });
+
   // 3) Nada de tráfico en claro: todo va por HTTPS (Supabase, Stripe, Railway).
   editar(join(ANDROID, "app", "src", "main", "AndroidManifest.xml"), (t) =>
     t.includes("usesCleartextTraffic")
