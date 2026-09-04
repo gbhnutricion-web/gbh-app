@@ -49,6 +49,8 @@ const TRANS = {
     pinMismatch:"Los PIN no coinciden.",
     pinFormat:"El PIN debe tener entre 4 y 6 dígitos.",
     pinSaveBtn:"Guardar mi PIN 🔐", pinLater:"Ahora no",
+    pinCreateReq:"Desde ahora es necesario para seguir usando la app: protege tus datos.",
+    pinLaterOffline:"Sin conexión — continuar sin PIN por ahora",
     pinSaved:"PIN guardado", pinSavedSub:"Tu cuenta queda protegida",
     pinSaveErr:"No se pudo guardar el PIN. Inténtalo de nuevo.",
     // Migración usuarios existentes sin contraseña
@@ -325,6 +327,8 @@ const TRANS = {
     pinMismatch:"PINs don't match.",
     pinFormat:"The PIN must be 4 to 6 digits.",
     pinSaveBtn:"Save my PIN 🔐", pinLater:"Not now",
+    pinCreateReq:"From now on it's required to keep using the app: it protects your data.",
+    pinLaterOffline:"No connection — continue without a PIN for now",
     pinSaved:"PIN saved", pinSavedSub:"Your account is now protected",
     pinSaveErr:"Couldn't save the PIN. Please try again.",
     // Migration for existing users without password
@@ -7879,6 +7883,7 @@ function GBHApp(){
   const [pinPrompt,setPinPrompt]= useState(false);  // modal "crea tu PIN"
   const [pinV1,setPinV1]=useState(""); const [pinV2,setPinV2]=useState("");
   const [pinBusy,setPinBusy]=useState(false); const [pinSetErr,setPinSetErr]=useState("");
+  const [pinNetFail,setPinNetFail]=useState(false); // Fase 2a: la RPC del PIN falló (red/servidor) → se deja seguir sin PIN por ahora
   const [altaEmailInicial,setAltaEmailInicial]=useState("");  // email precargado en el alta con Bo
   const [aWeight,  setAWeight]  = useState("");
   const [aGoal,    setAGoal]    = useState("");
@@ -8393,7 +8398,9 @@ function GBHApp(){
     // PIN de acceso: si la cuenta no lo tiene, proponer crearlo (la marca 1/día
     // solo se quema al responder). OJO: este efecto es el camino REAL del
     // auto-login; loadP (más abajo) es código muerto sin llamadas.
-    if(!lp.pin_set && !lsGet("gbh:pinAsk2:"+lp.id+":"+today, false)){
+    // 4-sep-2026 (Fase 2a del RLS, orden de Alejandro): BLOQUEANTE — sin PIN
+    // se pide en CADA apertura; la marca diaria gbh:pinAsk2 ya no lo silencia.
+    if(!lp.pin_set){
       setTimeout(()=>setPinPrompt(true), 700);
     }
     // Sincronizar en segundo plano
@@ -9435,8 +9442,9 @@ function GBHApp(){
     // Ese día la ruleta automática cede el paso para no apilar dos modales.
     // La marca 1/día se graba SOLO cuando el usuario responde (guardar o
     // "Ahora no"), no al mostrar: si la app se cierra sin verlo, reaparece.
-    const pinAsked = lsGet("gbh:pinAsk2:"+p.id+":"+todayKey, false);
-    const pedirPin = !p.pin_set && !pinAsked;
+    // 4-sep-2026 (Fase 2a del RLS): el modal del PIN es BLOQUEANTE — se pide
+    // en cada entrada hasta que exista; la marca diaria ya no lo silencia.
+    const pedirPin = !p.pin_set;
     if(pedirPin){ setTimeout(()=>setPinPrompt(true), 700); }
     const alreadySeen  = lsGet("gbh:ruletaSeen:"+p.id+":"+todayKey, false);
     const alreadyDone  = lsGet("gbh:ruleta:"+p.id+":"+todayKey, false);
@@ -9498,7 +9506,8 @@ function GBHApp(){
     const res = await sbPinRpc("gbh_set_pin",{ p_email:em, p_old_pin:null, p_new_pin:pinV1 });
     setPinBusy(false);
     // 'exists' = ya había PIN creado desde otro dispositivo → cuenta protegida
-    if(res!=="ok" && res!=="exists"){ setPinSetErr(t("pinSaveErr")); return; }
+    if(res!=="ok" && res!=="exists"){ setPinSetErr(t("pinSaveErr")); setPinNetFail(true); return; }
+    setPinNetFail(false);
     const np = {...profile, pin_set:true};
     setProfile(np); lsSet(`gbh:p:${np.id}`, np);
     try{ lsSet("gbh:pinAsk2:"+np.id+":"+toKey(), true); }catch{}
@@ -9538,8 +9547,7 @@ function GBHApp(){
       // PIN de acceso: cuentas sin PIN (antiguas o recién creadas con Bo) →
       // proponer crearlo nada más entrar, máximo una vez al día.
       try{
-        const tk0 = toKey();
-        if(!ep.pin_set && !lsGet("gbh:pinAsk2:"+ep.id+":"+tk0,false)){
+        if(!ep.pin_set){   // Fase 2a (4-sep-2026): bloqueante, en cada entrada
           setTimeout(()=>setPinPrompt(true), 700);
         }
       }catch{}
@@ -11896,8 +11904,11 @@ function GBHApp(){
           <Card style={{width:"100%",maxWidth:340}}>
             <div style={{fontSize:36,textAlign:"center",marginBottom:6}}>🔐</div>
             <div style={{fontSize:17,fontWeight:900,textAlign:"center",marginBottom:6}}>{t("pinCreateTitle")}</div>
-            <div style={{fontSize:12.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.55,textAlign:"center",marginBottom:16}}>
+            <div style={{fontSize:12.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.55,textAlign:"center",marginBottom:6}}>
               {t("pinCreateDesc")}
+            </div>
+            <div style={{fontSize:12,color:T.au1,fontWeight:800,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,textAlign:"center",marginBottom:16}}>
+              {t("pinCreateReq")}
             </div>
             <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:6}}>{t("pinNew")}</div>
             <input type="password" inputMode="numeric" pattern="[0-9]*" maxLength={6} value={pinV1}
@@ -11924,13 +11935,18 @@ function GBHApp(){
                 fontFamily:"'Nunito',sans-serif",marginBottom:8}}>
               {pinBusy ? t("verifying") : t("pinSaveBtn")}
             </button>
-            <button onClick={()=>{ try{ lsSet("gbh:pinAsk2:"+(profile?.id||"")+":"+toKey(), true); }catch{}
-                setPinPrompt(false); setPinV1(""); setPinV2(""); setPinSetErr(""); }}
-              style={{width:"100%",padding:"11px 20px",borderRadius:14,border:"2px solid rgba(255,255,255,0.18)",
-                background:"transparent",color:T.t2,fontSize:13,fontWeight:800,cursor:"pointer",
-                fontFamily:"'Nunito',sans-serif"}}>
-              {t("pinLater")}
-            </button>
+            {/* Fase 2a (4-sep-2026): el modal es BLOQUEANTE — ya no hay "Ahora no".
+                La única salida sin PIN es cuando NO se puede guardar (sin conexión
+                o la RPC falló): entonces se deja usar la app y se vuelve a pedir
+                en la siguiente apertura. */}
+            {(pinNetFail || (typeof navigator!=="undefined" && navigator.onLine===false))&&(
+              <button onClick={()=>{ setPinPrompt(false); setPinV1(""); setPinV2(""); setPinSetErr(""); setPinNetFail(false); }}
+                style={{width:"100%",padding:"11px 20px",borderRadius:14,border:"2px solid rgba(255,255,255,0.18)",
+                  background:"transparent",color:T.t2,fontSize:13,fontWeight:800,cursor:"pointer",
+                  fontFamily:"'Nunito',sans-serif"}}>
+                {t("pinLaterOffline")}
+              </button>
+            )}
           </Card>
         </div>
       )}
