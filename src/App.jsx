@@ -51,6 +51,7 @@ const TRANS = {
     pinSaveBtn:"Guardar mi PIN 🔐", pinLater:"Ahora no",
     pinCreateReq:"Desde ahora es necesario para seguir usando la app: protege tus datos.",
     pinBloqueado:"Demasiados intentos. Espera 15 minutos y vuelve a probar.",
+    sesionRenovar:"Hemos reforzado la seguridad: vuelve a entrar con tu PIN una vez.",
     pinLaterOffline:"Sin conexión — continuar sin PIN por ahora",
     pinSaved:"PIN guardado", pinSavedSub:"Tu cuenta queda protegida",
     pinSaveErr:"No se pudo guardar el PIN. Inténtalo de nuevo.",
@@ -330,6 +331,7 @@ const TRANS = {
     pinSaveBtn:"Save my PIN 🔐", pinLater:"Not now",
     pinCreateReq:"From now on it's required to keep using the app: it protects your data.",
     pinBloqueado:"Too many attempts. Wait 15 minutes and try again.",
+    sesionRenovar:"We've strengthened security: please log in with your PIN once.",
     pinLaterOffline:"No connection — continue without a PIN for now",
     pinSaved:"PIN saved", pinSavedSub:"Your account is now protected",
     pinSaveErr:"Couldn't save the PIN. Please try again.",
@@ -1397,6 +1399,9 @@ function enqueue(op){
 // perfil (función gbh_pid). Mientras las políticas sigan abiertas (Parte 1) la
 // cabecera es inocua; cuando se cierren (Parte 2) será la única llave.
 const SESION_KEY = "gbh:sesion";
+// Interruptor del cierre (Parte 2): cuando sea true, arrancar sin sesión manda
+// a la landing a volver a entrar con el PIN. Se pone a true el día del cierre.
+const SESION_OBLIGATORIA = false;
 const getSesion = () => lsGet(SESION_KEY, null);            // {token, pid, admin}
 const setSesion = (s) => lsSet(SESION_KEY, s);
 const gbhHeaders = (extra={}) => {
@@ -2407,7 +2412,8 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
         const filas = (Array.isArray(jr) ? jr : []).filter(r => r.profile_id !== perfilId);
         const ids = filas.map(r => r.profile_id).slice(0, 10);
         let perf = [];
-        if (ids.length) perf = await sbReq("GET", `profiles?id=in.(${ids.join(",")})&select=id,name,bo_nombre,bo_color,bo_equipados`) || [];
+        // Fase 2b: los perfiles AJENOS se leen de la vista perfiles_publicos (nombre + Bo), no de profiles
+        if (ids.length) perf = await sbReq("GET", `perfiles_publicos?id=in.(${ids.join(",")})&select=id,name,bo_nombre,bo_color,bo_equipados`) || [];
         const pMap = {}; (Array.isArray(perf) ? perf : []).forEach(p => { pMap[p.id] = p; });
         const rivales = filas.map(r => {
           const p = pMap[r.profile_id]; if (!p) return null;
@@ -4106,7 +4112,10 @@ function AltaBo({lang, setLang, emailInicial, onVolver, onLogin, onCrear, css}){
       if(!em.includes('@')||em.length<5){ setErr(EN?'That email doesn\u2019t look right':'Ese correo no parece válido'); return; }
       setOcupado(true);
       try{
-        const r=await sbReq("GET",`profiles?email=eq.${encodeURIComponent(em)}&select=id,name`);
+        // Fase 2b: la RPC gbh_buscar_cuenta sustituye a la lectura abierta de profiles;
+        // si no existiera (null) se cae al camino antiguo, que la Parte 2 cerrará.
+        let r=await sbPinRpc("gbh_buscar_cuenta",{p_email:em});
+        r = (r&&typeof r==="object"&&r.id) ? [r] : (r===null ? await sbReq("GET",`profiles?email=eq.${encodeURIComponent(em)}&select=id,name`) : []);
         if(Array.isArray(r)&&r.length){ setCuentaExiste({nombre:r[0].name||'',email:em}); setOcupado(false); return; }
       }catch{}
       setOcupado(false);
@@ -8381,6 +8390,13 @@ function GBHApp(){
     const lp = lsGet(`gbh:p:${lid}`, null);
     if(!lp?.id){ setScreen(s=>s==="loading"?"landing":s); return; }
 
+    // Fase 2b: con el cierre activo (SESION_OBLIGATORIA) no se entra directo sin
+    // token de sesión: a la landing con el correo puesto, a renovar con el PIN.
+    if(SESION_OBLIGATORIA && !getSesion()?.token){
+      setAEmail(lastEmail); setAuthErr(t("sesionRenovar"));
+      setScreen(s=>s==="loading"?"landing":s); return;
+    }
+
     // Sistema sin contraseñas: si hay perfil local, entrar directo.
     const today = toKey();
     const localLogs    = lsGet(`gbh:logs:${lp.id}`, []);
@@ -9486,7 +9502,10 @@ function GBHApp(){
       return;
     }
     setAuthMode("checking");
-    const r = await sbReq("GET", `profiles?email=eq.${em}&select=id,name,pin_set`);
+    // Fase 2b: gbh_buscar_cuenta (id, name, pin_set) en vez de leer profiles con
+    // la clave pública; si la RPC no existiera (null) se usa el camino antiguo.
+    let r = await sbPinRpc("gbh_buscar_cuenta", { p_email: em });
+    r = (r && typeof r==="object" && r.id) ? [r] : (r===null ? await sbReq("GET", `profiles?email=eq.${em}&select=id,name,pin_set`) : []);
     if(seq !== emailChkSeq.current) return;  // el email cambió mientras tanto
     if(r?.length){
       setAName(r[0].name || "");
@@ -9604,7 +9623,21 @@ function GBHApp(){
       const {height_cm:_h, sex:_s, goal_weight:_g, bo_nombre:_b, ...npSinOpcionales}=np;
       const npNucleo={id:np.id, name:np.name, email:np.email, xp:0, gems:0, shields:0};
       let fp=null, usado=null, ultErr=null;
-      for(const [tag,intento] of [['completo',np],['sin_opcionales',npSinOpcionales],['nucleo',npNucleo]]){
+      // Fase 2b: el alta pasa por la RPC gbh_alta_cuenta (lista blanca de columnas,
+      // devuelve el perfil y abre sesión al dispositivo que lo crea). Si la RPC no
+      // existe o falla por red, cascada antigua de POST directos.
+      try{
+        const ra = await sbPinRpc("gbh_alta_cuenta", { p: np });
+        if(ra && typeof ra==="object"){
+          if(ra.ok && ra.profile?.id){
+            fp = ra.profile; usado = 'rpc';
+            if(ra.token) setSesion({ token:ra.token, pid:fp.id, admin:false });
+          } else if(ra.motivo==='existe'){
+            return lang==='en' ? 'That email already has an account. Log in instead.' : 'Ese correo ya tiene cuenta. Entra con ella.';
+          }
+        }
+      }catch{}
+      if(!fp) for(const [tag,intento] of [['completo',np],['sin_opcionales',npSinOpcionales],['nucleo',npNucleo]]){
         const r=await sbDirect("POST","profiles",intento);
         if(r.ok){ fp=(Array.isArray(r.data)&&r.data[0])||intento; usado=tag; break; }
         if(r.status===0){ await sbReq("POST","profiles",np); fp=np; usado='cola_offline'; break; }
@@ -10451,7 +10484,15 @@ function GBHApp(){
         return r.json();
       } catch { return null; }
     };
-    let data = await rankFetch("profiles?select=id,name,xp,gems,streak,initial_weight,bo_nombre,bo_color,bo_equipados&order=xp.desc&limit=50");
+    // Fase 2b: el ranking viene de la RPC gbh_ranking (nombre + progreso, lo que
+    // la política de privacidad declara). Si no existiera, lecturas antiguas.
+    let data = null, wLogsPre = null;
+    const viaRpc = await sbPinRpc("gbh_ranking", { p_limit: 50 });
+    if(Array.isArray(viaRpc) && viaRpc.length){
+      data = viaRpc;
+      wLogsPre = viaRpc.filter(p=>p.last_weight!=null).map(p=>({ profile_id:p.id, weight_kg:p.last_weight, log_date:"9999-12-31" }));
+    }
+    if(data===null) data = await rankFetch("profiles?select=id,name,xp,gems,streak,initial_weight,bo_nombre,bo_color,bo_equipados&order=xp.desc&limit=50");
     // Fallbacks: sin columnas de Bo (SQL aún no ejecutado) → sin streak
     if(data===null){
       data = await rankFetch("profiles?select=id,name,xp,gems,streak,initial_weight&order=xp.desc&limit=50");
@@ -10465,7 +10506,7 @@ function GBHApp(){
     if(data?.length){
       // Pesos desde Supabase: weight_logs de todos los perfiles del ranking
       const ids=data.map(p=>p.id).join(",");
-      const wLogs=await rankFetch(`weight_logs?profile_id=in.(${ids})&select=profile_id,weight_kg,log_date&order=log_date.asc`)||[];
+      const wLogs = wLogsPre || (await rankFetch(`weight_logs?profile_id=in.(${ids})&select=profile_id,weight_kg,log_date&order=log_date.asc`)||[]);
       const enriched = data.map(p=>{
         // Racha: viene del campo streak de Supabase
         const streak = p.streak || 0;
@@ -13506,7 +13547,7 @@ function TarjetaPareja({profile,sfx,showT,onEstado}){
     const l=Array.isArray(filas)?filas[0]:null;
     if(!l){ setFila(null); setOtro(null); setEstado("solo"); return; }
     const otroId=l.de_id===profile.id?l.a_id:l.de_id;
-    const perf=await sbReq('GET',`profiles?id=eq.${otroId}&select=id,name&limit=1`);
+    const perf=await sbReq('GET',`perfiles_publicos?id=eq.${otroId}&select=id,name&limit=1`);  // Fase 2b: perfil ajeno → vista pública
     setFila(l); setOtro({id:otroId,nombre:(Array.isArray(perf)&&perf[0]?.name)||""});
     setEstado(l.estado==="aceptado" ? "vinculada" : (l.de_id===profile.id ? "enviada" : "recibida"));
   },[profile?.id]);
@@ -13518,7 +13559,7 @@ function TarjetaPareja({profile,sfx,showT,onEstado}){
     if(c===String(profile?.referral_code||"").toUpperCase()){ setError(t("parejaEsTuyo")); return; }
     setOcupado(true);
     try{
-      const perf=await sbReq('GET',`profiles?referral_code=eq.${encodeURIComponent(c)}&select=id,name&limit=1`);
+      const perf=await sbReq('GET',`perfiles_publicos?referral_code=eq.${encodeURIComponent(c)}&select=id,name&limit=1`);  // Fase 2b: vista pública
       const dest=Array.isArray(perf)?perf[0]:null;
       if(!dest){ setError(t("parejaNoEncontrado")); return; }
       // Ninguna de las dos cuentas puede tener ya un vínculo aceptado
@@ -14992,7 +15033,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
       if(!vivo) return;
       if(!l){ setPareja(null); setParejaPlanJ(null); return; }
       const otroId = l.de_id===profile.id ? l.a_id : l.de_id;
-      const perf=await sbReq('GET',`profiles?id=eq.${otroId}&select=id,name&limit=1`);
+      const perf=await sbReq('GET',`perfiles_publicos?id=eq.${otroId}&select=id,name&limit=1`);  // Fase 2b: perfil ajeno → vista pública
       if(!vivo) return;
       setPareja({id:otroId, nombre:(Array.isArray(perf)&&perf[0]?.name)||''});
     })();
