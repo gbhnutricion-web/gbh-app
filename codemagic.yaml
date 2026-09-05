@@ -6,8 +6,11 @@
 # las dos apps en la nube, así que el proceso funciona igual desde Pamplona que
 # desde fuera de España, y no depende de que haya un ordenador concreto encendido.
 #
-# NADA SE DISPARA SOLO: no hay `triggering:` a propósito. Las dos recetas se
-# lanzan a mano desde codemagic.io. Un push a `main` NO publica nada.
+# DISPARO AUTOMÁTICO (nivel 1 del BRIEF_actualizaciones_automaticas, 5-sep-2026):
+# cada push a la rama `tiendas` compila las dos apps; iOS sube sola a TestFlight y
+# el AAB de Android queda en los artefactos hasta que exista el grupo `gbh_play`.
+# Un push a `main` sigue SIN publicar nada en tiendas: hay que fusionarlo aquí.
+# Las recetas se pueden seguir lanzando a mano desde codemagic.io.
 #
 # Los proyectos `android/` e `ios/` NO están en el repositorio: se generan en
 # cada build con `cap add` y se parchean con `scripts/prep-native.mjs`.
@@ -23,6 +26,14 @@ workflows:
   # ══ ANDROID ════════════════════════════════════════════════════════════════
   android:
     name: "GBH · Android (AAB para Google Play)"
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: tiendas
+          include: true
+          source: true
+      cancel_previous_builds: true
     max_build_duration: 60
     # linux_x2 no entra en el plan gratuito; el Mac M2 si (500 min/mes)
     instance_type: mac_mini_m2
@@ -68,6 +79,14 @@ workflows:
   # ══ iOS ════════════════════════════════════════════════════════════════════
   ios:
     name: "GBH · iOS (IPA para TestFlight)"
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: tiendas
+          include: true
+          source: true
+      cancel_previous_builds: true
     max_build_duration: 90
     instance_type: mac_mini_m2
     # La clave de API de App Store Connect se guarda en Codemagic
