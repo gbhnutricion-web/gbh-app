@@ -50,6 +50,7 @@ const TRANS = {
     pinFormat:"El PIN debe tener entre 4 y 6 dígitos.",
     pinSaveBtn:"Guardar mi PIN 🔐", pinLater:"Ahora no",
     pinCreateReq:"Desde ahora es necesario para seguir usando la app: protege tus datos.",
+    pinBloqueado:"Demasiados intentos. Espera 15 minutos y vuelve a probar.",
     pinLaterOffline:"Sin conexión — continuar sin PIN por ahora",
     pinSaved:"PIN guardado", pinSavedSub:"Tu cuenta queda protegida",
     pinSaveErr:"No se pudo guardar el PIN. Inténtalo de nuevo.",
@@ -328,6 +329,7 @@ const TRANS = {
     pinFormat:"The PIN must be 4 to 6 digits.",
     pinSaveBtn:"Save my PIN 🔐", pinLater:"Not now",
     pinCreateReq:"From now on it's required to keep using the app: it protects your data.",
+    pinBloqueado:"Too many attempts. Wait 15 minutes and try again.",
     pinLaterOffline:"No connection — continue without a PIN for now",
     pinSaved:"PIN saved", pinSavedSub:"Your account is now protected",
     pinSaveErr:"Couldn't save the PIN. Please try again.",
@@ -1389,6 +1391,23 @@ function enqueue(op){
   lsSet(getQueueKey(), q);
 }
 
+// ─── Sesión GBH por PIN (RLS Fase 2b, 4-sep-2026) ───────────────────────────
+// El PIN no crea sesión de Supabase Auth, así que la identidad viaja en una
+// cabecera propia, X-GBH-Sesion: <uuid>, que la base convierte en el id del
+// perfil (función gbh_pid). Mientras las políticas sigan abiertas (Parte 1) la
+// cabecera es inocua; cuando se cierren (Parte 2) será la única llave.
+const SESION_KEY = "gbh:sesion";
+const getSesion = () => lsGet(SESION_KEY, null);            // {token, pid, admin}
+const setSesion = (s) => lsSet(SESION_KEY, s);
+const gbhHeaders = (extra={}) => {
+  const s = getSesion();
+  return {
+    "apikey": KEY, "Authorization": `Bearer ${KEY}`, "Content-Type": "application/json",
+    ...(s?.token ? { "X-GBH-Sesion": s.token } : {}),
+    ...extra,
+  };
+};
+
 async function flushQueue(){
   const q = lsGet(getQueueKey(), []);
   if(!q.length) return;
@@ -1397,12 +1416,9 @@ async function flushQueue(){
     try{
       const r = await fetch(`${SB}/rest/v1/${op.path}`, {
         method: op.method,
-        headers: {
-          "apikey": KEY,
-          "Authorization": `Bearer ${KEY}`,
-          "Content-Type": "application/json",
+        headers: gbhHeaders({
           "Prefer": op.method==="POST" ? "return=representation, resolution=merge-duplicates" : "",
-        },
+        }),
         body: op.body ? JSON.stringify(op.body) : null,
       });
       if(!r.ok){
@@ -1467,11 +1483,7 @@ const sbDirect = async (method, path, body) => {
   try{
     const r = await fetch(`${SB}/rest/v1/${path}`, {
       method,
-      headers: {
-        "apikey": KEY, "Authorization": `Bearer ${KEY}`,
-        "Content-Type": "application/json",
-        ...(method === "POST" ? { "Prefer": "return=representation, resolution=merge-duplicates" } : {}),
-      },
+      headers: gbhHeaders(method === "POST" ? { "Prefer": "return=representation, resolution=merge-duplicates" } : {}),
       body: body ? JSON.stringify(body) : undefined,
     });
     let data = null;
@@ -1501,12 +1513,10 @@ const sbReq = async(method, path, body=null) => {
     const sesion = getStoredSession();
     if(sesion && !sesionValida(sesion)) refreshSession(); // mantener viva la sesión del login
   } catch {}
-  const headers = {
-    "apikey": KEY,
+  const headers = gbhHeaders({
     "Authorization": `Bearer ${bearerToken}`,
-    "Content-Type": "application/json",
     "Prefer": method==="POST" ? "return=representation, resolution=merge-duplicates" : "",
-  };
+  });
   try {
     const r = await fetch(`${SB}/rest/v1/${path}`, {
       method, headers, body: body ? JSON.stringify(body) : null,
@@ -1533,7 +1543,7 @@ const sbPinRpc = async (fn, body) => {
   try{
     const r = await fetch(`${SB}/rest/v1/rpc/${fn}`,{
       method:"POST",
-      headers:{ "apikey":KEY, "Authorization":`Bearer ${KEY}`, "Content-Type":"application/json" },
+      headers: gbhHeaders(),
       body: JSON.stringify(body),
     });
     if(!r.ok) return null;
@@ -9508,6 +9518,15 @@ function GBHApp(){
     // 'exists' = ya había PIN creado desde otro dispositivo → cuenta protegida
     if(res!=="ok" && res!=="exists"){ setPinSetErr(t("pinSaveErr")); setPinNetFail(true); return; }
     setPinNetFail(false);
+    // Fase 2b: con el PIN recién creado, abrir sesión (token) en el mismo acto.
+    // Si res==='exists' el PIN tecleado no es el real y la RPC devolverá ok:false:
+    // se ignora, la sesión llegará en el siguiente login por PIN.
+    if(res==="ok"){
+      try{
+        const lg = await sbPinRpc("gbh_login_pin",{ p_email:em, p_pin:pinV1, p_origen: ES_NATIVO?"nativo":"web" });
+        if(lg?.ok===true) setSesion({ token:lg.token, pid:lg.profile_id, admin:!!lg.es_admin });
+      }catch{}
+    }
     const np = {...profile, pin_set:true};
     setProfile(np); lsSet(`gbh:p:${np.id}`, np);
     try{ lsSet("gbh:pinAsk2:"+np.id+":"+toKey(), true); }catch{}
@@ -9644,9 +9663,21 @@ function GBHApp(){
     if(authMode==="returning"){
       if(aPinNeed){
         if(!/^\d{4,6}$/.test(aPin)){ setAuthErr(t("pinFormat")); setLoading(false); return; }
-        const okPin = await sbPinRpc("gbh_check_pin",{ p_email:email, p_pin:aPin });
-        if(okPin===null){ setAuthErr(t("pinNoNet")); setLoading(false); return; }
-        if(okPin!==true){ setAuthErr(t("pinWrong")); setLoading(false); return; }
+        // Fase 2b (4-sep-2026): entrar por gbh_login_pin, que verifica el PIN
+        // igual que gbh_check_pin Y abre una sesión (token para X-GBH-Sesion).
+        // Si la RPC no existiera (null por 404) o no hay red, camino antiguo.
+        const lg = await sbPinRpc("gbh_login_pin",{ p_email:email, p_pin:aPin, p_origen: ES_NATIVO?"nativo":"web" });
+        if(lg && typeof lg==="object"){
+          if(lg.ok!==true){
+            setAuthErr(lg.motivo==="bloqueado" ? t("pinBloqueado") : t("pinWrong"));
+            setLoading(false); return;
+          }
+          setSesion({ token:lg.token, pid:lg.profile_id, admin:!!lg.es_admin });
+        } else {
+          const okPin = await sbPinRpc("gbh_check_pin",{ p_email:email, p_pin:aPin });
+          if(okPin===null){ setAuthErr(t("pinNoNet")); setLoading(false); return; }
+          if(okPin!==true){ setAuthErr(t("pinWrong")); setLoading(false); return; }
+        }
       }
       const localId = lsGet(`gbh:em:${email}`, null);
       let perfil = localId ? lsGet(`gbh:p:${localId}`, null) : null;
@@ -10414,7 +10445,7 @@ function GBHApp(){
       try {
         const r = await fetch(`${SB}/rest/v1/${path}`, {
           method: "GET",
-          headers: { "apikey": KEY, "Authorization": `Bearer ${KEY}`, "Content-Type": "application/json" }
+          headers: gbhHeaders()
         });
         if(!r.ok) return null;
         return r.json();
@@ -10732,6 +10763,10 @@ function GBHApp(){
     await sbReq("DELETE", `achievements?profile_id=eq.${id}`);
     await sbReq("DELETE", `weight_logs?profile_id=eq.${id}`);
     await sbReq("DELETE", `profiles?id=eq.${id}`);
+    // Fase 2b: cerrar la sesión por PIN (la fila de gbh_sesiones cae en cascada
+    // con el perfil; esto limpia el token local aunque el DELETE fallara)
+    try{ await sbPinRpc("gbh_logout",{}); }catch{}
+    setSesion(null);
     // 2. Borrar todas las claves del usuario en localStorage
     const keysToDelete = Object.keys(localStorage).filter(k =>
       k.startsWith(`gbh:logs:${id}`) ||
@@ -10739,6 +10774,7 @@ function GBHApp(){
       k.startsWith(`gbh:badges:${id}`) ||
       k.startsWith(`gbh:p:${id}`) ||
       k === `gbh:em:${email}` ||
+      k === SESION_KEY ||
       k === "gbh:lastEmail" ||
       k === "gbh:userPhoto" ||
       k === "gbh:mute" ||
