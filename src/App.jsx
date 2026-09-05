@@ -2,6 +2,9 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { createPortal } from "react-dom";
 import { tramosBo32 } from "./bo32_render";
 import { SPR, U, sprite, spriteCaja, bloque, suelo as dibujarSuelo, matas } from "./juego32";
+// Medidas corporales (silueta por zonas, perímetros y pliegues): módulo aparte,
+// recibe sbReq/T/Card por props para que este fichero solo cambie en 3 sitios.
+import { SelectorMedidas, MedidasCorporales } from "./MedidasCorporales";
 
 // ─── Servidor de generación de programaciones (Railway) ─────────────────────
 // Rellena estos dos valores tras desplegar el servidor (ver GUIA_DESPLIEGUE_RAILWAY.md)
@@ -61,7 +64,7 @@ const TRANS = {
     migrateBtn:"Crear mi contraseña 🔐",
     authErrGeneric:"Error al iniciar sesión. Inténtalo de nuevo.",
     // Nav
-    tabHome:"Inicio", tabRecipe:"Receta", tabWeight:"Peso",
+    tabHome:"Inicio", tabRecipe:"Receta", tabWeight:"Medidas",
     tabRanking:"Ranking", tabAchievements:"Logros", tabCalc:"Objetivo",
     // Tiers / levels
     tiers:["Novato","Aprendiz","Constante","Comprometido","Disciplinado","Atleta","Experto","Élite","Maestro","Leyenda"],
@@ -341,7 +344,7 @@ const TRANS = {
     migrateBtn:"Create my password 🔐",
     authErrGeneric:"Sign in error. Please try again.",
     // Nav
-    tabHome:"Home", tabRecipe:"Recipe", tabWeight:"Weight",
+    tabHome:"Home", tabRecipe:"Recipe", tabWeight:"Measures",
     tabRanking:"Ranking", tabAchievements:"Medals", tabCalc:"Goal",
     // Tiers / levels
     tiers:["Beginner","Apprentice","Consistent","Committed","Disciplined","Athlete","Expert","Elite","Master","Legend"],
@@ -7796,6 +7799,8 @@ function GBHApp(){
   const [planTomas, setPlanTomas] = useState(null);
   const [wInput,  setWInput]  = useState("");
   const [weightMode, setWeightMode] = useState("default");
+  // Pestaña Medidas: "peso" = la báscula de siempre · "cuerpo" = perímetros y pliegues
+  const [medidasVista, setMedidasVista] = useState("peso");
   const [userPhoto,  setUserPhoto]  = useState(()=>lsGet("gbh:userPhoto",null));
   const [showPhotoPicker,  setShowPhotoPicker]  = useState(false);
   const [ranking, setRanking] = useState([]);
@@ -12593,7 +12598,12 @@ function GBHApp(){
         </>}
 
         {/* ── WEIGHT ────────────────────────────────────────────────────────── */}
-        {tab==="weight"&&(()=>{
+        {tab==="weight"&&(
+          <>
+            <SelectorMedidas vista={medidasVista} setVista={v=>{sfx("tap");setMedidasVista(v);}} lang={lang} T={T}/>
+            {medidasVista==="cuerpo"
+              ? <MedidasCorporales profile={profile} weights={weights} lang={lang} sfx={sfx} sbReq={sbReq} T={T} Card={Card}/>
+              : (()=>{
           const todayW=weekendWeighIn(weights);
           const isWE=isWeekend();
 
@@ -12705,6 +12715,8 @@ function GBHApp(){
             </>
           );
         })()}
+          </>
+        )}
 
         {/* ── ACHIEVEMENTS ──────────────────────────────────────────────────── */}
         {/* ── RANKING ──────────────────────────────────────────────────────── */}
@@ -13476,7 +13488,7 @@ function GBHApp(){
       {/* ── BOTTOM NAV ────────────────────────────────────────────────────── */}
       <div className="nav-scroll" style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:420,background:"rgba(8,18,8,0.97)",backdropFilter:"blur(30px)",borderTop:`3px solid ${T.bW}`,zIndex:100,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
         <div style={{display:"flex",padding:"10px 4px 10px",minWidth:"min-content",width:"100%"}}>
-          {[{id:"home",icon:"🏠",l:t("tabHome")},{id:"progreso",icon:"🚀",l:t("tabCalc")},{id:"plan",icon:"📆",l:"Plan"},{id:"weight",icon:"⚖️",l:t("tabWeight")},{id:"receta",icon:"🍰",l:t("tabRecipe")},{id:"consulta",icon:"📩",l:lang==="en"?"Consult":"Consulta"},{id:"ranking",icon:"👑",l:t("tabRanking")}].map(({id,icon,l})=>(
+          {[{id:"home",icon:"🏠",l:t("tabHome")},{id:"progreso",icon:"🚀",l:t("tabCalc")},{id:"plan",icon:"📆",l:"Plan"},{id:"weight",icon:"📏",l:t("tabWeight")},{id:"receta",icon:"🍰",l:t("tabRecipe")},{id:"consulta",icon:"📩",l:lang==="en"?"Consult":"Consulta"},{id:"ranking",icon:"👑",l:t("tabRanking")}].map(({id,icon,l})=>(
             <button key={id} onClick={()=>{ sfx("tap"); setTab(id); }} style={{...tabSt(tab===id),flex:"1 0 60px",minWidth:60,padding:"8px 6px"}}>
               <span style={{fontSize:24,filter:tab===id?"none":"grayscale(0.6)",transition:"all 0.2s"}}>{icon}</span>
               <span style={{fontSize:9,whiteSpace:"nowrap"}}>{l}</span>
