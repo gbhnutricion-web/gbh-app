@@ -2,6 +2,9 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { createPortal } from "react-dom";
 import { tramosBo32 } from "./bo32_render";
 import { SPR, U, sprite, spriteCaja, bloque, suelo as dibujarSuelo, matas } from "./juego32";
+// Medidas corporales (silueta por zonas, perímetros y pliegues): módulo aparte,
+// recibe sbReq/T/Card por props para que este fichero solo cambie en 3 sitios.
+import { SelectorMedidas, MedidasCorporales } from "./MedidasCorporales";
 
 // ─── Servidor de generación de programaciones (Railway) ─────────────────────
 // Rellena estos dos valores tras desplegar el servidor (ver GUIA_DESPLIEGUE_RAILWAY.md)
@@ -49,6 +52,10 @@ const TRANS = {
     pinMismatch:"Los PIN no coinciden.",
     pinFormat:"El PIN debe tener entre 4 y 6 dígitos.",
     pinSaveBtn:"Guardar mi PIN 🔐", pinLater:"Ahora no",
+    pinCreateReq:"Desde ahora es necesario para seguir usando la app: protege tus datos.",
+    pinBloqueado:"Demasiados intentos. Espera 15 minutos y vuelve a probar.",
+    sesionRenovar:"Hemos reforzado la seguridad: vuelve a entrar con tu PIN una vez.",
+    pinLaterOffline:"Sin conexión — continuar sin PIN por ahora",
     pinSaved:"PIN guardado", pinSavedSub:"Tu cuenta queda protegida",
     pinSaveErr:"No se pudo guardar el PIN. Inténtalo de nuevo.",
     // Migración usuarios existentes sin contraseña
@@ -57,7 +64,7 @@ const TRANS = {
     migrateBtn:"Crear mi contraseña 🔐",
     authErrGeneric:"Error al iniciar sesión. Inténtalo de nuevo.",
     // Nav
-    tabHome:"Inicio", tabRecipe:"Receta", tabWeight:"Peso",
+    tabHome:"Inicio", tabRecipe:"Receta", tabWeight:"Medidas",
     tabRanking:"Ranking", tabAchievements:"Logros", tabCalc:"Objetivo",
     // Tiers / levels
     tiers:["Novato","Aprendiz","Constante","Comprometido","Disciplinado","Atleta","Experto","Élite","Maestro","Leyenda"],
@@ -325,6 +332,10 @@ const TRANS = {
     pinMismatch:"PINs don't match.",
     pinFormat:"The PIN must be 4 to 6 digits.",
     pinSaveBtn:"Save my PIN 🔐", pinLater:"Not now",
+    pinCreateReq:"From now on it's required to keep using the app: it protects your data.",
+    pinBloqueado:"Too many attempts. Wait 15 minutes and try again.",
+    sesionRenovar:"We've strengthened security: please log in with your PIN once.",
+    pinLaterOffline:"No connection — continue without a PIN for now",
     pinSaved:"PIN saved", pinSavedSub:"Your account is now protected",
     pinSaveErr:"Couldn't save the PIN. Please try again.",
     // Migration for existing users without password
@@ -333,7 +344,7 @@ const TRANS = {
     migrateBtn:"Create my password 🔐",
     authErrGeneric:"Sign in error. Please try again.",
     // Nav
-    tabHome:"Home", tabRecipe:"Recipe", tabWeight:"Weight",
+    tabHome:"Home", tabRecipe:"Recipe", tabWeight:"Measures",
     tabRanking:"Ranking", tabAchievements:"Medals", tabCalc:"Goal",
     // Tiers / levels
     tiers:["Beginner","Apprentice","Consistent","Committed","Disciplined","Athlete","Expert","Elite","Master","Legend"],
@@ -1385,6 +1396,26 @@ function enqueue(op){
   lsSet(getQueueKey(), q);
 }
 
+// ─── Sesión GBH por PIN (RLS Fase 2b, 4-sep-2026) ───────────────────────────
+// El PIN no crea sesión de Supabase Auth, así que la identidad viaja en una
+// cabecera propia, X-GBH-Sesion: <uuid>, que la base convierte en el id del
+// perfil (función gbh_pid). Mientras las políticas sigan abiertas (Parte 1) la
+// cabecera es inocua; cuando se cierren (Parte 2) será la única llave.
+const SESION_KEY = "gbh:sesion";
+// Interruptor del cierre (Parte 2): cuando sea true, arrancar sin sesión manda
+// a la landing a volver a entrar con el PIN. Se pone a true el día del cierre.
+const SESION_OBLIGATORIA = false;
+const getSesion = () => lsGet(SESION_KEY, null);            // {token, pid, admin}
+const setSesion = (s) => lsSet(SESION_KEY, s);
+const gbhHeaders = (extra={}) => {
+  const s = getSesion();
+  return {
+    "apikey": KEY, "Authorization": `Bearer ${KEY}`, "Content-Type": "application/json",
+    ...(s?.token ? { "X-GBH-Sesion": s.token } : {}),
+    ...extra,
+  };
+};
+
 async function flushQueue(){
   const q = lsGet(getQueueKey(), []);
   if(!q.length) return;
@@ -1393,12 +1424,9 @@ async function flushQueue(){
     try{
       const r = await fetch(`${SB}/rest/v1/${op.path}`, {
         method: op.method,
-        headers: {
-          "apikey": KEY,
-          "Authorization": `Bearer ${KEY}`,
-          "Content-Type": "application/json",
+        headers: gbhHeaders({
           "Prefer": op.method==="POST" ? "return=representation, resolution=merge-duplicates" : "",
-        },
+        }),
         body: op.body ? JSON.stringify(op.body) : null,
       });
       if(!r.ok){
@@ -1463,11 +1491,7 @@ const sbDirect = async (method, path, body) => {
   try{
     const r = await fetch(`${SB}/rest/v1/${path}`, {
       method,
-      headers: {
-        "apikey": KEY, "Authorization": `Bearer ${KEY}`,
-        "Content-Type": "application/json",
-        ...(method === "POST" ? { "Prefer": "return=representation, resolution=merge-duplicates" } : {}),
-      },
+      headers: gbhHeaders(method === "POST" ? { "Prefer": "return=representation, resolution=merge-duplicates" } : {}),
       body: body ? JSON.stringify(body) : undefined,
     });
     let data = null;
@@ -1497,12 +1521,10 @@ const sbReq = async(method, path, body=null) => {
     const sesion = getStoredSession();
     if(sesion && !sesionValida(sesion)) refreshSession(); // mantener viva la sesión del login
   } catch {}
-  const headers = {
-    "apikey": KEY,
+  const headers = gbhHeaders({
     "Authorization": `Bearer ${bearerToken}`,
-    "Content-Type": "application/json",
     "Prefer": method==="POST" ? "return=representation, resolution=merge-duplicates" : "",
-  };
+  });
   try {
     const r = await fetch(`${SB}/rest/v1/${path}`, {
       method, headers, body: body ? JSON.stringify(body) : null,
@@ -1529,7 +1551,7 @@ const sbPinRpc = async (fn, body) => {
   try{
     const r = await fetch(`${SB}/rest/v1/rpc/${fn}`,{
       method:"POST",
-      headers:{ "apikey":KEY, "Authorization":`Bearer ${KEY}`, "Content-Type":"application/json" },
+      headers: gbhHeaders(),
       body: JSON.stringify(body),
     });
     if(!r.ok) return null;
@@ -2393,7 +2415,8 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
         const filas = (Array.isArray(jr) ? jr : []).filter(r => r.profile_id !== perfilId);
         const ids = filas.map(r => r.profile_id).slice(0, 10);
         let perf = [];
-        if (ids.length) perf = await sbReq("GET", `profiles?id=in.(${ids.join(",")})&select=id,name,bo_nombre,bo_color,bo_equipados`) || [];
+        // Fase 2b: los perfiles AJENOS se leen de la vista perfiles_publicos (nombre + Bo), no de profiles
+        if (ids.length) perf = await sbReq("GET", `perfiles_publicos?id=in.(${ids.join(",")})&select=id,name,bo_nombre,bo_color,bo_equipados`) || [];
         const pMap = {}; (Array.isArray(perf) ? perf : []).forEach(p => { pMap[p.id] = p; });
         const rivales = filas.map(r => {
           const p = pMap[r.profile_id]; if (!p) return null;
@@ -4092,7 +4115,10 @@ function AltaBo({lang, setLang, emailInicial, onVolver, onLogin, onCrear, css}){
       if(!em.includes('@')||em.length<5){ setErr(EN?'That email doesn\u2019t look right':'Ese correo no parece válido'); return; }
       setOcupado(true);
       try{
-        const r=await sbReq("GET",`profiles?email=eq.${encodeURIComponent(em)}&select=id,name`);
+        // Fase 2b: la RPC gbh_buscar_cuenta sustituye a la lectura abierta de profiles;
+        // si no existiera (null) se cae al camino antiguo, que la Parte 2 cerrará.
+        let r=await sbPinRpc("gbh_buscar_cuenta",{p_email:em});
+        r = (r&&typeof r==="object"&&r.id) ? [r] : (r===null ? await sbReq("GET",`profiles?email=eq.${encodeURIComponent(em)}&select=id,name`) : []);
         if(Array.isArray(r)&&r.length){ setCuentaExiste({nombre:r[0].name||'',email:em}); setOcupado(false); return; }
       }catch{}
       setOcupado(false);
@@ -7773,6 +7799,8 @@ function GBHApp(){
   const [planTomas, setPlanTomas] = useState(null);
   const [wInput,  setWInput]  = useState("");
   const [weightMode, setWeightMode] = useState("default");
+  // Pestaña Medidas: "peso" = la báscula de siempre · "cuerpo" = perímetros y pliegues
+  const [medidasVista, setMedidasVista] = useState("peso");
   const [userPhoto,  setUserPhoto]  = useState(()=>lsGet("gbh:userPhoto",null));
   const [showPhotoPicker,  setShowPhotoPicker]  = useState(false);
   const [ranking, setRanking] = useState([]);
@@ -7879,6 +7907,7 @@ function GBHApp(){
   const [pinPrompt,setPinPrompt]= useState(false);  // modal "crea tu PIN"
   const [pinV1,setPinV1]=useState(""); const [pinV2,setPinV2]=useState("");
   const [pinBusy,setPinBusy]=useState(false); const [pinSetErr,setPinSetErr]=useState("");
+  const [pinNetFail,setPinNetFail]=useState(false); // Fase 2a: la RPC del PIN falló (red/servidor) → se deja seguir sin PIN por ahora
   const [altaEmailInicial,setAltaEmailInicial]=useState("");  // email precargado en el alta con Bo
   const [aWeight,  setAWeight]  = useState("");
   const [aGoal,    setAGoal]    = useState("");
@@ -8366,6 +8395,13 @@ function GBHApp(){
     const lp = lsGet(`gbh:p:${lid}`, null);
     if(!lp?.id){ setScreen(s=>s==="loading"?"landing":s); return; }
 
+    // Fase 2b: con el cierre activo (SESION_OBLIGATORIA) no se entra directo sin
+    // token de sesión: a la landing con el correo puesto, a renovar con el PIN.
+    if(SESION_OBLIGATORIA && !getSesion()?.token){
+      setAEmail(lastEmail); setAuthErr(t("sesionRenovar"));
+      setScreen(s=>s==="loading"?"landing":s); return;
+    }
+
     // Sistema sin contraseñas: si hay perfil local, entrar directo.
     const today = toKey();
     const localLogs    = lsGet(`gbh:logs:${lp.id}`, []);
@@ -8393,7 +8429,9 @@ function GBHApp(){
     // PIN de acceso: si la cuenta no lo tiene, proponer crearlo (la marca 1/día
     // solo se quema al responder). OJO: este efecto es el camino REAL del
     // auto-login; loadP (más abajo) es código muerto sin llamadas.
-    if(!lp.pin_set && !lsGet("gbh:pinAsk2:"+lp.id+":"+today, false)){
+    // 4-sep-2026 (Fase 2a del RLS, orden de Alejandro): BLOQUEANTE — sin PIN
+    // se pide en CADA apertura; la marca diaria gbh:pinAsk2 ya no lo silencia.
+    if(!lp.pin_set){
       setTimeout(()=>setPinPrompt(true), 700);
     }
     // Sincronizar en segundo plano
@@ -9435,8 +9473,9 @@ function GBHApp(){
     // Ese día la ruleta automática cede el paso para no apilar dos modales.
     // La marca 1/día se graba SOLO cuando el usuario responde (guardar o
     // "Ahora no"), no al mostrar: si la app se cierra sin verlo, reaparece.
-    const pinAsked = lsGet("gbh:pinAsk2:"+p.id+":"+todayKey, false);
-    const pedirPin = !p.pin_set && !pinAsked;
+    // 4-sep-2026 (Fase 2a del RLS): el modal del PIN es BLOQUEANTE — se pide
+    // en cada entrada hasta que exista; la marca diaria ya no lo silencia.
+    const pedirPin = !p.pin_set;
     if(pedirPin){ setTimeout(()=>setPinPrompt(true), 700); }
     const alreadySeen  = lsGet("gbh:ruletaSeen:"+p.id+":"+todayKey, false);
     const alreadyDone  = lsGet("gbh:ruleta:"+p.id+":"+todayKey, false);
@@ -9468,7 +9507,10 @@ function GBHApp(){
       return;
     }
     setAuthMode("checking");
-    const r = await sbReq("GET", `profiles?email=eq.${em}&select=id,name,pin_set`);
+    // Fase 2b: gbh_buscar_cuenta (id, name, pin_set) en vez de leer profiles con
+    // la clave pública; si la RPC no existiera (null) se usa el camino antiguo.
+    let r = await sbPinRpc("gbh_buscar_cuenta", { p_email: em });
+    r = (r && typeof r==="object" && r.id) ? [r] : (r===null ? await sbReq("GET", `profiles?email=eq.${em}&select=id,name,pin_set`) : []);
     if(seq !== emailChkSeq.current) return;  // el email cambió mientras tanto
     if(r?.length){
       setAName(r[0].name || "");
@@ -9498,7 +9540,17 @@ function GBHApp(){
     const res = await sbPinRpc("gbh_set_pin",{ p_email:em, p_old_pin:null, p_new_pin:pinV1 });
     setPinBusy(false);
     // 'exists' = ya había PIN creado desde otro dispositivo → cuenta protegida
-    if(res!=="ok" && res!=="exists"){ setPinSetErr(t("pinSaveErr")); return; }
+    if(res!=="ok" && res!=="exists"){ setPinSetErr(t("pinSaveErr")); setPinNetFail(true); return; }
+    setPinNetFail(false);
+    // Fase 2b: con el PIN recién creado, abrir sesión (token) en el mismo acto.
+    // Si res==='exists' el PIN tecleado no es el real y la RPC devolverá ok:false:
+    // se ignora, la sesión llegará en el siguiente login por PIN.
+    if(res==="ok"){
+      try{
+        const lg = await sbPinRpc("gbh_login_pin",{ p_email:em, p_pin:pinV1, p_origen: ES_NATIVO?"nativo":"web" });
+        if(lg?.ok===true) setSesion({ token:lg.token, pid:lg.profile_id, admin:!!lg.es_admin });
+      }catch{}
+    }
     const np = {...profile, pin_set:true};
     setProfile(np); lsSet(`gbh:p:${np.id}`, np);
     try{ lsSet("gbh:pinAsk2:"+np.id+":"+toKey(), true); }catch{}
@@ -9538,8 +9590,7 @@ function GBHApp(){
       // PIN de acceso: cuentas sin PIN (antiguas o recién creadas con Bo) →
       // proponer crearlo nada más entrar, máximo una vez al día.
       try{
-        const tk0 = toKey();
-        if(!ep.pin_set && !lsGet("gbh:pinAsk2:"+ep.id+":"+tk0,false)){
+        if(!ep.pin_set){   // Fase 2a (4-sep-2026): bloqueante, en cada entrada
           setTimeout(()=>setPinPrompt(true), 700);
         }
       }catch{}
@@ -9577,7 +9628,21 @@ function GBHApp(){
       const {height_cm:_h, sex:_s, goal_weight:_g, bo_nombre:_b, ...npSinOpcionales}=np;
       const npNucleo={id:np.id, name:np.name, email:np.email, xp:0, gems:0, shields:0};
       let fp=null, usado=null, ultErr=null;
-      for(const [tag,intento] of [['completo',np],['sin_opcionales',npSinOpcionales],['nucleo',npNucleo]]){
+      // Fase 2b: el alta pasa por la RPC gbh_alta_cuenta (lista blanca de columnas,
+      // devuelve el perfil y abre sesión al dispositivo que lo crea). Si la RPC no
+      // existe o falla por red, cascada antigua de POST directos.
+      try{
+        const ra = await sbPinRpc("gbh_alta_cuenta", { p: np });
+        if(ra && typeof ra==="object"){
+          if(ra.ok && ra.profile?.id){
+            fp = ra.profile; usado = 'rpc';
+            if(ra.token) setSesion({ token:ra.token, pid:fp.id, admin:false });
+          } else if(ra.motivo==='existe'){
+            return lang==='en' ? 'That email already has an account. Log in instead.' : 'Ese correo ya tiene cuenta. Entra con ella.';
+          }
+        }
+      }catch{}
+      if(!fp) for(const [tag,intento] of [['completo',np],['sin_opcionales',npSinOpcionales],['nucleo',npNucleo]]){
         const r=await sbDirect("POST","profiles",intento);
         if(r.ok){ fp=(Array.isArray(r.data)&&r.data[0])||intento; usado=tag; break; }
         if(r.status===0){ await sbReq("POST","profiles",np); fp=np; usado='cola_offline'; break; }
@@ -9636,9 +9701,21 @@ function GBHApp(){
     if(authMode==="returning"){
       if(aPinNeed){
         if(!/^\d{4,6}$/.test(aPin)){ setAuthErr(t("pinFormat")); setLoading(false); return; }
-        const okPin = await sbPinRpc("gbh_check_pin",{ p_email:email, p_pin:aPin });
-        if(okPin===null){ setAuthErr(t("pinNoNet")); setLoading(false); return; }
-        if(okPin!==true){ setAuthErr(t("pinWrong")); setLoading(false); return; }
+        // Fase 2b (4-sep-2026): entrar por gbh_login_pin, que verifica el PIN
+        // igual que gbh_check_pin Y abre una sesión (token para X-GBH-Sesion).
+        // Si la RPC no existiera (null por 404) o no hay red, camino antiguo.
+        const lg = await sbPinRpc("gbh_login_pin",{ p_email:email, p_pin:aPin, p_origen: ES_NATIVO?"nativo":"web" });
+        if(lg && typeof lg==="object"){
+          if(lg.ok!==true){
+            setAuthErr(lg.motivo==="bloqueado" ? t("pinBloqueado") : t("pinWrong"));
+            setLoading(false); return;
+          }
+          setSesion({ token:lg.token, pid:lg.profile_id, admin:!!lg.es_admin });
+        } else {
+          const okPin = await sbPinRpc("gbh_check_pin",{ p_email:email, p_pin:aPin });
+          if(okPin===null){ setAuthErr(t("pinNoNet")); setLoading(false); return; }
+          if(okPin!==true){ setAuthErr(t("pinWrong")); setLoading(false); return; }
+        }
       }
       const localId = lsGet(`gbh:em:${email}`, null);
       let perfil = localId ? lsGet(`gbh:p:${localId}`, null) : null;
@@ -10406,13 +10483,21 @@ function GBHApp(){
       try {
         const r = await fetch(`${SB}/rest/v1/${path}`, {
           method: "GET",
-          headers: { "apikey": KEY, "Authorization": `Bearer ${KEY}`, "Content-Type": "application/json" }
+          headers: gbhHeaders()
         });
         if(!r.ok) return null;
         return r.json();
       } catch { return null; }
     };
-    let data = await rankFetch("profiles?select=id,name,xp,gems,streak,initial_weight,bo_nombre,bo_color,bo_equipados&order=xp.desc&limit=50");
+    // Fase 2b: el ranking viene de la RPC gbh_ranking (nombre + progreso, lo que
+    // la política de privacidad declara). Si no existiera, lecturas antiguas.
+    let data = null, wLogsPre = null;
+    const viaRpc = await sbPinRpc("gbh_ranking", { p_limit: 50 });
+    if(Array.isArray(viaRpc) && viaRpc.length){
+      data = viaRpc;
+      wLogsPre = viaRpc.filter(p=>p.last_weight!=null).map(p=>({ profile_id:p.id, weight_kg:p.last_weight, log_date:"9999-12-31" }));
+    }
+    if(data===null) data = await rankFetch("profiles?select=id,name,xp,gems,streak,initial_weight,bo_nombre,bo_color,bo_equipados&order=xp.desc&limit=50");
     // Fallbacks: sin columnas de Bo (SQL aún no ejecutado) → sin streak
     if(data===null){
       data = await rankFetch("profiles?select=id,name,xp,gems,streak,initial_weight&order=xp.desc&limit=50");
@@ -10426,7 +10511,7 @@ function GBHApp(){
     if(data?.length){
       // Pesos desde Supabase: weight_logs de todos los perfiles del ranking
       const ids=data.map(p=>p.id).join(",");
-      const wLogs=await rankFetch(`weight_logs?profile_id=in.(${ids})&select=profile_id,weight_kg,log_date&order=log_date.asc`)||[];
+      const wLogs = wLogsPre || (await rankFetch(`weight_logs?profile_id=in.(${ids})&select=profile_id,weight_kg,log_date&order=log_date.asc`)||[]);
       const enriched = data.map(p=>{
         // Racha: viene del campo streak de Supabase
         const streak = p.streak || 0;
@@ -10724,6 +10809,10 @@ function GBHApp(){
     await sbReq("DELETE", `achievements?profile_id=eq.${id}`);
     await sbReq("DELETE", `weight_logs?profile_id=eq.${id}`);
     await sbReq("DELETE", `profiles?id=eq.${id}`);
+    // Fase 2b: cerrar la sesión por PIN (la fila de gbh_sesiones cae en cascada
+    // con el perfil; esto limpia el token local aunque el DELETE fallara)
+    try{ await sbPinRpc("gbh_logout",{}); }catch{}
+    setSesion(null);
     // 2. Borrar todas las claves del usuario en localStorage
     const keysToDelete = Object.keys(localStorage).filter(k =>
       k.startsWith(`gbh:logs:${id}`) ||
@@ -10731,6 +10820,7 @@ function GBHApp(){
       k.startsWith(`gbh:badges:${id}`) ||
       k.startsWith(`gbh:p:${id}`) ||
       k === `gbh:em:${email}` ||
+      k === SESION_KEY ||
       k === "gbh:lastEmail" ||
       k === "gbh:userPhoto" ||
       k === "gbh:mute" ||
@@ -11896,8 +11986,11 @@ function GBHApp(){
           <Card style={{width:"100%",maxWidth:340}}>
             <div style={{fontSize:36,textAlign:"center",marginBottom:6}}>🔐</div>
             <div style={{fontSize:17,fontWeight:900,textAlign:"center",marginBottom:6}}>{t("pinCreateTitle")}</div>
-            <div style={{fontSize:12.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.55,textAlign:"center",marginBottom:16}}>
+            <div style={{fontSize:12.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.55,textAlign:"center",marginBottom:6}}>
               {t("pinCreateDesc")}
+            </div>
+            <div style={{fontSize:12,color:T.au1,fontWeight:800,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,textAlign:"center",marginBottom:16}}>
+              {t("pinCreateReq")}
             </div>
             <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:6}}>{t("pinNew")}</div>
             <input type="password" inputMode="numeric" pattern="[0-9]*" maxLength={6} value={pinV1}
@@ -11924,13 +12017,18 @@ function GBHApp(){
                 fontFamily:"'Nunito',sans-serif",marginBottom:8}}>
               {pinBusy ? t("verifying") : t("pinSaveBtn")}
             </button>
-            <button onClick={()=>{ try{ lsSet("gbh:pinAsk2:"+(profile?.id||"")+":"+toKey(), true); }catch{}
-                setPinPrompt(false); setPinV1(""); setPinV2(""); setPinSetErr(""); }}
-              style={{width:"100%",padding:"11px 20px",borderRadius:14,border:"2px solid rgba(255,255,255,0.18)",
-                background:"transparent",color:T.t2,fontSize:13,fontWeight:800,cursor:"pointer",
-                fontFamily:"'Nunito',sans-serif"}}>
-              {t("pinLater")}
-            </button>
+            {/* Fase 2a (4-sep-2026): el modal es BLOQUEANTE — ya no hay "Ahora no".
+                La única salida sin PIN es cuando NO se puede guardar (sin conexión
+                o la RPC falló): entonces se deja usar la app y se vuelve a pedir
+                en la siguiente apertura. */}
+            {(pinNetFail || (typeof navigator!=="undefined" && navigator.onLine===false))&&(
+              <button onClick={()=>{ setPinPrompt(false); setPinV1(""); setPinV2(""); setPinSetErr(""); setPinNetFail(false); }}
+                style={{width:"100%",padding:"11px 20px",borderRadius:14,border:"2px solid rgba(255,255,255,0.18)",
+                  background:"transparent",color:T.t2,fontSize:13,fontWeight:800,cursor:"pointer",
+                  fontFamily:"'Nunito',sans-serif"}}>
+                {t("pinLaterOffline")}
+              </button>
+            )}
           </Card>
         </div>
       )}
@@ -12500,7 +12598,12 @@ function GBHApp(){
         </>}
 
         {/* ── WEIGHT ────────────────────────────────────────────────────────── */}
-        {tab==="weight"&&(()=>{
+        {tab==="weight"&&(
+          <>
+            <SelectorMedidas vista={medidasVista} setVista={v=>{sfx("tap");setMedidasVista(v);}} lang={lang} T={T}/>
+            {medidasVista==="cuerpo"
+              ? <MedidasCorporales profile={profile} weights={weights} lang={lang} sfx={sfx} sbReq={sbReq} T={T} Card={Card}/>
+              : (()=>{
           const todayW=weekendWeighIn(weights);
           const isWE=isWeekend();
 
@@ -12612,6 +12715,8 @@ function GBHApp(){
             </>
           );
         })()}
+          </>
+        )}
 
         {/* ── ACHIEVEMENTS ──────────────────────────────────────────────────── */}
         {/* ── RANKING ──────────────────────────────────────────────────────── */}
@@ -13383,7 +13488,7 @@ function GBHApp(){
       {/* ── BOTTOM NAV ────────────────────────────────────────────────────── */}
       <div className="nav-scroll" style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:420,background:"rgba(8,18,8,0.97)",backdropFilter:"blur(30px)",borderTop:`3px solid ${T.bW}`,zIndex:100,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
         <div style={{display:"flex",padding:"10px 4px 10px",minWidth:"min-content",width:"100%"}}>
-          {[{id:"home",icon:"🏠",l:t("tabHome")},{id:"progreso",icon:"🚀",l:t("tabCalc")},{id:"plan",icon:"📆",l:"Plan"},{id:"weight",icon:"⚖️",l:t("tabWeight")},{id:"receta",icon:"🍰",l:t("tabRecipe")},{id:"consulta",icon:"📩",l:lang==="en"?"Consult":"Consulta"},{id:"ranking",icon:"👑",l:t("tabRanking")}].map(({id,icon,l})=>(
+          {[{id:"home",icon:"🏠",l:t("tabHome")},{id:"progreso",icon:"🚀",l:t("tabCalc")},{id:"plan",icon:"📆",l:"Plan"},{id:"weight",icon:"📏",l:t("tabWeight")},{id:"receta",icon:"🍰",l:t("tabRecipe")},{id:"consulta",icon:"📩",l:lang==="en"?"Consult":"Consulta"},{id:"ranking",icon:"👑",l:t("tabRanking")}].map(({id,icon,l})=>(
             <button key={id} onClick={()=>{ sfx("tap"); setTab(id); }} style={{...tabSt(tab===id),flex:"1 0 60px",minWidth:60,padding:"8px 6px"}}>
               <span style={{fontSize:24,filter:tab===id?"none":"grayscale(0.6)",transition:"all 0.2s"}}>{icon}</span>
               <span style={{fontSize:9,whiteSpace:"nowrap"}}>{l}</span>
@@ -13454,7 +13559,7 @@ function TarjetaPareja({profile,sfx,showT,onEstado}){
     const l=Array.isArray(filas)?filas[0]:null;
     if(!l){ setFila(null); setOtro(null); setEstado("solo"); return; }
     const otroId=l.de_id===profile.id?l.a_id:l.de_id;
-    const perf=await sbReq('GET',`profiles?id=eq.${otroId}&select=id,name&limit=1`);
+    const perf=await sbReq('GET',`perfiles_publicos?id=eq.${otroId}&select=id,name&limit=1`);  // Fase 2b: perfil ajeno → vista pública
     setFila(l); setOtro({id:otroId,nombre:(Array.isArray(perf)&&perf[0]?.name)||""});
     setEstado(l.estado==="aceptado" ? "vinculada" : (l.de_id===profile.id ? "enviada" : "recibida"));
   },[profile?.id]);
@@ -13466,7 +13571,7 @@ function TarjetaPareja({profile,sfx,showT,onEstado}){
     if(c===String(profile?.referral_code||"").toUpperCase()){ setError(t("parejaEsTuyo")); return; }
     setOcupado(true);
     try{
-      const perf=await sbReq('GET',`profiles?referral_code=eq.${encodeURIComponent(c)}&select=id,name&limit=1`);
+      const perf=await sbReq('GET',`perfiles_publicos?referral_code=eq.${encodeURIComponent(c)}&select=id,name&limit=1`);  // Fase 2b: vista pública
       const dest=Array.isArray(perf)?perf[0]:null;
       if(!dest){ setError(t("parejaNoEncontrado")); return; }
       // Ninguna de las dos cuentas puede tener ya un vínculo aceptado
@@ -14940,7 +15045,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
       if(!vivo) return;
       if(!l){ setPareja(null); setParejaPlanJ(null); return; }
       const otroId = l.de_id===profile.id ? l.a_id : l.de_id;
-      const perf=await sbReq('GET',`profiles?id=eq.${otroId}&select=id,name&limit=1`);
+      const perf=await sbReq('GET',`perfiles_publicos?id=eq.${otroId}&select=id,name&limit=1`);  // Fase 2b: perfil ajeno → vista pública
       if(!vivo) return;
       setPareja({id:otroId, nombre:(Array.isArray(perf)&&perf[0]?.name)||''});
     })();
