@@ -5,6 +5,7 @@ import { SPR, U, sprite, spriteCaja, bloque, suelo as dibujarSuelo, matas } from
 // Medidas corporales (silueta por zonas, perímetros y pliegues): módulo aparte,
 // recibe sbReq/T/Card por props para que este fichero solo cambie en 3 sitios.
 import { SelectorMedidas, MedidasCorporales } from "./MedidasCorporales";
+import { SelectorPrograma, BotonPrograma } from "./SelectorPrograma";
 
 // ─── Servidor de generación de programaciones (Railway) ─────────────────────
 // Rellena estos dos valores tras desplegar el servidor (ver GUIA_DESPLIEGUE_RAILWAY.md)
@@ -16871,6 +16872,9 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
      sub:lang==='en'?'Mon-Tue / Wed-Thu / Fri-Sat / Sun':'LM · XJ · VS · D (2 días seguidos)'},
   ];
   const [dieta,setDieta]=React.useState(config?.tipo_dieta&&DIETAS.some(d=>d.v===config.tipo_dieta)?config.tipo_dieta:'Simple');
+  // Selector de programación estilo «SELECT PLAYER» (SelectorPrograma.jsx):
+  // se abre desde el botón-ficha y devuelve aquí con la elección hecha.
+  const [selectorAbierto,setSelectorAbierto]=React.useState(false);
   const [patron,setPatron]=React.useState(
     PATRONES_OPC.some(p=>p.v===config?.patron_dias) ? config.patron_dias : 'Estándar (LJ/MS/XV/D)');
   const [dist,setDist]=React.useState({
@@ -16992,23 +16996,16 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
         <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:10}}>
           {lang==='en'?'1 · Diet type':'1 · Tipo de alimentación'}
         </div>
-        {/* 6 opciones: rejilla de 3 columnas (dos filas). En fila única no cabían en un móvil. */}
-        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}}>
-          {DIETAS.map(d=>{
-            const sel=dieta===d.v;
-            return(
-              <button key={d.v} onClick={()=>setDieta(d.v)}
-                style={{background:sel?alpha(T.g1,0.15):'rgba(255,255,255,0.04)',
-                        border:sel?'2px solid '+T.bG:'1.5px solid rgba(255,255,255,0.1)',
-                        borderRadius:16,padding:'14px 6px',cursor:'pointer',textAlign:'center',
-                        transition:'all 0.2s'}}>
-                <div style={{fontSize:26,marginBottom:4}}>{d.ic}</div>
-                <div style={{fontSize:12,fontWeight:900,color:sel?T.g1:T.t1,fontFamily:"'Nunito',sans-serif"}}>{d.label}</div>
-                <div style={{fontSize:9,color:T.t3,marginTop:2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.2}}>{d.sub}</div>
-              </button>
-            );
-          })}
-        </div>
+        {/* Botón-ficha que abre el selector arcade (SelectorPrograma.jsx). Sustituye a la
+            rejilla de botones de 06b por orden de Alejandro (6-sep-2026): las fichas se
+            deslizan, llevan la oveja del paciente con un objeto por dieta y «¡Elijo esta!»
+            devuelve aquí con la elección hecha (se puede volver a abrir y cambiar). */}
+        <BotonPrograma lang={lang} T={T} valor={dieta} onAbrir={()=>{sfx&&sfx("tap");setSelectorAbierto(true);}} />
+        {selectorAbierto && (
+          <SelectorPrograma lang={lang} T={T} Sheep={Sheep} profile={profile} sfx={sfx} valor={dieta}
+            onElegir={(v)=>{setDieta(v);setSelectorAbierto(false);}}
+            onClose={()=>setSelectorAbierto(false)} />
+        )}
       </div>
 
       {/* ── Distribución calórica — tabla con flechas (sin deslizadores que se
