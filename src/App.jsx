@@ -2173,8 +2173,13 @@ const CORONA = [[1,0,1,"O"],[6,0,1,"O"],[11,0,1,"O"],[0,1,1,"O"],[1,1,1,"L"],[2,
 // ─── 🎮 El Salto del Rebaño (runner offline, estilo dino) ────────────────────
 function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJugar, arrancarRef,
   puntosHoy = 0, puntosSemana = 0, onFinPartida, perfilId = null,
-  scoreRef = null, onScoreVivo = null }) {
+  scoreRef = null, onScoreVivo = null, esperaSeg = 0, cargandoPartidas = false }) {
   const canvasRef = useRef(null);
+  // Clave ESTABLE de los accesorios: el efecto del juego depende de ella y no del
+  // array. Un array nuevo con el mismo contenido (perfil releído del servidor a
+  // media partida) reiniciaba el bucle: la oveja volvía al principio y la
+  // dificultad a cero, con el marcador de antes todavía en pantalla.
+  const eqKey = Array.isArray(equipados) ? equipados.join(",") : "";
   const tapRef = useRef(null);      // handler del toque expuesto al JSX (sobrevive re-renders)
   const [modoElegido, setModoElegido] = useState("noche");   // juego seleccionado en la pantalla previa
   const [jugando, setJugando] = useState(false);
@@ -2409,14 +2414,18 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
     const RIVAL_BOT = { id: null, bot: true, usuario: "Bo", oveja: "entrenador", pts: 0,
       px: buildPixels("verde", []), pxTriste: buildPixelsEstado("verde", [], "triste") };
     // ── Duelo: rivales reales del ranking semanal (top 1, top 2 y el rebaño) ──
+    // Plazo para las lecturas del tapete: si la red se queda colgada (móvil con
+    // cobertura a medias), el duelo no puede quedarse en «Buscando al rebaño…»
+    // para siempre. A los 8 s se juega contra Bo entrenador.
+    const conPlazo = (p, ms) => Promise.race([p, new Promise(r => setTimeout(() => r(null), ms))]);
     const cargarRivales = async () => {
       try {
-        const jr = await sbReq("GET", "v_ranking_juego_semanal?select=profile_id,puntos_semana&order=puntos_semana.desc&limit=14") || [];
+        const jr = await conPlazo(sbReq("GET", "v_ranking_juego_semanal?select=profile_id,puntos_semana&order=puntos_semana.desc&limit=14"), 8000) || [];
         const filas = (Array.isArray(jr) ? jr : []).filter(r => r.profile_id !== perfilId);
         const ids = filas.map(r => r.profile_id).slice(0, 10);
         let perf = [];
         // Fase 2b: los perfiles AJENOS se leen de la vista perfiles_publicos (nombre + Bo), no de profiles
-        if (ids.length) perf = await sbReq("GET", `perfiles_publicos?id=in.(${ids.join(",")})&select=id,name,bo_nombre,bo_color,bo_equipados`) || [];
+        if (ids.length) perf = await conPlazo(sbReq("GET", `perfiles_publicos?id=in.(${ids.join(",")})&select=id,name,bo_nombre,bo_color,bo_equipados`), 8000) || [];
         const pMap = {}; (Array.isArray(perf) ? perf : []).forEach(p => { pMap[p.id] = p; });
         const rivales = filas.map(r => {
           const p = pMap[r.profile_id]; if (!p) return null;
@@ -2536,10 +2545,15 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
     window.addEventListener("keydown", onKey);
 
     let raf;
-    const loop = () => {
-      // Coordenadas lógicas → resolución nativa (nítido en cualquier pantalla)
-      ctx.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
-      if (st.vivo && cuentaRef.current <= 0) {
+    // ── Un PASO de simulación = 1/60 s de juego ──────────────────────────────
+    // Toda la física está escrita «por fotograma» y calibrada a 60 por segundo
+    // (velocidades, gravedad, cadencias, DIF_FRAMES). Hasta hoy cada rAF era un
+    // paso, así que el juego iba a la velocidad que quisiera la pantalla: iOS
+    // baja requestAnimationFrame a 30 por segundo en ahorro de energía (el juego
+    // iba a la MITAD, con la oveja flotando a cámara lenta) y una pantalla de
+    // 90/120 Hz lo doblaría. Ahora el bucle pinta a la cadencia de la pantalla y
+    // simula los pasos de 1/60 s que hayan pasado de verdad.
+    const paso = () => {
         if (st.vel < 7.6) st.vel += 0.0011;  // acelera suave, con tope
         if (st.transicion > 0) st.transicion -= 0.04;
         const tema = TEMAS[st.modo];
@@ -2969,7 +2983,24 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
           return true;
         });
         st.nubes.forEach(n => { n.x -= st.vel * 0.25; if (n.x < -30) n.x = W + 20; });
+    };
+    const PASO_MS = 1000 / 60;
+    let tPrev = performance.now(), deuda = 0;
+    const loop = (tRaf) => {
+      // Coordenadas lógicas → resolución nativa (nítido en cualquier pantalla)
+      ctx.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
+      const tAhora = typeof tRaf === "number" ? tRaf : performance.now();
+      // Tope de 250 ms: al volver del segundo plano no se «recupera» el tiempo
+      // perdido de golpe (la oveja aparecería muerta sin haber visto el lobo).
+      const dt = Math.min(Math.max(tAhora - tPrev, 0), 250);
+      tPrev = tAhora;
+      let pasos;
+      if (Math.abs(dt - PASO_MS) < PASO_MS * 0.25) { pasos = 1; deuda = 0; }   // pantalla de 60 Hz: un paso exacto, sin tirones
+      else {
+        deuda += dt; pasos = Math.floor(deuda / PASO_MS); deuda -= pasos * PASO_MS;
+        if (pasos > 4) { pasos = 4; deuda = 0; }                                // nunca una avalancha de pasos
       }
+      for (let i = 0; i < pasos; i++) if (st.vivo && cuentaRef.current <= 0) paso();
       const tema = TEMAS[st.modo];
       // ── dibujo del fondo ──
       if (tema.familia === "plataformas") {
@@ -3561,7 +3592,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
-  }, [jugando, color, equipados]);
+  }, [jugando, color, eqKey]);
 
   // Cuenta atrás de preparación: 5,4,3,2,1 -> arranca
   useEffect(() => {
@@ -3585,6 +3616,7 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
     setFin(false); setScore(0); cuentaRef.current = n0; setCuenta(n0); setJugando(true);
   };
   useEffect(() => { if (arrancarRef) arrancarRef.current = arrancar; }, []);
+  const puedeJugar = partidasProp > 0 && esperaSeg <= 0 && !cargandoPartidas;
 
   return (
     <div style={{ position: "relative", display: "flex", flexDirection: "column", height: "100%",
@@ -3623,14 +3655,19 @@ function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJ
               <span style={{ color: T.t2 }}>Hoy: <b style={{ color: T.cr }}>{puntosHoy} pts</b></span>
               <span style={{ color: T.t2 }}>Semana: <b style={{ color: T.au1 }}>{puntosSemana} pts</b></span>
             </div>
-            <button onClick={() => onPagarYJugar(modoElegido)} disabled={partidasProp === 0}
-              style={{ background: partidasProp > 0 ? `linear-gradient(180deg,${T.g2},${T.g1})` : "rgba(255,255,255,0.1)",
-                border: "none", borderRadius: 18, color: partidasProp > 0 ? T.bg : T.t3,
-                fontWeight: 900, fontSize: 18, padding: "15px 40px",
-                cursor: partidasProp > 0 ? "pointer" : "not-allowed", fontFamily: "inherit",
-                boxShadow: partidasProp > 0 ? `0 5px 0 ${T.g3}` : "none",
+            {/* El botón cuenta la verdad del servidor: se apaga mientras se leen los
+                contadores del día y durante los 30 s que la RPC exige entre partidas.
+                Antes cobraba el diamante y el servidor rechazaba la partida después. */}
+            <button onClick={() => onPagarYJugar(modoElegido)} disabled={!puedeJugar}
+              style={{ background: puedeJugar ? `linear-gradient(180deg,${T.g2},${T.g1})` : "rgba(255,255,255,0.1)",
+                border: "none", borderRadius: 18, color: puedeJugar ? T.bg : T.t3,
+                fontWeight: 900, fontSize: puedeJugar ? 18 : 14.5, padding: "15px 28px",
+                cursor: puedeJugar ? "pointer" : "not-allowed", fontFamily: "inherit",
+                boxShadow: puedeJugar ? `0 5px 0 ${T.g3}` : "none",
                 display: "inline-flex", alignItems: "center", gap: 10 }}>
-              ▶ Jugar <span style={{ fontSize: 19 }}>💎</span>
+              {cargandoPartidas ? "⏳ Leyendo tus partidas…"
+                : esperaSeg > 0 ? `⏳ Siguiente partida en ${esperaSeg} s`
+                : <>▶ Jugar <span style={{ fontSize: 19 }}>💎</span></>}
             </button>
 
             {/* Factual y sin reproche; la salida es la revancha, no la pérdida */}
@@ -8690,6 +8727,25 @@ function GBHApp(){
   const [ptsHoy,setPtsHoy]=useState(0);
   const [ptsSemana,setPtsSemana]=useState(0);
   const arrancarJuegoRef=useRef(null);
+  // ── La regla de 30 s del servidor, hecha visible ───────────────────────────
+  // registrar_partida_juego rechaza (`demasiado_rapido`) toda partida registrada
+  // a menos de 30 s de la anterior, y lo comprueba AL MORIR, con el diamante ya
+  // gastado. El cliente lleva la cuenta desde el último registro confirmado (o el
+  // leído de la tabla) y no cobra hasta que el servidor vaya a aceptar: la cuenta
+  // atrás dura 5 s y una partida ≥1 s, así que arrancar a los 30 s garantiza
+  // registrar pasados los 30.
+  const ESPERA_PARTIDAS_MS=30500;
+  const ultimoRegistroRef=useRef(0);
+  const [esperaJugar,setEsperaJugar]=useState(0);          // segundos que faltan (0 = libre)
+  const [partidasListas,setPartidasListas]=useState(true);  // false mientras se leen los contadores del día
+  const segundosDeEspera=()=>Math.min(30,Math.max(0,Math.ceil((ESPERA_PARTIDAS_MS-(Date.now()-ultimoRegistroRef.current))/1000)));
+  useEffect(()=>{ if(esperaJugar<=0) return;
+    // Baja SIEMPRE al menos 1 (no puede atascarse) y salta al valor del reloj si
+    // este dice menos: iOS congela los timers en segundo plano.
+    const t=setTimeout(()=>setEsperaJugar(s=>Math.max(0,Math.min(s-1,segundosDeEspera()))),1000);
+    return ()=>clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[esperaJugar]);
   // BienvenidaBo eliminado del arranque (criterio 10 del tutorial): la adopción
   // de Bo vive ahora en el paso 7 del alta conversacional. Los usuarios ya
   // existentes conservan su bo_nombre del perfil y pueden cambiarlo con el 🎨.
@@ -8858,16 +8914,27 @@ function GBHApp(){
 
   const hoyMadrid=()=>new Date().toLocaleDateString("sv-SE",{timeZone:"Europe/Madrid"});
   const cargarPartidasHoy=async()=>{ if(!profile?.id) return;
-    await saldarPartidaHuerfana();
+    setPartidasListas(false);
     try{
-      const rows=await sbReq("GET",`juego_partidas?profile_id=eq.${profile.id}&fecha=eq.${hoyMadrid()}&origen=eq.partida&select=puntos`)||[];  // los duelos también viven aquí (origen=duelo): no cuentan como partida diaria
-      const arr=Array.isArray(rows)?rows:[];
-      setPartidasRestantes(Math.max(0,3-arr.length));
-      const hoyPts=arr.reduce((s,r)=>s+(r.puntos||0),0);
-      setPtsHoy(hoyPts);
-      const sem=await sbReq("GET",`v_ranking_juego_semanal?profile_id=eq.${profile.id}&select=puntos_semana`);
-      setPtsSemana(Array.isArray(sem)&&sem[0]?(sem[0].puntos_semana||0):hoyPts);
+      await saldarPartidaHuerfana();
+      const rows=await sbReq("GET",`juego_partidas?profile_id=eq.${profile.id}&fecha=eq.${hoyMadrid()}&origen=eq.partida&select=puntos,created_at`);  // los duelos también viven aquí (origen=duelo): no cuentan como partida diaria
+      // sbReq devuelve null si no hubo respuesta. Antes eso se convertía en «3
+      // partidas y 0 puntos» y el servidor rechazaba la cuarta con el diamante ya
+      // gastado; ahora, sin respuesta, los contadores se quedan como estaban.
+      if(Array.isArray(rows)){
+        setPartidasRestantes(Math.max(0,3-rows.length));
+        const hoyPts=rows.reduce((s,r)=>s+(r.puntos||0),0);
+        setPtsHoy(hoyPts);
+        // La regla de 30 s cuenta desde el último registro, también si fue en otro
+        // dispositivo o antes de recargar la app: se lee de la tabla
+        const ult=rows.reduce((m,r)=>Math.max(m,Date.parse(r.created_at)||0),0);
+        if(ult>ultimoRegistroRef.current) ultimoRegistroRef.current=ult;
+        const sem=await sbReq("GET",`v_ranking_juego_semanal?profile_id=eq.${profile.id}&select=puntos_semana`);
+        if(Array.isArray(sem)) setPtsSemana(sem[0]?(sem[0].puntos_semana||0):hoyPts);
+      }
     }catch{}
+    setEsperaJugar(segundosDeEspera());
+    setPartidasListas(true);
   };
   // Testigo persistente de partida en curso. El ref solo vive en memoria: si el
   // paciente mata la app (o se le apaga el móvil) el ref desaparece y la partida
@@ -8896,21 +8963,42 @@ function GBHApp(){
     // duplicaría la fila que la cola ya tiene pendiente.
     cerrarPartida();
     registrandoRef.current=true;
-    try{ await sbReq("POST","rpc/registrar_partida_juego",
-      {p_profile_id:profile.id,p_puntos:Math.max(0,t.pts||0),p_modo:t.modo||null}); }catch{}
+    try{ const r=await sbReq("POST","rpc/registrar_partida_juego",
+      {p_profile_id:profile.id,p_puntos:Math.max(0,t.pts||0),p_modo:t.modo||null});
+      if(r&&r.ok) ultimoRegistroRef.current=Date.now(); }catch{}
     registrandoRef.current=false;
   };
 
   const pagarYJugar=(modo)=>{
-    if(partidasRestantes<=0) return;
+    if(partidasRestantes<=0||!partidasListas) return;
+    // Nada se cobra hasta saber que el servidor va a aceptar la partida
+    if(registrandoRef.current){ sfx("error"); showT({icon:"⏳",title:"Guardando la partida anterior",sub:"Un momento y podrás jugar la siguiente."}); return; }
+    const falta=segundosDeEspera();
+    if(falta>0){ setEsperaJugar(falta); sfx("error"); showT({icon:"⏳",title:`Siguiente partida en ${falta} s`,sub:"El servidor pide 30 segundos entre partidas; así no se pierde ningún diamante."}); return; }
     const g=profile?.gems||0;
-    if(g<1) return;
+    // Antes, sin diamantes, el botón no hacía NADA: parecía una avería
+    if(g<1){ sfx("error"); showT({icon:"💎",title:"Sin diamantes",sub:"Cada partida cuesta 1 💎. Los consigues con las misiones diarias, el quiz y la ruleta."}); return; }
     setProfile(p=>p?{...p,gems:(p.gems||0)-1}:p);
     sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:g-1});
     setPartidasRestantes(r=>Math.max(0,r-1));
     partidaEnCursoRef.current=true;
     abrirPartida(modo);      // el diamante ya está gastado: no hay vuelta atrás
     arrancarJuegoRef.current&&arrancarJuegoRef.current();
+  };
+  // Mensajes para cada rechazo DEFINITIVO del servidor (la RPC contesta ok:false).
+  // Un rechazo no es un corte de red: la partida no existe, no se reintenta y el
+  // diamante se devuelve. Antes todo caía en «No hemos podido confirmar…», que se
+  // leía como una avería y se quedaba con el diamante.
+  const MOTIVO_RECHAZO={
+    limite_diario_alcanzado:{icon:"🌙",title:"Ya has jugado las 3 partidas de hoy",sub:"Te devolvemos el diamante. Mañana hay más."},
+    demasiado_rapido:{icon:"⏳",title:"Partida demasiado seguida",sub:"El servidor pide 30 s entre partidas. Te devolvemos el diamante."},
+    puntos_fuera_de_rango:{icon:"🤔",title:"Marcador no válido",sub:"El servidor no acepta más de 2000 puntos por partida. Te devolvemos el diamante."},
+    perfil_no_encontrado:{icon:"👤",title:"Cuenta no encontrada",sub:"Vuelve a entrar en la app. Te devolvemos el diamante."},
+  };
+  const devolverDiamante=()=>{ if(!profile?.id) return;
+    const g=(profile?.gems||0)+1;
+    setProfile(p=>p?{...p,gems:(p.gems||0)+1}:p);
+    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:g});
   };
   const finPartida=async(pts)=>{ if(!profile?.id) return;
     if(registrandoRef.current) return;      // el fin de partida y la ✕ pueden dispararse a la vez
@@ -8921,18 +9009,29 @@ function GBHApp(){
     const modo=(lsGet(kPartida(),null)||{}).modo||null;   // del testigo, y ANTES de cerrarlo
     cerrarPartida();                        // a partir de aquí el reintento es de la cola offline
     try{
-      const res=await sbReq("POST","rpc/registrar_partida_juego",{p_profile_id:profile.id,p_puntos:puntos,p_modo:modo});
+      // Plazo de 20 s: una petición que nunca contestaba dejaba `registrandoRef`
+      // en true para siempre y ninguna partida posterior volvía a registrarse.
+      const res=await Promise.race([
+        sbReq("POST","rpc/registrar_partida_juego",{p_profile_id:profile.id,p_puntos:puntos,p_modo:modo}),
+        new Promise(r=>setTimeout(()=>r(undefined),20000))]);
       if(res&&res.ok){
+        ultimoRegistroRef.current=Date.now(); setEsperaJugar(segundosDeEspera());
         setPtsHoy(res.puntos_hoy||0);
         setPtsSemana(res.puntos_semana||0);
         setPartidasRestantes(res.partidas_restantes!=null?res.partidas_restantes:0);
+      }else if(res&&res.ok===false){
+        // Rechazo definitivo del servidor: no hay partida que reintentar
+        console.warn("registrar_partida_juego rechazó la partida:",res);
+        devolverDiamante();
+        showT(MOTIVO_RECHAZO[res.error]||{icon:"🤔",title:"El servidor no ha aceptado la partida",sub:`Motivo: ${res.error||"desconocido"}. Te devolvemos el diamante.`});
+        if(res.error==="limite_diario_alcanzado") setPartidasRestantes(0);
+        await cargarPartidasHoy();
       }else{
-        // La RPC no confirmó. Puede ser un corte de red (sbReq ya ha encolado la
-        // llamada y la cola la reenviará) o un rechazo del servidor. Antes esto se
-        // tragaba en silencio: el marcador se quedaba con el valor de antes y el
-        // paciente veía "las mismas partidas de antes" y cero puntos, sin saber si
-        // se había gastado el diamante. Ahora se avisa y se releen los contadores
-        // de la tabla, que es la única verdad.
+        // Sin respuesta: null = sbReq ya encoló la llamada y la cola la reenviará;
+        // undefined = plazo agotado. Antes esto se tragaba en silencio: el marcador
+        // se quedaba con el valor de antes y el paciente veía "las mismas partidas
+        // de antes" y cero puntos, sin saber si se había gastado el diamante. Se
+        // avisa y se releen los contadores de la tabla, que es la única verdad.
         console.warn("registrar_partida_juego no confirmó:",res);
         const enCola=(lsGet(getQueueKey(),[])||[]).some(o=>o.path==="rpc/registrar_partida_juego");
         showT({icon:"📡",title:"Partida pendiente de guardar",
@@ -8946,8 +9045,9 @@ function GBHApp(){
       console.warn("registrar_partida_juego falló:",e);
       showT({icon:"📡",title:"Partida pendiente de guardar",
         sub:`Tus ${puntos} pts se enviarán solos en cuanto vuelva la conexión.`});
+    }finally{
+      registrandoRef.current=false;
     }
-    registrandoRef.current=false;
   };
   const fn=profile?.name?.split(" ")[0]||"";
 
@@ -11965,6 +12065,7 @@ function GBHApp(){
               <JuegoOveja color={boColor} equipados={boEquipados} nombre={boNombre} perfilId={profile?.id}
                 partidasProp={partidasRestantes} puntosHoy={ptsHoy} puntosSemana={ptsSemana}
                 onFinPartida={finPartida} onPagarYJugar={pagarYJugar}
+                esperaSeg={esperaJugar} cargandoPartidas={!partidasListas}
                 scoreRef={scoreVivoRef} onScoreVivo={(p)=>{ if(p!==null) anotarPuntos(p); }}
                 onSalir={()=>setZonaJuego(false)} arrancarRef={arrancarJuegoRef}/>
             </div>
