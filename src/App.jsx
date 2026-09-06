@@ -16847,10 +16847,17 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
     {k:'dist_merienda',label:lang==='en'?'Snack PM':'Merienda',ic:'🥤'},
     {k:'dist_cena',    label:lang==='en'?'Dinner':'Cena',ic:'🌙'},
   ];
+  // Los valores `v` son los que lee el generador (gbh_automatizacion._norm_dieta):
+  // 'Cetogénica' → pool cetogénico; 'Celíaco' → Simple + restricción sin gluten;
+  // 'Descarga' → pool de descarga precompetición (plato único). Añadidos el
+  // 6-sep-2026 por orden de Alejandro para que el estándar los elija por su cuenta.
   const DIETAS=[
     {v:'Simple',     ic:'🍽️',label:lang==='en'?'Normal':'Normal',     sub:lang==='en'?'Everything':'De todo'},
     {v:'Vegetariana',ic:'🥗',label:lang==='en'?'Vegetarian':'Vegetariano',sub:lang==='en'?'No meat/fish':'Sin carne ni pescado'},
     {v:'Vegana',     ic:'🌱',label:lang==='en'?'Vegan':'Vegano',     sub:lang==='en'?'Plant-based':'100% vegetal'},
+    {v:'Celíaco',    ic:'🌾',label:lang==='en'?'Gluten-free':'Sin gluten',sub:lang==='en'?'Coeliac-safe recipes':'Apta para celíacos'},
+    {v:'Cetogénica', ic:'🥑',label:lang==='en'?'Keto':'Cetogénica',  sub:lang==='en'?'Low carb · protein & fat':'Sin hidratos · proteína y grasa'},
+    {v:'Descarga',   ic:'⚖️',label:lang==='en'?'Weigh-in':'Descarga',  sub:lang==='en'?'Pre-competition (2 weeks)':'Precompetición (2 semanas)'},
   ];
   // Patrones de repetición de menús — claves EXACTAS del generador (PATRONES)
   const PATRONES_OPC=[
@@ -16863,7 +16870,7 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
     {v:'Alta repetición (LM/XJ/VS/D)',ic:'📦', n:4, label:lang==='en'?'4 in a row':'4 seguidos',
      sub:lang==='en'?'Mon-Tue / Wed-Thu / Fri-Sat / Sun':'LM · XJ · VS · D (2 días seguidos)'},
   ];
-  const [dieta,setDieta]=React.useState(config?.tipo_dieta&&['Simple','Vegetariana','Vegana'].includes(config.tipo_dieta)?config.tipo_dieta:'Simple');
+  const [dieta,setDieta]=React.useState(config?.tipo_dieta&&DIETAS.some(d=>d.v===config.tipo_dieta)?config.tipo_dieta:'Simple');
   const [patron,setPatron]=React.useState(
     PATRONES_OPC.some(p=>p.v===config?.patron_dias) ? config.patron_dias : 'Estándar (LJ/MS/XV/D)');
   const [dist,setDist]=React.useState({
@@ -16985,12 +16992,13 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
         <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:10}}>
           {lang==='en'?'1 · Diet type':'1 · Tipo de alimentación'}
         </div>
-        <div style={{display:'flex',gap:8}}>
+        {/* 6 opciones: rejilla de 3 columnas (dos filas). En fila única no cabían en un móvil. */}
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}}>
           {DIETAS.map(d=>{
             const sel=dieta===d.v;
             return(
               <button key={d.v} onClick={()=>setDieta(d.v)}
-                style={{flex:1,background:sel?alpha(T.g1,0.15):'rgba(255,255,255,0.04)',
+                style={{background:sel?alpha(T.g1,0.15):'rgba(255,255,255,0.04)',
                         border:sel?'2px solid '+T.bG:'1.5px solid rgba(255,255,255,0.1)',
                         borderRadius:16,padding:'14px 6px',cursor:'pointer',textAlign:'center',
                         transition:'all 0.2s'}}>
