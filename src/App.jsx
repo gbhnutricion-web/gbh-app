@@ -8258,6 +8258,11 @@ function GBHApp(){
     }catch{}
   };
   // ── Cargar las tomas del plan vigente (para el desglose de dieta en Inicio) ──
+  // «Vigente» = la de fecha_gen MÁS RECIENTE, igual que en la pestaña Plan.
+  // Antes se pedía order=semana.desc (el nº de semana más alto): un premium en
+  // su segundo ciclo (vuelve a S1, S2…) conserva las S10-S12 del ciclo anterior
+  // y aquí salían las tomas y el aviso de «programación nueva» de una semana de
+  // junio, mientras Plan ya enseñaba la de septiembre (MAESTRO-2026-433).
   // Guarda solo un mapa reducido {Toma:{dia:true}} — ligero para localStorage y
   // suficiente para saber qué comidas tiene el paciente cada día de la semana.
   useEffect(()=>{
@@ -8277,7 +8282,7 @@ function GBHApp(){
       }
       return Object.keys(m).length?m:null;
     };
-    sbReq("GET",`weekly_plans?profile_id=eq.${profile.id}&select=plan_json,semana,fecha_gen&order=semana.desc&limit=1`)
+    sbReq("GET",`weekly_plans?profile_id=eq.${profile.id}&select=plan_json,semana,fecha_gen&order=fecha_gen.desc.nullslast&limit=1`)
       .then(rows=>{
         const row=Array.isArray(rows)&&rows[0];
         chkNuevoPlan(row);
@@ -8299,7 +8304,7 @@ function GBHApp(){
     if(profile.plan!=="premium" && profile.plan!=="standard") return;
     if(Date.now()-planTomasTsRef.current < 10*60*1000) return;
     planTomasTsRef.current = Date.now();
-    sbReq("GET",`weekly_plans?profile_id=eq.${profile.id}&select=plan_json,semana,fecha_gen&order=semana.desc&limit=1`)
+    sbReq("GET",`weekly_plans?profile_id=eq.${profile.id}&select=plan_json,semana,fecha_gen&order=fecha_gen.desc.nullslast&limit=1`)
       .then(rows=>{
         const row=Array.isArray(rows)&&rows[0];
         chkNuevoPlan(row);
