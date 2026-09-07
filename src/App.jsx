@@ -14496,10 +14496,21 @@ function costeListaItems(items){
     }
     total+=g/1000*p[0];
   }
-  // ×1,15: margen a-priori por formatos de compra (se compra el paquete/malla
-  // entera, no los gramos) — mismo FACTOR_COMPRA que gbh_precios.py aplica al
-  // PDF. Solo listas semanales; el coste por ración (costeRecetaJS) no lo lleva.
-  return {total:Math.round(total*1.15*100)/100, sinPrecio};
+  // Margen a-priori por formatos de compra (se compra el paquete/malla entera,
+  // no los gramos) — mismo FACTOR_COMPRA que gbh_precios.py aplica al PDF.
+  // Solo listas semanales; el coste por ración (costeRecetaJS) no lo lleva.
+  //
+  // ⚠️ ESTE NÚMERO ESTÁ DUPLICADO y NO se genera desde el Excel: `--js` solo
+  // exporta el diccionario de precios. Si cambia aquí y no en
+  // `gbh_precios.py:FACTOR_COMPRA`, la App y el PDF estiman distinto sin dar
+  // ningún error. Se cambian los dos o ninguno. Por eso vive en una constante
+  // con nombre: para que se vea al buscar, en vez de escondido en la fórmula.
+  //
+  // 7-sep-2026: 1,15 → 1,07 por orden de Alejandro (MAESTRO-2026-460, anexo).
+  // El +15 % estaba tapando la fuga de los ingredientes sin gramos, que costaban
+  // 0 € en 174 de 866 recetas; cerrada la fuga, inflaba dos veces.
+  const FACTOR_COMPRA = 1.07;
+  return {total:Math.round(total*FACTOR_COMPRA*100)/100, sinPrecio};
 }
 const eurES=(v)=>(Math.round(v*100)/100).toFixed(2).replace(".",",");
 
