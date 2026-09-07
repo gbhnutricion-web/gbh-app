@@ -319,3 +319,141 @@ export function BannerSemanaNueva({ lang = "es", T, tienePlan, onGenerar, sfx })
     </div>
   );
 }
+
+// ═══ Resto de «Editar tu plan» con la misma gama (6-sep-2026, «homogeneiza el
+// estilo») ═══════════════════════════════════════════════════════════════════
+export const FUENTE_PIXEL = FUENTE;
+
+// Cabecera de la pantalla: emoji, título en píxel dorado, subtítulo.
+export function CabeceraPlan({ lang = "es", primeraVez }) {
+  const L = lang === "en" ? "en" : "es";
+  const tit = primeraVez ? (L === "en" ? "SET UP YOUR PLAN" : "DEFINE TU PLAN") : (L === "en" ? "EDIT YOUR PLAN" : "EDITAR TU PLAN");
+  const sub = L === "en" ? "Tell us your preferences so we can build your weekly plan" : "Cuéntanos tus preferencias para crear tu programación semanal";
+  return (
+    <div style={{ padding: "18px 16px 8px", textAlign: "center" }}>
+      <div style={{ fontSize: 34, marginBottom: 8 }}>🥗</div>
+      <div style={{ fontFamily: FUENTE, fontSize: "min(13px, 3.3vw)", color: ORO, textShadow: "2px 2px 0 #000", lineHeight: 1.6, padding: "0 8px" }}>{tit}</div>
+      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", fontFamily: "'DM Sans',sans-serif", marginTop: 6, lineHeight: 1.5 }}>{sub}</div>
+    </div>
+  );
+}
+
+// Píldora del total de porcentajes (cabecera de la sección 2).
+export function PillTotal({ lang = "es", total }) {
+  const ok = total === 100;
+  const L = lang === "en" ? "en" : "es";
+  const txt = ok ? "✓ 100%"
+    : (L === "en" ? `${total}% · ${total > 100 ? `remove ${total - 100}` : `add ${100 - total}`}`
+                  : `${total}% · ${total > 100 ? `sobran ${total - 100}` : `faltan ${100 - total}`}`);
+  return (
+    <div style={{ fontFamily: FUENTE, fontSize: 8, color: ok ? VERDE : "#FFB74D", background: NEGRO,
+                  border: `2px solid ${ok ? VERDE_OSC : "rgba(255,183,77,0.6)"}`, borderRadius: 10, padding: "7px 10px",
+                  textShadow: "1px 1px 0 #000", whiteSpace: "nowrap" }}>
+      {txt}
+    </div>
+  );
+}
+
+// Sección 3: ¿cuántas veces cocinas? — rejilla 2×2 de fichas.
+export function PatronCocina({ lang = "es", T, opciones, valor, onChange, sfx }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+      {opciones.map(p => {
+        const sel = valor === p.v;
+        return (
+          <button key={p.v} onClick={() => { sfx && sfx("step"); onChange(p.v); }}
+            style={{ background: NEGRO, border: `2px solid ${sel ? ORO : VERDE_OSC}`, borderRadius: 14, padding: "12px 8px",
+                     cursor: "pointer", textAlign: "center", boxShadow: sel ? `0 0 14px ${ORO}55` : "none", position: "relative" }}>
+            {sel && <div style={{ position: "absolute", left: 8, top: 6, fontFamily: FUENTE, fontSize: 8, color: "#FF4B4B", textShadow: "1px 1px 0 #000" }}>1P</div>}
+            <div style={{ fontSize: 24, marginBottom: 6 }}>{p.ic}</div>
+            <div style={{ fontFamily: FUENTE, fontSize: 8, color: sel ? ORO : VERDE, textShadow: "1px 1px 0 #000", lineHeight: 1.5 }}>{p.label}</div>
+            <div style={{ fontSize: 9.5, color: "rgba(255,255,255,0.5)", marginTop: 4, fontFamily: "'DM Sans',sans-serif", lineHeight: 1.3 }}>{p.sub}</div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// Sección 5: recordatorios de suplementación/medicación (la lógica sigue en PlanConfig).
+export function Recordatorios({ lang = "es", T, recs, setRecs, max, horaOk, iconos, aMedias, sfx }) {
+  const L = lang === "en" ? "en" : "es";
+  const campo = (extra) => ({ background: "#0B1A11", border: `2px solid ${VERDE_OSC}`, borderRadius: 10, padding: "10px 12px",
+                              color: "#FFFFFF", fontSize: 13.5, fontWeight: 700, fontFamily: "'Nunito',sans-serif", outline: "none", ...extra });
+  return (
+    <div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {recs.map((r, i) => (
+          <div key={i} style={{ ...panel, border: `2px dashed ${ORO}`, boxShadow: "none", padding: "10px 12px" }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              <input value={r.nombre} maxLength={40}
+                placeholder={L === "en" ? "Name (e.g. Creatine 5g)" : "Nombre (ej: Creatina 5g)"}
+                onChange={e => setRecs(rs => rs.map((x, j) => j === i ? { ...x, nombre: e.target.value } : x))}
+                style={campo({ flex: 1, minWidth: 0 })} />
+              <button onClick={() => { sfx && sfx("tap"); setRecs(rs => rs.filter((_, j) => j !== i)); }} aria-label="quitar"
+                style={{ width: 42, flexShrink: 0, background: "#0B1A11", border: "2px solid #FF4B4B", borderRadius: 10,
+                         color: "#FF8A80", fontFamily: FUENTE, fontSize: 10, cursor: "pointer" }}>✕</button>
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+              {["Suplemento", "Medicación"].map(tp => {
+                const sel = r.tipo === tp;
+                return (
+                  <button key={tp} onClick={() => { sfx && sfx("step"); setRecs(rs => rs.map((x, j) => j === i ? { ...x, tipo: tp } : x)); }}
+                    style={{ flex: 1, background: sel ? "#0B1A11" : "transparent", border: `2px solid ${sel ? ORO : "rgba(255,255,255,0.15)"}`,
+                             borderRadius: 10, padding: "8px 4px", cursor: "pointer", fontFamily: FUENTE, fontSize: 7,
+                             color: sel ? ORO : "rgba(255,255,255,0.35)", lineHeight: 1.5 }}>
+                    {(iconos && iconos[tp]) || ""} {L === "en" ? (tp === "Medicación" ? "MEDICATION" : "SUPPLEMENT") : tp.toUpperCase()}
+                  </button>
+                );
+              })}
+              <input type="time" value={r.hora}
+                onChange={e => setRecs(rs => rs.map((x, j) => j === i ? { ...x, hora: e.target.value } : x))}
+                style={campo({ width: 108, flexShrink: 0, padding: "8px 10px", fontWeight: 800, colorScheme: "dark",
+                               border: `2px solid ${horaOk(r.hora) ? VERDE_OSC : "rgba(255,183,77,0.7)"}` })} />
+            </div>
+          </div>
+        ))}
+        {recs.length < max && (
+          <button onClick={() => { sfx && sfx("tap"); setRecs(rs => [...rs, { nombre: "", tipo: "Suplemento", hora: "" }]); }}
+            style={{ fontFamily: FUENTE, fontSize: 9, color: "#0B1A11", background: T?.au1 || "#C9A227", border: "none", borderRadius: 10,
+                     padding: "12px 12px", cursor: "pointer", boxShadow: "0 3px 0 #6B5400" }}>
+            {L === "en" ? "+ ADD REMINDER" : "+ AÑADIR RECORDATORIO"} ({recs.length}/{max})
+          </button>
+        )}
+      </div>
+      {aMedias && (
+        <div style={{ marginTop: 8, fontSize: 11.5, color: "#FFB74D", fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>
+          ⚠️ {L === "en" ? "Complete name AND time on every reminder (or remove it)." : "Completa nombre Y hora en cada recordatorio (o elimínalo)."}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Botones finales: guardar/generar (dorado, píxel) y cancelar.
+export function BotonesGuardar({ lang = "es", T, onGuardar, guardando, total, aMedias, generaAlGuardar, primeraVez, onCancelar, sfx }) {
+  const L = lang === "en" ? "en" : "es";
+  const listo = total === 100 && !aMedias && !guardando;
+  const txt = guardando ? (L === "en" ? "GENERATING…" : "GENERANDO…")
+    : total !== 100 ? (L === "en" ? "MUST TOTAL 100%" : "DEBE SUMAR 100%")
+    : aMedias ? (L === "en" ? "FINISH REMINDERS" : "COMPLETA LOS RECORDATORIOS")
+    : generaAlGuardar ? (L === "en" ? "SAVE & GENERATE ▶" : "GUARDAR Y GENERAR ▶")
+    : (L === "en" ? "SAVE MY PLAN" : "GUARDAR MI PLAN");
+  return (
+    <div style={{ padding: "16px 16px 0", display: "flex", flexDirection: "column", gap: 12 }}>
+      <button onClick={() => { if (!listo) return; sfx && sfx("coin"); onGuardar(); }} disabled={!listo}
+        style={{ fontFamily: FUENTE, fontSize: 11, color: listo ? "#0B1A11" : "rgba(255,255,255,0.3)",
+                 background: listo ? (T?.au1 || "#C9A227") : "rgba(255,255,255,0.06)", border: listo ? "none" : "2px solid rgba(255,255,255,0.1)",
+                 borderRadius: 14, padding: "18px 16px", cursor: listo ? "pointer" : "default",
+                 boxShadow: listo ? "0 4px 0 #6B5400" : "none", lineHeight: 1.5 }}>
+        {txt}
+      </button>
+      {!primeraVez && (
+        <button onClick={() => { sfx && sfx("tap"); onCancelar && onCancelar(); }}
+          style={{ background: "none", border: "none", color: "rgba(255,255,255,0.45)", fontFamily: FUENTE, fontSize: 8, cursor: "pointer", padding: 6 }}>
+          ◀ {L === "en" ? "CANCEL" : "CANCELAR"}
+        </button>
+      )}
+    </div>
+  );
+}
