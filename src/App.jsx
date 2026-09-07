@@ -5878,6 +5878,17 @@ function CalcTab({weights,profile,setProfile,lang}){
   const currentW=weights.filter(w=>!w.isInitial).slice(-1)[0]?.weight??weights.find(w=>w.isInitial)?.weight??null;
   const goalW=profile?.goal_weight??null;
 
+  // Estas dos listas van ANTES de los useState porque el pre-relleno las
+  // necesita para traducir de vuelta lo que el perfil guarda ('26-35',
+  // 'moderate') al índice del desplegable. Hace falta desde que el resultado
+  // guardado puede venir vacío a propósito (ver la restauración de weekly_state
+  // en el arranque): sin esto, al pedir recalcular el objetivo la franja de
+  // edad y la actividad volvían a la primera opción aunque el perfil las tenga.
+  const AGE_LABELS=["18-25","26-35","36-45","46-55","56-65","65+"];
+  const ACT_LABELS=["sedentary","light","moderate","active","very_active"];
+  const _idxAge = AGE_LABELS.indexOf(profile?.age_range);
+  const _idxAct = ACT_LABELS.indexOf(profile?.activity);
+
   // Cargar resultado guardado desde localStorage al montar
   const [saved,   setSaved]   = useState(()=>lsGet(calcKey, null));
   const [editing, setEditing] = useState(!lsGet(calcKey, null));
@@ -5885,17 +5896,14 @@ function CalcTab({weights,profile,setProfile,lang}){
   // Pre-rellenar desde el perfil si no hay cálculo guardado
   const [cSex,    setCsex]   = useState(saved?.inputs?.sex    || profile?.sex    || "M");
   const [cHeight, setCheight]= useState(saved?.inputs?.height || (profile?.height_cm ? String(profile.height_cm) : ""));
-  const [cAge,    setCage]   = useState(saved?.inputs?.age    || "0");
-  const [cAct,    setCact]   = useState(saved?.inputs?.act    || "0");
+  const [cAge,    setCage]   = useState(saved?.inputs?.age    ?? (_idxAge>=0 ? String(_idxAge) : "0"));
+  const [cAct,    setCact]   = useState(saved?.inputs?.act    ?? (_idxAct>=0 ? String(_idxAct) : "0"));
   const [cGoal,   setCgoal]  = useState(saved?.inputs?.goal   || (profile?.goal_weight ? String(profile.goal_weight) : ""));
 
   const ageMids =[22,30,40,50,60,70];
   const actMults=[1.2,1.375,1.55,1.725,1.9];
   const ageOpts =t("calcAgeRanges");
   const actOpts =t("calcActivityLevels");
-
-  const AGE_LABELS=["18-25","26-35","36-45","46-55","56-65","65+"];
-  const ACT_LABELS=["sedentary","light","moderate","active","very_active"];
   const compute=async()=>{
     const h=parseFloat(cHeight);
     if(!currentW||isNaN(h)||h<100||h>250)return;
@@ -5915,7 +5923,9 @@ function CalcTab({weights,profile,setProfile,lang}){
     const loseGain=goalEff?(w>goalEff?"deficit":"surplus"):null;
     const now=new Date().toISOString();
     const res={
-      bmr:Math.round(bmr),tdee,adj:Math.round(adjRaw),target:safe,loseGain,
+      // `at` es la fecha en ISO: `date` es texto para el ojo ('04 jul 2026') y
+      // no sirve para comparar cuál de dos resultados es el más reciente.
+      bmr:Math.round(bmr),tdee,adj:Math.round(adjRaw),target:safe,loseGain,at:now,
       inputs:{sex:cSex,height:cHeight,age:cAge,act:cAct,goal:cGoal},
       goalW:goalEff,currentW,date:new Date().toLocaleDateString(lang==="en"?"en-GB":"es-ES",{day:"2-digit",month:"short",year:"numeric"})
     };
@@ -9460,7 +9470,30 @@ function GBHApp(){
             lsSet("gbh:chestLastOpened", Math.max(localChest||0, ws.chestStreakLast));
             setChestOpened(Math.max(localChest||0, ws.chestStreakLast));
           }
-          if(ws.calc) lsSet(`gbh:calc:saved:${profileId}`, ws.calc);
+          // ── El objetivo calórico: `calc` es una CACHÉ, no la verdad ──────
+          // Quien MANDA es profiles.target_kcal — es el valor que la
+          // calculadora escribe en su propio PATCH y el mismo que va a
+          // patient_config.kcal_objetivo, que es de donde el generador saca
+          // las kcal de la programación. weekly_state, en cambio, se reescribe
+          // ENTERO desde la caché local de cada dispositivo (mergeWeeklyState +
+          // patchWeeklyState, last-write-wins): basta con que un móvil que no
+          // ha entrado desde el último cálculo sume XP para que resucite el
+          // `calc` viejo. Pasó de verdad (7-sep-2026, MAESTRO-2026-457): la
+          // pantalla Objetivo enseñaba 3.152 kcal del 4-jul mientras el
+          // generador servía programaciones de 1.806 kcal del 18-ago, y el
+          // paciente creía que el fallo estaba en el generador.
+          // Regla: solo se restaura el `calc` cuyo target sigue coincidiendo
+          // con el del perfil. Si no coincide ninguno, se vacía y la pantalla
+          // pide recalcular (con el formulario ya pre-rellenado desde el
+          // perfil) en vez de enseñar un número que contradice al plan.
+          // El historial completo y fiable vive en `calorie_targets`.
+          const objPerfil = Number(rp?.target_kcal);
+          if(Number.isFinite(objPerfil) && objPerfil > 0){
+            const vigente = (c) => !!c && Number(c.target) === objPerfil;
+            if(vigente(ws.calc)) lsSet(`gbh:calc:saved:${profileId}`, ws.calc);
+            else if(!vigente(lsGet(`gbh:calc:saved:${profileId}`, null)))
+              lsSet(`gbh:calc:saved:${profileId}`, null);
+          } else if(ws.calc) lsSet(`gbh:calc:saved:${profileId}`, ws.calc);
         }catch(e){ console.warn("weekly_state restore:", e); }
         // ── Recetario personal: restaurarlo TAMBIÉN en el auto-login ──
         // (antes solo se sincronizaba en el login manual, así que tras borrar
