@@ -6,7 +6,8 @@ import { SPR, U, sprite, spriteCaja, bloque, suelo as dibujarSuelo, matas } from
 // recibe sbReq/T/Card por props para que este fichero solo cambie en 3 sitios.
 import { SelectorMedidas, MedidasCorporales } from "./MedidasCorporales";
 import { SelectorPrograma, BotonPrograma } from "./SelectorPrograma";
-import { DistribucionKcal, AlimentosDescartados, leerDescartes, escribirDescartes, BannerSemanaNueva } from "./PlanArcade";
+import { DistribucionKcal, AlimentosDescartados, leerDescartes, escribirDescartes, BannerSemanaNueva,
+         CabeceraPlan, PillTotal, PatronCocina, Recordatorios, BotonesGuardar, FUENTE_PIXEL } from "./PlanArcade";
 
 // ─── Servidor de generación de programaciones (Railway) ─────────────────────
 // Rellena estos dos valores tras desplegar el servidor (ver GUIA_DESPLIEGUE_RAILWAY.md)
@@ -16987,19 +16988,11 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
 
   return(
     <div style={{paddingBottom:24}}>
-      <div style={{padding:'18px 16px 8px',textAlign:'center'}}>
-        <div style={{fontSize:34,marginBottom:6}}>🥗</div>
-        <div style={{fontSize:18,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif"}}>
-          {primeraVez?(lang==='en'?'Set up your plan':'Define tu plan'):(lang==='en'?'Edit your plan':'Editar tu plan')}
-        </div>
-        <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:4,lineHeight:1.5}}>
-          {lang==='en'?'Tell us your preferences so we can build your weekly plan':'Cuéntanos tus preferencias para crear tu programación semanal'}
-        </div>
-      </div>
+      <CabeceraPlan lang={lang} primeraVez={primeraVez} />
 
       {/* ── Tipo de alimentación ── */}
       <div style={{padding:'12px 16px'}}>
-        <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:10}}>
+        <div style={{fontFamily:FUENTE_PIXEL,fontSize:8,color:T.au1,textTransform:'uppercase',letterSpacing:'0.04em',textShadow:'1px 1px 0 #000',lineHeight:1.6,marginBottom:10}}>
           {lang==='en'?'1 · Diet type':'1 · Tipo de alimentación'}
         </div>
         {/* Botón-ficha que abre el selector arcade (SelectorPrograma.jsx). Sustituye a la
@@ -17018,20 +17011,10 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
             muevan solos al hacer scroll) ── */}
       <div style={{padding:'12px 16px'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
-          <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em'}}>
+          <div style={{fontFamily:FUENTE_PIXEL,fontSize:8,color:T.au1,textTransform:'uppercase',letterSpacing:'0.04em',textShadow:'1px 1px 0 #000',lineHeight:1.6}}>
             {lang==='en'?'2 · Calorie split':'2 · Distribución de calorías'}
           </div>
-          <div style={{fontSize:12,fontWeight:900,
-            color:total===100?T.g1:'#FFB74D',
-            background:total===100?alpha(T.g1,0.12):'rgba(255,183,77,0.12)',
-            border:`1.5px solid ${total===100?'${alpha(T.g1,0.4)}':'rgba(255,183,77,0.4)'}`,
-            borderRadius:10,padding:'4px 10px'}}>
-            {total===100
-              ? `✓ 100%`
-              : (lang==='en'
-                  ? `${total}% · ${total>100?`remove ${total-100}`:`add ${100-total}`}`
-                  : `${total}% · ${total>100?`sobran ${total-100}`:`faltan ${100-total}`}`)}
-          </div>
+          <PillTotal lang={lang} total={total} />
         </div>
         {/* Tabla con la estética del selector arcade (PlanArcade.jsx); la lógica sigue aquí. */}
         <DistribucionKcal lang={lang} T={T} TOMAS={TOMAS} dist={dist} ajustarToma={ajustarToma}
@@ -17041,7 +17024,7 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
 
       {/* ── Patrón de repetición — ¿cuántos menús distintos a la semana? ── */}
       <div style={{padding:'12px 16px'}}>
-        <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:4}}>
+        <div style={{fontFamily:FUENTE_PIXEL,fontSize:8,color:T.au1,textTransform:'uppercase',letterSpacing:'0.04em',textShadow:'1px 1px 0 #000',lineHeight:1.6,marginBottom:4}}>
           {lang==='en'?'3 · How often do you cook?':'3 · ¿Cuántas veces cocinas a la semana?'}
         </div>
         <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginBottom:10,lineHeight:1.4}}>
@@ -17049,26 +17032,12 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
             ?'Repeating meals on several days = less cooking and a cheaper shopping list.'
             :'Repetir comidas varios días = cocinar menos y lista de la compra más barata.'}
         </div>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-          {PATRONES_OPC.map(p=>{
-            const sel=patron===p.v;
-            return(
-              <button key={p.v} onClick={()=>setPatron(p.v)}
-                style={{background:sel?alpha(T.g1,0.12):'rgba(255,255,255,0.04)',
-                  border:`2px solid ${sel?T.g1:'rgba(255,255,255,0.10)'}`,
-                  borderRadius:16,padding:'12px 10px',cursor:'pointer',textAlign:'center'}}>
-                <div style={{fontSize:24,marginBottom:4}}>{p.ic}</div>
-                <div style={{fontSize:12.5,fontWeight:900,color:sel?T.g1:T.t1,fontFamily:"'Nunito',sans-serif"}}>{p.label}</div>
-                <div style={{fontSize:9.5,color:T.t3,marginTop:3,fontFamily:"'DM Sans',sans-serif",lineHeight:1.3}}>{p.sub}</div>
-              </button>
-            );
-          })}
-        </div>
+        <PatronCocina lang={lang} T={T} opciones={PATRONES_OPC} valor={patron} onChange={setPatron} sfx={sfx} />
       </div>
 
       {/* ── Alimentos que no quiere / alergias (PlanArcade.jsx) ── */}
       <div style={{padding:'12px 16px'}}>
-        <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:4}}>
+        <div style={{fontFamily:FUENTE_PIXEL,fontSize:8,color:T.au1,textTransform:'uppercase',letterSpacing:'0.04em',textShadow:'1px 1px 0 #000',lineHeight:1.6,marginBottom:4}}>
           {lang==='en'?"4 · Foods you don't want":'4 · Alimentos que no quieres'}
         </div>
         <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginBottom:10,lineHeight:1.4}}>
@@ -17081,7 +17050,7 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
 
       {/* ── Recordatorios de suplementación/medicación (opcional, máx. 3) ── */}
       <div style={{padding:'12px 16px'}}>
-        <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:4}}>
+        <div style={{fontFamily:FUENTE_PIXEL,fontSize:8,color:T.au1,textTransform:'uppercase',letterSpacing:'0.04em',textShadow:'1px 1px 0 #000',lineHeight:1.6,marginBottom:4}}>
           {lang==='en'?'5 · Supplement/medication reminders':'5 · Recordatorios de suplementación/medicación'}
         </div>
         <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginBottom:10,lineHeight:1.4}}>
@@ -17089,73 +17058,12 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
             ?`Optional. Up to ${MAX_RECS}: name it and set the time. Each one completed = +5 💎.`
             :`Opcional. Hasta ${MAX_RECS}: ponles nombre y hora. Cada uno completado = +5 💎.`}
         </div>
-        <div style={{display:'flex',flexDirection:'column',gap:8}}>
-          {recs.map((r,i)=>(
-            <div key={i} style={{background:'rgba(201,168,76,0.06)',border:`1.5px dashed ${T.au1}`,borderRadius:16,padding:'10px 12px'}}>
-              <div style={{display:'flex',gap:8,marginBottom:8}}>
-                <input value={r.nombre} maxLength={40}
-                  placeholder={lang==='en'?'Name (e.g. Creatine 5g)':'Nombre (ej: Creatina 5g)'}
-                  onChange={e=>setRecs(rs=>rs.map((x,j)=>j===i?{...x,nombre:e.target.value}:x))}
-                  style={{flex:1,minWidth:0,background:'rgba(255,255,255,0.05)',border:'1.5px solid rgba(255,255,255,0.12)',
-                    borderRadius:12,padding:'10px 12px',color:T.t1,fontSize:13.5,fontWeight:700,
-                    fontFamily:"'Nunito',sans-serif",outline:'none'}}/>
-                <button onClick={()=>setRecs(rs=>rs.filter((_,j)=>j!==i))}
-                  style={{width:40,flexShrink:0,background:'rgba(255,82,82,0.10)',border:'1.5px solid rgba(255,82,82,0.35)',
-                    borderRadius:12,color:'#FF8A80',fontSize:16,fontWeight:900,cursor:'pointer'}}>✕</button>
-              </div>
-              <div style={{display:'flex',gap:8,alignItems:'stretch'}}>
-                {['Suplemento','Medicación'].map(tp=>{
-                  const sel=r.tipo===tp;
-                  return(
-                    <button key={tp} onClick={()=>setRecs(rs=>rs.map((x,j)=>j===i?{...x,tipo:tp}:x))}
-                      style={{flex:1,background:sel?'rgba(201,168,76,0.16)':'rgba(255,255,255,0.04)',
-                        border:`1.5px solid ${sel?T.au1:'rgba(255,255,255,0.10)'}`,borderRadius:12,
-                        padding:'8px 4px',cursor:'pointer',fontSize:11.5,fontWeight:900,
-                        color:sel?T.au1:T.t3,fontFamily:"'Nunito',sans-serif"}}>
-                      {SUPL_IC[tp]} {lang==='en'?(tp==='Medicación'?'Medication':'Supplement'):tp}
-                    </button>
-                  );
-                })}
-                <input type="time" value={r.hora}
-                  onChange={e=>setRecs(rs=>rs.map((x,j)=>j===i?{...x,hora:e.target.value}:x))}
-                  style={{width:104,flexShrink:0,background:'rgba(255,255,255,0.05)',
-                    border:`1.5px solid ${horaOk(r.hora)?'rgba(255,255,255,0.12)':'rgba(255,183,77,0.5)'}`,
-                    borderRadius:12,padding:'8px 10px',color:T.t1,fontSize:13.5,fontWeight:800,
-                    fontFamily:"'Nunito',sans-serif",outline:'none',colorScheme:'dark'}}/>
-              </div>
-            </div>
-          ))}
-          {recs.length<MAX_RECS&&(
-            <button onClick={()=>setRecs(rs=>[...rs,{nombre:'',tipo:'Suplemento',hora:''}])}
-              style={{background:'rgba(255,255,255,0.04)',border:'1.5px dashed rgba(255,255,255,0.2)',
-                borderRadius:16,padding:'12px 16px',cursor:'pointer',fontSize:13,fontWeight:800,
-                color:T.t2,fontFamily:"'Nunito',sans-serif"}}>
-              ＋ {lang==='en'?'Add reminder':'Añadir recordatorio'} ({recs.length}/{MAX_RECS})
-            </button>
-          )}
-        </div>
-        {recsAMedias&&(
-          <div style={{marginTop:8,fontSize:11.5,color:'#FFB74D',fontWeight:700,fontFamily:"'DM Sans',sans-serif"}}>
-            ⚠️ {lang==='en'?'Complete name AND time on every reminder (or remove it).':'Completa nombre Y hora en cada recordatorio (o elimínalo).'}
-          </div>
-        )}
+        <Recordatorios lang={lang} T={T} recs={recs} setRecs={setRecs} max={MAX_RECS} horaOk={horaOk}
+          iconos={SUPL_IC} aMedias={recsAMedias} sfx={sfx} />
       </div>
 
-      {/* ── Guardar ── */}
-      <div style={{padding:'16px 16px 0',display:'flex',flexDirection:'column',gap:10}}>
-        <button onClick={guardar} disabled={guardando||total!==100||recsAMedias}
-          style={{background:(total===100&&!recsAMedias)?'linear-gradient(135deg,'+T.g1+','+T.g2+')':'rgba(255,255,255,0.08)',
-                  color:(total===100&&!recsAMedias)?T.t1:T.t3,fontWeight:900,fontSize:15,borderRadius:18,
-                  padding:'16px 24px',border:'none',cursor:(total===100&&!recsAMedias)?'pointer':'default',
-                  boxShadow:(total===100&&!recsAMedias)?'0 4px 0 '+T.g3:'none',fontFamily:"'Nunito',sans-serif"}}>
-          {guardando?(lang==='en'?'Generating…':'Generando…'):total!==100?(lang==='en'?'Must total 100%':'Debe sumar 100%'):recsAMedias?(lang==='en'?'Finish reminders':'Completa los recordatorios'):(onGenerar?(lang==='en'?'Save & generate plan':'Guardar y generar plan'):(lang==='en'?'Save my plan':'Guardar mi plan'))}
-        </button>
-        {!primeraVez&&(
-          <button onClick={onClose} style={{background:'none',border:'none',color:T.t3,fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:"'Nunito',sans-serif"}}>
-            {lang==='en'?'Cancel':'Cancelar'}
-          </button>
-        )}
-      </div>
+      <BotonesGuardar lang={lang} T={T} onGuardar={guardar} guardando={guardando} total={total} aMedias={recsAMedias}
+        generaAlGuardar={!!onGenerar} primeraVez={primeraVez} onCancelar={onClose} sfx={sfx} />
     </div>
   );
 }
