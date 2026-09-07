@@ -131,6 +131,16 @@ const PROPS = {
     "...KGGGGK...",
     "....KKKK....",
   ] },
+  // Variante compacta para el botón-ficha del organizador: la barra larga (20×7)
+  // se veía como un guion dentro de la caja de 54 px (7-sep-2026, demo de Alejandro).
+  pesas_mini: { pal: { D: "#2E2E2E", d: "#111111", S: "#C6CBD1", s: "#8E949A" }, f: [
+    "dDd......dDd",
+    "DDD......DDD",
+    "DDDsSSSSsDDD",
+    "DDDsssssSDDD",
+    "DDD......DDD",
+    "dDd......dDd",
+  ] },
   pesas: { pal: { D: "#2E2E2E", d: "#111111", S: "#C6CBD1", s: "#8E949A" }, f: [
     ".DD..............DD.",
     ".DD..............DD.",
@@ -356,7 +366,7 @@ export function BotonPrograma({ lang = "es", T, valor, onAbrir }) {
                boxShadow: `0 0 14px ${f.acento}33` }}>
       <div style={{ width: 54, height: 54, flex: "0 0 54px", display: "flex", alignItems: "center", justifyContent: "center",
                     background: "#0B1A11", border: "2px solid #EDE6D3", borderRadius: 6 }}>
-        <Prop id={f.prop} px={f.prop === "pesas" ? 2 : 3} />
+        <Prop id={f.prop === "pesas" ? "pesas_mini" : f.prop} px={3} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontFamily: FUENTE, fontSize: 10, color: "#F5B800", textShadow: "1px 1px 0 #000", lineHeight: 1.6 }}>{f.nombre[L]}</div>

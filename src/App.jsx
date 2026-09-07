@@ -16958,10 +16958,22 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
     if(!guardado && r.status !== 0){
       setGuardando(false);
       sfx&&sfx("error");
+      // El mensaje dice la CAUSA cuando se sabe. «Inténtalo de nuevo» era falso
+      // para un rechazo de la base: el 7-sep-2026 la dieta 'Descarga' se guardaba
+      // mal por el CHECK `chk_tipo_dieta` (que no conocía las tres dietas nuevas)
+      // y el paciente reintentaba en bucle sin que nadie pudiera diagnosticarlo.
+      // sbDirect devuelve {ok, status, data}; el cuerpo del error de PostgREST
+      // (code 23514, message con el nombre del CHECK) viene en `data`.
+      const _err = (()=>{ try{ return JSON.stringify(r.data||{}); }catch{ return String(r.data||''); } })();
+      const _dieta = /chk_tipo_dieta|tipo_dieta/.test(_err);
       showT&&showT({icon:"⚠️",
         title:lang==='en'?'Settings not saved':'No se pudo guardar tu configuración',
-        sub:lang==='en'?'Try again in a moment':'Inténtalo de nuevo en un momento'});
-      console.warn("[plan-config] upsert patient_config falló — revisa índice único profile_id y columna patron_dias");
+        sub:_dieta
+          ? (lang==='en'
+              ? `“${dieta}” is not enabled on your account yet — tell your nutritionist`
+              : `La programación “${dieta}” aún no está habilitada en tu cuenta — avisa a tu nutricionista`)
+          : (lang==='en'?'Try again in a moment':'Inténtalo de nuevo en un momento')});
+      console.warn("[plan-config] upsert patient_config falló (HTTP "+(r.status||'?')+"): "+_err.slice(0,300));
       return;
     }
     if(sinPatron) console.warn("[plan-config] patron_dias no guardado (columna pendiente de migrar)");
