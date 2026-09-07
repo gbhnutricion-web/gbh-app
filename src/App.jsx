@@ -4493,7 +4493,10 @@ const TUTO_ORDEN=['B1_agua','B1_pasos','B1_sueno','B1_cierre','B2_objetivo','B2_
   // La 🛒 Lista de la compra va DESPUÉS de registrar el plato: antes obligaba
   // a salir de Platos diarios y volver a entrar (ida y vuelta que rompía el
   // ritmo). Ahora el bloque B4 es un solo movimiento: receta → registro → lista.
-  'B3_generar','B3_listo','B4_receta','B4_info','B4_comida','B4_lista',
+  // B3_dieta y B3_alergias (7-sep-2026): la pantalla de plan cambió el 6-sep
+  // —selector de programación con 6 estilos y sección «Alimentos que no
+  // quieres»— y el tour seguía hablando de un botón «✨ Generar» retirado.
+  'B3_dieta','B3_alergias','B3_generar','B3_listo','B4_receta','B4_info','B4_comida','B4_lista',
   'B5_peso','B6_recetas','B7_consulta','B8_ranking','B9_cierre'];
 
 // ─── AvatarDisplay usa directamente el Mascot SVG ──────────────────────────
@@ -11992,7 +11995,9 @@ function GBHApp(){
           B1_cierre:{sel:null,next:true,tx:EN?'You don’t need to complete everything today — what matters is starting. Tomorrow this fills itself in with your real day.':'Hoy no hace falta completarlo todo — lo importante es empezar. Mañana esto se rellena solo con tu día real.'},
           B2_objetivo:{sel:'objetivo',tx:EN?'This is where your goal lives. Let’s set it: fill in your details and hit calculate — I’ll handle the maths.':'Aquí vive tu objetivo. Vamos a ponerlo: rellena tus datos y pulsa calcular — de las cuentas me encargo yo.'},
           B2_racha:{sel:'objetivo',racha:true,tx:(kcalObj?(EN?`${kcalObj} kcal a day to get there in about 3 months. `:`${kcalObj} kcal al día para llegar en unos 3 meses. `):'')+(EN?'Will you commit to logging a few days in a row? Pick your goal — and if you miss a day, nothing happens: that’s what pauses are for.':'¿Te comprometes a registrar unos días seguidos? Elige tu meta — y si fallas un día no pasa nada, para eso están las pausas.')},
-          B3_generar:{sel:'plan-zona',tx:EN?'And now the big one: your first week of meals. Tweak your preferences if you like and press ✨ Generate.':'Y ahora lo gordo: tu primera semana de comidas. Ajusta tus preferencias si quieres y pulsa ✨ Generar.'},
+          B3_dieta:{sel:'plan-zona',next:true,tx:EN?'And now the big one: your first week of meals. First, how you eat: tap the card up top and pick one of the six programmes — normal, vegetarian, vegan, gluten-free, keto or weigh-in. You can change it whenever you like.':'Y ahora lo gordo: tu primera semana de comidas. Lo primero es cómo comes: toca la ficha de arriba y elige una de las seis programaciones — normal, vegetariano, vegano, sin gluten, cetogénica o descarga. Puedes cambiarla cuando quieras.'},
+          B3_alergias:{sel:'plan-zona',next:true,tx:EN?'Now scroll down to «Foods you don’t want» and add anything you dislike or are allergic to. Whatever you put there never shows up in your plan — neither the food nor any recipe that uses it.':'Ahora baja hasta «Alimentos que no quieres» y añade lo que no te guste o te dé alergia. Lo que pongas ahí no aparece nunca en tu programación: ni el alimento ni las recetas que lo llevan.'},
+          B3_generar:{sel:'plan-zona',tx:EN?'Set your calorie split and how often you cook if you like, and press GUARDAR Y GENERAR at the bottom.':'Ajusta el reparto de calorías y cuántas veces cocinas si quieres, y pulsa GUARDAR Y GENERAR abajo del todo.'},
           B3_listo:{sel:'plan-zona',next:true,tx:EN?'Done. And if something doesn’t convince you, you can regenerate it or swap recipes for free while the trial lasts: it’s on the house.':'Hecha. Y si algo no te convence, puedes regenerarla o cambiar recetas gratis mientras dure la prueba: invita la casa.'},
           B4_receta:{sel:'plan-zona',tx:EN?'Go into 🍽️ Daily Meals and open one of today’s recipes.':'Entra en 🍽️ Platos diarios y abre una receta de hoy.'},
           B4_info:{sel:'plan-zona',next:true,tx:EN?'The amounts already come adjusted to YOUR portion. From here you can swap it for free during the trial, save it to favourites or discard it.':'Las cantidades ya vienen ajustadas a TU ración. Desde aquí puedes cambiarla gratis durante la prueba, guardarla en favoritas o quitarla.'},
