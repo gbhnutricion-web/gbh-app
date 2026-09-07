@@ -6,7 +6,7 @@ import { SPR, U, sprite, spriteCaja, bloque, suelo as dibujarSuelo, matas } from
 // recibe sbReq/T/Card por props para que este fichero solo cambie en 3 sitios.
 import { SelectorMedidas, MedidasCorporales } from "./MedidasCorporales";
 import { SelectorPrograma, BotonPrograma } from "./SelectorPrograma";
-import { DistribucionKcal, AlimentosDescartados, leerDescartes, escribirDescartes } from "./PlanArcade";
+import { DistribucionKcal, AlimentosDescartados, leerDescartes, escribirDescartes, BannerSemanaNueva } from "./PlanArcade";
 
 // ─── Servidor de generación de programaciones (Railway) ─────────────────────
 // Rellena estos dos valores tras desplegar el servidor (ver GUIA_DESPLIEGUE_RAILWAY.md)
@@ -16191,6 +16191,12 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
   if(view===null) return(
     <div style={{paddingBottom:16}}>
       <TrialChip/>
+      {/* Aviso arriba del todo (PlanArcade.jsx): estándar con el candado semanal abierto.
+          Antes el botón de generar estaba al final de la pestaña y había que bajar
+          hasta él para saber que ya tocaba semana nueva (Alejandro, 6-sep-2026). */}
+      {isStandard&&!planBloqueado&&(
+        <BannerSemanaNueva lang={lang} T={T} tienePlan={tienePlan} sfx={sfx} onGenerar={()=>setConfigView(true)} />
+      )}
       <WeekNav/>
       {/* ── Etiqueta de optimización por favoritas (plan_json.fav_resumen) ──
           Va ENTRE la tabla de calorías generales (media diaria del WeekNav) y
@@ -16271,13 +16277,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
             </div>
           </div>
         )}
-        {isStandard&&!planBloqueado&&(
-          <button onClick={()=>setConfigView(true)} style={{background:alpha(T.g1,0.08),border:'1.5px solid '+T.bG,borderRadius:16,padding:'14px 16px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:14,marginTop:4}}>
-            <div style={{fontSize:26,flexShrink:0}}>✨</div>
-            <div style={{flex:1}}><div style={{fontWeight:800,fontSize:14,color:T.g1,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Generate new week':'Generar nueva semana'}</div><div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>{lang==='en'?'Review your settings and create a fresh plan':'Revisa tu configuración y crea un plan nuevo'}</div></div>
-            <div style={{color:T.g1,fontSize:16,flexShrink:0}}>›</div>
-          </button>
-        )}
+        {/* El botón «Generar nueva semana» de aquí subió a la cabecera de la pestaña (BannerSemanaNueva). */}
       </div>
       <DotsNav/>
     </div>
