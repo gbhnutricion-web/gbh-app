@@ -6,6 +6,7 @@ import { SPR, U, sprite, spriteCaja, bloque, suelo as dibujarSuelo, matas } from
 // recibe sbReq/T/Card por props para que este fichero solo cambie en 3 sitios.
 import { SelectorMedidas, MedidasCorporales } from "./MedidasCorporales";
 import { SelectorPrograma, BotonPrograma } from "./SelectorPrograma";
+import { DistribucionKcal, AlimentosDescartados, leerDescartes, escribirDescartes } from "./PlanArcade";
 
 // ─── Servidor de generación de programaciones (Railway) ─────────────────────
 // Rellena estos dos valores tras desplegar el servidor (ver GUIA_DESPLIEGUE_RAILWAY.md)
@@ -16875,6 +16876,10 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
   // Selector de programación estilo «SELECT PLAYER» (SelectorPrograma.jsx):
   // se abre desde el botón-ficha y devuelve aquí con la elección hecha.
   const [selectorAbierto,setSelectorAbierto]=React.useState(false);
+  // Alimentos que no quiere / alergias: viven en patient_config.notas como las
+  // líneas «Alimentos rechazados: …» y «Alergias: …», que el generador ya lee
+  // (interpretar_notas). Las demás líneas de notas se conservan (PlanArcade.jsx).
+  const [descartes,setDescartes]=React.useState(()=>leerDescartes(config?.notas).lista);
   const [patron,setPatron]=React.useState(
     PATRONES_OPC.some(p=>p.v===config?.patron_dias) ? config.patron_dias : 'Estándar (LJ/MS/XV/D)');
   const [dist,setDist]=React.useState({
@@ -16924,6 +16929,7 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
       patron_dias: patron,
       ...dist,
       suplementacion: recsLimpios,   // [] borra los recordatorios si los quitó todos
+      notas: escribirDescartes(config?.notas, descartes),   // alimentos descartados (líneas que lee el generador)
       config_completa: true,
       auto_generado: true,
     };
@@ -17027,44 +17033,10 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
                   : `${total}% · ${total>100?`sobran ${total-100}`:`faltan ${100-total}`}`)}
           </div>
         </div>
-        <div style={{background:'rgba(255,255,255,0.04)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:16,overflow:'hidden'}}>
-          {TOMAS.map((toma,i)=>{
-            const v=dist[toma.k]||0;
-            const kcalTxt=(profile?.target_kcal>0)?` · ${Math.round(profile.target_kcal*v/100)} kcal`:'';
-            const Btn=({delta,dis,children})=>(
-              <button onClick={()=>{!dis&&ajustarToma(toma.k,delta);}} disabled={dis}
-                style={{width:40,height:40,borderRadius:12,border:`1.5px solid ${dis?'rgba(255,255,255,0.08)':T.bG}`,
-                  background:dis?'rgba(255,255,255,0.03)':alpha(T.g1,0.12),
-                  color:dis?T.t3:T.g1,fontSize:18,fontWeight:900,cursor:dis?'default':'pointer',
-                  display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,
-                  fontFamily:"'Nunito',sans-serif",touchAction:'manipulation'}}>
-                {children}
-              </button>
-            );
-            return(
-              <div key={toma.k} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',
-                borderTop:i>0?'1px solid rgba(255,255,255,0.07)':'none',
-                background:v===0?'rgba(255,255,255,0.02)':'transparent'}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:13.5,color:v===0?T.t3:T.t1,fontWeight:800,fontFamily:"'Nunito',sans-serif"}}>
-                    {toma.ic} {toma.label}
-                  </div>
-                  <div style={{fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginTop:1}}>
-                    {v===0?(lang==='en'?'Skipped':'No haces esta toma'):kcalTxt.replace(' · ','')}
-                  </div>
-                </div>
-                <Btn delta={-5} dis={v<=0}>−</Btn>
-                <div style={{width:52,textAlign:'center',fontSize:16,fontWeight:900,
-                  color:v===0?T.t3:T.g1,fontFamily:"'Nunito',sans-serif"}}>{v}%</div>
-                <Btn delta={5} dis={v>=60}>+</Btn>
-              </div>
-            );
-          })}
-        </div>
-        <button onClick={()=>setDist({dist_desayuno:20,dist_almuerzo:10,dist_comida:30,dist_merienda:10,dist_cena:30})}
-          style={{marginTop:12,background:'none',border:'none',color:T.t3,fontSize:12,fontWeight:700,cursor:'pointer',textDecoration:'underline',fontFamily:"'DM Sans',sans-serif"}}>
-          {lang==='en'?'Reset to recommended (20/10/30/10/30)':'Restablecer recomendado (20/10/30/10/30)'}
-        </button>
+        {/* Tabla con la estética del selector arcade (PlanArcade.jsx); la lógica sigue aquí. */}
+        <DistribucionKcal lang={lang} T={T} TOMAS={TOMAS} dist={dist} ajustarToma={ajustarToma}
+          kcalBase={profile?.target_kcal>0?profile.target_kcal:0}
+          onReset={()=>setDist({dist_desayuno:20,dist_almuerzo:10,dist_comida:30,dist_merienda:10,dist_cena:30})} />
       </div>
 
       {/* ── Patrón de repetición — ¿cuántos menús distintos a la semana? ── */}
@@ -17094,10 +17066,23 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
         </div>
       </div>
 
+      {/* ── Alimentos que no quiere / alergias (PlanArcade.jsx) ── */}
+      <div style={{padding:'12px 16px'}}>
+        <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:4}}>
+          {lang==='en'?"4 · Foods you don't want":'4 · Alimentos que no quieres'}
+        </div>
+        <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginBottom:10,lineHeight:1.4}}>
+          {lang==='en'
+            ?'Dislikes and allergies. They are kept out of your plan: the food and every recipe that uses it.'
+            :'Lo que no te gusta y tus alergias. No aparecerán en tu programación: ni el alimento ni las recetas que lo llevan.'}
+        </div>
+        <AlimentosDescartados lang={lang} T={T} lista={descartes} onChange={setDescartes} sfx={sfx} />
+      </div>
+
       {/* ── Recordatorios de suplementación/medicación (opcional, máx. 3) ── */}
       <div style={{padding:'12px 16px'}}>
         <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:4}}>
-          {lang==='en'?'4 · Supplement/medication reminders':'4 · Recordatorios de suplementación/medicación'}
+          {lang==='en'?'5 · Supplement/medication reminders':'5 · Recordatorios de suplementación/medicación'}
         </div>
         <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginBottom:10,lineHeight:1.4}}>
           {lang==='en'
