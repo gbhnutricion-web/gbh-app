@@ -288,3 +288,34 @@ function VentanaAnadir({ lang, T, onAnadir, onClose, sfx }) {
   );
   return typeof document !== "undefined" ? createPortal(cuerpo, document.body) : cuerpo;
 }
+
+// ── Aviso de semana nueva, arriba del todo de la pestaña Plan ────────────────
+// Solo para el estándar y solo cuando el candado semanal está abierto: que el
+// paciente vea al entrar que ya puede hacerse la semana nueva, sin bajar hasta
+// el final (Alejandro, 6-sep-2026). `onGenerar` abre «Editar tu plan», cuyo
+// botón «Guardar y generar plan» lanza la programación.
+export function BannerSemanaNueva({ lang = "es", T, tienePlan, onGenerar, sfx }) {
+  const L = lang === "en" ? "en" : "es";
+  const tit = tienePlan
+    ? (L === "en" ? "NEW WEEK UNLOCKED!" : "¡NUEVA SEMANA DESBLOQUEADA!")
+    : (L === "en" ? "YOUR PLAN IS WAITING" : "TU PROGRAMACIÓN TE ESPERA");
+  const sub = tienePlan
+    ? (L === "en" ? "Choose your programme and generate this week's plan." : "Elige tu programación y genera el plan de esta semana.")
+    : (L === "en" ? "Set your preferences and generate your first plan." : "Define tus preferencias y genera tu primer plan.");
+  return (
+    <div style={{ margin: "8px 16px 4px", background: NEGRO, border: `2px solid ${ORO}`, borderRadius: 16,
+                  boxShadow: `0 0 16px ${ORO}44`, padding: "12px 12px 12px 14px", display: "flex", alignItems: "center", gap: 12,
+                  backgroundImage: "repeating-linear-gradient(0deg, rgba(255,255,255,0.025) 0 1px, transparent 1px 3px)" }}>
+      <div style={{ fontSize: 26, flexShrink: 0, lineHeight: 1 }}>✨</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontFamily: FUENTE, fontSize: 9, color: ORO, textShadow: "2px 2px 0 #000", lineHeight: 1.6 }}>{tit}</div>
+        <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.65)", fontFamily: "'DM Sans',sans-serif", marginTop: 3, lineHeight: 1.35 }}>{sub}</div>
+      </div>
+      <button onClick={() => { sfx && sfx("coin"); onGenerar && onGenerar(); }}
+        style={{ fontFamily: FUENTE, fontSize: 8, color: "#0B1A11", background: T?.au1 || "#C9A227", border: "none", borderRadius: 10,
+                 padding: "11px 10px", cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 3px 0 #6B5400", flexShrink: 0 }}>
+        {L === "en" ? "GENERATE ▶" : "GENERAR ▶"}
+      </button>
+    </div>
+  );
+}
