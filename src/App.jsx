@@ -16162,9 +16162,20 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
             <div style={{color:'rgba(255,255,255,0.2)',fontSize:20,flexShrink:0}}>🔒</div>
           </div>
         ))}
-        {/* Botón GENERAR (solo estándar que ya configuró su plan) */}
+        {/* Botón GENERAR (solo estándar que ya configuró su plan).
+            ABRE «Configura tu plan», no genera directamente: el selector de
+            modalidades (Simple, Vegetariana, Vegana, Sin gluten, Cetogénica,
+            Descarga) tiene que verse ANTES de cada generación, porque el
+            momento de hacerse la semana es justo cuando se decide si se cambia
+            de programación (Alejandro, 7-sep-2026). El plan se lanza desde el
+            «Guardar y generar plan» de esa pantalla.
+            Es la MISMA regla que ya seguía el banner semanal desde el 6-sep
+            (BannerSemanaNueva, `onGenerar={()=>setConfigView(true)}`): este
+            botón era el único camino que se la saltaba, y se notaba justo
+            cuando el paciente se queda sin plan —cuenta nueva o programación
+            reseteada—, que es cuando más falta hace poder elegir. */}
         {isStandard&&configCompleta&&(
-          <button onClick={generarProgramacion} disabled={generando}
+          <button onClick={()=>setConfigView(true)} disabled={generando}
             style={{background:generando?'rgba(255,255,255,0.08)':'linear-gradient(135deg,'+T.g1+','+T.g2+')',
                     color:generando?T.t3:T.t1,fontWeight:900,fontSize:16,borderRadius:20,
                     padding:'18px 24px',border:'none',cursor:generando?'default':'pointer',
