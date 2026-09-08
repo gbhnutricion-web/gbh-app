@@ -16988,7 +16988,7 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
   // 6-sep-2026 por orden de Alejandro para que el estándar los elija por su cuenta.
   const DIETAS=[
     {v:'Simple',     ic:'🍽️',label:lang==='en'?'Normal':'Normal',     sub:lang==='en'?'Everything':'De todo'},
-    {v:'Vegetariana',ic:'🥗',label:lang==='en'?'Vegetarian':'Vegetariano',sub:lang==='en'?'No meat/fish':'Sin carne ni pescado'},
+    {v:'Vegetariana',ic:'🥗',label:lang==='en'?'Vegetarian':'Vegetariano',sub:lang==='en'?'No meat; egg, dairy & fish':'Sin carne; con huevo, lácteos y pescado'},
     {v:'Vegana',     ic:'🌱',label:lang==='en'?'Vegan':'Vegano',     sub:lang==='en'?'Plant-based':'100% vegetal'},
     {v:'Celíaco',    ic:'🌾',label:lang==='en'?'Gluten-free':'Sin gluten',sub:lang==='en'?'Coeliac-safe recipes':'Apta para celíacos'},
     {v:'Cetogénica', ic:'🥑',label:lang==='en'?'Keto':'Cetogénica',  sub:lang==='en'?'Low carb · protein & fat':'Sin hidratos · proteína y grasa'},
