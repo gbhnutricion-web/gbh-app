@@ -130,6 +130,27 @@ if (existsSync(PLIST)) {
     }
     return out;
   });
+
+  // SOLO iPHONE. Capacitor genera el proyecto con TARGETED_DEVICE_FAMILY = "1,2"
+  // (iPhone + iPad). La app es de una columna: en un iPad de 13" se ve estirada,
+  // y el revisor de Apple prueba en iPad — es rechazo habitual por la 4.0. Además,
+  // declarar iPad obliga a subir un juego entero de capturas de iPad a la ficha.
+  // Decisión de Alejandro del 12-sep-2026 (MAESTRO-2026-520). Para revertir:
+  // quitar este bloque y el paso de comprobación del codemagic.yaml.
+  // Idempotente: el valor se reescribe sea cual sea el que venga.
+  const PBXPROJ = join(ROOT, "ios", "App", "App.xcodeproj", "project.pbxproj");
+  const antesPbx = existsSync(PBXPROJ) ? readFileSync(PBXPROJ, "utf8") : "";
+  if (!antesPbx) {
+    console.error("[prep-native] ERROR: no existe ios/App/App.xcodeproj/project.pbxproj");
+    process.exit(1);
+  }
+  if (!/TARGETED_DEVICE_FAMILY\s*=/.test(antesPbx)) {
+    console.error("[prep-native] ERROR: el pbxproj no declara TARGETED_DEVICE_FAMILY; " +
+                  "Capacitor ha cambiado la plantilla y el binario saldria tambien para iPad");
+    process.exit(1);
+  }
+  editar(PBXPROJ, (t) => t.replace(/TARGETED_DEVICE_FAMILY = [^;]+;/g, 'TARGETED_DEVICE_FAMILY = "1";'));
+  log("iOS: TARGETED_DEVICE_FAMILY = \"1\" (solo iPhone)");
 }
 
 if (!existsSync(ANDROID) && !existsSync(PLIST)) {

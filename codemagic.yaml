@@ -121,6 +121,14 @@ workflows:
           for k in NSCameraUsageDescription NSPhotoLibraryUsageDescription ITSAppUsesNonExemptEncryption; do
             grep -q "$k" ios/App/App/Info.plist || { echo "Falta $k en Info.plist"; exit 1; }
           done
+      - name: Comprobar que el binario es SOLO para iPhone (iPad fuera, 12-sep-2026)
+        script: |
+          grep -q 'TARGETED_DEVICE_FAMILY = "1";' ios/App/App.xcodeproj/project.pbxproj \
+            || { echo "El pbxproj NO esta limitado a iPhone — el binario declararia iPad y la ficha no tiene capturas de iPad"; exit 1; }
+          if grep -q 'TARGETED_DEVICE_FAMILY = "1,2";' ios/App/App.xcodeproj/project.pbxproj; then
+            echo "Queda algun target declarando iPad (1,2)"; exit 1
+          fi
+          echo "OK: el proyecto iOS es solo para iPhone"
       - name: Aplicar perfiles de firma al proyecto
         # keychain initialize NO va aqui: crea un llavero vacio y machaca el
         # que la firma automatica (environment.ios_signing) acaba de preparar.
