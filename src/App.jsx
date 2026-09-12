@@ -12164,7 +12164,14 @@ function GBHApp(){
           nivel={boNivel}
           onCerrar={()=>{ setPanelBo(false); guardarBo(); }}/>
       )}
-      {pinPrompt&&profile&&(
+      {/* 12-sep-2026 (orden de Alejandro): el modal del PIN ESPERA a que termine
+          el tutorial. Antes se pintaba encima del alta nueva a los 700 ms, con
+          zIndex 420, DEBAJO del TutorialOverlay (TUTO_Z 9400): el bocadillo de Bo
+          quedaba sobre el formulario del PIN y los dos se mezclaban. pinPrompt se
+          queda a true; en cuanto tutoPaso vuelve a null (termina o «Saltar tutorial»)
+          el modal aparece solo. Sigue siendo BLOQUEANTE (Fase 2a del RLS): solo se
+          pospone lo que dura el tutorial de una cuenta recien creada. */}
+      {pinPrompt&&profile&&tutoPaso==null&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:420,
           display:"flex",justifyContent:"center",alignItems:"flex-start",overflowY:"auto",
           padding:"max(10vh, 48px) 20px 40px"}}>
