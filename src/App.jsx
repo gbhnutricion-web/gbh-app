@@ -198,7 +198,12 @@ const TRANS = {
     rankingTitle:"Ranking",
     rankStreak:"Racha", rankXP:"XP", rankWeight:"Peso",
     rankStreakSub:"Días consecutivos", rankXPSub:"Experiencia total",
-    rankWeightSub:"Progreso desde inicio",
+    rankWeightSub:"Progreso desde inicio · solo quien se pesó esta semana",
+    rankFueraTit:"No sales en esta tabla",
+    rankFueraDesc:"El ranking de peso solo cuenta a quien se ha pesado en los últimos {d} días. Registra tu peso y vuelves a entrar.",
+    rankFueraCta:"⚖️ Registrar mi peso",
+    rankNadieTit:"Nadie se ha pesado esta semana",
+    rankNadieDesc:"Esta tabla se llena con los pesajes de los últimos {d} días. Sé el primero.",
     rankDays:"días", rankLoading:"Cargando…",
     rankEmpty:"Sin datos aún",
     rankEmptyDesc:"El ranking se llenará cuando más pacientes usen la app",
@@ -478,7 +483,12 @@ const TRANS = {
     rankingTitle:"Ranking",
     rankStreak:"Streak", rankXP:"XP", rankWeight:"Weight",
     rankStreakSub:"Consecutive days", rankXPSub:"Total experience",
-    rankWeightSub:"Progress since start",
+    rankWeightSub:"Progress since start · only those who weighed in this week",
+    rankFueraTit:"You are not on this board",
+    rankFueraDesc:"The weight ranking only counts people who weighed in over the last {d} days. Log your weight and you are back in.",
+    rankFueraCta:"⚖️ Log my weight",
+    rankNadieTit:"Nobody weighed in this week",
+    rankNadieDesc:"This board fills up with weigh-ins from the last {d} days. Be the first.",
     rankDays:"days", rankLoading:"Loading…",
     rankEmpty:"No data yet",
     rankEmptyDesc:"The ranking will fill up as more patients use the app",
@@ -1327,6 +1337,23 @@ const weekendKeys=()=>{
 };
 // Pesaje ya registrado este fin de semana (sábado o domingo), excluyendo el punto inicial.
 const weekendWeighIn=(ws)=>{const ks=weekendKeys();return (ws||[]).find(w=>!w.isInitial&&ks.includes(w.date))||null;};
+// ─── Regularidad del ranking de PESO (orden de Alejandro, 8-sep-2026) ────────
+// El ranking premiaba un progreso FÓSIL: el 8-sep el líder llevaba 45 días sin
+// pesarse y seguía primero desde hacía meses. Solo entra en la tabla de peso
+// quien tenga un pesaje dentro de esta ventana; al volver a pesarse, vuelve.
+// MEDIDO el 8-sep sobre 101 huecos entre pesajes consecutivos de los 20 perfiles
+// vivos: mediana 7 días, p90 8 (el pesaje es semanal y de sábado, 61 de 87).
+// Con 7 el que se pesa cada sábado entra JUSTO (se compara con >=, no con >),
+// pero la semana que se le va un día se cae hasta que se pese. Subirlo a 8 es
+// cambiar el número de esta línea; no hay ningún otro sitio que lo sepa.
+const DIAS_REGULARIDAD = 7;
+// El camino de la RPC no traía fecha y el cliente rellenaba con este centinela.
+// No es "hoy": hay que descartarlo antes de medir regularidad con él.
+const FECHA_RELLENO = "9999-12-31";
+// Fecha (YYYY-MM-DD) a partir de la cual un pesaje cuenta como reciente. Se
+// resta por calendario (setDate) y no en milisegundos: el cambio de hora de
+// octubre correría un día la ventana justo en la franja de medianoche.
+const limiteRegularidad=()=>{const d=new Date();d.setDate(d.getDate()-DIAS_REGULARIDAD);return toKey(d);};
 const WLABELS=["L","M","X","J","V","S","D"];
 
 
@@ -10639,7 +10666,7 @@ function GBHApp(){
     const viaRpc = await sbPinRpc("gbh_ranking", { p_limit: 50 });
     if(Array.isArray(viaRpc) && viaRpc.length){
       data = viaRpc;
-      wLogsPre = viaRpc.filter(p=>p.last_weight!=null).map(p=>({ profile_id:p.id, weight_kg:p.last_weight, log_date:"9999-12-31" }));
+      wLogsPre = viaRpc.filter(p=>p.last_weight!=null).map(p=>({ profile_id:p.id, weight_kg:p.last_weight, log_date:FECHA_RELLENO }));
     }
     if(data===null) data = await rankFetch("profiles?select=id,name,xp,gems,streak,initial_weight,bo_nombre,bo_color,bo_equipados&order=xp.desc&limit=50");
     // Fallbacks: sin columnas de Bo (SQL aún no ejecutado) → sin streak
@@ -10656,6 +10683,11 @@ function GBHApp(){
       // Pesos desde Supabase: weight_logs de todos los perfiles del ranking
       const ids=data.map(p=>p.id).join(",");
       const wLogs = wLogsPre || (await rankFetch(`weight_logs?profile_id=in.(${ids})&select=profile_id,weight_kg,log_date&order=log_date.asc`)||[]);
+      // ¿Sabe esta carga CUÁNDO se pesó cada uno? Leyendo weight_logs, siempre;
+      // por la RPC, solo desde que devuelve last_weight_date (8-sep-2026). Es la
+      // pregunta por la FUENTE, y no se puede deducir de que un paciente tenga
+      // la fecha vacía: eso significa que no se ha pesado nunca, que sí filtra.
+      const fechasConocidas = (wLogsPre===null) || data.some(p=>"last_weight_date" in p);
       const enriched = data.map(p=>{
         // Racha: viene del campo streak de Supabase
         const streak = p.streak || 0;
@@ -10669,7 +10701,12 @@ function GBHApp(){
         const lastW=dKeys.length?byDate[dKeys[dKeys.length-1]]:null;
         const weightDiff=(initW!==null&&lastW!==null)?parseFloat((lastW-initW).toFixed(1)):null;
         const weightAbs=weightDiff!==null?Math.abs(weightDiff):0;
-        return {...p, streak, weightDiff, weightAbs};
+        // Fecha de ESE pesaje, para el filtro de regularidad. La sirve la RPC
+        // (last_weight_date); si se leyó weight_logs directamente, es la clave
+        // más reciente — descartando el centinela, que no es una fecha real.
+        const lastWeightDate = p.last_weight_date
+          || (dKeys.length && dKeys[dKeys.length-1]!==FECHA_RELLENO ? dKeys[dKeys.length-1] : null);
+        return {...p, streak, weightDiff, weightAbs, lastWeightDate, fechaConocida:fechasConocidas};
       });
       // 🎮 Puntos de juego de la semana en curso
       const jr = await rankFetch("v_ranking_juego_semanal?select=profile_id,puntos_semana")||[];
@@ -10693,7 +10730,8 @@ function GBHApp(){
         const iW = initE?.weight ?? p.initial_weight ?? null;
         const lW2 = lastE?.weight ?? null;
         const wDiff2 = (iW!==null&&lW2!==null) ? parseFloat((lW2-iW).toFixed(1)) : null;
-        return {...p, streak, weightDiff:wDiff2, weightAbs:wDiff2!==null?Math.abs(wDiff2):0};
+        return {...p, streak, weightDiff:wDiff2, weightAbs:wDiff2!==null?Math.abs(wDiff2):0,
+                lastWeightDate: lastE?.date ?? null, fechaConocida:true};
       }).sort((a,b)=>(b.xp||0)-(a.xp||0));
       enriched.sort((a,b)=>b.weightAbs-a.weightAbs||(b.xp||0)-(a.xp||0));
       setRanking(enriched);
@@ -12126,7 +12164,14 @@ function GBHApp(){
           nivel={boNivel}
           onCerrar={()=>{ setPanelBo(false); guardarBo(); }}/>
       )}
-      {pinPrompt&&profile&&(
+      {/* 12-sep-2026 (orden de Alejandro): el modal del PIN ESPERA a que termine
+          el tutorial. Antes se pintaba encima del alta nueva a los 700 ms, con
+          zIndex 420, DEBAJO del TutorialOverlay (TUTO_Z 9400): el bocadillo de Bo
+          quedaba sobre el formulario del PIN y los dos se mezclaban. pinPrompt se
+          queda a true; en cuanto tutoPaso vuelve a null (termina o «Saltar tutorial»)
+          el modal aparece solo. Sigue siendo BLOQUEANTE (Fase 2a del RLS): solo se
+          pospone lo que dura el tutorial de una cuenta recien creada. */}
+      {pinPrompt&&profile&&tutoPaso==null&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:420,
           display:"flex",justifyContent:"center",alignItems:"flex-start",overflowY:"auto",
           padding:"max(10vh, 48px) 20px 40px"}}>
@@ -12873,7 +12918,20 @@ function GBHApp(){
 
           // ── Construir los 3 rankings ordenados ───────────────────────────
           const byStreak = [...ranking].sort((a,b)=>(b.streak||0)-(a.streak||0));
-          const byWeight = [...ranking].sort((a,b)=>(b.weightAbs||0)-(a.weightAbs||0));
+          // ── Filtro de regularidad, SOLO en la tabla de peso ────────────────
+          // Racha y Juego ya caducan solos (la racha se rompe, el juego se
+          // reinicia cada lunes); el peso no caducaba de ninguna manera.
+          // Si la carga NO sabe las fechas (RPC vieja, sin last_weight_date), no
+          // se filtra: enseñar la tabla de siempre es mejor que enseñarla vacía.
+          // Distinto de tener la fecha vacía: eso es no haberse pesado nunca, y
+          // ese sí sale de la tabla.
+          const limiteReg  = limiteRegularidad();
+          const hayFechas  = ranking.some(p=>p.fechaConocida);
+          const esRegular  = (p)=>!!p.lastWeightDate && p.lastWeightDate>=limiteReg;
+          const soyIrregular = hayFechas && !!profile?.id
+            && ranking.some(p=>p.id===profile.id) && !ranking.some(p=>p.id===profile.id&&esRegular(p));
+          const byWeight = (hayFechas?ranking.filter(esRegular):ranking)
+            .slice().sort((a,b)=>(b.weightAbs||0)-(a.weightAbs||0));
           // 🎮 Juego sustituye a ⚡ XP en el ranking (la XP sigue viva para los niveles)
           const byJuego  = [...ranking].sort((a,b)=>(b.juegoPts||0)-(a.juegoPts||0));
 
@@ -12918,6 +12976,27 @@ function GBHApp(){
               <div style={{fontSize:11,color:T.t2,textAlign:"center",fontFamily:"'DM Sans',sans-serif",marginBottom:14,letterSpacing:"0.05em",textTransform:"uppercase"}}>
                 {curTable.subtitle}
               </div>
+
+              {/* ── Fuera de la tabla de peso por no haberse pesado ──────────
+                  Sin este aviso, desaparecer del ranking se lee como un fallo
+                  de la app. Dice la regla, el plazo y el botón para volver. */}
+              {curTable.key==="weight"&&!rankLoading&&ranking.length>0&&(soyIrregular||byWeight.length===0)&&(
+                <div style={{background:T.bgWood,border:`2px solid ${T.bW}`,borderRadius:18,padding:"14px 16px",marginBottom:12,textAlign:"center"}}>
+                  <div style={{fontSize:13,fontWeight:900,color:T.t1,marginBottom:4}}>
+                    {byWeight.length===0?t("rankNadieTit"):t("rankFueraTit")}
+                  </div>
+                  <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.45}}>
+                    {byWeight.length===0&&!soyIrregular
+                      ? t("rankNadieDesc",{d:DIAS_REGULARIDAD})
+                      : t("rankFueraDesc",{d:DIAS_REGULARIDAD})}
+                  </div>
+                  {soyIrregular&&(
+                    <button onClick={()=>setTab("weight")} style={{marginTop:10,background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:"none",borderRadius:14,padding:"9px 20px",color:T.t1,fontWeight:900,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif",boxShadow:`0 3px 0 ${T.g3}`}}>
+                      {t("rankFueraCta")}
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* ── Lista ── */}
               {rankLoading?(
@@ -16916,7 +16995,7 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
   // 6-sep-2026 por orden de Alejandro para que el estándar los elija por su cuenta.
   const DIETAS=[
     {v:'Simple',     ic:'🍽️',label:lang==='en'?'Normal':'Normal',     sub:lang==='en'?'Everything':'De todo'},
-    {v:'Vegetariana',ic:'🥗',label:lang==='en'?'Vegetarian':'Vegetariano',sub:lang==='en'?'No meat/fish':'Sin carne ni pescado'},
+    {v:'Vegetariana',ic:'🥗',label:lang==='en'?'Vegetarian':'Vegetariano',sub:lang==='en'?'No meat; egg, dairy & fish':'Sin carne; con huevo, lácteos y pescado'},
     {v:'Vegana',     ic:'🌱',label:lang==='en'?'Vegan':'Vegano',     sub:lang==='en'?'Plant-based':'100% vegetal'},
     {v:'Celíaco',    ic:'🌾',label:lang==='en'?'Gluten-free':'Sin gluten',sub:lang==='en'?'Coeliac-safe recipes':'Apta para celíacos'},
     {v:'Cetogénica', ic:'🥑',label:lang==='en'?'Keto':'Cetogénica',  sub:lang==='en'?'Low carb · protein & fat':'Sin hidratos · proteína y grasa'},
