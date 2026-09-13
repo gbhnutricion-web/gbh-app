@@ -6,6 +6,8 @@ import { SPR, U, sprite, spriteCaja, bloque, suelo as dibujarSuelo, matas } from
 // recibe sbReq/T/Card por props para que este fichero solo cambie en 3 sitios.
 import { SelectorMedidas, MedidasCorporales } from "./MedidasCorporales";
 import { SelectorPrograma, BotonPrograma } from "./SelectorPrograma";
+import { TuDia } from "./TuDia";                                              // Kcal reales, fase 1
+import { FRACCIONES_MENOS, FRAC_MENOS_DEFECTO, fraccionValida } from "./kcalDia";
 import { DistribucionKcal, AlimentosDescartados, leerDescartes, escribirDescartes, BannerSemanaNueva,
          CabeceraPlan, PillTotal, PatronCocina, Recordatorios, BotonesGuardar, FUENTE_PIXEL } from "./PlanArcade";
 
@@ -12073,7 +12075,7 @@ function GBHApp(){
           B4_receta:{sel:'plan-zona',tx:EN?'Go into 🍽️ Daily Meals and open one of today’s recipes.':'Entra en 🍽️ Platos diarios y abre una receta de hoy.'},
           B4_info:{sel:'plan-zona',next:true,tx:EN?'The amounts already come adjusted to YOUR portion. From here you can swap it for free during the trial, save it to favourites or discard it.':'Las cantidades ya vienen ajustadas a TU ración. Desde aquí puedes cambiarla gratis durante la prueba, guardarla en favoritas o quitarla.'},
           B4_lista:{sel:'plan-zona',tx:EN?'Last thing here: open the 🛒 Shopping List. It builds itself from your week — tick off ingredients as you shop.':'Y lo último de tu plan: entra en la 🛒 Lista de la compra. Se hace sola con tu semana — marca los ingredientes mientras compras.'},
-          B4_comida:{sel:'plan-zona',tx:EN?'Go back to 🍽️ Daily Meals and log today’s meal with one of the 5 states (followed · less · swapped · ate out · skipped). It doesn’t need to be perfect. Log what you actually did: what counts is logging, not complying. An average day, logged, is worth more than a perfect day unlogged.':'Vuelve atrás a 🍽️ Platos diarios y marca tu comida de hoy con uno de los 5 estados (seguida · menos · la cambié · comí fuera · me la salté). No hace falta que salga perfecto. Marca lo que has hecho de verdad: lo que cuenta es registrar, no cumplir. Un día regular, registrado, vale más que un día perfecto sin registrar.'},
+          B4_comida:{sel:'plan-zona',tx:EN?'Go back to 🍽️ Daily Meals and log today’s meal with one of the 5 states (followed · less · swapped · ate out · skipped). It doesn’t need to be perfect. Log what you actually did: what counts is logging, not complying. An average day, logged, is worth more than a perfect day unlogged. At the bottom, «Your day» shows the calories you have logged against your plan.':'Vuelve atrás a 🍽️ Platos diarios y marca tu comida de hoy con uno de los 5 estados (seguida · menos · la cambié · comí fuera · me la salté). No hace falta que salga perfecto. Marca lo que has hecho de verdad: lo que cuenta es registrar, no cumplir. Un día regular, registrado, vale más que un día perfecto sin registrar. Abajo del todo, «Tu día» te enseña las kcal que llevas frente a tu programación.'},
           B5_peso:{sel:null,next:true,tx:(EN?`I already have today’s weight from sign-up${pesoUlt?` (${pesoUlt} kg)`:''}. Here you’ll see the trend. A tip: weigh yourself always on the same day, at the same time, fasted — and look at the line over several weeks, never a single day.`:`Tu peso de hoy ya lo tengo del registro${pesoUlt?` (${pesoUlt} kg)`:''}. Aquí verás la evolución. Un consejo: pésate siempre el mismo día, a la misma hora, en ayunas — y mira la línea de varias semanas, nunca un solo día.`)},
           B6_recetas:{sel:null,next:true,tx:EN?'The whole GBH recipe book. Search, open, and save the ones you like with the star — yours live in Favourites.':'Todo el recetario GBH. Busca, abre, y guarda las que te gusten con la estrella — las tuyas quedan en Favoritas.'},
           B7_consulta:{sel:null,next:true,tx:EN?'This tab is the direct line to Alejandro — it’s the Premium side of the plan: in-person consultation, weekly follow-up and his WhatsApp. If the trial wins you over, this is where you level up. And below you’ve got your code to invite a friend.':'Esta pestaña es la línea directa con Alejandro — es la parte del plan Premium: consulta presencial, seguimiento semanal y su WhatsApp. Si la prueba te convence, aquí es donde se sube de nivel. Y debajo tienes tu código para invitar a un amigo.'},
@@ -15347,6 +15349,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
   const [regDia,setRegDia]   = React.useState({});              // { 'YYYY-MM-DD': {meals:{}, note:''} }
   const [notaTmp,setNotaTmp] = React.useState('');              // texto en edición de la nota del día
   const [notaOK,setNotaOK]   = React.useState(false);           // indicador "guardada ✓"
+  const realDia = regDia[selDateKey]?.real || {};                // Kcal reales: detalle por toma (fase 1: fracción de «menos»)
 
   // Carga inicial: semilla desde caché local + refresco remoto de la semana actual.
   React.useEffect(()=>{
@@ -15354,17 +15357,17 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
     const cache = lsGet(`gbh:logs:${profile.id}`, []);
     const seed={};
     (Array.isArray(cache)?cache:[]).forEach(l=>{
-      if(l?.date && (l.meals || l.note)) seed[l.date]={meals:l.meals||{}, note:l.note||''};
+      if(l?.date && (l.meals || l.note || l.real)) seed[l.date]={meals:l.meals||{}, note:l.note||'', real:l.real||{}};
     });
     setRegDia(seed);
     const lunesKey=toKey(lunesSemana);
-    sbReq('GET',`daily_logs?profile_id=eq.${profile.id}&log_date=gte.${lunesKey}&select=log_date,meals_log,day_note`)
+    sbReq('GET',`daily_logs?profile_id=eq.${profile.id}&log_date=gte.${lunesKey}&select=log_date,meals_log,day_note,meals_real`)
       .then(rows=>{
         if(!Array.isArray(rows)) return;
         setRegDia(prev=>{
           const next={...prev};
           rows.forEach(r=>{ const k=r.log_date; if(!k) return;
-            next[k]={meals:r.meals_log||next[k]?.meals||{}, note:(r.day_note??next[k]?.note)||''}; });
+            next[k]={meals:r.meals_log||next[k]?.meals||{}, note:(r.day_note??next[k]?.note)||'', real:r.meals_real||next[k]?.real||{}}; });
           return next;
         });
       });
@@ -15378,7 +15381,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
   // Persiste un cambio del día: actualiza estado, caché local y upsert parcial a Supabase.
   // El merge se basa en la caché local (que escribimos de forma SÍNCRONA) para que
   // toques rápidos sobre varias comidas se acumulen sin pisarse.
-  const persistDia = (dateKey,{toma,estado,note}) => {
+  const persistDia = (dateKey,{toma,estado,note,real}) => {
     const key=`gbh:logs:${profile.id}`;
     const arr=lsGet(key,[]); const i=arr.findIndex(l=>l.date===dateKey);
     const cur = i>=0 ? arr[i] : {date:dateKey,diet:false,steps:false,hydration:false,sleep:false,sc:0,meals:{},note:''};
@@ -15388,20 +15391,30 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
       else meals[toma]=estado;
     }
     const nota = note!==undefined ? note : (cur.note||'');
-    const entry={...cur,meals,note:nota};
+    // Kcal reales (fase 1): `real[toma]` guarda lo que el plan NO sabe (hoy, la fracción
+    // de «menos»; en la fase 2, los ítems de «la cambié»/«comí fuera»). Cambiar o desmarcar
+    // el estado de una toma borra su detalle; `real:{toma,detalle}` lo escribe (detalle null lo borra).
+    // Viaja en daily_logs.meals_real, columna aparte: meals_log sigue siendo la cadena de siempre.
+    let realMap={...(cur.real||{})}; let realTocado=false;
+    if(toma){ delete realMap[toma]; realTocado=true; }
+    if(real&&real.toma){ if(real.detalle) realMap[real.toma]=real.detalle; else delete realMap[real.toma]; realTocado=true; }
+    const entry={...cur,meals,note:nota,real:realMap};
     if(i>=0) arr[i]=entry; else arr.push(entry);
     try{ lsSet(key,arr); }catch{}
-    setRegDia(prev=>({...prev,[dateKey]:{meals,note:nota}}));
+    setRegDia(prev=>({...prev,[dateKey]:{meals,note:nota,real:realMap}}));
     // upsert parcial: solo envía las columnas que cambian (no toca diet/steps/sleep/…)
     const body={profile_id:profile.id,log_date:dateKey};
     if(toma) body.meals_log=meals;
     if(note!==undefined) body.day_note=nota;
+    if(realTocado) body.meals_real=realMap;
     sbReq('POST','daily_logs?on_conflict=profile_id,log_date',body);
     // Avisar a Inicio: actualiza los mini-botones por toma y, si con este registro
     // quedan todas las tomas del día registradas, completa la misión de dieta (racha).
     if(toma && typeof onMealRegistered==='function') onMealRegistered(dateKey, meals);
   };
   const setEstadoComida = (toma,estado)=>{ if(!puedeRegistrar) return; persistDia(selDateKey,{toma,estado}); sfx&&sfx('step'); onTutoEvent&&onTutoEvent('comida_marcada'); };
+  // «Menos»: ¿cuánto? (¼ · ½ · ¾). Solo escribe si la toma está en «menos»; no toca el estado ni la racha.
+  const setFraccionMenos = (toma,f)=>{ if(!puedeRegistrar || regDia[selDateKey]?.meals?.[toma]!=='menos') return; persistDia(selDateKey,{real:{toma,detalle:{frac:f}}}); sfx&&sfx('tap'); };
   const guardarNotaDia  = ()=>{ if(!puedeRegistrar) return; if(notaTmp===(regDia[selDateKey]?.note||'')) return;
     persistDia(selDateKey,{note:notaTmp.trim()}); setNotaOK(true); setTimeout(()=>setNotaOK(false),1800); };
 
@@ -15705,24 +15718,9 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
     setListaChecks({}); guardarChecks({}); setListaConfirm(false);
     showT&&showT({icon:"🛒",title:lang==='en'?'List reset!':'¡Lista regenerada!',sub:lang==='en'?'Ready for a new shopping trip':'Lista limpia para volver a hacer la compra'});
   };
-  // ── Distribución de macros del día seleccionado (Atwater 4/4/9 sobre la suma
-  //    de P/H/G de todas las tomas del día). Alimenta el gráfico de sectores. ─
-  const macrosDia = React.useMemo(()=>{
-    if(!planJ) return null;
-    let p=0,h=0,g=0;
-    for(const tm of PLAN_TOMAS){
-      const m=planJ?.[tm]?.[String(selDay)];
-      if(!m) continue;
-      p+=parseFloat(m.Proteinas_g)||0;
-      h+=parseFloat(m.Hidratos_g)||0;
-      g+=parseFloat(m.Grasas_g)||0;
-    }
-    const kp=p*4, kh=h*4, kg=g*9, tot=kp+kh+kg;
-    if(tot<=0) return null;
-    return { p:Math.round(p), h:Math.round(h), g:Math.round(g),
-             fP:kp/tot, fH:kh/tot, fG:kg/tot,
-             pctP:Math.round(kp/tot*100), pctH:Math.round(kh/tot*100), pctG:Math.round(kg/tot*100) };
-  },[planJ,selDay]);
+  // ── Distribución de macros del día: desde la fase 1 de «Kcal reales» la calcula
+  //    src/kcalDia.js (misma definición Atwater 4/4/9) y la pinta <TuDia/> al final
+  //    de Platos diarios, junto a las kcal reales frente a las previstas. ─
   // ── Semana vigente: idxActual está declarado más arriba (antes de
   // puedeRegistrar, que depende de él). Aquí solo queda el posicionamiento. ──
   // Al abrir el Plan (o tras (re)generar) posiciona en la semana vigente, no en
@@ -16671,7 +16669,8 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
                 {hasMeal&&<div style={{color:T.t3,fontSize:18,flexShrink:0}}>›</div>}
               </button>
               {mostrarChips&&(
-                <div style={{display:'flex',gap:6,background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderTop:'none',borderRadius:'0 0 16px 16px',padding:'8px 10px 10px'}}>
+                <div style={{background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderTop:'none',borderRadius:'0 0 16px 16px',padding:'8px 10px 10px'}}>
+                <div style={{display:'flex',gap:6}}>
                   {PLAN_CUMPL.map(c=>{const on=estado===c.k;return(
                     <button key={c.k} onClick={()=>setEstadoComida(toma,c.k)} title={lang==='en'?c.en:c.es} aria-label={lang==='en'?c.en:c.es} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',padding:'11px 0',borderRadius:12,cursor:'pointer',background:on?c.c+'30':'rgba(255,255,255,0.05)',border:on?('2px solid '+c.c):'1.5px solid rgba(255,255,255,0.06)',fontSize:22,lineHeight:1,transition:'all 0.15s',
                       // Micro-pop al quedar seleccionado (Tarea B). La animación solo se
@@ -16681,45 +16680,24 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
                       {c.ic}
                     </button>);})}
                 </div>
+                {/* Kcal reales (fase 1): «menos» pregunta cuánto; sin elegir, la mitad. */}
+                {estado==='menos'&&(
+                  <div style={{display:'flex',alignItems:'center',gap:6,marginTop:8,fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>
+                    <span style={{flex:1}}>{lang==='en'?'How much did you eat?':'¿Cuánto comiste?'}</span>
+                    {FRACCIONES_MENOS.map(([f,s])=>{const on=(fraccionValida(realDia[toma]?.frac)??FRAC_MENOS_DEFECTO)===f;return(
+                      <button key={f} onClick={()=>setFraccionMenos(toma,f)} aria-label={s} style={{fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:12,padding:'5px 11px',borderRadius:9,cursor:'pointer',background:on?alpha(T.au1,0.12):'transparent',border:on?'1.5px solid '+T.au1:'1.5px solid rgba(255,255,255,0.14)',color:on?T.au2:T.t2}}>{s}</button>);})}
+                  </div>
+                )}
+                </div>
               )}
             </div>{suplEn(toma)}</React.Fragment>);
           })}
             </>);
           })()}
-          {macrosDia&&(
-            <div style={{background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:16,padding:'16px 16px'}}>
-              <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.08em',display:'flex',alignItems:'center',gap:6,marginBottom:14}}>
-                <span>📊</span>{lang==='en'?'Daily macro split':'Distribución de macros del día'}
-              </div>
-              <div style={{display:'flex',alignItems:'center',gap:18}}>
-                {(()=>{
-                  const R=42, SW=18, C=2*Math.PI*R;
-                  const segs=[{f:macrosDia.fH,c:T.g1},{f:macrosDia.fG,c:'#FFB74D'},{f:macrosDia.fP,c:T.platos}];
-                  let acc=0;
-                  return(
-                    <svg width="110" height="110" viewBox="0 0 112 112" style={{flexShrink:0}}>
-                      <g transform="rotate(-90 56 56)">
-                        <circle cx="56" cy="56" r={R} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={SW}/>
-                        {segs.map((s,i)=>{const dash=C*s.f;const el=(<circle key={i} cx="56" cy="56" r={R} fill="none" stroke={s.c} strokeWidth={SW} strokeDasharray={`${dash} ${C-dash}`} strokeDashoffset={-C*acc} strokeLinecap="butt"/>);acc+=s.f;return el;})}
-                      </g>
-                    </svg>
-                  );
-                })()}
-                <div style={{flex:1,display:'flex',flexDirection:'column',gap:9}}>
-                  {[{c:T.platos,lbl:lang==='en'?'Protein':'Proteínas',pct:macrosDia.pctP,g:macrosDia.p},
-                    {c:T.g1,lbl:lang==='en'?'Carbs':'Hidratos',pct:macrosDia.pctH,g:macrosDia.h},
-                    {c:'#FFB74D',lbl:lang==='en'?'Fat':'Grasas',pct:macrosDia.pctG,g:macrosDia.g}].map((mm,i)=>(
-                    <div key={i} style={{display:'flex',alignItems:'center',gap:8}}>
-                      <div style={{width:10,height:10,borderRadius:3,background:mm.c,flexShrink:0}}/>
-                      <div style={{flex:1,fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif"}}>{mm.lbl}</div>
-                      <div style={{fontSize:13,fontWeight:900,color:mm.c,fontFamily:"'Nunito',sans-serif"}}>{mm.pct}%</div>
-                      <div style={{fontSize:11,color:T.t3,minWidth:34,textAlign:'right',fontFamily:"'DM Sans',sans-serif"}}>{mm.g} g</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
+          {/* ── «Tu día»: kcal reales frente a previstas y macros real/previsto (src/TuDia.jsx) ── */}
+          <TuDia T={T} lang={lang} planJ={planJ} dia={selDay} meals={regDia[selDateKey]?.meals} real={realDia}
+                 tomas={PLAN_TOMAS} activo={puedeRegistrar} kcalVisible={profile?.kcal_visible!==false}
+                 diaNombre={PLAN_DIAS_F[selDay-1]} semana={plan?.semana}/>
           {puedeRegistrar&&(<>
             <div style={{background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:16,padding:'12px 14px'}}>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
