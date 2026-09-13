@@ -49,6 +49,7 @@ const TRANS = {
     pinNoNet:"Sin conexión. No se pudo verificar el PIN.",
     pinForgot:"¿Has olvidado tu PIN?",
     pinEnterHint:"Introduce tu PIN para entrar",
+    pinSinPinHint:"Tu cuenta aún no tiene PIN: pulsa «¿Has olvidado tu PIN?» y te llega uno a tu correo.",
     pinCreateTitle:"Protege tu cuenta 🔐",
     pinCreateDesc:"Crea un PIN de 4 a 6 dígitos. Te lo pediremos al entrar con tu correo en un dispositivo nuevo, para que nadie más pueda acceder a tus datos.",
     pinNew:"Nuevo PIN", pinRepeat:"Repite el PIN",
@@ -334,6 +335,7 @@ const TRANS = {
     pinNoNet:"No connection. Couldn't verify your PIN.",
     pinForgot:"Forgot your PIN?",
     pinEnterHint:"Enter your PIN to continue",
+    pinSinPinHint:"Your account has no PIN yet: tap «Forgot your PIN?» and we'll email you one.",
     pinCreateTitle:"Protect your account 🔐",
     pinCreateDesc:"Create a 4-6 digit PIN. We'll ask for it when you log in with your email on a new device, so nobody else can access your data.",
     pinNew:"New PIN", pinRepeat:"Repeat PIN",
@@ -1434,7 +1436,7 @@ function enqueue(op){
 const SESION_KEY = "gbh:sesion";
 // Interruptor del cierre (Parte 2): cuando sea true, arrancar sin sesión manda
 // a la landing a volver a entrar con el PIN. Se pone a true el día del cierre.
-const SESION_OBLIGATORIA = false;
+const SESION_OBLIGATORIA = true;   // 13-sep-2026: ENCENDIDO en la rama rls-cierre; se fusiona el día del cierre, junto a la Parte 2 del SQL
 const getSesion = () => lsGet(SESION_KEY, null);            // {token, pid, admin}
 const setSesion = (s) => lsSet(SESION_KEY, s);
 const gbhHeaders = (extra={}) => {
@@ -7984,6 +7986,11 @@ function GBHApp(){
   const emailChkLast  = useRef("");     // último email comprobado (no vaciar el PIN sin motivo)
   const [aPin,     setAPin]     = useState("");     // PIN tecleado en el login
   const [aPinNeed, setAPinNeed] = useState(false);  // la cuenta tiene PIN
+  // Cierre del RLS (13-sep-2026): con la sesión obligatoria TODA cuenta existente entra
+  // por PIN, porque sin gbh_login_pin no hay sesión y la base no devuelve el perfil.
+  // Una cuenta sin PIN NO lo crea aquí (bastaría saber su correo para quedarse con
+  // ella): lo pide con «¿Has olvidado tu PIN?», que lo manda al correo registrado.
+  const aPinPide = SESION_OBLIGATORIA || aPinNeed;
   const [pinPrompt,setPinPrompt]= useState(false);  // modal "crea tu PIN"
   const [pinV1,setPinV1]=useState(""); const [pinV2,setPinV2]=useState("");
   const [pinBusy,setPinBusy]=useState(false); const [pinSetErr,setPinSetErr]=useState("");
@@ -9870,7 +9877,7 @@ function GBHApp(){
 
     // ── USUARIO EXISTENTE → verifica PIN (si lo tiene) y entra ──
     if(authMode==="returning"){
-      if(aPinNeed){
+      if(aPinPide){
         if(!/^\d{4,6}$/.test(aPin)){ setAuthErr(t("pinFormat")); setLoading(false); return; }
         // Fase 2b (4-sep-2026): entrar por gbh_login_pin, que verifica el PIN
         // igual que gbh_check_pin Y abre una sesión (token para X-GBH-Sesion).
@@ -9883,9 +9890,10 @@ function GBHApp(){
           }
           setSesion({ token:lg.token, pid:lg.profile_id, admin:!!lg.es_admin });
         } else {
-          const okPin = await sbPinRpc("gbh_check_pin",{ p_email:email, p_pin:aPin });
-          if(okPin===null){ setAuthErr(t("pinNoNet")); setLoading(false); return; }
-          if(okPin!==true){ setAuthErr(t("pinWrong")); setLoading(false); return; }
+          // 13-sep-2026: sin la vuelta a gbh_check_pin. Si gbh_login_pin no contesta
+          // (red o fallo del servidor) NO se entra: entrar sin sesión con el cierre puesto
+          // deja la app sin datos, y gbh_check_pin se borra con la Parte 2.
+          setAuthErr(t("pinNoNet")); setLoading(false); return;
         }
       }
       const localId = lsGet(`gbh:em:${email}`, null);
@@ -11488,14 +11496,14 @@ function GBHApp(){
             <div>
               <div style={{fontSize:13,fontWeight:900,color:T.g2}}>{t("welcomeBack",{n:aName.split(" ")[0]})}</div>
               <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:2}}>
-                {aPinNeed ? t("pinEnterHint") : (lang==="en"?"Tap below to enter":"Pulsa abajo para entrar")}
+                {aPinPide ? t(aPinNeed ? "pinEnterHint" : "pinSinPinHint") : (lang==="en"?"Tap below to enter":"Pulsa abajo para entrar")}
               </div>
             </div>
           </div>
         )}
 
         {/* ── PIN de acceso: la cuenta lo tiene → pedirlo antes de entrar ── */}
-        {authMode==="returning"&&aPinNeed&&(
+        {authMode==="returning"&&aPinPide&&(
           <div style={{marginBottom:14}}>
             <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>{t("pinLabel")}</div>
             <input type="password" inputMode="numeric" pattern="[0-9]*" maxLength={6} value={aPin}
@@ -11553,7 +11561,7 @@ function GBHApp(){
           const isReturning = authMode==="returning";
           // El alta nueva vive en la conversación con Bo: aquí solo se entra
           if(!isReturning && authMode!=="migrate") return null;
-          const dis = loading || authMode==="checking" || !aEmail.trim() || (isReturning && aPinNeed && aPin.length<4);
+          const dis = loading || authMode==="checking" || !aEmail.trim() || (isReturning && aPinPide && aPin.length<4);
           const label = loading ? t("verifying") : t("recoverAccount");
           return(
             <button onClick={doAuth} disabled={dis}
