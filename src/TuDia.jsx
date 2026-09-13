@@ -55,7 +55,7 @@ export function TuDia({ T, lang, planJ, dia, meals, real, tomas = TOMAS_ORDEN, a
         <div style={{ fontSize: 11, color: T.au1, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em', display: 'flex', alignItems: 'center', gap: 6 }}>
           <span>📊</span>{conReal ? (EN ? 'Your day' : 'Tu día') : (EN ? 'Daily macro split' : 'Distribución de macros del día')}
         </div>
-        {!!sub && <div style={{ fontSize: 10.5, color: T.t3, fontFamily: FD }}>{sub}</div>}
+        {conReal && !!sub && <div style={{ fontSize: 10.5, color: T.t3, fontFamily: FD }}>{sub}</div>}
       </div>
 
       {conReal && (<>
