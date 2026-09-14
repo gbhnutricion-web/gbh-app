@@ -59,6 +59,13 @@ export const CASOS = [
   { nombre: 'alimento en gramos libres (ug=1)', meals: { Merienda: 'cambiada' },
     real: { Merienda: { conocido: true, items: [{ t: 'ing', n: 'Plátano', k: 89, p: 1.1, h: 23, g: 0.3, u: 'g', ug: 1, q: 150 }] } },
     esperado: { realKcal: 133.5 } },
+  // ── 14-sep-2026: ➕ «Añadí» suma sobre lo previsto; 🔄 «La cambié» (clave 'fuera') sustituye ──
+  { nombre: 'añadí: la receta + un postre a mano', meals: { Cena: 'anadida' }, real: { Cena: { conocido: true, items: [{ t: 'libre', n: 'postre', kcal: 150 }] } },
+    esperado: { realKcal: 570, registradas: 1, sinCuantificar: 0, sinMacros: 1 } },
+  { nombre: 'añadí sin ítems todavía = la receta tal cual', meals: { Cena: 'anadida' }, real: {},
+    esperado: { realKcal: 420, realP: 36, conocidas: 1, sinCuantificar: 0 } },
+  { nombre: 'añadí con 2 huevos: macros se suman', meals: { Desayuno: 'anadida' }, real: { Desayuno: { items: [{ t: 'ing', n: 'Huevos', k: 144.9, p: 12.5, h: 0.3, g: 10.5, u: 'huevo', ug: 55, q: 2 }] } },
+    esperado: { realKcal: 679.39, realP: 31.75, sinMacros: 0 } },
 ];
 
 export const FRASES_EN = [
