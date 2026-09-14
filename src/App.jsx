@@ -12077,7 +12077,7 @@ function GBHApp(){
           B4_receta:{sel:'plan-zona',tx:EN?'Go into 🍽️ Daily Meals and open one of today’s recipes.':'Entra en 🍽️ Platos diarios y abre una receta de hoy.'},
           B4_info:{sel:'plan-zona',next:true,tx:EN?'The amounts already come adjusted to YOUR portion. From here you can swap it for free during the trial, save it to favourites or discard it.':'Las cantidades ya vienen ajustadas a TU ración. Desde aquí puedes cambiarla gratis durante la prueba, guardarla en favoritas o quitarla.'},
           B4_lista:{sel:'plan-zona',tx:EN?'Last thing here: open the 🛒 Shopping List. It builds itself from your week — tick off ingredients as you shop.':'Y lo último de tu plan: entra en la 🛒 Lista de la compra. Se hace sola con tu semana — marca los ingredientes mientras compras.'},
-          B4_comida:{sel:'plan-zona',tx:EN?'Go back to 🍽️ Daily Meals and log today’s meal with one of the 5 states (followed · less · swapped · ate out · skipped). It doesn’t need to be perfect. Log what you actually did: what counts is logging, not complying. An average day, logged, is worth more than a perfect day unlogged. At the bottom, «Your day» shows the calories you have logged against your plan.':'Vuelve atrás a 🍽️ Platos diarios y marca tu comida de hoy con uno de los 5 estados (seguida · menos · la cambié · comí fuera · me la salté). No hace falta que salga perfecto. Marca lo que has hecho de verdad: lo que cuenta es registrar, no cumplir. Un día regular, registrado, vale más que un día perfecto sin registrar. Abajo del todo, «Tu día» te enseña las kcal que llevas frente a tu programación.'},
+          B4_comida:{sel:'plan-zona',tx:EN?'Go back to 🍽️ Daily Meals and log today’s meal with one of the 5 states (followed · less · added · swapped · skipped). It doesn’t need to be perfect. Log what you actually did: what counts is logging, not complying. An average day, logged, is worth more than a perfect day unlogged. At the bottom, «Your day» shows the calories you have logged against your plan.':'Vuelve atrás a 🍽️ Platos diarios y marca tu comida de hoy con uno de los 5 estados (seguida · menos · añadí · la cambié · me la salté). No hace falta que salga perfecto. Marca lo que has hecho de verdad: lo que cuenta es registrar, no cumplir. Un día regular, registrado, vale más que un día perfecto sin registrar. Abajo del todo, «Tu día» te enseña las kcal que llevas frente a tu programación.'},
           B5_peso:{sel:null,next:true,tx:(EN?`I already have today’s weight from sign-up${pesoUlt?` (${pesoUlt} kg)`:''}. Here you’ll see the trend. A tip: weigh yourself always on the same day, at the same time, fasted — and look at the line over several weeks, never a single day.`:`Tu peso de hoy ya lo tengo del registro${pesoUlt?` (${pesoUlt} kg)`:''}. Aquí verás la evolución. Un consejo: pésate siempre el mismo día, a la misma hora, en ayunas — y mira la línea de varias semanas, nunca un solo día.`)},
           B6_recetas:{sel:null,next:true,tx:EN?'The whole GBH recipe book. Search, open, and save the ones you like with the star — yours live in Favourites.':'Todo el recetario GBH. Busca, abre, y guarda las que te gusten con la estrella — las tuyas quedan en Favoritas.'},
           B7_consulta:{sel:null,next:true,tx:EN?'This tab is the direct line to Alejandro — it’s the Premium side of the plan: in-person consultation, weekly follow-up and his WhatsApp. If the trial wins you over, this is where you level up. And below you’ve got your code to invite a friend.':'Esta pestaña es la línea directa con Alejandro — es la parte del plan Premium: consulta presencial, seguimiento semanal y su WhatsApp. Si la prueba te convence, aquí es donde se sube de nivel. Y debajo tienes tu código para invitar a un amigo.'},
@@ -14682,13 +14682,18 @@ function fusionarIngredientesJS(textoA, textoB){
 // dieta (racha) cuando TODAS las tomas de la pauta del día quedan registradas,
 // sea cual sea el estado: registrar con honestidad cuenta; no registrar, no.
 // No toca la lógica de calorías. Las palabras mapean lo que pide el paciente:
-// "como menos", "cambio el plato", "como fuera", "me salto la comida".
+// "como menos", "añado cosas", "la cambio por otra", "me salto la comida".
+// 14-sep-2026 (orden de Alejandro): ➕ «Añadí» = la receta Y ADEMÁS otros platos o ingredientes
+// (suma sobre lo previsto); 🔄 «La cambié» = otra cosa en vez de la receta (fuera o en casa).
+// 'cambiada' queda como clave HISTÓRICA (hasta el 14-sep valía «la cambié»): no se ofrece como
+// botón (oculto) y se agrega junto a 'fuera'. 'fuera' conserva su clave por los scripts que la leen.
 const PLAN_CUMPL = [
   {k:'seguida',  es:'Seguida',     en:'Followed', ic:'✅', c:T.g1},
   {k:'menos',    es:'Menos',       en:'Less',     ic:'➖', c:T.au1},
-  {k:'cambiada', es:'La cambié',   en:'Swapped',  ic:'🔄', c:T.blue},
-  {k:'fuera',    es:'Comí fuera',  en:'Ate out',  ic:'🍽️', c:T.pur},
+  {k:'anadida',  es:'Añadí',       en:'Added',    ic:'➕', c:T.blue},   // la receta y, además, otros platos o ingredientes
+  {k:'fuera',    es:'La cambié',   en:'Swapped',  ic:'🔄', c:T.pur},    // otra cosa en vez de la receta (fuera o en casa)
   {k:'saltada',  es:'Me la salté', en:'Skipped',  ic:'⏭️', c:T.red},
+  {k:'cambiada', es:'La cambié',   en:'Swapped',  ic:'🔄', c:T.pur, oculto:true},   // clave histórica: se lee, no se ofrece
 ];
 const PLAN_TIPO_IC = {Carne:'🥩',Pescado:'🐟',Vegetariana:'🥗',Vegana:'🌱',Ensalada:'🥬','Sopa/Crema':'🍲',Postre:'🍰',Directo:'🍃',
   Meat:'🥩',Fish:'🐟',Vegetarian:'🥗',Vegan:'🌱',Dessert:'🍰',Salad:'🥬','Soup/Cream':'🍲'};
@@ -14747,6 +14752,7 @@ async function exportarSeguimientoCSV(profileId, nombre){
     // lo previsto (seguida / saltada / menos) sale del plan y no viaja aquí.
     const tomaTxt = (estado, d)=>{ if(!estado) return ''; let s=estado; if(!d) return s;
       if(estado==='menos'&&d.frac) s+=` · ×${d.frac}`;
+      if(estado==='anadida'&&Array.isArray(d.items)&&d.items.length) s+=` · +${Math.round(sumaItems(d.items).kcal)} kcal añadidos (${d.items.map(x=>x.n).join(' + ')})`;
       if(estado==='cambiada'||estado==='fuera') s+= (d.conocido&&Array.isArray(d.items)&&d.items.length) ? ` · ${Math.round(sumaItems(d.items).kcal)} kcal (${d.items.map(x=>x.n).join(' + ')})` : ' · ?';
       if(Array.isArray(d.extras)&&d.extras.length) s+=` · +${Math.round(sumaItems(d.extras).kcal)} kcal extras (${d.extras.map(x=>x.n).join(' + ')})`;
       return s; };
@@ -14779,13 +14785,13 @@ async function exportarSeguimientoCSV(profileId, nombre){
 // ventana (mes natural o lunes-domingo); `semanaDe(key,i)` agrupa en semanas
 // (opcional: sin él, todo cae en el grupo 0).
 function espejoAgregar(mealsDe, fechas, semanaDe){
-  const porEstado={seguida:0,menos:0,cambiada:0,fuera:0,saltada:0};
+  const porEstado={seguida:0,menos:0,anadida:0,fuera:0,saltada:0};
   const porToma={}; PLAN_TOMAS.forEach(t=>porToma[t]={seguida:0,total:0});
   const semanas={}; let totalReg=0;
   fechas.forEach((k,i)=>{
     const meals = mealsDe(k)||{};
     const w = semanaDe? semanaDe(k,i) : 0;
-    PLAN_TOMAS.forEach(t=>{ const e=meals[t]; if(!e) return;
+    PLAN_TOMAS.forEach(t=>{ let e=meals[t]; if(!e) return; if(e==='cambiada') e='fuera';   // clave histórica (hasta 14-sep-2026) = «la cambié»
       totalReg++;
       if(porEstado[e]!==undefined) porEstado[e]++;
       porToma[t].total++; if(e==='seguida') porToma[t].seguida++;
@@ -15094,7 +15100,7 @@ function SeguimientoView({profile, lang}){
         </div>
         {/* Leyenda */}
         <div style={{display:'flex',flexWrap:'wrap',gap:'6px 12px',padding:'10px 2px 2px'}}>
-          {PLAN_CUMPL.map(c=>(<div key={c.k} style={{display:'flex',alignItems:'center',gap:4,fontSize:10.5,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}><span>{c.ic}</span>{EN?c.en:c.es}</div>))}
+          {PLAN_CUMPL.filter(c=>!c.oculto).map(c=>(<div key={c.k} style={{display:'flex',alignItems:'center',gap:4,fontSize:10.5,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}><span>{c.ic}</span>{EN?c.en:c.es}</div>))}
           <div style={{display:'flex',alignItems:'center',gap:4,fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}><span style={{width:12,height:12,borderRadius:3,border:'1px solid rgba(255,255,255,0.15)',display:'inline-block'}}/>{EN?'Not logged':'Sin registrar'}</div>
         </div>
       </div>
@@ -15140,7 +15146,7 @@ function SeguimientoView({profile, lang}){
             {/* 3 · Reparto de estados */}
             <div style={{...cardSty,marginRight:12}}>
               <div style={{fontWeight:900,fontSize:13.5,color:T.t1,marginBottom:12,...TT}}>{EN?'Breakdown':'Reparto de estados'}</div>
-              {PLAN_CUMPL.map((c,i)=>{ const n=stats.porEstado[c.k]||0; const pct=stats.totalReg?Math.round(n/stats.totalReg*100):0; return(
+              {PLAN_CUMPL.filter(c=>!c.oculto).map((c,i)=>{ const n=stats.porEstado[c.k]||0; const pct=stats.totalReg?Math.round(n/stats.totalReg*100):0; return(
                 <div key={c.k} className="stagger-in" style={{animationDelay:escalon(i),marginBottom:9}}>
                   <div style={{display:'flex',justifyContent:'space-between',fontSize:11.5,marginBottom:3,fontFamily:"'DM Sans',sans-serif"}}><span style={{color:T.t2}}>{c.ic} {EN?c.en:c.es}</span><span style={{color:c.c,fontWeight:800}}>{n} · {pct}%</span></div>
                   <BarraProgreso pct={pct} color={c.c}/>
@@ -15424,7 +15430,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
     if(toma && typeof onMealRegistered==='function') onMealRegistered(dateKey, meals);
   };
   const setEstadoComida = (toma,estado)=>{ if(!puedeRegistrar) return; const seSetea = regDia[selDateKey]?.meals?.[toma]!==estado; persistDia(selDateKey,{toma,estado}); sfx&&sfx('step'); onTutoEvent&&onTutoEvent('comida_marcada');
-    if(seSetea&&(estado==='cambiada'||estado==='fuera')) setHoja({toma,modo:'sustituir'}); };   // fase 2: al marcar, la hoja pregunta qué comiste (se puede cerrar con «Ahora no»)
+    if(seSetea&&estado==='fuera') setHoja({toma,modo:'sustituir'}); else if(seSetea&&estado==='anadida') setHoja({toma,modo:'anadir'}); };   // al marcar: 🔄 pregunta qué comiste en vez de la receta; ➕ qué añadiste (las dos se cierran con «Ahora no»)
   // Kcal reales (fase 2): la hoja «¿Qué comiste?» — 'sustituir' (la cambié / comí fuera) o 'extras' (sobre cualquier estado).
   // Los ítems viajan con sus números dentro; el total se recalcula aquí con sumaItems y se guarda en meals_real[toma].
   const [hoja,setHoja] = React.useState(null);                 // {toma, modo} | null
@@ -16697,7 +16703,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
               {mostrarChips&&(
                 <div style={{background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderTop:'none',borderRadius:'0 0 16px 16px',padding:'8px 10px 10px'}}>
                 <div style={{display:'flex',gap:6}}>
-                  {PLAN_CUMPL.map(c=>{const on=estado===c.k;return(
+                  {PLAN_CUMPL.filter(c=>!c.oculto).map(c=>{const on=estado===c.k;return(
                     <button key={c.k} onClick={()=>setEstadoComida(toma,c.k)} title={lang==='en'?c.en:c.es} aria-label={lang==='en'?c.en:c.es} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',padding:'11px 0',borderRadius:12,cursor:'pointer',background:on?c.c+'30':'rgba(255,255,255,0.05)',border:on?('2px solid '+c.c):'1.5px solid rgba(255,255,255,0.06)',fontSize:22,lineHeight:1,transition:'all 0.15s',
                       // Micro-pop al quedar seleccionado (Tarea B). La animación solo se
                       // relanza cuando `on` pasa de false→true (la propiedad cambia);
@@ -16715,13 +16721,14 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
                   </div>
                 )}
                 {/* Kcal reales (fase 2): lo real de la toma, los extras y la hoja «¿Qué comiste?» */}
-                {estado&&(()=>{ const rT=realToma(estado, realDia[toma], previstoToma(planJ,toma,selDay)); const sust=(estado==='cambiada'||estado==='fuera');
+                {estado&&(()=>{ const rT=realToma(estado, realDia[toma], previstoToma(planJ,toma,selDay)); const sust=(estado==='fuera'||estado==='cambiada'); const anad=(estado==='anadida');
                   const lnk={background:'none',border:'none',padding:0,cursor:'pointer',color:T.au2,fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:11};
                   return(
                   <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,marginTop:8,fontSize:11,fontFamily:"'DM Sans',sans-serif"}}>
                     <span style={{color:T.t2}}>{rT&&rT.conocido?`${Math.round(rT.kcal)} kcal${rT.extras?(lang==='en'?` · ${rT.extras} extra`:` · ${rT.extras} extra`):''}`:(sust?(lang==='en'?'? kcal · not quantified':'? kcal · sin cuantificar'):'')}</span>
                     <span style={{display:'flex',gap:12}}>
-                      <button onClick={()=>abrirHoja(toma,'extras')} style={lnk}>{lang==='en'?'＋ Add something':'＋ Añadir algo más'}</button>
+                      {!anad&&<button onClick={()=>abrirHoja(toma,'extras')} style={lnk}>{lang==='en'?'＋ Add something':'＋ Añadir algo más'}</button>}
+                      {anad&&<button onClick={()=>abrirHoja(toma,'anadir')} style={lnk}>{(realDia[toma]?.items||[]).length?(lang==='en'?'Edit what you added':'Editar lo que añadiste'):(lang==='en'?'What did you add?':'¿Qué añadiste?')}</button>}
                       {sust&&<button onClick={()=>abrirHoja(toma,'sustituir')} style={lnk}>{rT&&rT.conocido?(lang==='en'?'Edit what you ate':'Editar lo que comiste'):(lang==='en'?'Quantify':'Cuantificar')}</button>}
                     </span>
                   </div>);})()}
@@ -16751,11 +16758,12 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
             <div style={{padding:'4px 4px 0'}}>
               <div style={{fontSize:10,color:T.t3,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{lang==='en'?'What each button means':'Qué significa cada botón'}</div>
               <div style={{display:'flex',flexWrap:'wrap',gap:'8px 16px'}}>
-                {PLAN_CUMPL.map(c=>(
+                {PLAN_CUMPL.filter(c=>!c.oculto).map(c=>(
                   <div key={c.k} style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}><span style={{fontSize:16,lineHeight:1}}>{c.ic}</span>{lang==='en'?c.en:c.es}</div>
                 ))}
                 <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}><span style={{fontSize:16,lineHeight:1}}>＋</span>{lang==='en'?'Add something: an extra on any meal':'Añadir algo más: un extra sobre cualquier comida'}</div>
-                <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}><span style={{fontSize:16,lineHeight:1}}>?</span>{lang==='en'?'Swapped / ate out: say what you ate to see your kcal; if not, it stays as «?»':'La cambié / comí fuera: di qué comiste para ver tus kcal; si no, queda en «?»'}</div>
+                <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}><span style={{fontSize:16,lineHeight:1}}>➕</span>{lang==='en'?'Added: the recipe and, on top, other dishes or foods (they add to your plan)':'Añadí: la receta y, además, otros platos o ingredientes (se suman a lo previsto)'}</div>
+                <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}><span style={{fontSize:16,lineHeight:1}}>🔄</span>{lang==='en'?'Swapped: something else instead of the recipe, out or at home; say what you ate to see your kcal, or it stays as «?»':'La cambié: otra cosa en vez de la receta, fuera o en casa; di qué comiste para ver tus kcal, o queda en «?»'}</div>
               </div>
             </div>
           </>)}

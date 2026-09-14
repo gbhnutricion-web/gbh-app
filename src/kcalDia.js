@@ -86,7 +86,11 @@ export function realToma(estado, detalle, previsto) {
       const f = fraccionValida(detalle?.frac) ?? FRAC_MENOS_DEFECTO;
       base = { kcal: previsto.kcal * f, p: previsto.p * f, h: previsto.h * f, g: previsto.g * f, conocido: true, conMacros: true, frac: f }; break;
     }
-    default: {
+    case 'anadida': {   // ➕ «Añadí» (14-sep-2026): la receta Y ADEMÁS otros platos o ingredientes → lo previsto + los ítems
+      const s = sumaItems(detalle && Array.isArray(detalle.items) ? detalle.items : []);
+      base = { kcal: previsto.kcal + s.kcal, p: previsto.p + s.p, h: previsto.h + s.h, g: previsto.g + s.g, conocido: true, conMacros: s.conMacros, anadido: s.kcal }; break;
+    }
+    default: {   // 'fuera' (🔄 «La cambié»: otra cosa en vez de la receta) y la clave histórica 'cambiada'
       const items = detalle && Array.isArray(detalle.items) ? detalle.items : [];
       if (detalle && detalle.conocido === true && items.length) {
         const s = sumaItems(items);

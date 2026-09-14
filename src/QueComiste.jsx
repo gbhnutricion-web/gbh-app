@@ -44,7 +44,6 @@ function buscar(q, recetas, nutri, estado) {
     { k: 'ali', ic: '🥕', tit: 'Alimentos', titEn: 'Foods', filas: ali.slice(0, n) },
   ];
   if (fuera.length) grupos.push({ k: 'fuera', ic: '🍻', tit: 'Comer fuera', titEn: 'Eating out', filas: fuera.slice(0, n) });
-  if (estado === 'fuera' && fuera.length) grupos.unshift(grupos.pop());
   return grupos;
 }
 
@@ -67,14 +66,18 @@ export function QueComiste({ T, lang, toma, modo = 'sustituir', estado, cargarRe
   const grupos = React.useMemo(() => buscar(q, recetas, nutri, estado), [q, recetas, nutri, estado]);
   const total = sumaItems(items);
   const tomaTxt = (TOMA_LBL[EN ? 'en' : 'es'][toma]) || toma;
+  // Tres modos: 'sustituir' (🔄 la cambié: qué comiste EN VEZ de la receta), 'anadir' (➕ añadí: qué
+  // comiste ADEMÁS de la receta; se suma a lo previsto) y 'extras' (un extra sobre cualquier estado).
   const tit = modo === 'extras'
     ? (EN ? `What else did you have at ${tomaTxt}?` : `¿Qué más tomaste en ${tomaTxt}?`)
-    : (EN ? `What did you eat at ${tomaTxt}?` : `¿Qué comiste en ${tomaTxt}?`);
+    : modo === 'anadir'
+      ? (EN ? `What did you add at ${tomaTxt}?` : `¿Qué añadiste en ${tomaTxt}?`)
+      : (EN ? `What did you eat at ${tomaTxt}?` : `¿Qué comiste en ${tomaTxt}?`);
   const sub = modo === 'extras'
     ? (EN ? 'An extra on top of what you logged. It adds to your day.' : 'Un extra sobre lo que ya marcaste. Se suma a tu día.')
-    : (estado === 'fuera'
-      ? (EN ? 'Pick what you had. If you do not know, that is fine.' : 'Elige lo que tomaste. Si no lo sabes, no pasa nada.')
-      : (EN ? 'Search a GBH recipe or a food. You can leave it for later.' : 'Busca una receta GBH o un alimento. Puedes dejarlo para luego.'));
+    : modo === 'anadir'
+      ? (EN ? 'On top of the recipe. It adds to your plan.' : 'Además de la receta. Se suma a lo previsto.')
+      : (EN ? 'Instead of the recipe: a GBH recipe, a food or eating out. If you do not know, that is fine.' : 'En vez de la receta: una receta GBH, un alimento o algo de fuera. Si no lo sabes, no pasa nada.');
 
   const addRec = (r) => setItems((xs) => [...xs, { t: 'rec', id: r.id_receta || r.id || null, n: r.nombre || r.nombre_receta || r.Nombre_Receta || '', q: 1,
     kcal: num(r.calorias ?? r.Calorias_Totales), p: num(r.proteinas_g ?? r.Proteinas_g), h: num(r.hidratos_g ?? r.Hidratos_g), g: num(r.grasas_g ?? r.Grasas_g) }]);
@@ -162,7 +165,7 @@ export function QueComiste({ T, lang, toma, modo = 'sustituir', estado, cargarRe
         )}
         <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
           <button onClick={() => setLibre((v) => !v)} style={btn}>{EN ? 'Other (kcal by hand)' : 'Otro (kcal a mano)'}</button>
-          {modo !== 'extras' && <button onClick={() => onGuardar([], false)} style={btn}>{EN ? "I don't know" : 'No lo sé'}</button>}
+          {modo === 'sustituir' && <button onClick={() => onGuardar([], false)} style={btn}>{EN ? "I don't know" : 'No lo sé'}</button>}
           <button onClick={onCerrar} style={btn}>{EN ? 'Not now' : 'Ahora no'}</button>
           <button onClick={() => onGuardar(items, true)} style={{ ...btn, flex: '1 1 100%', border: `3px solid ${T.g3}`, background: `linear-gradient(135deg,${T.g1},${T.g2})`, color: T.wh, boxShadow: `0 4px 0 ${T.g3}` }}>{EN ? 'Save' : 'Guardar'}</button>
         </div>
