@@ -7,7 +7,9 @@ import { SPR, U, sprite, spriteCaja, bloque, suelo as dibujarSuelo, matas } from
 import { SelectorMedidas, MedidasCorporales } from "./MedidasCorporales";
 import { SelectorPrograma, BotonPrograma } from "./SelectorPrograma";
 import { TuDia } from "./TuDia";                                              // Kcal reales, fase 1
-import { FRACCIONES_MENOS, FRAC_MENOS_DEFECTO, fraccionValida } from "./kcalDia";
+import { FRACCIONES_MENOS, FRAC_MENOS_DEFECTO, fraccionValida, previstoToma, realToma, sumaItems } from "./kcalDia";
+import { QueComiste } from "./QueComiste";                                    // Kcal reales, fase 2: la hoja «¿Qué comiste?»
+import { _NUTRI_ING } from "./nutriIng";                                     // diccionario de alimentos (GENERADO, no editar)
 import { DistribucionKcal, AlimentosDescartados, leerDescartes, escribirDescartes, BannerSemanaNueva,
          CabeceraPlan, PillTotal, PatronCocina, Recordatorios, BotonesGuardar, FUENTE_PIXEL } from "./PlanArcade";
 
@@ -14738,11 +14740,20 @@ const PLAN_TIPO_COLOR={Carne:'#E57373',Pescado:T.platos,Vegetariana:'#81C784',Ve
 // ── Exportación CSV del seguimiento de un paciente (para el nutricionista) ────
 async function exportarSeguimientoCSV(profileId, nombre){
   try{
-    const rows = await sbReq('GET',`daily_logs?profile_id=eq.${profileId}&select=log_date,meals_log,day_note&order=log_date.asc`);
+    const rows = await sbReq('GET',`daily_logs?profile_id=eq.${profileId}&select=log_date,meals_log,day_note,meals_real&order=log_date.asc`);
     const cell = (v)=>{ const s=String(v==null?'':v).replace(/"/g,'""'); return /[",\n;]/.test(s)?`"${s}"`:s; };
-    const lines = [['Fecha','Desayuno','Almuerzo','Comida','Merienda','Cena','Nota'].join(',')];
-    (rows||[]).forEach(r=>{ const m=r.meals_log||{};
-      lines.push([r.log_date, m.Desayuno||'', m.Almuerzo||'', m.Comida||'', m.Merienda||'', m.Cena||'', r.day_note||''].map(cell).join(',')); });
+    // Kcal reales (fase 3): cada toma lleva su estado y, si el paciente lo dijo, lo que comió (kcal de los
+    // ítems, fracción de «menos», extras). La última columna suma lo cuantificado del día (ítems + extras);
+    // lo previsto (seguida / saltada / menos) sale del plan y no viaja aquí.
+    const tomaTxt = (estado, d)=>{ if(!estado) return ''; let s=estado; if(!d) return s;
+      if(estado==='menos'&&d.frac) s+=` · ×${d.frac}`;
+      if(estado==='cambiada'||estado==='fuera') s+= (d.conocido&&Array.isArray(d.items)&&d.items.length) ? ` · ${Math.round(sumaItems(d.items).kcal)} kcal (${d.items.map(x=>x.n).join(' + ')})` : ' · ?';
+      if(Array.isArray(d.extras)&&d.extras.length) s+=` · +${Math.round(sumaItems(d.extras).kcal)} kcal extras (${d.extras.map(x=>x.n).join(' + ')})`;
+      return s; };
+    const kcalCuant = (mr)=>{ let k=0; Object.values(mr||{}).forEach(d=>{ if(!d) return; if(d.conocido&&Array.isArray(d.items)) k+=sumaItems(d.items).kcal; if(Array.isArray(d.extras)) k+=sumaItems(d.extras).kcal; }); return k?Math.round(k):''; };
+    const lines = [['Fecha','Desayuno','Almuerzo','Comida','Merienda','Cena','Nota','kcal_cuantificadas (ítems + extras)'].join(',')];
+    (rows||[]).forEach(r=>{ const m=r.meals_log||{}; const mr=r.meals_real||{};
+      lines.push([r.log_date, ...['Desayuno','Almuerzo','Comida','Merienda','Cena'].map(tm=>tomaTxt(m[tm], mr[tm])), r.day_note||'', kcalCuant(mr)].map(cell).join(',')); });
     const csv = '\ufeff'+lines.join('\n');   // BOM para que Excel respete los acentos
     const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
     const url = URL.createObjectURL(blob);
@@ -15412,7 +15423,22 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
     // quedan todas las tomas del día registradas, completa la misión de dieta (racha).
     if(toma && typeof onMealRegistered==='function') onMealRegistered(dateKey, meals);
   };
-  const setEstadoComida = (toma,estado)=>{ if(!puedeRegistrar) return; persistDia(selDateKey,{toma,estado}); sfx&&sfx('step'); onTutoEvent&&onTutoEvent('comida_marcada'); };
+  const setEstadoComida = (toma,estado)=>{ if(!puedeRegistrar) return; const seSetea = regDia[selDateKey]?.meals?.[toma]!==estado; persistDia(selDateKey,{toma,estado}); sfx&&sfx('step'); onTutoEvent&&onTutoEvent('comida_marcada');
+    if(seSetea&&(estado==='cambiada'||estado==='fuera')) setHoja({toma,modo:'sustituir'}); };   // fase 2: al marcar, la hoja pregunta qué comiste (se puede cerrar con «Ahora no»)
+  // Kcal reales (fase 2): la hoja «¿Qué comiste?» — 'sustituir' (la cambié / comí fuera) o 'extras' (sobre cualquier estado).
+  // Los ítems viajan con sus números dentro; el total se recalcula aquí con sumaItems y se guarda en meals_real[toma].
+  const [hoja,setHoja] = React.useState(null);                 // {toma, modo} | null
+  const abrirHoja = (toma,modo)=>{ if(!puedeRegistrar) return; setHoja({toma,modo}); sfx&&sfx('tap'); };
+  const guardarHoja = (items,conocido)=>{
+    if(!hoja) return;
+    const prev = realDia[hoja.toma] || {};
+    let detalle;
+    if(hoja.modo==='extras'){ detalle = {...prev, extras: items}; }
+    else { const s = sumaItems(items); const ok = conocido!==false && items.length>0;
+      detalle = {...prev, items, conocido: ok, kcal: ok? Math.round(s.kcal) : null, p: ok? +s.p.toFixed(1) : 0, h: ok? +s.h.toFixed(1) : 0, g: ok? +s.g.toFixed(1) : 0, conMacros: ok ? s.conMacros : false}; }
+    persistDia(selDateKey,{real:{toma:hoja.toma, detalle}});
+    setHoja(null); sfx&&sfx('step');
+  };
   // «Menos»: ¿cuánto? (¼ · ½ · ¾). Solo escribe si la toma está en «menos»; no toca el estado ni la racha.
   const setFraccionMenos = (toma,f)=>{ if(!puedeRegistrar || regDia[selDateKey]?.meals?.[toma]!=='menos') return; persistDia(selDateKey,{real:{toma,detalle:{frac:f}}}); sfx&&sfx('tap'); };
   const guardarNotaDia  = ()=>{ if(!puedeRegistrar) return; if(notaTmp===(regDia[selDateKey]?.note||'')) return;
@@ -16688,6 +16714,17 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
                       <button key={f} onClick={()=>setFraccionMenos(toma,f)} aria-label={s} style={{fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:12,padding:'5px 11px',borderRadius:9,cursor:'pointer',background:on?alpha(T.au1,0.12):'transparent',border:on?'1.5px solid '+T.au1:'1.5px solid rgba(255,255,255,0.14)',color:on?T.au2:T.t2}}>{s}</button>);})}
                   </div>
                 )}
+                {/* Kcal reales (fase 2): lo real de la toma, los extras y la hoja «¿Qué comiste?» */}
+                {estado&&(()=>{ const rT=realToma(estado, realDia[toma], previstoToma(planJ,toma,selDay)); const sust=(estado==='cambiada'||estado==='fuera');
+                  const lnk={background:'none',border:'none',padding:0,cursor:'pointer',color:T.au2,fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:11};
+                  return(
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,marginTop:8,fontSize:11,fontFamily:"'DM Sans',sans-serif"}}>
+                    <span style={{color:T.t2}}>{rT&&rT.conocido?`${Math.round(rT.kcal)} kcal${rT.extras?(lang==='en'?` · ${rT.extras} extra`:` · ${rT.extras} extra`):''}`:(sust?(lang==='en'?'? kcal · not quantified':'? kcal · sin cuantificar'):'')}</span>
+                    <span style={{display:'flex',gap:12}}>
+                      <button onClick={()=>abrirHoja(toma,'extras')} style={lnk}>{lang==='en'?'＋ Add something':'＋ Añadir algo más'}</button>
+                      {sust&&<button onClick={()=>abrirHoja(toma,'sustituir')} style={lnk}>{rT&&rT.conocido?(lang==='en'?'Edit what you ate':'Editar lo que comiste'):(lang==='en'?'Quantify':'Cuantificar')}</button>}
+                    </span>
+                  </div>);})()}
                 </div>
               )}
             </div>{suplEn(toma)}</React.Fragment>);
@@ -16697,7 +16734,11 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
           {/* ── «Tu día»: kcal reales frente a previstas y macros real/previsto (src/TuDia.jsx) ── */}
           <TuDia T={T} lang={lang} planJ={planJ} dia={selDay} meals={regDia[selDateKey]?.meals} real={realDia}
                  tomas={PLAN_TOMAS} activo={puedeRegistrar} kcalVisible={profile?.kcal_visible!==false}
-                 diaNombre={PLAN_DIAS_F[selDay-1]} semana={plan?.semana}/>
+                 diaNombre={PLAN_DIAS_F[selDay-1]} semana={plan?.semana} onCuantificar={(toma)=>abrirHoja(toma,'sustituir')}/>
+          {hoja&&<QueComiste T={T} lang={lang} toma={hoja.toma} modo={hoja.modo} estado={regDia[selDateKey]?.meals?.[hoja.toma]}
+                 cargarRecetas={cargarRecetasCache} nutri={_NUTRI_ING}
+                 inicial={hoja.modo==='extras'?(realDia[hoja.toma]?.extras||[]):(realDia[hoja.toma]?.items||[])}
+                 onGuardar={guardarHoja} onCerrar={()=>setHoja(null)}/>}
           {puedeRegistrar&&(<>
             <div style={{background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:16,padding:'12px 14px'}}>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
@@ -16713,6 +16754,8 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
                 {PLAN_CUMPL.map(c=>(
                   <div key={c.k} style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}><span style={{fontSize:16,lineHeight:1}}>{c.ic}</span>{lang==='en'?c.en:c.es}</div>
                 ))}
+                <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}><span style={{fontSize:16,lineHeight:1}}>＋</span>{lang==='en'?'Add something: an extra on any meal':'Añadir algo más: un extra sobre cualquier comida'}</div>
+                <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}><span style={{fontSize:16,lineHeight:1}}>?</span>{lang==='en'?'Swapped / ate out: say what you ate to see your kcal; if not, it stays as «?»':'La cambié / comí fuera: di qué comiste para ver tus kcal; si no, queda en «?»'}</div>
               </div>
             </div>
           </>)}

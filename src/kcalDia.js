@@ -25,6 +25,31 @@ export function fraccionValida(f) {
   return FRACCIONES_MENOS.some(([x]) => Math.abs(x - v) < 1e-9) ? v : null;
 }
 
+// Un ítem de la hoja «¿Qué comiste?» (fase 2): receta GBH (kcal de la ración base × raciones),
+// alimento del diccionario (kcal por 100 g × gramos = unidad × cantidad) o «libre» (kcal a
+// mano, sin macros). Los números viajan DENTRO del ítem para que el registro se lea sin el
+// diccionario ni el recetario a mano.
+export function kcalItem(it) {
+  if (!it) return { kcal: 0, p: 0, h: 0, g: 0, conMacros: true, gramos: 0 };
+  if (it.t === 'rec') {
+    const q = num(it.q) || 1;
+    return { kcal: num(it.kcal) * q, p: num(it.p) * q, h: num(it.h) * q, g: num(it.g) * q, conMacros: true, gramos: 0 };
+  }
+  if (it.t === 'ing') {
+    const gramos = num(it.ug) * (num(it.q) || 1); const f = gramos / 100;
+    return { kcal: num(it.k) * f, p: num(it.p) * f, h: num(it.h) * f, g: num(it.g) * f, conMacros: true, gramos };
+  }
+  return { kcal: num(it.kcal), p: 0, h: 0, g: 0, conMacros: false, gramos: 0 };
+}
+
+export function sumaItems(items) {
+  const s = { kcal: 0, p: 0, h: 0, g: 0, conMacros: true };
+  (Array.isArray(items) ? items : []).forEach((it) => {
+    const v = kcalItem(it); s.kcal += v.kcal; s.p += v.p; s.h += v.h; s.g += v.g; if (!v.conMacros) s.conMacros = false;
+  });
+  return s;
+}
+
 // Lo previsto de una toma: la receta del plan, con sus kcal y macros ya escalados.
 // Un menú compuesto (1º + 2º) trae los TOTALES en la celda; si faltaran, se suman
 // sus platos. Devuelve null si la toma no tiene receta ese día.
@@ -46,25 +71,41 @@ export function previstoToma(planJ, toma, dia) {
 //   menos    → previsto × fracción (¼ ½ ¾; sin elegir, ½)
 //   cambiada / fuera → el detalle (kcal y macros de los ítems, fase 2) o «?» (conocido:false)
 // conMacros:false = se sabe la energía pero no los macros (ítem «kcal a mano»).
+// Los extras (fase 2) se suman a cualquier estado; sobre una toma «?» cuentan en las kcal
+// del día (que se leen como «al menos») pero la toma sigue sin cuantificar.
 export function realToma(estado, detalle, previsto) {
   if (!estado || !previsto) return null;
   const cero = { kcal: 0, p: 0, h: 0, g: 0 };
+  let base;
   switch (estado) {
     case 'seguida':
-      return { kcal: previsto.kcal, p: previsto.p, h: previsto.h, g: previsto.g, conocido: true, conMacros: true };
+      base = { kcal: previsto.kcal, p: previsto.p, h: previsto.h, g: previsto.g, conocido: true, conMacros: true }; break;
     case 'saltada':
-      return { ...cero, conocido: true, conMacros: true };
+      base = { ...cero, conocido: true, conMacros: true }; break;
     case 'menos': {
       const f = fraccionValida(detalle?.frac) ?? FRAC_MENOS_DEFECTO;
-      return { kcal: previsto.kcal * f, p: previsto.p * f, h: previsto.h * f, g: previsto.g * f, conocido: true, conMacros: true, frac: f };
+      base = { kcal: previsto.kcal * f, p: previsto.p * f, h: previsto.h * f, g: previsto.g * f, conocido: true, conMacros: true, frac: f }; break;
     }
     default: {
-      if (detalle && detalle.conocido === true && detalle.kcal != null && Number.isFinite(num(detalle.kcal))) {
-        return { kcal: num(detalle.kcal), p: num(detalle.p), h: num(detalle.h), g: num(detalle.g), conocido: true, conMacros: detalle.conMacros !== false };
+      const items = detalle && Array.isArray(detalle.items) ? detalle.items : [];
+      if (detalle && detalle.conocido === true && items.length) {
+        const s = sumaItems(items);
+        base = { kcal: s.kcal, p: s.p, h: s.h, g: s.g, conocido: true, conMacros: s.conMacros };
+      } else if (detalle && detalle.conocido === true && detalle.kcal != null && Number.isFinite(num(detalle.kcal))) {
+        base = { kcal: num(detalle.kcal), p: num(detalle.p), h: num(detalle.h), g: num(detalle.g), conocido: true, conMacros: detalle.conMacros !== false };
+      } else {
+        base = { ...cero, conocido: false, conMacros: false };
       }
-      return { ...cero, conocido: false, conMacros: false };
     }
   }
+  const extras = detalle && Array.isArray(detalle.extras) ? detalle.extras : [];
+  if (extras.length) {
+    const x = sumaItems(extras);
+    base.kcal += x.kcal;
+    if (base.conocido) { base.p += x.p; base.h += x.h; base.g += x.g; if (!x.conMacros) base.conMacros = false; }
+    base.extras = extras.length;
+  }
+  return base;
 }
 
 // El día entero: previsto, real (solo tomas conocidas; macros solo de las que los
@@ -86,7 +127,7 @@ export function resumenDia(planJ, dia, meals, real, tomas = TOMAS_ORDEN) {
       if (r.conocido) {
         conocidas++; realT.kcal += r.kcal;
         if (r.conMacros) { realT.p += r.p; realT.h += r.h; realT.g += r.g; } else sinMacros++;
-      } else sinCuantificar++;
+      } else { sinCuantificar++; realT.kcal += r.kcal; }   // «?» con extras: las kcal de los extras sí cuentan
     } else pendientesKcal += prev.kcal;
     porToma.push({ toma, estado, previsto: prev, real: r });
   }

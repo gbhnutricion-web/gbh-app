@@ -11,7 +11,7 @@ const FT = "'Nunito',sans-serif", FD = "'DM Sans',sans-serif";
 const ICONO = { Desayuno: '☀️', Almuerzo: '🍎', Comida: '🍽️', Merienda: '🥤', Cena: '🌙' };
 const reducirMovimiento = () => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
 
-export function TuDia({ T, lang, planJ, dia, meals, real, tomas = TOMAS_ORDEN, activo = true, kcalVisible = true, diaNombre = '', semana = null }) {
+export function TuDia({ T, lang, planJ, dia, meals, real, tomas = TOMAS_ORDEN, activo = true, kcalVisible = true, diaNombre = '', semana = null, onCuantificar = null }) {
   const EN = lang === 'en';
   const conReal = !!(activo && kcalVisible);
   const res = React.useMemo(
@@ -111,6 +111,12 @@ export function TuDia({ T, lang, planJ, dia, meals, real, tomas = TOMAS_ORDEN, a
             {EN ? `${res.registradas} of ${res.planificadas} meals logged` : `${res.registradas} de ${res.planificadas} comidas registradas`}
             {res.sinCuantificar > 0 && (EN ? ` · ${res.sinCuantificar} not quantified` : ` · ${res.sinCuantificar} sin cuantificar`)}
           </span>
+          {res.sinCuantificar > 0 && typeof onCuantificar === 'function' && (
+            <button onClick={() => { const p = res.porToma.find((x) => x.real && !x.real.conocido); if (p) onCuantificar(p.toma); }}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: T.au2, fontFamily: FT, fontWeight: 800, fontSize: 11 }}>
+              {EN ? 'Quantify' : 'Cuantificar'}
+            </button>
+          )}
         </div>
       )}
     </div>

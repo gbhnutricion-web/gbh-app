@@ -43,6 +43,22 @@ export const CASOS = [
     esperado: { realKcal: 1735, completo: true, frase: /hoy: 1\.735 kcal, 415 menos de lo previsto/ } },
   { nombre: 'a medias y ya por encima', meals: { Desayuno: 'fuera' }, real: { Desayuno: { conocido: true, kcal: 2300, p: 1, h: 1, g: 1 } },
     esperado: { realKcal: 2300, frase: /te quedan ~1\.630 kcal previstas · \+150 sobre lo previsto/ } },
+  // ── fase 2: ítems y extras ──
+  { nombre: 'cambiada con ítems: ½ receta + 2 huevos', meals: { Comida: 'cambiada' },
+    real: { Comida: { conocido: true, items: [{ t: 'rec', n: 'Pasta con pollo', kcal: 610, p: 38, h: 55, g: 24, q: 0.5 }, { t: 'ing', n: 'Huevos', k: 144.9, p: 12.5, h: 0.3, g: 10.5, u: 'huevo', ug: 55, q: 2 }] } },
+    esperado: { realKcal: 464.39, realP: 32.75, sinCuantificar: 0, sinMacros: 0 } },
+  { nombre: 'ítems mandan sobre el total guardado', meals: { Comida: 'fuera' },
+    real: { Comida: { conocido: true, kcal: 999, items: [{ t: 'libre', n: 'menú del día', kcal: 700 }] } },
+    esperado: { realKcal: 700, sinMacros: 1 } },
+  { nombre: 'extras sobre seguida: 3 cañas', meals: { Desayuno: 'seguida' },
+    real: { Desayuno: { extras: [{ t: 'ing', n: 'Cerveza', k: 42.2, p: 0.5, h: 3.1, g: 0, u: 'caña', ug: 200, q: 3 }] } },
+    esperado: { realKcal: 773.2, realP: 21, registradas: 1 } },
+  { nombre: 'extras sobre «?»: cuentan en el día, la toma sigue sin cuantificar', meals: { Cena: 'fuera' },
+    real: { Cena: { conocido: false, extras: [{ t: 'libre', n: 'postre', kcal: 100 }] } },
+    esperado: { realKcal: 100, sinCuantificar: 1, frase: /al menos 100 kcal · 1 comida sin cuantificar/ } },
+  { nombre: 'alimento en gramos libres (ug=1)', meals: { Merienda: 'cambiada' },
+    real: { Merienda: { conocido: true, items: [{ t: 'ing', n: 'Plátano', k: 89, p: 1.1, h: 23, g: 0.3, u: 'g', ug: 1, q: 150 }] } },
+    esperado: { realKcal: 133.5 } },
 ];
 
 export const FRASES_EN = [
