@@ -10,6 +10,7 @@ import { TuDia } from "./TuDia";                                              //
 import { FRACCIONES_MENOS, FRAC_MENOS_DEFECTO, fraccionValida, previstoToma, realToma, sumaItems } from "./kcalDia";
 import { QueComiste } from "./QueComiste";                                    // Kcal reales, fase 2: la hoja «¿Qué comiste?»
 import { _NUTRI_ING } from "./nutriIng";                                     // diccionario de alimentos (GENERADO, no editar)
+import { esDiaDeMedicion, ventanaKeys, proximoDiaMedicion } from "./ventanaMedicion"; // peso y medidas: miércoles + fin de semana (15-sep-2026)
 import { DistribucionKcal, AlimentosDescartados, leerDescartes, escribirDescartes, BannerSemanaNueva,
          CabeceraPlan, PillTotal, PatronCocina, Recordatorios, BotonesGuardar, FUENTE_PIXEL } from "./PlanArcade";
 
@@ -131,8 +132,8 @@ const TRANS = {
     // Weight tab
     scaleResting:"La báscula está descansando",
     scaleRestingDesc:"Pesarse cada día genera ansiedad innecesaria.",
-    scaleRestingBack:"Vuelve el fin de semana",
-    scaleRestingDesc2:"para ver tu evolución real sin distorsión diaria.",
+    scaleRestingBack:"Vuelve {d}",
+    scaleRestingDesc2:"para ver tu evolución real sin distorsión diaria. La báscula se abre los miércoles y el fin de semana.",
     editWeightTitle:"Editar pesaje de hoy",
     howMuchToday:"¿Cuánto pesas hoy?",
     fastingHint:"💡 En ayunas, antes de desayunar",
@@ -144,6 +145,7 @@ const TRANS = {
     weightBannerTitle:"¡Registra tu peso esta semana!",
     weightBannerCta:"Pulsa para ir al pesaje →",
     weekendWeighLabel:"✅ Pesaje del fin de semana",
+    midweekWeighLabel:"✅ Pesaje del miércoles",
     firstWeighLine1:"Registra tu primer pesaje",
     firstWeighLine2:"para ver tu evolución",
     // Recipe tab
@@ -416,8 +418,8 @@ const TRANS = {
     // Weight tab
     scaleResting:"The scale is resting",
     scaleRestingDesc:"Weighing every day creates unnecessary anxiety.",
-    scaleRestingBack:"Come back on the weekend",
-    scaleRestingDesc2:"to see your real progress without daily distortion.",
+    scaleRestingBack:"Come back {d}",
+    scaleRestingDesc2:"to see your real progress without daily distortion. The scale opens on Wednesdays and at the weekend.",
     editWeightTitle:"Edit today's weight",
     howMuchToday:"How much do you weigh today?",
     fastingHint:"💡 Fasted, before breakfast",
@@ -429,6 +431,7 @@ const TRANS = {
     weightBannerTitle:"Log your weight this week!",
     weightBannerCta:"Tap to go to weigh-in →",
     weekendWeighLabel:"✅ Weekend weigh-in",
+    midweekWeighLabel:"✅ Wednesday weigh-in",
     firstWeighLine1:"Log your first weigh-in",
     firstWeighLine2:"to see your progress",
     // Recipe tab
@@ -1325,22 +1328,17 @@ function getQuizFact(q, lang){
   Object.entries(FACT_MAP).forEach(([es,en])=>{ out = out.replace(es,en); });
   return out;
 }
-const isWeekend=()=>{const d=new Date().getDay();return d===0||d===6;};
+// ─── Ventana de PESAJE (orden de Alejandro, 15-sep-2026): MIÉRCOLES + FIN DE SEMANA ───
+// Antes solo el fin de semana. La regla vive en src/ventanaMedicion.js y la comparte
+// MedidasCorporales.jsx (perímetros y pliegues, que hasta hoy se registraban cualquier día).
+const puedePesarseHoy=()=>esDiaDeMedicion();
 // Clave de día en hora LOCAL (no UTC) → evita que a partir de medianoche en España
 // el día se adelante. Formato YYYY-MM-DD, idéntico al anterior.
 const toKey=(d=new Date())=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-// Claves (YYYY-MM-DD) del sábado y domingo de la semana ACTUAL (ancladas al lunes,
-// igual que weekDates en getChallengeProgress) → el pesaje es semanal, no diario.
-const weekendKeys=()=>{
-  const today=new Date(), dow=today.getDay();      // 0=Dom … 6=Sáb
-  const monOffset=dow===0?6:dow-1;                 // días transcurridos desde el lunes
-  const monday=new Date(); monday.setDate(today.getDate()-monOffset);
-  const sat=new Date(monday); sat.setDate(monday.getDate()+5);
-  const sun=new Date(monday); sun.setDate(monday.getDate()+6);
-  return [toKey(sat), toKey(sun)];
-};
-// Pesaje ya registrado este fin de semana (sábado o domingo), excluyendo el punto inicial.
-const weekendWeighIn=(ws)=>{const ks=weekendKeys();return (ws||[]).find(w=>!w.isInitial&&ks.includes(w.date))||null;};
+// Pesaje ya registrado en la ventana EN CURSO ([miércoles] o [sábado, domingo] de la semana
+// actual, anclada al lunes como weekDates), excluyendo el punto inicial. El del miércoles y
+// el del fin de semana son filas distintas: dos puntos por semana.
+const pesajeEnVentana=(ws)=>{const ks=ventanaKeys();return (ws||[]).find(w=>!w.isInitial&&ks.includes(w.date))||null;};
 // ─── Regularidad del ranking de PESO (orden de Alejandro, 8-sep-2026) ────────
 // El ranking premiaba un progreso FÓSIL: el 8-sep el líder llevaba 45 días sin
 // pesarse y seguía primero desde hacía meses. Solo entra en la tabla de peso
@@ -4695,7 +4693,7 @@ const CHALLENGE_POOL = [
   {id:"c05",icon:"😴",title:"Duerme bien",            title_en:"Sleep well",         desc:"Duerme 7h al menos 4 días esta semana",       desc_en:"Sleep 7h at least 4 days this week",     type:"sleep_days",      goal:4,  xp:35, gems:8 },
   {id:"c06",icon:"🧠",title:"Semana quiz",            title_en:"Quiz week",          desc:"Haz el quiz 4 días esta semana",              desc_en:"Complete the quiz 4 days this week",     type:"quiz_days",       goal:4,  xp:50, gems:12},
   {id:"c07",icon:"🔥",title:"Mantén la racha",        title_en:"Keep the streak",    desc:"No pierdas la racha durante 5 días seguidos", desc_en:"Don't break your streak for 5 days",     type:"streak_keep",     goal:5,  xp:55, gems:12},
-  {id:"c08",icon:"⚖️",title:"Pesaje semanal",         title_en:"Weekly weigh-in",    desc:"Registra tu peso este fin de semana",         desc_en:"Log your weight this weekend",           type:"weight_reg",      goal:1,  xp:30, gems:8 },
+  {id:"c08",icon:"⚖️",title:"Pesaje semanal",         title_en:"Weekly weigh-in",    desc:"Registra tu peso el miércoles o el fin de semana", desc_en:"Log your weight on Wednesday or at the weekend", type:"weight_reg",      goal:1,  xp:30, gems:8 },
   {id:"c09",icon:"⚡",title:"Constante esta semana",    title_en:"Week consistency",   desc:"Registra la dieta al menos 4 días",           desc_en:"Log your diet at least 4 days",          type:"diet_days",       goal:4,  xp:50, gems:15},
   {id:"c10",icon:"🍽️",title:"Dieta impecable",        title_en:"Flawless diet",      desc:"Registra la dieta los 7 días de la semana",   desc_en:"Log your diet all 7 days this week",     type:"diet_days",       goal:7,  xp:80, gems:20},
   {id:"c11",icon:"🌟",title:"Semana de lujo",         title_en:"Luxury week",        desc:"Completa 5 días perfectos (4 misiones)",      desc_en:"Complete 5 perfect days (4 missions)",   type:"perfect_days",    goal:5,  xp:90, gems:25},
@@ -10578,10 +10576,11 @@ function GBHApp(){
   },[tLog,saveLog,addXG,relevoDia]);
 
   const saveW=async(isEdit=false)=>{
-    const val=parseFloat(wInput);if(!isWeekend()||isNaN(val)||val<20||val>300)return;
-    // El pesaje es SEMANAL: si ya hay uno este finde (p.ej. el sábado), editamos
-    // esa misma fila —no creamos una nueva el domingo— y reescribimos su fecha real.
-    const existing=weekendWeighIn(weights);
+    const val=parseFloat(wInput);if(!puedePesarseHoy()||isNaN(val)||val<20||val>300)return;
+    // El pesaje es por VENTANA: si ya hay uno en la ventana en curso (p.ej. el sábado y hoy
+    // es domingo), editamos esa misma fila —no creamos otra— y conservamos su fecha real.
+    // El pesaje del miércoles es otra ventana y otra fila.
+    const existing=pesajeEnVentana(weights);
     const targetDate=existing?existing.date:toKey();
     const alreadyLogged=!!existing;
     const nw=weights.filter(w=>w.date!==targetDate);
@@ -12078,7 +12077,7 @@ function GBHApp(){
           B4_info:{sel:'plan-zona',next:true,tx:EN?'The amounts already come adjusted to YOUR portion. From here you can swap it for free during the trial, save it to favourites or discard it.':'Las cantidades ya vienen ajustadas a TU ración. Desde aquí puedes cambiarla gratis durante la prueba, guardarla en favoritas o quitarla.'},
           B4_lista:{sel:'plan-zona',tx:EN?'Last thing here: open the 🛒 Shopping List. It builds itself from your week — tick off ingredients as you shop.':'Y lo último de tu plan: entra en la 🛒 Lista de la compra. Se hace sola con tu semana — marca los ingredientes mientras compras.'},
           B4_comida:{sel:'plan-zona',tx:EN?'Go back to 🍽️ Daily Meals and log today’s meal with one of the 5 states (followed · less · added · swapped · skipped). It doesn’t need to be perfect. Log what you actually did: what counts is logging, not complying. An average day, logged, is worth more than a perfect day unlogged. At the bottom, «Your day» shows the calories you have logged against your plan.':'Vuelve atrás a 🍽️ Platos diarios y marca tu comida de hoy con uno de los 5 estados (seguida · menos · añadí · la cambié · me la salté). No hace falta que salga perfecto. Marca lo que has hecho de verdad: lo que cuenta es registrar, no cumplir. Un día regular, registrado, vale más que un día perfecto sin registrar. Abajo del todo, «Tu día» te enseña las kcal que llevas frente a tu programación.'},
-          B5_peso:{sel:null,next:true,tx:(EN?`I already have today’s weight from sign-up${pesoUlt?` (${pesoUlt} kg)`:''}. Here you’ll see the trend. A tip: weigh yourself always on the same day, at the same time, fasted — and look at the line over several weeks, never a single day.`:`Tu peso de hoy ya lo tengo del registro${pesoUlt?` (${pesoUlt} kg)`:''}. Aquí verás la evolución. Un consejo: pésate siempre el mismo día, a la misma hora, en ayunas — y mira la línea de varias semanas, nunca un solo día.`)},
+          B5_peso:{sel:null,next:true,tx:(EN?`I already have today’s weight from sign-up${pesoUlt?` (${pesoUlt} kg)`:''}. Here you’ll see the trend. The scale opens on Wednesdays and at the weekend. A tip: weigh yourself always at the same time, fasted — and look at the line over several weeks, never a single day.`:`Tu peso de hoy ya lo tengo del registro${pesoUlt?` (${pesoUlt} kg)`:''}. Aquí verás la evolución. La báscula se abre los miércoles y el fin de semana. Un consejo: pésate siempre a la misma hora, en ayunas — y mira la línea de varias semanas, nunca un solo día.`)},
           B6_recetas:{sel:null,next:true,tx:EN?'The whole GBH recipe book. Search, open, and save the ones you like with the star — yours live in Favourites.':'Todo el recetario GBH. Busca, abre, y guarda las que te gusten con la estrella — las tuyas quedan en Favoritas.'},
           B7_consulta:{sel:null,next:true,tx:EN?'This tab is the direct line to Alejandro — it’s the Premium side of the plan: in-person consultation, weekly follow-up and his WhatsApp. If the trial wins you over, this is where you level up. And below you’ve got your code to invite a friend.':'Esta pestaña es la línea directa con Alejandro — es la parte del plan Premium: consulta presencial, seguimiento semanal y su WhatsApp. Si la prueba te convence, aquí es donde se sube de nivel. Y debajo tienes tu código para invitar a un amigo.'},
           B8_ranking:{sel:null,next:true,tx:EN?`And here’s the whole flock. Your ${bn} competes with its XP. No pressure — the ranking is the least of it; your week is what matters.`:`Y aquí el rebaño entero. Tu ${bn} compite con su XP. Sin presión — el ranking es lo de menos; tu semana es lo de más.`},
@@ -12460,8 +12459,8 @@ function GBHApp(){
         );
       })()}
 
-      {/* Banner peso fin de semana — con X para cerrar */}
-      {isWeekend()&&!weekendWeighIn(weights)&&!weightBannerDismissed&&(
+      {/* Banner de pesaje (miércoles y fin de semana) — con X para cerrar */}
+      {puedePesarseHoy()&&!pesajeEnVentana(weights)&&!weightBannerDismissed&&(
         <div style={{
           background:"linear-gradient(135deg,rgba(255,150,0,0.97),rgba(220,100,0,0.97))",
           padding:"11px 14px 11px 18px",
@@ -12800,10 +12799,10 @@ function GBHApp(){
             {medidasVista==="cuerpo"
               ? <MedidasCorporales profile={profile} weights={weights} lang={lang} sfx={sfx} sbReq={sbReq} T={T} Card={Card}/>
               : (()=>{
-          const todayW=weekendWeighIn(weights);
-          const isWE=isWeekend();
+          const todayW=pesajeEnVentana(weights);
+          const isWE=puedePesarseHoy();
 
-          // ── No es fin de semana ──────────────────────────────────────────
+          // ── No es día de pesaje (ni miércoles ni fin de semana) ──────────
           if(!isWE) return(
             <>
               <Card style={{textAlign:"center",padding:"28px 24px"}}>
@@ -12813,11 +12812,11 @@ function GBHApp(){
                 <div style={{fontSize:19,fontWeight:900,color:T.au1,marginBottom:10}}>{t("scaleResting")}</div>
                 <div style={{fontSize:14,color:T.t2,lineHeight:1.75,fontFamily:"'DM Sans',sans-serif"}}>
                   {t("scaleRestingDesc")}<br/>
-                  <span style={{color:T.au1,fontWeight:700}}>{t("scaleRestingBack")}</span> {t("scaleRestingDesc2")}
+                  <span style={{color:T.au1,fontWeight:700}}>{t("scaleRestingBack",{d:proximoDiaMedicion(new Date(),lang)})}</span> {t("scaleRestingDesc2")}
                 </div>
                 <div style={{display:"flex",justifyContent:"center",gap:8,marginTop:18}}>
                   {WLABELS.map((d,i)=>(
-                    <div key={d} style={{width:34,height:34,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,background:i>=5?`${T.g1}40`:"rgba(255,255,255,0.06)",color:i>=5?T.g2:T.t2,border:i===Math.max(0,new Date().getDay()-1)?`2.5px solid ${T.au1}`:"2px solid transparent",boxShadow:i>=5?`0 3px 0 ${T.g3}`:"none"}}>{d}</div>
+                    <div key={d} style={{width:34,height:34,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,background:(i===2||i>=5)?`${T.g1}40`:"rgba(255,255,255,0.06)",color:(i===2||i>=5)?T.g2:T.t2,border:i===Math.max(0,new Date().getDay()-1)?`2.5px solid ${T.au1}`:"2px solid transparent",boxShadow:(i===2||i>=5)?`0 3px 0 ${T.g3}`:"none"}}>{d}</div>
                   ))}
                 </div>
               </Card>
@@ -12881,7 +12880,7 @@ function GBHApp(){
               {todayW&&(
                 <div style={{background:`linear-gradient(135deg,${alpha(T.g3,0.4)},${alpha(T.g1,0.18)})`,border:`2px solid ${T.g1}`,borderRadius:22,padding:"16px 20px",marginBottom:14,boxShadow:`0 6px 0 ${T.g3}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                   <div>
-                    <div style={{fontSize:11,color:T.g2,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4}}>{t("weekendWeighLabel")}</div>
+                    <div style={{fontSize:11,color:T.g2,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4}}>{t(new Date().getDay()===3?"midweekWeighLabel":"weekendWeighLabel")}</div>
                     <div style={{fontSize:38,fontWeight:900,color:T.wh,lineHeight:1}}>{todayW.weight} <span style={{fontSize:18,color:T.t2}}>kg</span></div>
                     <div style={{fontSize:11,color:T.t2,marginTop:4,fontFamily:"'DM Sans',sans-serif"}}>{todayW.date}</div>
                   </div>

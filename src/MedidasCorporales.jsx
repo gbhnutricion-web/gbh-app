@@ -17,6 +17,7 @@
 // entero de una vez. Maqueta aprobada por Alejandro el 5-sep-2026
 // (07. App GBH/MAQUETA_medidas_corporales_2026-09-05.html).
 import React, { useState, useEffect, useMemo } from "react";
+import { esDiaDeMedicion, proximoDiaMedicion } from "./ventanaMedicion";   // miércoles + fin de semana, como el peso (15-sep-2026)
 
 const PER = ["cintura", "cadera", "brazo", "muslo"];
 const PLI = ["pectoral", "midaxilar", "triceps", "subescapular", "abdominal", "suprailiaco", "muslo_pl"];
@@ -52,6 +53,8 @@ const TXT = {
     cancelar: "Cancelar", guardar: "✅ Guardar toma", guardado: "Toma guardada", errorGuardar: "No se pudo guardar. Comprueba la conexión.",
     consejo: "Si te mides en casa, hazlo siempre igual: misma hora, mismo lado, la misma persona midiendo.",
     hoy: "hoy",
+    cerrado: "📏 Las medidas se registran los miércoles y el fin de semana, como el peso.",
+    vuelve: "Vuelve {d} para registrar la toma.",
   },
   en: {
     peso: "Body weight", cuerpo: "Body measurements",
@@ -82,6 +85,8 @@ const TXT = {
     cancelar: "Cancel", guardar: "✅ Save take", guardado: "Take saved", errorGuardar: "Couldn't save. Check your connection.",
     consejo: "If you measure at home, always do it the same way: same time, same side, same person measuring.",
     hoy: "today",
+    cerrado: "📏 Measurements are recorded on Wednesdays and at the weekend, like your weight.",
+    vuelve: "Come back {d} to record a take.",
   },
 };
 
@@ -254,7 +259,9 @@ export function MedidasCorporales({ profile, weights, lang, sfx, sbReq, T, Card 
   }
 
   // ── Registro ──
+  const abierto = esDiaDeMedicion();          // miércoles, sábado o domingo
   const abrirRegistro = () => {
+    if (!esDiaDeMedicion()) return;
     sfx && sfx("tap");
     const f = {};
     if (tab === "per") PER.forEach(k => { f[k] = ""; });
@@ -291,6 +298,7 @@ export function MedidasCorporales({ profile, weights, lang, sfx, sbReq, T, Card 
   const puedeGuardar = tab === "per" ? PER.some(k => !isNaN(parseFloat(form[k]))) : validarPli().ok;
   const guardar = async () => {
     if (!profile?.id || guardando) return;
+    if (!esDiaDeMedicion()) { setAviso(L.cerrado); setReg(false); return; }
     const fila = { profile_id: profile.id, fecha: hoyISO(), origen: "casa" };
     if (tab === "per") PER.forEach(k => { const v = parseFloat(String(form[k]).replace(",", ".")); if (!isNaN(v) && v > 0) fila[k] = Math.round(v * 10) / 10; });
     else { const { out } = validarPli(); Object.assign(fila, out); }
@@ -370,7 +378,13 @@ export function MedidasCorporales({ profile, weights, lang, sfx, sbReq, T, Card 
           ))}
           {tomas && tomas.length === 0 && <span style={{ color: T.t3 }}>{L.sinTomas}</span>}
         </div>
-        {!reg && (
+        {!reg && !abierto && (
+          <div style={{ padding: "12px 14px", borderRadius: 16, border: "2px solid rgba(201,162,39,0.45)", background: "rgba(201,162,39,0.10)", fontFamily: "'DM Sans',sans-serif", fontSize: 12, color: T.t2, lineHeight: 1.5 }}>
+            <div style={{ color: T.t1, fontWeight: 700, marginBottom: 2 }}>{L.cerrado}</div>
+            <div style={{ color: T.au1, fontWeight: 700 }}>{L.vuelve.replace("{d}", proximoDiaMedicion(new Date(), lang))}</div>
+          </div>
+        )}
+        {!reg && abierto && (
           <button onClick={abrirRegistro} style={{ width: "100%", fontFamily: "'Nunito',sans-serif", fontWeight: 900, fontSize: 15, padding: 14, borderRadius: 16, border: `3px solid ${T.g3}`, background: `linear-gradient(135deg,${T.g1},${T.g2})`, color: "#fff", cursor: "pointer", boxShadow: `0 5px 0 ${T.g3}` }}>
             {tab === "per" ? L.regPer : L.regPli}
           </button>
