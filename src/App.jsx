@@ -11,6 +11,7 @@ import { FRACCIONES_MENOS, FRAC_MENOS_DEFECTO, fraccionValida, previstoToma, rea
 import { QueComiste } from "./QueComiste";                                    // Kcal reales, fase 2: la hoja «¿Qué comiste?»
 import { _NUTRI_ING } from "./nutriIng";                                     // diccionario de alimentos (GENERADO, no editar)
 import { esDiaDeMedicion, ventanaKeys, proximoDiaMedicion } from "./ventanaMedicion"; // peso y medidas: miércoles + fin de semana (15-sep-2026)
+import { racionesDeLaLista, costePorRacion, textosCajaRacion } from "./raciones";   // qué cocinar y cuánto comer (17-sep-2026)
 import { DistribucionKcal, AlimentosDescartados, leerDescartes, escribirDescartes, BannerSemanaNueva,
          CabeceraPlan, PillTotal, PatronCocina, Recordatorios, BotonesGuardar, FUENTE_PIXEL } from "./PlanArcade";
 
@@ -153,12 +154,12 @@ const TRANS = {
     calories:"Calorías", protein:"Proteína", carbs:"Hidratos", fat:"Grasas",
     ingredients:"🛒 Ingredientes", preparation:"👨‍🍳 Preparación",
     buyBtn:"🛒 Comprar", buyListSub:"Marca lo que vayas metiendo en el carro",
-    // Etiqueta "¿para cuántos son estas cantidades?" (Fase 0)
-    racionTuya:"Cantidades para tu ración (1 persona)",
-    racionTuyaFactor:"Cantidades para tu ración (1 persona) · {txt}",
-    racionRinde:"Cantidades para las {n} raciones · las kcal de arriba son de 1 ración",
+    // Etiqueta "¿para cuántos son estas cantidades?" (Fase 0). Desde el 17-sep dice
+    // QUÉ HACER con la lista (ver src/raciones.js): el ajuste va en la caja dorada.
+    racionTuya:"Tu ración (1 persona): cocina y come estas cantidades tal cual",
+    racionReparto:"Lista para {r} raciones: cocínala entera y reparte en {r} platos iguales; tú comes 1",
     racionBase:"Cantidades de la receta (1 ración)",
-    racionBaseRinde:"Cantidades de la receta · rinde {n} raciones",
+    racionBaseRinde:"Cantidades para {n} raciones · las kcal son de 1 ración",
     // ── Pareja / cocinar para los dos (Fase 1) ──
     parejaTitulo:"Cocinar para los dos",
     parejaIntro:"Vincula tu cuenta con la de tu pareja y podréis cocinar una vez, para dos, sin hacer cuentas.",
@@ -180,13 +181,14 @@ const TRANS = {
     parejaYaTiene:"Una de las dos cuentas ya está vinculada. Deshaz el vínculo anterior primero.",
     cocinarDosToggle:"Cocinar para los dos",
     cocinarDosCantidades:"Cantidades para los dos (tu ración + la de {n})",
+    cocinarDosCantidadesRinde:"Cantidades para los dos: {k} raciones tuyas y {k} de {n}",
     cocinarDosReparto:"Al repartir: {a} % para ti · {b} % para {n}",
     cocinarDosNota:"Se cocina para dos, come uno: las kcal y los macros de arriba siguen siendo TU ración.",
+    cocinarDosNotaRinde:"Tu parte da para {k} raciones: repártela y come 1. Las kcal y los macros de arriba son de 1 ración.",
     cocinarDosAviso:"{ing}: no he podido sumarlo (las dos recetas lo miden distinto), te muestro las dos cantidades.",
     cocinarMasTitulo:"Cocinar de más",
     cocinarMasNormal:"Normal",
-    cocinarMasCantidades:"Cantidades x{x} de tu ración (1 persona)",
-    cocinarMasNota:"Es tu misma ración multiplicada, para batch cooking o para servir a alguien más. Tus kcal siguen siendo las de una ración.",
+    cocinarMasNota:"Es la misma lista multiplicada, para batch cooking o para servir a alguien más. Tus kcal siguen siendo las de una ración.",
     cocinarMasPregunta:"¿Cuántas raciones quieres cocinar?",
     cocinarDosOpSolo:"Individual", cocinarDosOpPareja:"Para los dos",
     listaSoloMia:"Solo la mía",
@@ -440,11 +442,10 @@ const TRANS = {
     ingredients:"🛒 Ingredients", preparation:"👨‍🍳 Preparation",
     buyBtn:"🛒 Buy", buyListSub:"Tick items as you add them to your cart",
     // "How many is this for?" label (Fase 0)
-    racionTuya:"Quantities for your portion (1 person)",
-    racionTuyaFactor:"Quantities for your portion (1 person) · {txt}",
-    racionRinde:"Quantities for all {n} servings · the kcal above are for 1 serving",
+    racionTuya:"Your portion (1 person): cook and eat these amounts as they are",
+    racionReparto:"List for {r} servings: cook it all and split it into {r} equal plates; you eat 1",
     racionBase:"Recipe quantities (1 serving)",
-    racionBaseRinde:"Recipe quantities · makes {n} servings",
+    racionBaseRinde:"Quantities for {n} servings · the kcal are for 1 serving",
     // ── Partner / cooking for two (Fase 1) ──
     parejaTitulo:"Cook for two",
     parejaIntro:"Link your account with your partner's and cook once, for two, without doing the maths.",
@@ -466,13 +467,14 @@ const TRANS = {
     parejaYaTiene:"One of the two accounts is already linked. Undo the previous link first.",
     cocinarDosToggle:"Cook for both of us",
     cocinarDosCantidades:"Quantities for two (your portion + {n}'s)",
+    cocinarDosCantidadesRinde:"Quantities for both: {k} servings for you and {k} for {n}",
     cocinarDosReparto:"When serving: {a} % for you · {b} % for {n}",
     cocinarDosNota:"You cook for two but eat one: the kcal and macros above are still YOUR portion.",
+    cocinarDosNotaRinde:"Your share makes {k} servings: split it and eat 1. The kcal and macros above are for 1 serving.",
     cocinarDosAviso:"{ing}: I couldn't add it up (the two recipes measure it differently), so I'm showing both amounts.",
     cocinarMasTitulo:"Cook extra",
     cocinarMasNormal:"Normal",
-    cocinarMasCantidades:"Quantities x{x} of your portion (1 person)",
-    cocinarMasNota:"This is your own portion multiplied, for batch cooking or to serve someone else. Your kcal are still for one portion.",
+    cocinarMasNota:"This is the same list multiplied, for batch cooking or to serve someone else. Your kcal are still for one portion.",
     cocinarMasPregunta:"How many servings do you want to cook?",
     cocinarDosOpSolo:"Just me", cocinarDosOpPareja:"For both",
     listaSoloMia:"Just mine",
@@ -1154,12 +1156,15 @@ const racionTextoJS = (factor, lang) => {
 // las preguntas más repetidas en los chats. La respuesta va pegada a la lista de
 // ingredientes, no en un FAQ.
 //   base=true  → recetario (cantidades de la receta tal cual, sin personalizar)
-//   base=false → plan del paciente (cantidades ya escaladas a SU ración)
-const racionEtiqueta = (t, {raciones=1, racionTexto="", base=false}={}) => {
+//   base=false → plan del paciente (cantidades ya escaladas a SU ración); x es el
+//                «¿Cuántas raciones quieres cocinar?» (1|2|3)
+// El ajuste del generador (x0,90…) NO va aquí desde el 17-sep: pegado a la lista se
+// leía como una resta pendiente. Va en la caja dorada (textosCajaRacion).
+const racionEtiqueta = (t, {raciones=1, x=1, base=false}={}) => {
   const n = parseInt(raciones,10)||1;
   if(base)  return n>1 ? t("racionBaseRinde",{n}) : t("racionBase");
-  if(n>1)   return t("racionRinde",{n});          // p.ej. bizcocho: rinde 4, comes 1
-  return racionTexto ? t("racionTuyaFactor",{txt:racionTexto}) : t("racionTuya");
+  const r = racionesDeLaLista(n, x);
+  return r>1 ? t("racionReparto",{r}) : t("racionTuya");   // p.ej. bizcocho: rinde 4, comes 1
 };
 
 // ─── Mascot image path (upload avatar.jpg to /public in GitHub) ───────────────
@@ -16623,6 +16628,14 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
       : (cocinarDeMas>1 ? escalarIngredientesJS(tomaReceta?.ingredientes||'', cocinarDeMas)
                         : (tomaReceta?.ingredientes||''));
     const ingList=ingTexto?.split(/[,;](?![^(]*\))/).map(s=>s.trim()).filter(Boolean)||[];
+    // Para cuántas raciones es la lista que se PINTA y qué hacer con ella: una sola
+    // cuenta para el rótulo, la chapa «Rinde», los botones y la hoja de Comprar.
+    const racReceta   = Math.max(1, parseInt(tomaReceta?.raciones)||1);
+    const racLista    = racionesDeLaLista(racReceta, cocinarDeMas);
+    const etiquetaLista = fusion
+      ? (racReceta>1 ? t("cocinarDosCantidadesRinde",{k:racReceta,n:pareja?.nombre||''})
+                     : t("cocinarDosCantidades",{n:pareja?.nombre||''}))
+      : racionEtiqueta(t,{raciones:racReceta,x:cocinarDeMas});
     return(<div style={{paddingBottom:16}}>
       {miniCompra&&<MiniListaCompra nombre={miniCompra.nombre} ingredientes={miniCompra.ingredientes}
         idReceta={miniCompra.id} t={t} lang={lang} onClose={()=>setMiniCompra(null)}
@@ -16814,22 +16827,25 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
                 <div style={{fontSize:19,fontWeight:900,color:T.wh,lineHeight:1.25}}>{tomaReceta.nombre}</div>
               </div>
             </div>
-            {!!tomaReceta.racion_texto&&(
+            {/* Caja dorada: qué cocinar y cuánto comer. Sale si la receta rinde
+                varias raciones (tú comes 1) o si el plan ajustó la ración. */}
+            {(()=>{
+              const caja=textosCajaRacion({raciones:tomaReceta.raciones,factor:tomaReceta.racion_factor,
+                racionTexto:tomaReceta.racion_texto,lang});
+              return caja&&(
               <div style={{display:'flex',alignItems:'center',gap:8,background:alpha(T.au1,0.10),
                 border:`1.5px solid ${alpha(T.au1,0.45)}`,borderRadius:14,padding:'9px 12px',marginBottom:12}}>
-                <span style={{fontSize:18,lineHeight:1}}>⚖️</span>
+                <span style={{fontSize:18,lineHeight:1}}>{caja.icono}</span>
                 <div>
                   <div style={{fontSize:12,fontWeight:900,color:T.au1}}>
-                    {(lang==='en'?'Your portion: ':'Tu ración: ')+tomaReceta.racion_texto}
+                    {caja.titulo}
                   </div>
                   <div style={{fontSize:10.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>
-                    {lang==='en'
-                      ?'Quantities and calories already adjusted to your plan'
-                      :'Las cantidades y calorías ya están ajustadas a tu plan'}
+                    {caja.detalle}
                   </div>
                 </div>
-              </div>
-            )}
+              </div>);
+            })()}
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:8}}>
               {[{l:lang==='en'?'Calories':'Calorías',v:String(tomaReceta.calorias),u:'kcal',c:T.au1},{l:lang==='en'?'Protein':'Proteína',v:String(tomaReceta.proteinas_g),u:'g',c:T.platos},{l:lang==='en'?'Carbs':'Carbos',v:String(tomaReceta.hidratos_g),u:'g',c:T.g1},{l:lang==='en'?'Fat':'Grasas',v:String(tomaReceta.grasas_g),u:'g',c:'#FFB74D'}].map(({l,v,u,c})=>(
                 <div key={l} style={{background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'10px 6px',textAlign:'center',border:'1px solid rgba(255,255,255,0.08)'}}>
@@ -16844,11 +16860,9 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap',marginBottom:12}}>
               <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em'}}>{lang==='en'?'Ingredients':'Ingredientes'}</div>
               <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
-                {tomaReceta.raciones>1&&(<div style={{fontSize:11,color:PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1,fontWeight:800,background:(PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1)+'22',borderRadius:20,padding:'3px 11px',whiteSpace:'nowrap'}}>🍽️ {lang==='en'?`Makes ${tomaReceta.raciones} servings`:`Rinde ${tomaReceta.raciones} raciones`}</div>)}
+                {!fusion&&racLista>1&&(<div style={{fontSize:11,color:PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1,fontWeight:800,background:(PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1)+'22',borderRadius:20,padding:'3px 11px',whiteSpace:'nowrap'}}>🍽️ {lang==='en'?`Makes ${racLista} servings`:`Rinde ${racLista} raciones`}</div>)}
                 <button onClick={()=>setMiniCompra({nombre:tomaReceta.nombre,ingredientes:ingTexto,id:tomaReceta.id_receta,
-                  etiquetaRacion:fusion ? t("cocinarDosCantidades",{n:pareja?.nombre||''})
-                    : cocinarDeMas>1 ? t("cocinarMasCantidades",{x:cocinarDeMas})
-                    : racionEtiqueta(t,{raciones:tomaReceta.raciones,racionTexto:tomaReceta.racion_texto})})} style={{
+                  etiquetaRacion:etiquetaLista})} style={{
                   background:'rgba(255,140,60,0.12)',border:'1.5px solid rgba(255,140,60,0.4)',borderRadius:20,
                   padding:'4px 13px',fontSize:11.5,fontWeight:900,color:T.compra,cursor:'pointer',
                   fontFamily:"'Nunito',sans-serif",whiteSpace:'nowrap'}}>{t("buyBtn")}</button>
@@ -16859,11 +16873,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
             <div style={{display:'flex',alignItems:'center',gap:6,marginTop:-4,marginBottom:11,
               fontSize:11.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.35}}>
               <span style={{fontSize:13,lineHeight:1,flexShrink:0}}>⚖️</span>
-              <span>{fusion
-                ? t("cocinarDosCantidades",{n:pareja?.nombre||''})
-                : cocinarDeMas>1
-                  ? t("cocinarMasCantidades",{x:cocinarDeMas})
-                  : racionEtiqueta(t,{raciones:tomaReceta.raciones,racionTexto:tomaReceta.racion_texto})}</span>
+              <span>{etiquetaLista}</span>
             </div>
             {/* ── §5.2 · Cocinar para los dos ─────────────────────────────────
                 Solo si la pareja tiene la MISMA receta en la MISMA toma del
@@ -16893,7 +16903,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
                     🍽️ {t("cocinarDosReparto",{a:repartoTuyo,b:100-repartoTuyo,n:pareja?.nombre||''})}
                   </div>
                   <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.45}}>
-                    {t("cocinarDosNota")}
+                    {racReceta>1 ? t("cocinarDosNotaRinde",{k:racReceta}) : t("cocinarDosNota")}
                   </div>
                   {!!fusion?.avisos?.length&&(
                     <div style={{marginTop:7,fontSize:11,color:'#FFB74D',fontFamily:"'DM Sans',sans-serif",lineHeight:1.45}}>
@@ -16920,7 +16930,10 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
                       color:cocinarDeMas===x?T.wh:T.t2,fontSize:13,fontWeight:900,
                       boxShadow:cocinarDeMas===x?'0 3px 0 rgba(0,0,0,0.35)':'none',
                       fontFamily:"'Nunito',sans-serif"}}>
-                      x{x}
+                      {/* El botón dice cuántas raciones salen, no «x1»: en una receta
+                          de 3 raciones «x1» junto a «Rinde 3 raciones» parecía 1. */}
+                      {(()=>{const r=racionesDeLaLista(racReceta,x);
+                        return `${r} ${lang==='en'?(r===1?'serving':'servings'):(r===1?'ración':'raciones')}`;})()}
                     </button>
                   ))}
                 </div>
@@ -16936,18 +16949,26 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
             </div>
           </div>)}
           {/* 💶 Coste estimado de TU ración (informativo; el gasto real se
-              apunta en la pestaña 🛒 Comprar). IIFE sin hooks: rama 'daily'. */}
+              apunta en la pestaña 🛒 Comprar). IIFE sin hooks: rama 'daily'.
+              En una receta de varias raciones la lista es la olla entera: tu
+              ración es la olla entre las raciones (como el recetario y el PDF). */}
           {(()=>{
             const _ce=costeRecetaJS(tomaReceta?.ingredientes||'');
             if(!(_ce.total>0)) return null;
+            const _rac=Math.max(1,parseInt(tomaReceta?.raciones)||1);
             return(
             <div style={{background:T.bgCard,borderRadius:20,padding:'14px 18px',border:'1px solid rgba(255,255,255,0.07)',marginBottom:12}}>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
                 <div style={{fontSize:12.5,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif"}}>
                   💶 {lang==='en'?'Estimated cost of your serving':'Coste estimado de tu ración'}
                 </div>
-                <div style={{fontSize:16,fontWeight:900,color:T.g1,fontFamily:"'Nunito',sans-serif",flexShrink:0}}>~{eurES(_ce.total)} €</div>
+                <div style={{fontSize:16,fontWeight:900,color:T.g1,fontFamily:"'Nunito',sans-serif",flexShrink:0}}>~{eurES(costePorRacion(_ce.total,_rac))} €</div>
               </div>
+              {_rac>1&&(
+                <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:4,lineHeight:1.4}}>
+                  {lang==='en'?`The whole list (${_rac} servings): ~${eurES(_ce.total)} €`:`La lista entera (${_rac} raciones): ~${eurES(_ce.total)} €`}
+                </div>
+              )}
               <div style={{fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginTop:6,lineHeight:1.4}}>
                 {lang==='en'?'Log what it really cost you from the 🛒 Buy button.':'Apunta lo que te cueste de verdad desde el botón 🛒 Comprar.'}
               </div>
