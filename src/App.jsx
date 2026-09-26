@@ -462,7 +462,7 @@ const TRANS = {
     cafObjTiempo:"tu tiempo",
     cafGrafAria:"Tu nivel de cafeína en sangre a lo largo del día",
     cafScrubAria:"Mueve para ver tu nivel a cada hora",
-    cafLineaEficaz:"nivel eficaz",
+    cafLineaRend:"rendimiento",           // la gráfica enseña siempre las dos líneas de efecto (26-sep): antes «nivel eficaz»
     cafLineaConc:"concentración",
     cafLineaNervios:"nervios",
     cafLectura:"A las {h} · **{c} mg/L**",
@@ -942,7 +942,7 @@ const TRANS = {
     cafObjTiempo:"your time",
     cafGrafAria:"Your blood caffeine level through the day",
     cafScrubAria:"Slide to see your level at each hour",
-    cafLineaEficaz:"effective level",
+    cafLineaRend:"performance",
     cafLineaConc:"focus",
     cafLineaNervios:"jitters",
     cafLectura:"At {h} · **{c} mg/L**",

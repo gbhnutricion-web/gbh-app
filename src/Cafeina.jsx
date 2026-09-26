@@ -110,9 +110,10 @@ export function Cafeina({ profile, weights, medicacion, lang = "es", t, T, sfx, 
     const r = cv.getBoundingClientRect(), d = Math.min(window.devicePixelRatio || 1, 2), w = r.width, h = r.height; if (!w) return;
     cv.width = Math.round(w * d); cv.height = Math.round(h * d);
     const c = cv.getContext("2d"); c.setTransform(d, 0, 0, d, 0, 0); c.clearRect(0, 0, w, h);
-    const { desde, hasta, band } = calc, U = res.umbrales, u = U[res.objetivo];
+    const { desde, hasta, band } = calc, U = res.umbrales;
     let ymax = 0; band.forEach((b) => { ymax = Math.max(ymax, b.p90); });
-    ymax = Math.max(ymax * 1.08, u * 1.25, 1);
+    // Las dos líneas de efecto se ven siempre (orden de Alejandro, 26-sep), así que la escala llega hasta la más alta.
+    ymax = Math.max(ymax * 1.08, U.concentracion * 1.25, U.rendimiento * 1.2, 1);
     const m = { i: 30, d: 8, a: 10, b: 22 }, pw = w - m.i - m.d, ph = h - m.a - m.b;
     const X = (tt) => m.i + pw * (tt - desde) / (hasta - desde), Y = (v) => m.a + ph * (1 - v / ymax);
     const rend = res.objetivo === "rendimiento";
@@ -128,16 +129,20 @@ export function Cafeina({ profile, weights, medicacion, lang = "es", t, T, sfx, 
     c.fillStyle = "rgba(224,185,75,.16)"; c.beginPath();
     band.forEach((b, i) => { if (i) c.lineTo(X(b.t), Y(b.p90)); else c.moveTo(X(b.t), Y(b.p90)); });
     for (let i = band.length - 1; i >= 0; i--) c.lineTo(X(band[i].t), Y(band[i].p10)); c.closePath(); c.fill();
-    const linea = (val, col, txt) => { if (val > ymax) return; c.save(); c.strokeStyle = col; c.lineWidth = 1.2; c.setLineDash([4, 4]); c.beginPath(); c.moveTo(m.i, Y(val)); c.lineTo(w - m.d, Y(val)); c.stroke(); c.restore();
-      c.fillStyle = col; c.textAlign = "right"; c.font = "800 9px Nunito, sans-serif"; c.fillText(txt, w - m.d - 2, Y(val) - 3); };
-    linea(u, rend ? "#E0B94B" : "#4DC97A", t(rend ? "cafLineaEficaz" : "cafLineaConc") + " " + nf(u, 1));
+    // Umbral: línea discontinua con su rótulo. «tenue» = la del objetivo que no se ha elegido.
+    const linea = (val, col, txt, tenue) => { if (val > ymax) return; c.save(); c.globalAlpha = tenue ? 0.5 : 1; c.strokeStyle = col; c.lineWidth = tenue ? 1 : 1.4; c.setLineDash([4, 4]); c.beginPath(); c.moveTo(m.i, Y(val)); c.lineTo(w - m.d, Y(val)); c.stroke();
+      c.fillStyle = col; c.textAlign = "right"; c.font = "800 9px Nunito, sans-serif"; c.fillText(txt, w - m.d - 2, Y(val) - 3); c.restore(); };
+    // Las dos líneas de efecto, sea cual sea el objetivo: la del elegido, marcada; la otra, tenue.
+    linea(U.concentracion, "#4DC97A", t("cafLineaConc") + " " + nf(U.concentracion, 1), rend);
+    linea(U.rendimiento, "#E0B94B", t("cafLineaRend") + " " + nf(U.rendimiento, 1), !rend);
     linea(U.nervios, "#FF6B6B", t("cafLineaNervios") + " " + nf(U.nervios, 0));
-    if (res.sueno) { c.save(); c.strokeStyle = "#1CB0F6"; c.lineWidth = 1.2; c.setLineDash([3, 3]); const xs = X(res.sueno.dormir); c.beginPath(); c.moveTo(xs, m.a); c.lineTo(xs, m.a + ph); c.stroke(); c.restore();
-      c.fillStyle = "#1CB0F6"; c.font = "800 9px Nunito, sans-serif"; c.textAlign = xs > w - 40 ? "right" : "center"; c.fillText("🌙 " + nf(U.sueno, 1), Math.min(xs, w - m.d), Y(Math.min(ymax * 0.92, U.sueno + ymax * 0.12))); }
     const cur = curva(res.tomas, res.pk, { desde, hasta, paso: (hasta - desde) / 240 });
     c.save(); c.shadowColor = "#E0B94B"; c.shadowBlur = 10; c.strokeStyle = "#E0B94B"; c.lineWidth = 2.4; c.lineJoin = "round"; c.beginPath();
     cur.forEach((p, i) => { if (i) c.lineTo(X(p.t), Y(p.c)); else c.moveTo(X(p.t), Y(p.c)); }); c.stroke(); c.restore();
+    // ☕ en cada toma y 🌙 a la hora de acostarse, los dos abajo y sin línea (orden de Alejandro, 26-sep: fuera la
+    // línea discontinua azul de ir a dormir). Lo que queda en sangre al acostarse lo dice el aviso de sueño, debajo.
     c.font = "13px sans-serif"; c.textAlign = "center"; res.tomas.forEach((dd) => { c.fillText("☕", X(dd.t), m.a + ph - 4); });
+    if (res.sueno) c.fillText("🌙", X(res.sueno.dormir), m.a + ph - 4);
     const xk = X(scrubT), ck = concentracion(scrubT, res.tomas, res.pk);
     c.strokeStyle = "rgba(255,255,255,.55)"; c.setLineDash([2, 3]); c.beginPath(); c.moveTo(xk, m.a); c.lineTo(xk, m.a + ph); c.stroke(); c.setLineDash([]);
     c.fillStyle = "#fff"; c.beginPath(); c.arc(xk, Y(ck), 4, 0, Math.PI * 2); c.fill();
