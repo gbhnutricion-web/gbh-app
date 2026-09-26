@@ -89,7 +89,8 @@ export function Cafeina({ profile, weights, medicacion, lang = "es", t, T, sfx, 
     const rec = recomendar(app.perfil, pet), cmp = comparaNormal(app.perfil, pet);
     const res = mgProbada != null && rec.mg ? recomendar(app.perfil, { ...pet, mg: mgProbada }) : rec;
     if (!res.mg) return { tipo: "servido" };
-    const desde = res.tToma - 0.5, hasta = Math.max(res.sueno ? res.sueno.dormir + 0.75 : 0, res.tToma + 12);
+    // La gráfica sigue 2 h después de acostarse (antes, 45 min): así la zona de noche se ve (26-sep).
+    const desde = res.tToma - 0.5, hasta = Math.max(res.sueno ? res.sueno.dormir + 2 : 0, res.tToma + 12);
     const band = bandas(app.perfil, res.tomas, { desde, hasta, paso: (hasta - desde) / 120, n: 300 });
     return { tipo: "ok", rec, cmp, res, desde, hasta, band };
   }, [app, salud, objetivo, inicio, duracion, dormir, otrasHoy, mgProbada]);
@@ -117,10 +118,17 @@ export function Cafeina({ profile, weights, medicacion, lang = "es", t, T, sfx, 
     const m = { i: 30, d: 8, a: 10, b: 22 }, pw = w - m.i - m.d, ph = h - m.a - m.b;
     const X = (tt) => m.i + pw * (tt - desde) / (hasta - desde), Y = (v) => m.a + ph * (1 - v / ymax);
     const rend = res.objetivo === "rendimiento";
+    // Día y noche (orden de Alejandro, 26-sep): hasta la hora de acostarse, fondo anaranjado; desde ella, azul
+    // oscuro. Su ☀️ y su 🌙 van arriba a la izquierda de cada zona y se pintan al final, encima de la curva.
+    const xNoche = res.sueno ? Math.min(Math.max(X(res.sueno.dormir), m.i), w - m.d) : w - m.d;
+    c.fillStyle = "rgba(255,122,24,.20)"; c.fillRect(m.i, m.a, xNoche - m.i, ph);
+    if (xNoche < w - m.d) { c.fillStyle = "rgba(14,30,92,.62)"; c.fillRect(xNoche, m.a, w - m.d - xNoche, ph); }
     c.fillStyle = rend ? "rgba(224,185,75,.10)" : "rgba(77,201,122,.10)";
     c.fillRect(X(res.inicio), m.a, X(res.inicio + res.duracion) - X(res.inicio), ph);
     c.fillStyle = "rgba(255,255,255,.45)"; c.font = "800 9.5px Nunito, sans-serif"; c.textAlign = "center";
-    c.fillText(t(rend ? "cafObjEntreno" : "cafObjTiempo"), (X(res.inicio) + X(res.inicio + res.duracion)) / 2, m.a + 11);
+    // El rótulo de la franja baja una línea cuando chocaría con el ☀️ de la esquina.
+    const txtFranja = t(rend ? "cafObjEntreno" : "cafObjTiempo"), xFranja = (X(res.inicio) + X(res.inicio + res.duracion)) / 2;
+    c.fillText(txtFranja, xFranja, xFranja - c.measureText(txtFranja).width / 2 < m.i + 24 ? m.a + 27 : m.a + 11);
     c.strokeStyle = "rgba(255,255,255,.07)"; c.lineWidth = 1; c.fillStyle = "rgba(255,255,255,.45)"; c.font = "500 9.5px 'DM Sans', sans-serif";
     const pasoY = ymax > 12 ? 4 : ymax > 6 ? 2 : 1;
     for (let v = 0; v <= ymax; v += pasoY) { c.beginPath(); c.moveTo(m.i, Y(v)); c.lineTo(w - m.d, Y(v)); c.stroke(); c.textAlign = "right"; c.fillText(v, m.i - 5, Y(v) + 3); }
@@ -139,10 +147,11 @@ export function Cafeina({ profile, weights, medicacion, lang = "es", t, T, sfx, 
     const cur = curva(res.tomas, res.pk, { desde, hasta, paso: (hasta - desde) / 240 });
     c.save(); c.shadowColor = "#E0B94B"; c.shadowBlur = 10; c.strokeStyle = "#E0B94B"; c.lineWidth = 2.4; c.lineJoin = "round"; c.beginPath();
     cur.forEach((p, i) => { if (i) c.lineTo(X(p.t), Y(p.c)); else c.moveTo(X(p.t), Y(p.c)); }); c.stroke(); c.restore();
-    // ☕ en cada toma y 🌙 a la hora de acostarse, los dos abajo y sin línea (orden de Alejandro, 26-sep: fuera la
-    // línea discontinua azul de ir a dormir). Lo que queda en sangre al acostarse lo dice el aviso de sueño, debajo.
+    // ☕ en cada toma, abajo. ☀️ y 🌙, arriba a la izquierda del día y de la noche, sin línea de ir a dormir
+    // (órdenes de Alejandro, 26-sep). Lo que queda en sangre al acostarse lo dice el aviso de sueño, debajo.
     c.font = "13px sans-serif"; c.textAlign = "center"; res.tomas.forEach((dd) => { c.fillText("☕", X(dd.t), m.a + ph - 4); });
-    if (res.sueno) c.fillText("🌙", X(res.sueno.dormir), m.a + ph - 4);
+    c.textAlign = "left"; c.fillText("☀️", m.i + 4, m.a + 15);
+    if (xNoche < w - m.d - 18) c.fillText("🌙", xNoche + 4, m.a + 15);
     const xk = X(scrubT), ck = concentracion(scrubT, res.tomas, res.pk);
     c.strokeStyle = "rgba(255,255,255,.55)"; c.setLineDash([2, 3]); c.beginPath(); c.moveTo(xk, m.a); c.lineTo(xk, m.a + ph); c.stroke(); c.setLineDash([]);
     c.fillStyle = "#fff"; c.beginPath(); c.arc(xk, Y(ck), 4, 0, Math.PI * 2); c.fill();
