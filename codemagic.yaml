@@ -149,4 +149,12 @@ workflows:
       app_store_connect:
         auth: integration
         submit_to_testflight: true
+        # Cada build entra SOLA en el grupo externo de pacientes (orden de Alejandro,
+        # 26-sep, MAESTRO-2026-655; revoca MAESTRO-2026-431, que la dejaba a mano
+        # «salvo que la fase de TestFlight se alargue»). El nombre debe coincidir
+        # EXACTO con el de App Store Connect. Codemagic lo reparte al acabar Apple
+        # de procesar la build; TestFlight avisa a los testers y, si tienen las
+        # actualizaciones automaticas activadas, se instala sola.
+        beta_groups:
+          - "Pacientes GBH"
         submit_to_app_store: false   # la subida a revisión se hace a mano
