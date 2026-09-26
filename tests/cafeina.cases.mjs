@@ -4,7 +4,7 @@
 // Cada caso devuelve { ok, detalle } para que los dos caminos compartan la misma comprobación.
 import { PK, PD, TOPES, FORMAS, TOLERANCIAS, pkIndividual, concentracion, curva, pico, tramosPorEncima, umbrales, cribado, tope,
          horaLimiteSueno, recomendar, comparaNormal, bandas, equivalencias, pesoActual, pesoParaCalculo, anticonceptivosDe, interaccionesDe,
-         perfilDesdeApp } from '../src/cafeina.js';
+         perfilDesdeApp } from '../src/motorCafeina.js';   // en el repo el motor se llama motorCafeina.js (26-sep)
 
 const cerca = (a, b, rel = 1e-9) => Math.abs(a - b) <= rel * Math.max(1, Math.abs(b));
 const fmt = (x) => (typeof x === 'number' ? +x.toPrecision(4) : x);
