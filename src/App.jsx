@@ -15,6 +15,7 @@ import { TOPE_PUNTOS, clasificarRespuesta, yaEstaEnElServidor, opDePartidaCaduca
 import { racionesDeLaLista, costePorRacion, textosCajaRacion } from "./raciones";   // qué cocinar y cuánto comer (17-sep-2026)
 import { Cafeina } from "./Cafeina";                                     // calculadora de cafeína, fase 1 (25-sep-2026)
 import { Suplementacion } from "./Suplementacion";                       // pestaña 💊 Suplementación: ☕ Cafeína y 💪 Creatina (próximamente) (26-sep-2026)
+import { BarraPestanas } from "./BarraPestanas";                         // la barra de pestañas de abajo (26-sep-2026)
 import { DistribucionKcal, AlimentosDescartados, leerDescartes, escribirDescartes, BannerSemanaNueva,
          CabeceraPlan, PillTotal, PatronCocina, Recordatorios, BotonesGuardar, FUENTE_PIXEL } from "./PlanArcade";
 
@@ -499,7 +500,7 @@ const TRANS = {
     cafPildVer:"ver ↓",
     cafLegal:"Orientativo, para adultos sanos. No sustituye el consejo de tu nutricionista o de tu médico.",
     // ── Pestaña 💊 Suplementación (src/Suplementacion.jsx; 26-sep-2026). La tarjeta de ☕ usa cafSub y cafAbrir ──
-    tabSupl:"Suplementación",
+    tabSupl:"Suplementos",                 // en la barra; el título de la pantalla (suplTitulo) dice «Suplementación»
     suplTitulo:"💊 Suplementación",
     suplIntro:"Cuánto tomar, calculado con tus datos.",
     suplCafeina:"Cafeína",
@@ -11588,7 +11589,6 @@ function GBHApp(){
     if(tab === "receta") fetchDailyRecipe();
   };
 
-  const tabSt=(a)=>({flex:1,padding:"10px 0 8px",background:"none",border:"none",color:a?T.au1:T.t2,fontSize:9,fontWeight:a?900:700,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,textTransform:"uppercase",letterSpacing:"0.07em",transition:"all 0.18s",fontFamily:"'Nunito',sans-serif"});
   const inp={width:"100%",background:"rgba(255,255,255,0.07)",border:`2px solid ${T.bW}`,borderRadius:16,padding:"15px 18px",color:T.cr,fontSize:16,fontWeight:700,fontFamily:"'DM Sans',sans-serif"};
 
   // ── INSTAGRAM IN-APP BROWSER DETECTION ───────────────────────────────────────
@@ -14164,20 +14164,9 @@ function GBHApp(){
       </div>
 
       {/* ── BOTTOM NAV ────────────────────────────────────────────────────── */}
-      <div className="nav-scroll" style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:420,background:"rgba(8,18,8,0.97)",backdropFilter:"blur(30px)",borderTop:`3px solid ${T.bW}`,zIndex:100,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
-        <div style={{display:"flex",padding:"10px 4px 10px",minWidth:"min-content",width:"100%"}}>
-          {/* 💊 Suplementación (26-sep-2026) va detrás de Plan, que es donde viven sus recordatorios.
-              ancho:"auto" = el botón mide lo que su etiqueta: «SUPLEMENTACIÓN» no cabe en 60 px y se
-              montaba sobre las vecinas. Las demás siguen a 60 px, como siempre. */}
-          {[{id:"home",icon:"🏠",l:t("tabHome")},{id:"progreso",icon:"🚀",l:t("tabCalc")},{id:"plan",icon:"📆",l:"Plan"},{id:"supl",icon:"💊",l:t("tabSupl"),ancho:"auto"},{id:"weight",icon:"📏",l:t("tabWeight")},{id:"receta",icon:"🍰",l:t("tabRecipe")},{id:"consulta",icon:"📩",l:lang==="en"?"Consult":"Consulta"},{id:"ranking",icon:"👑",l:t("tabRanking")}].map(({id,icon,l,ancho})=>(
-            <button key={id} onClick={()=>{ sfx("tap"); setTab(id); }} style={{...tabSt(tab===id),flex:ancho==="auto"?"1 0 auto":"1 0 60px",minWidth:60,padding:"8px 6px"}}>
-              <span style={{fontSize:24,filter:tab===id?"none":"grayscale(0.6)",transition:"all 0.2s"}}>{icon}</span>
-              <span style={{fontSize:9,whiteSpace:"nowrap"}}>{l}</span>
-              {tab===id&&<div style={{width:22,height:4,background:T.au1,borderRadius:4,boxShadow:`0 0 10px ${T.au1}`,marginTop:1}}/>}
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* src/BarraPestanas.jsx (26-sep-2026): las 8 pestañas iguales, etiquetas en minúscula a 10 px,
+          difuminado en el borde por el que quedan pestañas y la activa siempre entera a la vista. */}
+      <BarraPestanas tab={tab} setTab={setTab} t={t} lang={lang} T={T} sfx={sfx}/>
     </div>
     </LangCtx.Provider>
   );
