@@ -1,7 +1,7 @@
 // ═══ 💊 SUPLEMENTACIÓN: una pestaña con un botón por suplemento (26-sep-2026) ═══
 // Orden de Alejandro (26-sep): la calculadora de cafeína no va como tarjeta en Inicio, sino en una
 // pestaña propia, «Suplementación» con 💊, que tiene un botón por suplemento:
-// - ☕ Cafeína abre la calculadora (src/Cafeina.jsx, sobre el motor src/cafeina.js);
+// - ☕ Cafeína abre la calculadora (src/Cafeina.jsx, sobre el motor src/motorCafeina.js);
 // - 💪 Creatina «(próximamente)» se ve, pero todavía no se puede pulsar: su modelo aún no existe.
 //
 // Para sumar un suplemento nuevo:

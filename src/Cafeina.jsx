@@ -1,6 +1,9 @@
 // ═══ CAFEÍNA: tu dosis, a qué hora y cuánto te dura (fase 1, 25-sep-2026) ═══
 // La pantalla de la maqueta aprobada para probar (07. App GBH/MAQUETA_calculadora_cafeina_2026-09-24.html)
-// sobre el MISMO motor (src/cafeina.js, copia exacta del de Drive: se comprueba con md5).
+// sobre el MISMO motor (src/motorCafeina.js, copia exacta de 07. App GBH/cafeina.js: se comprueba con md5).
+// ⚠️ El motor NO se llama cafeina.js en src/ (26-sep): en un disco que no distingue mayúsculas (el Mac de
+// Codemagic, Windows), `import ... from "./Cafeina"` encontraba antes cafeina.js que Cafeina.jsx y la
+// compilación de las apps fallaba (#31 y #34), aunque en Vercel (Linux) compilaba. Ver comprobar_mayusculas.py.
 //
 // Lo que la app ya sabe NO se pregunta (orden de Alejandro, 24-sep): el peso sale del último pesaje
 // (weights = weight_logs) o del de alta (profiles.initial_weight); el sexo y la altura, de profiles; los
@@ -16,7 +19,7 @@
 // «anticonceptivo hormonal» en el alta o el perfil; hasta entonces se leen de la medicación.
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { FORMAS, FUENTES, perfilDesdeApp, pesoParaCalculo, cribado, recomendar, comparaNormal, bandas,
-         concentracion, curva, equivalencias } from "./cafeina";
+         concentracion, curva, equivalencias } from "./motorCafeina";
 
 const DUR = { concentracion: [1, 2, 3, 4, 6], rendimiento: [1, 1.5, 2, 3] };
 const OTRAS = [0, 80, 160, 240];
