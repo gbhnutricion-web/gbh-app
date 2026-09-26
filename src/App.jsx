@@ -11,6 +11,7 @@ import { FRACCIONES_MENOS, FRAC_MENOS_DEFECTO, fraccionValida, previstoToma, rea
 import { QueComiste } from "./QueComiste";                                    // Kcal reales, fase 2: la hoja «¿Qué comiste?»
 import { _NUTRI_ING } from "./nutriIng";                                     // diccionario de alimentos (GENERADO, no editar)
 import { esDiaDeMedicion, ventanaKeys, proximoDiaMedicion } from "./ventanaMedicion"; // peso y medidas: miércoles + fin de semana (15-sep-2026)
+import { TOPE_PUNTOS, clasificarRespuesta, yaEstaEnElServidor, opDePartidaCaducada, esPendienteDeHoy } from "./partidaPendiente"; // la partida es del paciente hasta que el servidor la confirma (26-sep-2026)
 import { racionesDeLaLista, costePorRacion, textosCajaRacion } from "./raciones";   // qué cocinar y cuánto comer (17-sep-2026)
 import { DistribucionKcal, AlimentosDescartados, leerDescartes, escribirDescartes, BannerSemanaNueva,
          CabeceraPlan, PillTotal, PatronCocina, Recordatorios, BotonesGuardar, FUENTE_PIXEL } from "./PlanArcade";
@@ -1458,6 +1459,9 @@ async function flushQueue(){
   if(!q.length) return;
   const failed = [];
   for(const op of q){
+    // Las partidas ya no viajan por esta cola (MAESTRO-2026-655); las que quedaron
+    // de versiones anteriores caducan con su día (ver partidaPendiente.js)
+    if(opDePartidaCaducada(op)){ console.warn("[cola] partida de otro día descartada:", op.body); continue; }
     try{
       const r = await fetch(`${SB}/rest/v1/${op.path}`, {
         method: op.method,
@@ -8977,7 +8981,10 @@ function GBHApp(){
       // partidas y 0 puntos» y el servidor rechazaba la cuarta con el diamante ya
       // gastado; ahora, sin respuesta, los contadores se quedan como estaban.
       if(Array.isArray(rows)){
-        setPartidasRestantes(Math.max(0,3-rows.length));
+        // Una partida jugada que el servidor aún no tiene también gasta su hueco:
+        // si no, la app ofrecía otra y la nueva ocupaba el sitio de la pendiente
+        const pendiente=esPendienteDeHoy(lsGet(kPartida(),null),hoyMadrid(),partidaEnCursoRef.current);
+        setPartidasRestantes(Math.max(0,3-rows.length-(pendiente?1:0)));
         const hoyPts=rows.reduce((s,r)=>s+(r.puntos||0),0);
         setPtsHoy(hoyPts);
         // La regla de 30 s cuenta desde el último registro, también si fue en otro
@@ -8996,14 +9003,53 @@ function GBHApp(){
   // nunca llegaba a registrarse → al volver tenía sus 3 partidas intactas.
   // Con el testigo en localStorage, el diamante se gasta AL ENTRAR y la partida
   // se salda sola en el siguiente arranque, con los puntos que hubiera hecho.
+  // Y desde el 26-sep-2026 (MAESTRO-2026-655) el testigo vive hasta que el
+  // SERVIDOR contesta, no hasta que se llama a la red: una partida terminada que
+  // no llega (corte de red al acabar) se queda aquí, cuenta como jugada y se
+  // reenvía sola. Antes pasaba a la cola offline genérica y la siguiente partida
+  // le quitaba el hueco (ver partidaPendiente.js).
   const kPartida=()=>`gbh:partida_en_curso:${profile?.id}`;
-  const abrirPartida=(modo)=>{ if(profile?.id) lsSet(kPartida(),{fecha:hoyMadrid(),pts:0,modo:modo||null}); };
+  const abrirPartida=(modo)=>{ if(profile?.id) lsSet(kPartida(),{fecha:hoyMadrid(),pts:0,modo:modo||null,pagada:Date.now()}); };
   const cerrarPartida=()=>{ try{ if(profile?.id) localStorage.removeItem(kPartida()); }catch{} };
   const anotarPuntos=(pts)=>{ if(!profile?.id) return;
     const t=lsGet(kPartida(),null); if(t) lsSet(kPartida(),{...t,pts:pts||0}); };
-  // Se ejecuta antes de leer el contador diario: si quedó una partida abierta,
-  // se cierra ya. Si era de un día anterior, el cupo de aquel día ya caducó y
-  // solo se limpia el testigo — no se le roba una partida de hoy.
+  // Una llamada a la RPC SIN cola offline, con plazo de 20 s: una petición que
+  // nunca contestaba dejaba `registrandoRef` en true para siempre
+  const enviarPartida=async(t)=>clasificarRespuesta(await Promise.race([
+    sbDirect("POST","rpc/registrar_partida_juego",{p_profile_id:profile.id,p_puntos:Math.max(0,t.pts||0),p_modo:t.modo||null}),
+    new Promise(r=>setTimeout(()=>r(undefined),20000))]));
+  // Antes de REENVIAR una partida terminada: ¿llegó y solo se perdió la respuesta?
+  // null = no se sabe (sin red): entonces tampoco se reenvía
+  const yaGuardada=async(t)=>{
+    const filas=await sbReq("GET",`juego_partidas?profile_id=eq.${profile.id}&fecha=eq.${t.fecha}&origen=eq.partida&select=puntos,created_at`);
+    return Array.isArray(filas)?yaEstaEnElServidor(filas,t):null;
+  };
+  // Lo que se hace con la respuesta del servidor. true = la partida está saldada
+  // (grabada o rechazada); false = sigue pendiente y el testigo se queda.
+  const aplicarRespuesta=({estado,res})=>{
+    if(estado==="ok"){
+      cerrarPartida();
+      ultimoRegistroRef.current=Date.now(); setEsperaJugar(segundosDeEspera());
+      setPtsHoy(res.puntos_hoy||0);
+      setPtsSemana(res.puntos_semana||0);
+      setPartidasRestantes(res.partidas_restantes!=null?res.partidas_restantes:0);
+      return true;
+    }
+    if(estado==="rechazo"){
+      // Rechazo definitivo del servidor: no hay partida que reintentar
+      cerrarPartida();
+      console.warn("registrar_partida_juego rechazó la partida:",res);
+      devolverDiamante();
+      showT(MOTIVO_RECHAZO[res.error]||{icon:"🤔",title:"El servidor no ha aceptado la partida",sub:`Motivo: ${res.error||"desconocido"}. Te devolvemos el diamante.`});
+      if(res.error==="limite_diario_alcanzado") setPartidasRestantes(0);
+      return true;
+    }
+    return false;
+  };
+  // Se ejecuta antes de leer el contador diario, al volver a primer plano y al
+  // volver la red: si quedó una partida sin saldar, se envía ya. Si era de un día
+  // anterior, el cupo de aquel día ya caducó y solo se limpia el testigo — no se
+  // le roba una partida de hoy.
   const saldarPartidaHuerfana=async()=>{
     // Una partida VIVA no es huérfana. Si esto se disparaba a mitad de juego (al
     // volver a abrir la zona, por ejemplo) registraba la partida con los puntos
@@ -9012,22 +9058,42 @@ function GBHApp(){
     if(partidaEnCursoRef.current||registrandoRef.current) return;
     const t=lsGet(kPartida(),null); if(!t) return;
     if(t.fecha!==hoyMadrid()){ cerrarPartida(); return; }
-    // El testigo solo existe cuando la RPC NUNCA llegó a llamarse (app matada a
-    // media partida). En cuanto se llama, el reintento es cosa de la cola
-    // offline, así que aquí se cierra siempre: reintentar por nuestra cuenta
-    // duplicaría la fila que la cola ya tiene pendiente.
-    cerrarPartida();
     registrandoRef.current=true;
-    try{ const r=await sbReq("POST","rpc/registrar_partida_juego",
-      {p_profile_id:profile.id,p_puntos:Math.max(0,t.pts||0),p_modo:t.modo||null});
-      if(r&&r.ok) ultimoRegistroRef.current=Date.now(); }catch{}
-    registrandoRef.current=false;
+    try{
+      if(t.terminada){
+        const ya=await yaGuardada(t);
+        if(ya===null) return;                          // sin red: sigue pendiente
+        if(ya){ cerrarPartida(); return; }             // llegó; solo se perdió la respuesta
+      }
+      const r=await enviarPartida(t);
+      if(aplicarRespuesta(r)&&r.estado==="ok"&&t.terminada)
+        showT({icon:"✅",title:"Partida guardada",sub:`Tus ${t.pts||0} pts ya están en el marcador.`});
+    }catch{}
+    finally{ registrandoRef.current=false; }
   };
+  const saldarRef=useRef(null); saldarRef.current=saldarPartidaHuerfana;
+  useEffect(()=>{
+    if(!profile?.id) return;
+    const reintentar=()=>{ if(!document.hidden&&lsGet(kPartida(),null)) saldarRef.current&&saldarRef.current(); };
+    document.addEventListener("visibilitychange",reintentar);
+    window.addEventListener("online",reintentar);
+    window.addEventListener("pageshow",reintentar);   // iOS: al restaurar desde bfcache
+    return ()=>{ document.removeEventListener("visibilitychange",reintentar);
+      window.removeEventListener("online",reintentar); window.removeEventListener("pageshow",reintentar); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.id]);
 
   const pagarYJugar=(modo)=>{
     if(partidasRestantes<=0||!partidasListas) return;
     // Nada se cobra hasta saber que el servidor va a aceptar la partida
     if(registrandoRef.current){ sfx("error"); showT({icon:"⏳",title:"Guardando la partida anterior",sub:"Un momento y podrás jugar la siguiente."}); return; }
+    // Ni hasta que la anterior esté en el servidor: si no, la nueva le quitaría el hueco
+    const pend=lsGet(kPartida(),null);
+    if(esPendienteDeHoy(pend,hoyMadrid(),partidaEnCursoRef.current)){
+      sfx("error"); saldarPartidaHuerfana();
+      showT({icon:"📡",title:"Guardando tu partida anterior",sub:`Tus ${pend.pts||0} pts aún no han llegado al servidor. Se envían solos en cuanto haya conexión; después podrás jugar.`});
+      return;
+    }
     const falta=segundosDeEspera();
     if(falta>0){ setEsperaJugar(falta); sfx("error"); showT({icon:"⏳",title:`Siguiente partida en ${falta} s`,sub:"El servidor pide 30 segundos entre partidas; así no se pierde ningún diamante."}); return; }
     const g=profile?.gems||0;
@@ -9047,7 +9113,7 @@ function GBHApp(){
   const MOTIVO_RECHAZO={
     limite_diario_alcanzado:{icon:"🌙",title:"Ya has jugado las 3 partidas de hoy",sub:"Te devolvemos el diamante. Mañana hay más."},
     demasiado_rapido:{icon:"⏳",title:"Partida demasiado seguida",sub:"El servidor pide 30 s entre partidas. Te devolvemos el diamante."},
-    puntos_fuera_de_rango:{icon:"🤔",title:"Marcador no válido",sub:"El servidor no acepta más de 2000 puntos por partida. Te devolvemos el diamante."},
+    puntos_fuera_de_rango:{icon:"🤔",title:"Marcador no válido",sub:`El servidor no acepta más de ${TOPE_PUNTOS} puntos por partida. Te devolvemos el diamante.`},
     perfil_no_encontrado:{icon:"👤",title:"Cuenta no encontrada",sub:"Vuelve a entrar en la app. Te devolvemos el diamante."},
   };
   const devolverDiamante=()=>{ if(!profile?.id) return;
@@ -9060,46 +9126,27 @@ function GBHApp(){
     registrandoRef.current=true;
     partidaEnCursoRef.current=false;
     const puntos=Math.max(0,Math.round(Number(pts)||0));
-    anotarPuntos(puntos);                   // el testigo lleva los puntos ANTES de tocar la red
-    const modo=(lsGet(kPartida(),null)||{}).modo||null;   // del testigo, y ANTES de cerrarlo
-    cerrarPartida();                        // a partir de aquí el reintento es de la cola offline
+    // El testigo queda TERMINADO con sus puntos ANTES de tocar la red, y no se
+    // cierra hasta que el servidor conteste (aplicarRespuesta)
+    const t={...(lsGet(kPartida(),null)||{fecha:hoyMadrid(),modo:null}),pts:puntos,terminada:true};
+    lsSet(kPartida(),t);
     try{
-      // Plazo de 20 s: una petición que nunca contestaba dejaba `registrandoRef`
-      // en true para siempre y ninguna partida posterior volvía a registrarse.
-      const res=await Promise.race([
-        sbReq("POST","rpc/registrar_partida_juego",{p_profile_id:profile.id,p_puntos:puntos,p_modo:modo}),
-        new Promise(r=>setTimeout(()=>r(undefined),20000))]);
-      if(res&&res.ok){
-        ultimoRegistroRef.current=Date.now(); setEsperaJugar(segundosDeEspera());
-        setPtsHoy(res.puntos_hoy||0);
-        setPtsSemana(res.puntos_semana||0);
-        setPartidasRestantes(res.partidas_restantes!=null?res.partidas_restantes:0);
-      }else if(res&&res.ok===false){
-        // Rechazo definitivo del servidor: no hay partida que reintentar
-        console.warn("registrar_partida_juego rechazó la partida:",res);
-        devolverDiamante();
-        showT(MOTIVO_RECHAZO[res.error]||{icon:"🤔",title:"El servidor no ha aceptado la partida",sub:`Motivo: ${res.error||"desconocido"}. Te devolvemos el diamante.`});
-        if(res.error==="limite_diario_alcanzado") setPartidasRestantes(0);
-        await cargarPartidasHoy();
-      }else{
-        // Sin respuesta: null = sbReq ya encoló la llamada y la cola la reenviará;
-        // undefined = plazo agotado. Antes esto se tragaba en silencio: el marcador
-        // se quedaba con el valor de antes y el paciente veía "las mismas partidas
-        // de antes" y cero puntos, sin saber si se había gastado el diamante. Se
-        // avisa y se releen los contadores de la tabla, que es la única verdad.
-        console.warn("registrar_partida_juego no confirmó:",res);
-        const enCola=(lsGet(getQueueKey(),[])||[]).some(o=>o.path==="rpc/registrar_partida_juego");
+      const r=await enviarPartida(t);
+      if(aplicarRespuesta(r)){ if(r.estado==="rechazo") await cargarPartidasHoy(); }
+      else{
+        // Sin respuesta (corte de red, 5xx o plazo agotado). Antes la partida
+        // pasaba a la cola genérica y al releer el contador la app ofrecía otra
+        // que le quitaba el hueco. Ahora se queda en el testigo, cuenta como
+        // jugada y se reenvía sola al volver a primer plano o la conexión.
+        console.warn("registrar_partida_juego no confirmó:",r);
         showT({icon:"📡",title:"Partida pendiente de guardar",
-          sub:enCola
-            ?`Tus ${puntos} pts se enviarán solos en cuanto vuelva la conexión.`
-            :`No hemos podido confirmar tus ${puntos} pts. Revisa el marcador en un momento.`});
-        try{ await flushQueue(); }catch{}
-        await cargarPartidasHoy();
+          sub:`Tus ${puntos} pts no se pierden: se envían solos en cuanto haya conexión.`});
+        setTimeout(()=>saldarRef.current&&saldarRef.current(),15000);   // un corte breve no cambia `online`
       }
     }catch(e){
       console.warn("registrar_partida_juego falló:",e);
       showT({icon:"📡",title:"Partida pendiente de guardar",
-        sub:`Tus ${puntos} pts se enviarán solos en cuanto vuelva la conexión.`});
+        sub:`Tus ${puntos} pts no se pierden: se envían solos en cuanto haya conexión.`});
     }finally{
       registrandoRef.current=false;
     }
