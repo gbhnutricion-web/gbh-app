@@ -11,7 +11,7 @@
  * Env:  BUILD_NUMBER  (entero incremental; Codemagic lo pasa como
  *       PROJECT_BUILD_NUMBER — el codemagic.yaml lo reexporta)
  */
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -94,6 +94,38 @@ if (existsSync(ANDROID)) {
       ? t.replace(/android:usesCleartextTraffic="true"/g, 'android:usesCleartextTraffic="false"')
       : t.replace(/(<application\b)/, '$1\n        android:usesCleartextTraffic="false"')
   );
+
+  // 4) Avisos fuera de la app (28-sep-2026, 07. App GBH/BRIEF_notificaciones.md §4.3).
+  //  a) SIN alarmas exactas. @capacitor/local-notifications declara SCHEDULE_EXACT_ALARM en
+  //     su manifiesto y, con isExactNotification a true (su valor por defecto), schedule()
+  //     abriría en Android 12+ la pantalla «Alarmas y recordatorios». La app programa con
+  //     isExactNotification:false (src/avisosNativos.js) y aquí se quita el permiso del
+  //     manifiesto final: Play restringe USE_EXACT_ALARM a apps de alarma y calendario, y
+  //     SCHEDULE_EXACT_ALARM viene denegado por defecto en Android 14. codemagic.yaml lo comprueba.
+  editar(join(ANDROID, "app", "src", "main", "AndroidManifest.xml"), (t) => {
+    let out = t;
+    if (!/xmlns:tools=/.test(out)) out = out.replace(/<manifest\b/, '<manifest xmlns:tools="http://schemas.android.com/tools"');
+    if (!out.includes("SCHEDULE_EXACT_ALARM")) {
+      out = out.replace(/<\/manifest>\s*$/,
+        '    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" tools:node="remove" />\n</manifest>\n');
+    }
+    return out;
+  });
+  //  b) El icono pequeño de la barra de estado (capacitor.config.json → LocalNotifications.smallIcon):
+  //     blanco sobre transparente. Sin él, Android pinta una «i» genérica del sistema.
+  //     Es la campana de Material Icons («notifications», licencia Apache 2.0).
+  const DRAWABLE = join(ANDROID, "app", "src", "main", "res", "drawable");
+  if (!existsSync(DRAWABLE)) mkdirSync(DRAWABLE, { recursive: true });
+  const ICONO = join(DRAWABLE, "ic_stat_gbh.xml");
+  const icono = `<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M12,22c1.1,0 2,-0.9 2,-2h-4c0,1.1 0.89,2 2,2zM18,16v-5c0,-3.07 -1.64,-5.64 -4.5,-6.32V4c0,-0.83 -0.67,-1.5 -1.5,-1.5s-1.5,0.67 -1.5,1.5v0.68C7.63,5.36 6,7.92 6,11v5l-2,2v1h16v-1l-2,-2z"/>
+</vector>
+`;
+  if (!existsSync(ICONO) || readFileSync(ICONO, "utf8") !== icono) { writeFileSync(ICONO, icono, "utf8"); cambios.push(ICONO); }
 }
 
 /* ── iOS ──────────────────────────────────────────────────────────────── */

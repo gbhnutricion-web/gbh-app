@@ -29,6 +29,10 @@
       "style": "DARK",
       "backgroundColor": "#081208",
       "overlaysWebView": false
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_gbh",
+      "iconColor": "#4DC97A"
     }
   }
 }

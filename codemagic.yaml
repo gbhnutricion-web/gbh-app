@@ -65,6 +65,16 @@ workflows:
             || { echo "targetSdkVersion NO es 36 — Play rechazaría el AAB"; exit 1; }
       - name: Construir el AAB firmado
         script: cd android && ./gradlew bundleRelease assembleRelease
+      - name: Comprobar el manifiesto final de los avisos (sin alarmas exactas, con POST_NOTIFICATIONS)
+        script: |
+          M=$(find android/app/build/intermediates -name AndroidManifest.xml -path '*merged_manifest*' -path '*release*' | head -1)
+          if [ -z "$M" ]; then echo "AVISO: no encuentro el manifiesto fusionado de release; no se comprueba"; exit 0; fi
+          echo "manifiesto fusionado: $M"
+          if grep -q 'SCHEDULE_EXACT_ALARM\|USE_EXACT_ALARM' "$M"; then
+            echo "El manifiesto pide alarmas exactas: Play las restringe (BRIEF_notificaciones.md §4.3)"; exit 1
+          fi
+          grep -q 'POST_NOTIFICATIONS' "$M" || { echo "Falta POST_NOTIFICATIONS: los avisos no se podrían pedir"; exit 1; }
+          echo "OK: sin alarmas exactas y con POST_NOTIFICATIONS"
     artifacts:
       - android/app/build/outputs/bundle/**/*.aab
       - android/app/build/outputs/apk/**/*.apk

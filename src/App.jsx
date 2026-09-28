@@ -13,9 +13,13 @@ import { _NUTRI_ING } from "./nutriIng";                                     // 
 import { esDiaDeMedicion, ventanaKeys, proximoDiaMedicion } from "./ventanaMedicion"; // peso y medidas: miércoles + fin de semana (15-sep-2026)
 import { TOPE_PUNTOS, clasificarRespuesta, yaEstaEnElServidor, opDePartidaCaducada, esPendienteDeHoy } from "./partidaPendiente"; // la partida es del paciente hasta que el servidor la confirma (26-sep-2026)
 import { racionesDeLaLista, costePorRacion, textosCajaRacion } from "./raciones";   // qué cocinar y cuánto comer (17-sep-2026)
+import { elegirRecetaCambio, permitidasDePlanes, normNombreCambio, claveMemoriaCambio, leerMemoriaCambio, guardarMemoriaCambio, permitidasTodas, puedeComer, recetaDelDiaAlAzar, recetaDelDiaFija } from "./cambioReceta"; // cambio de receta con gemas y receta del día: lista del servidor, sin repetir (28-sep-2026)
 import { Cafeina } from "./Cafeina";                                     // calculadora de cafeína, fase 1 (25-sep-2026)
 import { Suplementacion } from "./Suplementacion";                       // pestaña 💊 Suplementación: ☕ Cafeína y 💪 Creatina (próximamente) (26-sep-2026)
 import { BarraPestanas } from "./BarraPestanas";                         // la barra de pestañas de abajo (26-sep-2026)
+import { planificarAvisos, nombresDePlan, PREFS_POR_DEFECTO as AVISOS_PREFS, TOMAS_ORDEN as AVISOS_TOMAS } from "./motorAvisos"; // avisos fuera de la app, fase 1 (28-sep-2026)
+import { estadoPermiso, pedirPermiso, sincronizarAvisos, cancelarAvisos, alTocarAviso, plataforma as plataformaNativa } from "./avisosNativos";
+import { TarjetaPermisoAvisos, FilaRecordatorios, PanelRecordatorios } from "./PanelAvisos";
 import { DistribucionKcal, AlimentosDescartados, leerDescartes, escribirDescartes, BannerSemanaNueva,
          CabeceraPlan, PillTotal, PatronCocina, Recordatorios, BotonesGuardar, FUENTE_PIXEL } from "./PlanArcade";
 
@@ -7685,7 +7689,7 @@ function UserAvatar({size=52, photoB64, initials, borderColor, onClick, frame=nu
 }
 
 // ─── ProfileCardModal — tarjeta de perfil del paciente ──────────────────────
-function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, onSaveProfile, weights, lv, xp, streak, badges, lang, setLang, onDeleteAccount}){
+function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, onSaveProfile, weights, lv, xp, streak, badges, lang, setLang, onDeleteAccount, avisosOn, avisosPrefs, avisosPermiso, onAbrirAvisos}){
   const t=useLang();
   const [photo,       setPhoto]      = useState(userPhoto||null);
   const [editField,   setEditField]  = useState(null);
@@ -7903,9 +7907,13 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
               )}
             </div>
           </div>
-          {/* Fila «Recordatorios» retirada con las push (6-ago-2026): ofrecía
-              activar algo que no funciona. Los avisos internos de la app no
-              piden permiso al navegador. */}
+          {/* Fila «Recordatorios»: se retiró con las push el 6-ago-2026 porque
+              ofrecía algo que no funcionaba, y vuelve el 28-sep con los avisos
+              locales. Solo en la app de tienda y con el interruptor del operador
+              encendido: en la web volvería a ofrecer algo que no funciona. */}
+          {avisosOn&&(
+            <FilaRecordatorios lang={lang} T={T} prefs={avisosPrefs} permiso={avisosPermiso} onAbrir={onAbrirAvisos}/>
+          )}
 
           {lastW!=="—"&&String(lastW)!==String(initW)&&(
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0"}}>
@@ -8657,6 +8665,29 @@ function GBHApp(){
   // Identidad del plan: semana|fecha_gen. La primera vez que se conoce un plan
   // se guarda en silencio (evita avisar a toda la base en el despliegue inicial).
   const [avisoNuevoPlan,setAvisoNuevoPlan]=useState(null);   // {semana} | null
+  // ── Avisos fuera de la app · fase 1, locales (28-sep-2026) ─────────────────
+  // 07. App GBH/BRIEF_notificaciones.md. Solo en la app de tienda y con el
+  // interruptor del operador encendido (profiles.avisos_activos, que la app solo
+  // lee). Lo que elige el paciente vive en profiles.avisos: {prefs, horario,
+  // permiso}. Cuando un aviso ya sale fuera, su pop-up de dentro no sale
+  // (avisosCubreRegistro / avisosCubreTomas). Se declaran aquí, antes de los
+  // efectos que los leen en sus dependencias (TDZ).
+  const avisosOn = ES_NATIVO && profile?.avisos_activos===true;
+  const [avisosPermiso,setAvisosPermiso]=useState('desconocido');
+  const [avisosTick,setAvisosTick]=useState(0);          // sube al volver a primer plano: reprogramar
+  const [showAvisos,setShowAvisos]=useState(false);
+  const [avisosPospuestoTs,setAvisosPospuestoTs]=useState(()=>profile?.id?lsGet(`gbh:avisosPospuesto:${profile.id}`,0):0);
+  const [planNombres,setPlanNombres]=useState(()=>profile?.id?lsGet(`gbh:plannombres:${profile.id}`,null):null);
+  const avisosCfg = profile?.avisos || null;
+  const avisosPrefs = {...AVISOS_PREFS, ...(avisosCfg?.prefs||{})};
+  const avisosListos = avisosOn && avisosPermiso==='granted';
+  const avisosCubreRegistro = avisosListos && !!(avisosPrefs.registro || avisosPrefs.comidas);
+  const avisosCubreTomas = avisosListos && !!avisosPrefs.tomas;
+  useEffect(()=>{   // el perfil llega después del primer render: releer lo guardado en el móvil
+    if(!profile?.id) return;
+    setAvisosPospuestoTs(lsGet(`gbh:avisosPospuesto:${profile.id}`,0));
+    setPlanNombres(prev=>prev||lsGet(`gbh:plannombres:${profile.id}`,null));
+  },[profile?.id]);
   // ── Medicación/suplementación del plan vigente (para el recordatorio) ──────
   const [suplPlan,setSuplPlan]=useState(()=>profile?.id?lsGet(`gbh:suplplan:${profile.id}`,null):null);
   // ── Seguimiento (TDEE) del plan vigente → tarjeta premium en Peso ──────────
@@ -8690,6 +8721,15 @@ function GBHApp(){
       }
       setSuplPlan(sup);
       lsSet(`gbh:suplplan:${profile.id}`,sup);
+    }catch{}
+  };
+  // Plato de cada toma y día, para que el aviso de la comida diga qué toca.
+  const guardarNombresPlan=(pj)=>{
+    try{
+      if(!profile?.id || !pj) return;
+      const n=nombresDePlan(pj);
+      setPlanNombres(n);
+      lsSet(`gbh:plannombres:${profile.id}`,n);
     }catch{}
   };
   const chkNuevoPlan=(row)=>{
@@ -8734,6 +8774,7 @@ function GBHApp(){
         const pj=row?.plan_json;
         guardarSuplPlan(pj);
         guardarSeguimiento(pj);
+        guardarNombresPlan(pj);
         if(!pj) return;
         const red=reducir(pj);
         setPlanTomas(red);
@@ -8756,6 +8797,7 @@ function GBHApp(){
         const pj=row?.plan_json;
         guardarSuplPlan(pj);
         guardarSeguimiento(pj);
+        guardarNombresPlan(pj);
         if(!pj) return;
         const m={};
         for(const tm of PLAN_TOMAS){
@@ -8781,7 +8823,7 @@ function GBHApp(){
     const refrescar=async()=>{
       if(!navigator.onLine||document.hidden) return;
       try{
-        let fresh=await sbReq("GET",`profiles?id=eq.${profile.id}&select=plan,gems,xp,shields,target_kcal,trial_ends_at,plan_until&limit=1`);
+        let fresh=await sbReq("GET",`profiles?id=eq.${profile.id}&select=plan,gems,xp,shields,target_kcal,trial_ends_at,plan_until,avisos,avisos_activos&limit=1`);
         if(fresh===null){ // columna trial_ends_at aún sin migrar → select clásica
           fresh=await sbReq("GET",`profiles?id=eq.${profile.id}&select=plan,gems,xp,shields,target_kcal&limit=1`);
         }
@@ -8798,16 +8840,26 @@ function GBHApp(){
           const tieneSub = ('trial_ends_at' in f) || ('plan_until' in f);
           const trialNew = tieneSub ? (f.trial_ends_at ?? null) : prev.trial_ends_at;
           const untilNew = tieneSub ? (f.plan_until    ?? null) : prev.plan_until;
+          // Avisos fuera de la app (28-sep-2026): el interruptor del operador y lo
+          // que eligió el paciente, también en caliente. La select de respaldo no
+          // los trae: entonces se conserva lo previo.
+          const tieneAvisos = ('avisos_activos' in f);
+          const avisosActNew = tieneAvisos ? (f.avisos_activos===true) : prev.avisos_activos;
+          const avisosNew = tieneAvisos ? (f.avisos ?? null) : prev.avisos;
           // Solo actualizar si algo cambió, para no re-renderizar de más
           // (incluidas las fechas, para que el NULL remoto se propague en caliente)
           if(prev.plan===f.plan && prev.gems===f.gems && prev.xp===f.xp
-             && prev.trial_ends_at===trialNew && prev.plan_until===untilNew) return prev;
+             && prev.trial_ends_at===trialNew && prev.plan_until===untilNew
+             && prev.avisos_activos===avisosActNew
+             && JSON.stringify(prev.avisos??null)===JSON.stringify(avisosNew??null)) return prev;
           const merged={...prev,
             plan:f.plan??prev.plan, gems:f.gems??prev.gems,
             xp:f.xp??prev.xp, shields:f.shields??prev.shields,
             target_kcal:f.target_kcal??prev.target_kcal,
             trial_ends_at:trialNew,
-            plan_until:untilNew};
+            plan_until:untilNew,
+            avisos_activos:avisosActNew,
+            avisos:avisosNew};
           lsSet(`gbh:p:${prev.id}`, merged);
           return merged;
         });
@@ -9552,6 +9604,25 @@ function GBHApp(){
 
 
   // ─── Receta diaria — selección determinista por fecha ───────────────────────
+  // Lo que ESTE paciente puede comer (28-sep-2026): la del día era la misma para
+  // todos y su cambio con gemas daba cada día las MISMAS tres a todo el mundo,
+  // sin mirar alergias ni dieta. Mismas fuentes que el cambio de receta del plan
+  // (src/cambioReceta.js): la lista del servidor (plan_json.cambio_receta), los
+  // rechazados de patient_config.notas y las descartadas 🗑️.
+  const restriccionesReceta = async () => {
+    if(!profile?.id) return { permitidas:null, rechazada:()=>false, descartadas:new Set() };
+    const [pl, cf] = await Promise.all([
+      sbReq("GET", `weekly_plans?profile_id=eq.${profile.id}&select=fecha_gen,cambio_receta:plan_json->cambio_receta&order=fecha_gen.desc.nullslast&limit=12`),
+      sbReq("GET", `patient_config?profile_id=eq.${profile.id}&select=notas&limit=1`),
+    ]);
+    const planesR = (Array.isArray(pl)?pl:[]).map(p=>({ fecha_gen:p.fecha_gen, plan_json:{ cambio_receta:p.cambio_receta } }));
+    const pref = interpretarRechazados(Array.isArray(cf)&&cf[0] ? cf[0].notas : '');
+    return {
+      permitidas: permitidasTodas(planesR),
+      rechazada:  (r)=>recetaRechazadaJS(r, pref),
+      descartadas:new Set((descartadas||[]).map(x=>normNombreCambio(x.nombre||''))),
+    };
+  };
   // Carga inicial del día — gratis
   const fetchDailyRecipe = async () => {
     const todayKey = toKey();
@@ -9574,8 +9645,18 @@ function GBHApp(){
       const dayOfYear = Math.floor((d - new Date(d.getFullYear(),0,0)) / 86400000);
       const offset = (dayOfYear * 7 + d.getFullYear()) % 472;
       const r = await sbReq("GET", `recipes?select=*&order=id_receta.asc&limit=1&offset=${offset}`);
-      if(r?.length){
-        const recipe = await getRecipeForDisplay(r[0]);
+      let base = r?.length ? normalizeRecipe(r[0]) : null;
+      // La del día, salvo que este paciente no pueda comerla: entonces otra, fija
+      // para todo el día, entre las que sí puede. Sin restricciones legibles
+      // (sin red), la de siempre.
+      try{
+        const restr = await restriccionesReceta();
+        if(base && !puedeComer(base, restr)){
+          base = recetaDelDiaFija({ recetas: await cargarTodasRecetas(), clave: todayKey, ...restr });
+        }
+      }catch(e){ console.warn("fetchDailyRecipe (restricciones):", e); }
+      if(base){
+        const recipe = await getRecipeForDisplay(base);
         lsSet(`gbh:recipe:${todayKey}`, recipe);
         setDailyRecipe(recipe);
       }
@@ -9749,13 +9830,32 @@ function GBHApp(){
       showT({icon:"💎",title:t("insufficientGems"),sub:t("needGemsRecipe")});
       refreshingRef.current = false; return;
     }
+    setRecipeLoading(true);
+
+    // ── Qué receta sale (28-sep-2026): al AZAR entre las que este paciente puede
+    //    comer, sin repetir las enseñadas hoy. Antes salía de la fecha y del
+    //    número de cambio: las mismas tres para todo el mundo, sin mirar
+    //    alergias. Se elige ANTES de cobrar: si no hay ninguna, no se cobra.
+    const vistasKey = `gbh:recipe:vistas:${todayKey}`;
+    const vistas = new Set((lsGet(vistasKey, [])||[]).map(String));
+    if(dailyRecipe?.id_receta) vistas.add(String(dailyRecipe.id_receta));
+    let elegida = null;
+    try{
+      const [todas, restr] = await Promise.all([cargarTodasRecetas(), restriccionesReceta()]);
+      elegida = recetaDelDiaAlAzar({ recetas: todas, ...restr, excluir: vistas });
+    }catch(e){ console.warn("refreshRecipe:", e); }
+    if(!elegida){
+      setRecipeLoading(false);
+      showT({icon:"🚫",title:lang==="en"?"No alternative":"Sin alternativa",
+        sub:lang==="en"?"No other recipe available right now":"Ahora no hay otra receta disponible"});
+      refreshingRef.current = false; return;
+    }
 
     // Descontar gemas (0 en trial) y mostrar loading inmediatamente
     const newGems = enTrialR ? gems : gems - 10;
     const updP = {...profile, gems: newGems};
     setProfile(updP); lsSet(`gbh:p:${profile.id}`, updP);
     setDailyRecipe(null);
-    setRecipeLoading(true);
 
     // Guardar conteo y persistir gemas en background
     const newUsed = used + 1;
@@ -9765,24 +9865,18 @@ function GBHApp(){
     if(!enTrialR) sbReq("PATCH", `profiles?id=eq.${profile.id}`, {gems: newGems}); // fire & forget
 
     try {
-      const d = new Date();
-      const dayOfYear = Math.floor((d - new Date(d.getFullYear(),0,0)) / 86400000);
-      const base = (dayOfYear * 7 + d.getFullYear()) % 472;
-      const offset = (base + newUsed * 137) % 472;
-      const r = await sbReq("GET", `recipes?select=*&order=id_receta.asc&limit=1&offset=${offset}`);
-      if(r?.length){
-        sfx("recipe");
-        const recipe = await getRecipeForDisplay(r[0]);
-        lsSet(`gbh:recipe:current:${todayKey}`, recipe);
-        setDailyRecipe(recipe);
-        const left = 3 - newUsed;
-        showT({icon:"🍰",
-          title:lang==="en"?"New recipe!":"¡Nueva receta!",
-          sub:lang==="en"
-            ?`-10 💎 · ${left>0?left+" change"+(left>1?"s":"")+" left today":"No more changes today"}`
-            :`-10 💎 · ${left>0?left+" cambio"+(left>1?"s":"")+" más hoy":"Sin más cambios hoy"}`
-        });
-      }
+      sfx("recipe");
+      const recipe = await getRecipeForDisplay(elegida);
+      lsSet(`gbh:recipe:current:${todayKey}`, recipe);
+      lsSet(vistasKey, [...vistas, String(elegida.id_receta)]);
+      setDailyRecipe(recipe);
+      const left = 3 - newUsed;
+      showT({icon:"🍰",
+        title:lang==="en"?"New recipe!":"¡Nueva receta!",
+        sub:lang==="en"
+          ?`-10 💎 · ${left>0?left+" change"+(left>1?"s":"")+" left today":"No more changes today"}`
+          :`-10 💎 · ${left>0?left+" cambio"+(left>1?"s":"")+" más hoy":"Sin más cambios hoy"}`
+      });
     } catch(e){ console.warn("refreshRecipe:",e); }
     setRecipeLoading(false);
     refreshingRef.current = false;
@@ -10719,6 +10813,7 @@ function GBHApp(){
   const [avisoRegistro,setAvisoRegistro]=useState(null);   // {pendientes:[...]} | null
   useEffect(()=>{
     if(!profile?.id || tLog.diet || !tomasHoy) return;
+    if(avisosCubreRegistro) return;   // ya avisa el móvil fuera de la app (28-sep-2026)
     const chk=()=>{
       try{
         if(new Date().getHours()<20) return;
@@ -10737,7 +10832,7 @@ function GBHApp(){
     document.addEventListener("visibilitychange",onVis);
     return ()=>{ clearInterval(id); document.removeEventListener("visibilitychange",onVis); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[profile?.id, tLog.diet, tomasHoy, mealsHoy, avisoNuevoPlan]);
+  },[profile?.id, tLog.diet, tomasHoy, mealsHoy, avisoNuevoPlan, avisosCubreRegistro]);
 
   // ── Recordatorio de medicación/suplementación ───────────────────────────────
   // Mismo mecanismo que los otros pop-ups: cada minuto (y al volver a primer
@@ -10746,6 +10841,7 @@ function GBHApp(){
   const [avisoSupl,setAvisoSupl]=useState(null);   // item | null
   useEffect(()=>{
     if(!profile?.id || !suplPlan?.length) return;
+    if(avisosCubreTomas) return;      // ya avisa el móvil fuera de la app (28-sep-2026)
     const chk=()=>{
       try{
         if(avisoNuevoPlan || avisoRegistro || avisoSupl) return;
@@ -10769,7 +10865,85 @@ function GBHApp(){
     document.addEventListener("visibilitychange",onVis);
     return ()=>{ clearInterval(id); document.removeEventListener("visibilitychange",onVis); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[profile?.id, suplPlan, avisoNuevoPlan, avisoRegistro, avisoSupl]);
+  },[profile?.id, suplPlan, avisoNuevoPlan, avisoRegistro, avisoSupl, avisosCubreTomas]);
+
+  // ── Avisos fuera de la app: permiso, programación y toque (28-sep-2026) ────
+  // El móvil deja programados los avisos de los 3 días siguientes cada vez que
+  // cambia algo que los afecta (una toma marcada, el plan, el horario…) y al
+  // volver a primer plano. sincronizarAvisos() cancela lo pendiente y programa
+  // la lista nueva, así que repetir no duplica. Todo esto solo corre en la app
+  // de tienda: en la web las funciones de avisosNativos vuelven sin hacer nada.
+  useEffect(()=>{
+    if(!avisosOn) return;
+    let vivo=true;
+    const mirar=()=>{ estadoPermiso().then(e=>{ if(vivo) setAvisosPermiso(e); }); };
+    mirar();
+    const onVis=()=>{ if(!document.hidden){ mirar(); setAvisosTick(n=>n+1); } };
+    document.addEventListener("visibilitychange",onVis);
+    return ()=>{ vivo=false; document.removeEventListener("visibilitychange",onVis); };
+  },[avisosOn]);
+  useEffect(()=>{
+    if(!ES_NATIVO || !profile?.id) return;
+    const kProg=`gbh:avisosProg:${profile.id}`;
+    if(!avisosOn || avisosPermiso==='denied'){
+      // Interruptor del operador apagado (o permiso retirado): lo que este móvil
+      // hubiera dejado programado se cancela en la primera apertura. Vuelta atrás sin build.
+      if(lsGet(kProg,false)) cancelarAvisos().then(r=>{ if(r?.ok) lsSet(kProg,false); });
+      return;
+    }
+    if(avisosPermiso!=='granted') return;
+    const tmr=setTimeout(()=>{
+      try{
+        const lista=planificarAvisos({
+          ahora:new Date(), lang, prefs:avisosPrefs, horario:avisosCfg?.horario,
+          planTomas, planNombres, marcadasHoy:mealsHoy, dietaHoy:!!tLog.diet, racha:streak,
+          supl:suplPlan||[], suplHechosHoy:lsGet(suplHechosKey(profile.id,toKey()),{}),
+          pesadoVentanaActual:!!pesajeEnVentana(weights),
+        });
+        sincronizarAvisos(lista).then(r=>{ if(r?.ok) lsSet(kProg, r.programados>0); });
+      }catch{}
+    },1500);
+    return ()=>clearTimeout(tmr);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[avisosOn, avisosPermiso, JSON.stringify(avisosCfg||null), planTomas, planNombres, mealsHoy, tLog.diet, streak, suplPlan, weights, hoyKey, lang, avisosTick, profile?.id]);
+  useEffect(()=>{
+    if(!ES_NATIVO) return;
+    return alTocarAviso((extra)=>{
+      const d=extra?.destino;
+      setTab(d==='plan'?'plan':d==='medidas'?'weight':'home');
+    });
+  },[]);
+  // Guardar lo que elige el paciente (profiles.avisos) y reprogramar.
+  const guardarAvisos=(parcial)=>{
+    if(!profile?.id) return;
+    const nuevo={...(profile.avisos||{}), ...parcial, plataforma:plataformaNativa(), actualizado:new Date().toISOString()};
+    const u={...profile, avisos:nuevo};
+    setProfile(u); lsSet(`gbh:p:${u.id}`,u);
+    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{avisos:nuevo});
+  };
+  const activarAvisos=async()=>{
+    const e=await pedirPermiso();
+    setAvisosPermiso(e);
+    guardarAvisos({prefs:{...avisosPrefs}, permiso:e});
+    if(e==='granted'){
+      sfx("coin");
+      showT({icon:"🔔",title:lang==='en'?'Reminders on':'Avisos activados',
+             sub:lang==='en'?'Change them in your profile › Reminders':'Los cambias en tu perfil › Recordatorios'});
+    }
+  };
+  const posponerAvisos=()=>{ const ts=Date.now(); lsSet(`gbh:avisosPospuesto:${profile?.id}`,ts); setAvisosPospuestoTs(ts); };
+  const avisosTarjeta = avisosOn && (avisosPermiso==='prompt' || avisosPermiso==='prompt-with-rationale')
+    && (Date.now()-(avisosPospuestoTs||0)) > 14*24*60*60*1000;
+  // Plataforma de cada paciente, una vez al día por dispositivo: sin esto no se
+  // sabe a cuántos llega un aviso nativo (BRIEF §0 y §3.10).
+  useEffect(()=>{
+    if(!profile?.id) return;
+    const k=`gbh:plataforma:${profile.id}:${toKey()}`;
+    if(lsGet(k,false)) return;
+    lsSet(k,true);
+    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{plataforma:ES_NATIVO?plataformaNativa():'web', plataforma_at:new Date().toISOString()});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.id]);
 
   // Completar un suplemento/medicación desde el pop-up: marca el día, suma
   // +5 gemas y lo registra en daily_logs (clave 'supl|Nombre', solo seguimiento
@@ -12702,7 +12876,18 @@ function GBHApp(){
           lang={lang}
           setLang={switchLang}
           onDeleteAccount={deleteAccount}
+          avisosOn={avisosOn}
+          avisosPrefs={avisosPrefs}
+          avisosPermiso={avisosPermiso}
+          onAbrirAvisos={()=>{setShowPhotoPicker(false);setShowAvisos(true);}}
         />
+      )}
+      {showAvisos&&avisosOn&&(
+        <PanelRecordatorios lang={lang} T={T} sfx={sfx}
+          prefs={avisosPrefs} horario={avisosCfg?.horario} permiso={avisosPermiso}
+          tomasPlan={AVISOS_TOMAS.filter(tm=>planTomas?.[tm])}
+          onCambiar={guardarAvisos} onPedirPermiso={activarAvisos}
+          onCerrar={()=>setShowAvisos(false)}/>
       )}
 
       {/* Toast */}
@@ -12906,6 +13091,13 @@ function GBHApp(){
           </div>
         );
       })()}
+
+      {/* Avisos fuera de la app (28-sep-2026): la tarjeta propia antes del diálogo
+          del sistema. Solo en la app de tienda, con el interruptor del operador
+          encendido y el permiso aún sin pedir; «Ahora no» la aplaza 14 días. */}
+      {avisosTarjeta&&(
+        <TarjetaPermisoAvisos lang={lang} T={T} onSi={activarAvisos} onAhoraNo={posponerAvisos}/>
+      )}
 
       {/* Banner de pesaje (miércoles y fin de semana) — con X para cerrar */}
       {puedePesarseHoy()&&!pesajeEnVentana(weights)&&!weightBannerDismissed&&(
@@ -14742,8 +14934,10 @@ const _UNIDADES=[
 ];
 
 // ─── Diccionario canónico + formatos de compra (GENERADO desde gbh_automatizacion.py) ───
-// NO editar a mano: regenerar con el exportador si cambian los canónicos del script.
-const _CANON=[[["leche"],"Leche","🥛","Huevos y lácteos","liquido_l",null,null],[["yogur","yogures"],"Yogur","🥛","Huevos y lácteos","pack_yogur",null,null],[["huevo","huevos","clara","claras","yema","yemas"],"Huevos","🥚","Huevos y lácteos","docena",null,null],[["queso","mozzarella","burata","parmesano","feta","requeson"],"Queso","🧀","Huevos y lácteos","peso_queso",null,null],[["mantequilla"],"Mantequilla","🧈","Huevos y lácteos","tarrina",null,null],[["nata","crema de leche"],"Nata","🥛","Huevos y lácteos","brick_nata",null,null],[["pollo","pechuga"],"Pollo","🍗","Carnicería","peso_carne",null,null],[["pavo"],"Pavo","🦃","Carnicería","peso_carne",null,null],[["ternera","vacuno"],"Ternera","🥩","Carnicería","peso_carne",null,null],[["cerdo","lomo de cerdo"],"Cerdo","🥩","Carnicería","peso_carne",null,null],[["cordero"],"Cordero","🥩","Carnicería","peso_carne",null,null],[["jamon"],"Jamón","🥓","Carnicería","lonchas",null,null],[["bacon","panceta","guanciale"],"Bacon","🥓","Carnicería","lonchas",null,null],[["salchicha"],"Salchichas","🌭","Carnicería","paquete_ud",null,6],[["morcilla"],"Morcilla","🥩","Carnicería","pieza_emb",null,null],[["chorizo"],"Chorizo","🥩","Carnicería","pieza_emb",null,null],[["carne picada","carne molida"],"Carne picada","🥩","Carnicería","peso_carne",null,null],[["salmon"],"Salmón","🐟","Pescadería","peso_pescado",null,null],[["merluza"],"Merluza","🐟","Pescadería","peso_pescado",null,null],[["bacalao"],"Bacalao","🐟","Pescadería","peso_pescado",null,null],[["atun"],"Atún","🐟","Pescadería","peso_pescado",null,null],[["sardina"],"Sardinas","🐟","Pescadería","peso_pescado",null,null],[["anchoa","boqueron"],"Anchoas","🐟","Pescadería","lata",null,null],[["lubina"],"Lubina","🐟","Pescadería","peso_pescado",null,null],[["dorada"],"Dorada","🐟","Pescadería","peso_pescado",null,null],[["mero"],"Mero","🐟","Pescadería","peso_pescado",null,null],[["trucha"],"Trucha","🐟","Pescadería","peso_pescado",null,null],[["gamba","langostino"],"Gambas","🦐","Pescadería","peso_pescado",null,null],[["almeja"],"Almejas","🦪","Pescadería","peso_pescado",null,null],[["mejillon"],"Mejillones","🦪","Pescadería","malla_marisco",null,null],[["calamar","sepia","chipiron"],"Calamar","🦑","Pescadería","peso_pescado",null,null],[["pulpo"],"Pulpo","🐙","Pescadería","peso_pescado",null,null],[["tomate","cherry","jitomate"],"Tomate","🍅","Frutas y verduras","verdura_ud",120,null],[["puerro"],"Puerro","🥬","Frutas y verduras",null,null,null],[["yuca","mandioca"],"Yuca","🥔","Frutas y verduras",null,null,null],[["haba"],"Habas","🫛","Frutas y verduras",null,null,null],[["aceituna","olivas"],"Aceitunas","🫒","Despensa",null,null,null],[["crema de cacahuete","mantequilla de cacahuete","cacahuete"],"Crema de cacahuete","🥜","Despensa",null,null,null],[["maicena","almidon de maiz","fecula"],"Maicena","🌽","Despensa",null,null,null],[["curcuma","comino","pimenton","oregano","albahaca","curry","canela","nuez moscada","eneldo","tomillo","romero"],"Especias","🧂","Despensa","especia",null,null],[["albaricoque seco","orejon","ciruela seca","higo seco","datil"],"Fruta desecada","🍑","Despensa",null,null,null],[["vainilla","esencia de vainilla","extracto de vainilla"],"Vainilla","🍶","Despensa",null,null,null],[["melocoton","durazno","nectarina","paraguayo"],"Melocotón","🍑","Frutas y verduras",null,null,null],[["barrita","barritas de cereales"],"Barritas de cereales","🍫","Despensa",null,null,null],[["cebolla","cebolleta","cebollino"],"Cebolla","🧅","Frutas y verduras","verdura_ud",150,null],[["ajo"],"Ajo","🧄","Frutas y verduras","cabeza_ajo",null,null],[["pimiento"],"Pimiento","🫑","Frutas y verduras","verdura_ud",150,null],[["lechuga","escarola","canonigo","rucula"],"Lechuga/hojas verdes","🥬","Frutas y verduras","bolsa_ensalada",null,null],[["espinaca"],"Espinacas","🥬","Frutas y verduras","bolsa_verdura",null,null],[["calabacin"],"Calabacín","🥒","Frutas y verduras","verdura_ud",250,null],[["berenjena"],"Berenjena","🍆","Frutas y verduras","verdura_ud",250,null],[["zanahoria"],"Zanahoria","🥕","Frutas y verduras","malla_kg",null,null],[["patata"],"Patata","🥔","Frutas y verduras","malla_kg",null,null],[["boniato","camote","batata"],"Boniato","🍠","Frutas y verduras","verdura_ud",250,null],[["aguacate","palta"],"Aguacate","🥑","Frutas y verduras","verdura_ud",200,null],[["champinon","seta","hongo"],"Champiñones/setas","🍄","Frutas y verduras","bandeja_verdura",null,null],[["brocoli"],"Brócoli","🥦","Frutas y verduras","verdura_ud",300,null],[["coliflor"],"Coliflor","🥦","Frutas y verduras","verdura_ud",500,null],[["calabaza"],"Calabaza","🎃","Frutas y verduras","peso_verdura",null,null],[["pepino"],"Pepino","🥒","Frutas y verduras","verdura_ud",200,null],[["limon"],"Limón","🍋","Frutas y verduras","malla_citrico",null,null],[["lima"],"Lima","🍋","Frutas y verduras","verdura_ud",70,null],[["naranja","mandarina"],"Naranja/mandarina","🍊","Frutas y verduras","malla_citrico",null,null],[["manzana"],"Manzana","🍎","Frutas y verduras","fruta_ud",180,null],[["platano","banana"],"Plátano","🍌","Frutas y verduras","fruta_ud",120,null],[["mango"],"Mango","🥭","Frutas y verduras","fruta_ud",300,null],[["fresa","freson"],"Fresas","🍓","Frutas y verduras","tarrina_fruta",null,null],[["frambuesa","arandano","mora","frutos rojos","grosella"],"Frutos rojos","🫐","Frutas y verduras","tarrina_fruta",null,null],[["kiwi"],"Kiwi","🥝","Frutas y verduras","fruta_ud",100,null],[["pera"],"Pera","🍐","Frutas y verduras","fruta_ud",180,null],[["melon"],"Melón","🍈","Frutas y verduras","pieza_grande",null,null],[["pina"],"Piña","🍍","Frutas y verduras","pieza_grande",null,null],[["jengibre"],"Jengibre","🫚","Frutas y verduras","trozo_raiz",null,null],[["guisante"],"Guisantes","🟢","Frutas y verduras","bolsa_legumbre",null,null],[["judia verde","judias verdes"],"Judías verdes","🫛","Frutas y verduras","manojo_verdura",null,null],[["esparrago"],"Espárragos","🌱","Frutas y verduras","manojo_verdura",null,null],[["perejil","cilantro","albahaca","romero","tomillo","laurel","oregano","eneldo","menta","hierbabuena"],"Hierbas aromáticas","🌿","Frutas y verduras","manojo_hierba",null,null],[["lenteja"],"Lentejas","🫘","Legumbres y cereales","bote_legumbre",null,null],[["garbanzo"],"Garbanzos","🫘","Legumbres y cereales","bote_legumbre",null,null],[["alubia","judia blanca","frijol","judion"],"Alubias","🫘","Legumbres y cereales","bote_legumbre",null,null],[["arroz"],"Arroz","🍚","Legumbres y cereales","paquete_seco",null,null],[["quinoa"],"Quinoa","🌾","Legumbres y cereales","paquete_seco",null,null],[["avena"],"Avena","🌾","Legumbres y cereales","paquete_seco",null,null],[["tahini","tahin","pasta de sesamo","pasta de ajonjoli","crema de sesamo"],"Pasta de sésamo (tahini)","🥜","Despensa",null,null,null],[["pasta","espagueti","macarron","fideo","tallarin","penne","fusilli","lasana","canelone","noqui","gnocchi"],"Pasta","🍝","Legumbres y cereales","paquete_seco",null,null],[["pan","tostada","hojaldre"],"Pan/tostadas","🍞","Legumbres y cereales","barra_pan",null,null],[["harina"],"Harina","🌾","Legumbres y cereales","paquete_seco",null,null],[["cuscus"],"Cuscús","🌾","Legumbres y cereales","paquete_seco",null,null],[["tofu"],"Tofu","🌱","Legumbres y cereales","bloque",null,null],[["heura"],"Heura","🌱","Legumbres y cereales",null,null,null],[["seitan"],"Seitán","🌱","Legumbres y cereales",null,null,null],[["surimi","palitos de surimi","gula"],"Surimi","🐟","Pescadería",null,null,null],[["soja","soya"],"Soja","🌱","Legumbres y cereales","brick_bebida",null,null],[["hummus"],"Hummus","🫘","Legumbres y cereales","tarrina",null,null],[["aceite","aove"],"Aceite de oliva","🫒","Despensa","botella",null,null],[["maiz","choclo","elote"],"Maíz","🌽","Despensa",null,null,null],[["papaya"],"Papaya","🥭","Frutas y verduras",null,null,null],[["sal"],"Sal","🧂","Despensa","paquete_basico",null,null],[["pimienta"],"Pimienta","🧂","Despensa","especia",null,null],[["vinagre"],"Vinagre","🍶","Despensa","botella",null,null],[["azucar"],"Azúcar","🍬","Despensa","paquete_basico",null,null],[["edulcorante","estevia","sacarina"],"Edulcorante","🍬","Despensa","paquete_basico",null,null],[["miel"],"Miel","🍯","Despensa","bote_basico",null,null],[["chocolate","cacao","nocilla"],"Chocolate/cacao","🍫","Despensa","tableta",null,null],[["nuez","nueces","almendra","pistacho","anacardo","avellana","frutos secos","pasa","uva pasa","ciruela pasa","semillas","pinon","pinones"],"Frutos secos","🥜","Despensa","bolsa_secos",null,null],[["semilla","chia","lino","sesamo"],"Semillas","🌰","Despensa","paquete_basico",null,null],[["caldo"],"Caldo","🥣","Despensa","brick_caldo",null,null],[["vino"],"Vino","🍷","Despensa","botella",null,null],[["mermelada"],"Mermelada","🍓","Despensa","bote_basico",null,null],[["mostaza"],"Mostaza","🟡","Despensa","bote_basico",null,null],[["curry","pimenton","comino","azafran","canela","cayena","especias","clavo"],"Especias","🌶️","Despensa","especia",null,null],[["coco"],"Coco","🥥","Despensa","paquete_basico",null,null],[["gelatina"],"Gelatina","🍮","Despensa","paquete_basico",null,null],[["levadura","bicarbonato","polvo de hornear","polvo hornear","polvo para hornear"],"Levadura/bicarbonato","🧁","Despensa","paquete_basico",null,null],[["rape"],"Rape","🐟","Pescadería",null,null,null],[["lenguado"],"Lenguado","🐟","Pescadería",null,null,null],[["marisco"],"Marisco variado","🦐","Pescadería",null,null,null],[["pescado"],"Pescado","🐟","Pescadería",null,null,null],[["conejo"],"Conejo","🍖","Carnicería",null,null,null],[["mortadela"],"Mortadela","🥓","Carnicería",null,null,null],[["apio"],"Apio","🥬","Frutas y verduras",null,null,null],[["acelga"],"Acelgas","🥬","Frutas y verduras",null,null,null],[["alcachofa"],"Alcachofas","🌿","Frutas y verduras",null,null,null],[["berro"],"Berros","🥬","Frutas y verduras",null,null,null],[["endibia","endivia"],"Endibias","🥬","Frutas y verduras",null,null,null],[["hinojo"],"Hinojo","🌿","Frutas y verduras",null,null,null],[["germinado"],"Germinados","🌱","Frutas y verduras",null,null,null],[["guindilla"],"Guindilla","🌶️","Frutas y verduras",null,null,null],[["jalapeno","chile"],"Chile/jalapeño","🌶️","Frutas y verduras",null,null,null],[["col rizada","repollo","berza","lombarda","kale","col"],"Col/repollo","🥬","Frutas y verduras",null,null,null],[["granada"],"Granada","🔴","Frutas y verduras",null,null,null],[["higo"],"Higos","🟣","Frutas y verduras",null,null,null],[["sandia"],"Sandía","🍉","Frutas y verduras",null,null,null],[["menestra"],"Menestra de verduras","🥗","Frutas y verduras",null,null,null],[["chalota"],"Chalotas","🧅","Frutas y verduras",null,null,null],[["ajete"],"Ajetes","🧄","Frutas y verduras",null,null,null],[["ricotta","ricota","mascarpone","cottage"],"Queso fresco (ricotta/cottage)","🧀","Huevos y lácteos",null,null,null],[["cuajada"],"Cuajada","🥛","Huevos y lácteos",null,null,null],[["natillas","natilla"],"Natillas","🍮","Huevos y lácteos",null,null,null],[["bebida vegetal","bebida de avena","leche vegetal"],"Bebida vegetal","🥛","Huevos y lácteos",null,null,null],[["galleta"],"Galletas","🍪","Despensa",null,null,null],[["tortilla de trigo","tortillas de trigo","tortilla de maiz"],"Tortillas/wraps","🌯","Legumbres y cereales",null,null,null],[["oblea"],"Obleas","🥟","Legumbres y cereales",null,null,null],[["focaccia"],"Focaccia","🍞","Legumbres y cereales",null,null,null],[["judias pintas","judia pinta","alubia pinta","frijol pinto"],"Alubias pintas","🫘","Legumbres y cereales",null,null,null],[["proteina en polvo","proteina de suero","proteina aislada","whey","caseina"],"Proteína en polvo","🥤","Despensa",null,null,null],[["bechamel"],"Bechamel","🥫","Despensa",null,null,null],[["mayonesa"],"Mayonesa","🥫","Despensa",null,null,null],[["pesto"],"Pesto","🥫","Despensa",null,null,null],[["vinagreta"],"Vinagreta","🥫","Despensa",null,null,null],[["alcaparra"],"Alcaparras","🫒","Despensa",null,null,null],[["palmito"],"Palmitos","🥫","Despensa",null,null,null]];
+// NO editar a mano: regenerar con `py exportar_canon_app.py --escribir` (Drive, 07. App GBH) si cambian
+// CANONICO_INGREDIENTES o FORMATO_COMPRA; `--comprobar` dice si esta línea sigue al día. Sus nombres
+// indexan _PRECIOS_ING: un alimento nuevo pide también `py gbh_precios.py --js` (PEND-2026-303).
+const _CANON=[[["leche"],"Leche","🥛","Huevos y lácteos","liquido_l",null,null],[["yogur","yogures","yogurt","yogurth"],"Yogur","🥛","Huevos y lácteos","pack_yogur",null,null],[["yogur griego"],"Yogur griego","🥛","Huevos y lácteos","pack_yogur",null,null],[["queso fresco batido","queso batido"],"Queso fresco batido","🥛","Huevos y lácteos","tarrina_g",null,null],[["claras de huevo","claras","clara"],"Claras de huevo","🥚","Huevos y lácteos","botella_g",null,null],[["huevo","huevos","yema","yemas"],"Huevos","🥚","Huevos y lácteos","docena",null,null],[["queso","mozzarella","burata","parmesano","feta","requeson"],"Queso","🧀","Huevos y lácteos","peso_queso",null,null],[["mantequilla"],"Mantequilla","🧈","Huevos y lácteos","tarrina",null,null],[["nata","crema de leche"],"Nata","🥛","Huevos y lácteos","brick_nata",null,null],[["pollo","pechuga"],"Pollo","🍗","Carnicería","peso_carne",null,null],[["pavo"],"Pavo","🦃","Carnicería","peso_carne",null,null],[["ternera","vacuno"],"Ternera","🥩","Carnicería","peso_carne",null,null],[["cerdo","lomo de cerdo","cinta de lomo"],"Cerdo","🥩","Carnicería","peso_carne",null,null],[["cordero"],"Cordero","🥩","Carnicería","peso_carne",null,null],[["jamon"],"Jamón","🥓","Carnicería","lonchas",null,null],[["bacon","panceta","guanciale"],"Bacon","🥓","Carnicería","lonchas",null,null],[["salchicha"],"Salchichas","🌭","Carnicería","paquete_ud",null,6],[["morcilla"],"Morcilla","🥩","Carnicería","pieza_emb",null,null],[["chorizo"],"Chorizo","🥩","Carnicería","pieza_emb",null,null],[["carne picada","carne molida"],"Carne picada","🥩","Carnicería","peso_carne",null,null],[["salmon"],"Salmón","🐟","Pescadería","peso_pescado",null,null],[["merluza"],"Merluza","🐟","Pescadería","peso_pescado",null,null],[["bacalao"],"Bacalao","🐟","Pescadería","peso_pescado",null,null],[["atun"],"Atún","🐟","Pescadería","peso_pescado",null,null],[["sardina"],"Sardinas","🐟","Pescadería","peso_pescado",null,null],[["caballa","verdel"],"Caballa","🐟","Pescadería",null,null,null],[["melva"],"Melva","🐟","Pescadería",null,null,null],[["tinta de calamar","tinta de sepia"],"Tinta de calamar","🦑","Pescadería",null,null,null],[["anchoa","boqueron"],"Anchoas","🐟","Pescadería","lata",null,null],[["lubina"],"Lubina","🐟","Pescadería","peso_pescado",null,null],[["dorada"],"Dorada","🐟","Pescadería","peso_pescado",null,null],[["mero"],"Mero","🐟","Pescadería","peso_pescado",null,null],[["trucha"],"Trucha","🐟","Pescadería","peso_pescado",null,null],[["gamba","langostino"],"Gambas","🦐","Pescadería","peso_pescado",null,null],[["almeja"],"Almejas","🦪","Pescadería","peso_pescado",null,null],[["mejillon"],"Mejillones","🦪","Pescadería","malla_marisco",null,null],[["calamar","sepia","chipiron"],"Calamar","🦑","Pescadería","peso_pescado",null,null],[["pulpo"],"Pulpo","🐙","Pescadería","peso_pescado",null,null],[["tomate","cherry","jitomate"],"Tomate","🍅","Frutas y verduras","verdura_ud",120,null],[["puerro"],"Puerro","🥬","Frutas y verduras",null,null,null],[["yuca","mandioca"],"Yuca","🥔","Frutas y verduras",null,null,null],[["haba"],"Habas","🫛","Frutas y verduras",null,null,null],[["aceituna","olivas"],"Aceitunas","🫒","Despensa",null,null,null],[["crema de cacahuete","mantequilla de cacahuete","mantequilla de mani","crema de mani","cacahuete","mani"],"Crema de cacahuete","🥜","Despensa","bote_basico",null,null],[["maicena","almidon de maiz","fecula"],"Maicena","🌽","Despensa",null,null,null],[["curcuma","comino","pimenton","oregano","albahaca","curry","canela","nuez moscada","eneldo","tomillo","romero"],"Especias","🧂","Despensa","especia",null,null],[["albaricoque seco","orejon","ciruela seca","higo seco","datil"],"Fruta desecada","🍑","Despensa",null,null,null],[["vainilla","esencia de vainilla","extracto de vainilla"],"Vainilla","🍶","Despensa",null,null,null],[["melocoton","durazno","nectarina","paraguayo"],"Melocotón","🍑","Frutas y verduras",null,null,null],[["barrita","barritas de cereales"],"Barritas de cereales","🍫","Despensa",null,null,null],[["cebolla","cebolleta","cebollino"],"Cebolla","🧅","Frutas y verduras","verdura_ud",150,null],[["ajo"],"Ajo","🧄","Frutas y verduras","cabeza_ajo",null,null],[["pimiento"],"Pimiento","🫑","Frutas y verduras","verdura_ud",150,null],[["lechuga","escarola","canonigo","rucula"],"Lechuga/hojas verdes","🥬","Frutas y verduras","bolsa_ensalada",null,null],[["espinaca"],"Espinacas","🥬","Frutas y verduras","bolsa_verdura",null,null],[["calabacin"],"Calabacín","🥒","Frutas y verduras","verdura_ud",250,null],[["berenjena"],"Berenjena","🍆","Frutas y verduras","verdura_ud",250,null],[["zanahoria"],"Zanahoria","🥕","Frutas y verduras","malla_kg",null,null],[["patata"],"Patata","🥔","Frutas y verduras","malla_kg",null,null],[["boniato","camote","batata"],"Boniato","🍠","Frutas y verduras","verdura_ud",250,null],[["aguacate","palta"],"Aguacate","🥑","Frutas y verduras","verdura_ud",200,null],[["champinon","seta","hongo"],"Champiñones/setas","🍄","Frutas y verduras","bandeja_verdura",null,null],[["brocoli"],"Brócoli","🥦","Frutas y verduras","verdura_ud",300,null],[["coliflor"],"Coliflor","🥦","Frutas y verduras","verdura_ud",500,null],[["calabaza"],"Calabaza","🎃","Frutas y verduras","peso_verdura",null,null],[["pepino"],"Pepino","🥒","Frutas y verduras","verdura_ud",200,null],[["limon"],"Limón","🍋","Frutas y verduras","malla_citrico",null,null],[["lima"],"Lima","🍋","Frutas y verduras","verdura_ud",70,null],[["naranja","mandarina"],"Naranja/mandarina","🍊","Frutas y verduras","malla_citrico",null,null],[["manzana"],"Manzana","🍎","Frutas y verduras","fruta_ud",180,null],[["platano","banana"],"Plátano","🍌","Frutas y verduras","fruta_ud",120,null],[["mango"],"Mango","🥭","Frutas y verduras","fruta_ud",300,null],[["fresa","freson"],"Fresas","🍓","Frutas y verduras","tarrina_fruta",null,null],[["frambuesa","arandano","mora","frutos rojos","grosella"],"Frutos rojos","🫐","Frutas y verduras","tarrina_fruta",null,null],[["kiwi"],"Kiwi","🥝","Frutas y verduras","fruta_ud",100,null],[["pera"],"Pera","🍐","Frutas y verduras","fruta_ud",180,null],[["melon"],"Melón","🍈","Frutas y verduras","pieza_grande",null,null],[["pina"],"Piña","🍍","Frutas y verduras","pieza_grande",null,null],[["jengibre"],"Jengibre","🫚","Frutas y verduras","trozo_raiz",null,null],[["guisante"],"Guisantes","🟢","Frutas y verduras","bolsa_legumbre",null,null],[["judia verde","judias verdes"],"Judías verdes","🫛","Frutas y verduras","manojo_verdura",null,null],[["esparrago"],"Espárragos","🌱","Frutas y verduras","manojo_verdura",null,null],[["perejil","cilantro","albahaca","romero","tomillo","laurel","oregano","eneldo","menta","hierbabuena"],"Hierbas aromáticas","🌿","Frutas y verduras","manojo_hierba",null,null],[["lenteja"],"Lentejas","🫘","Legumbres y cereales","bote_legumbre",null,null],[["garbanzo"],"Garbanzos","🫘","Legumbres y cereales","bote_legumbre",null,null],[["alubia","judia blanca","frijol","judion"],"Alubias","🫘","Legumbres y cereales","bote_legumbre",null,null],[["arroz"],"Arroz","🍚","Legumbres y cereales","paquete_seco",null,null],[["quinoa"],"Quinoa","🌾","Legumbres y cereales","paquete_seco",null,null],[["avena"],"Avena","🌾","Legumbres y cereales","paquete_seco",null,null],[["cereales de desayuno","copos de maiz","corn flakes","cereales","cereal"],"Cereales de desayuno","🥣","Legumbres y cereales","paquete_basico",null,null],[["tahini","tahin","pasta de sesamo","pasta de ajonjoli","crema de sesamo"],"Pasta de sésamo (tahini)","🥜","Despensa",null,null,null],[["pasta","espagueti","macarron","fideo","tallarin","penne","fusilli","lasana","canelone","noqui","gnocchi"],"Pasta","🍝","Legumbres y cereales","paquete_seco",null,null],[["fideos konjac","fideo konjac","arroz konjac","konjac","shirataki"],"Konjac","🍜","Legumbres y cereales",null,null,null],[["pan","tostada","hojaldre"],"Pan/tostadas","🍞","Legumbres y cereales","barra_pan",null,null],[["harina"],"Harina","🌾","Legumbres y cereales","paquete_seco",null,null],[["cuscus"],"Cuscús","🌾","Legumbres y cereales","paquete_seco",null,null],[["tofu"],"Tofu","🌱","Legumbres y cereales","bloque",null,null],[["heura"],"Heura","🌱","Legumbres y cereales",null,null,null],[["seitan"],"Seitán","🌱","Legumbres y cereales",null,null,null],[["surimi","palitos de surimi","gula"],"Surimi","🐟","Pescadería",null,null,null],[["soja","soya"],"Soja","🌱","Legumbres y cereales","brick_bebida",null,null],[["hummus"],"Hummus","🫘","Legumbres y cereales","tarrina",null,null],[["aceite","aove"],"Aceite de oliva","🫒","Despensa","botella",null,null],[["maiz","choclo","elote"],"Maíz","🌽","Despensa",null,null,null],[["papaya"],"Papaya","🥭","Frutas y verduras",null,null,null],[["sal"],"Sal","🧂","Despensa","paquete_basico",null,null],[["pimienta"],"Pimienta","🧂","Despensa","especia",null,null],[["vinagre"],"Vinagre","🍶","Despensa","botella",null,null],[["azucar"],"Azúcar","🍬","Despensa","paquete_basico",null,null],[["edulcorante","estevia","sacarina"],"Edulcorante","🍬","Despensa","paquete_basico",null,null],[["miel"],"Miel","🍯","Despensa","bote_basico",null,null],[["cacao puro en polvo","cacao puro","cacao en polvo","cacao desgrasado"],"Cacao en polvo","🍫","Despensa","bote_basico",null,null],[["chocolate","cacao","cocoa","nocilla"],"Chocolate/cacao","🍫","Despensa","tableta",null,null],[["ketchup zero","ketchup","catsup"],"Ketchup","🍅","Despensa","bote_basico",null,null],[["nuez","nueces","almendra","pistacho","anacardo","avellana","frutos secos","pasa","uva pasa","ciruela pasa","semillas","pinon","pinones"],"Frutos secos","🥜","Despensa","bolsa_secos",null,null],[["semilla de lino","linaza"],"Lino","🌰","Despensa","paquete_basico",null,null],[["semilla de anis"],"Anís","🌰","Despensa","especia",null,null],[["semilla de cilantro"],"Semilla de cilantro","🌰","Despensa","especia",null,null],[["chia"],"Chía","🌰","Despensa","paquete_basico",null,null],[["sesamo"],"Sésamo","🌰","Despensa","paquete_basico",null,null],[["semilla"],"Semillas","🌰","Despensa","paquete_basico",null,null],[["caldo"],"Caldo","🥣","Despensa","brick_caldo",null,null],[["vino"],"Vino","🍷","Despensa","botella",null,null],[["mermelada"],"Mermelada","🍓","Despensa","bote_basico",null,null],[["mostaza"],"Mostaza","🟡","Despensa","bote_basico",null,null],[["curry","pimenton","comino","azafran","canela","cayena","especias","clavo"],"Especias","🌶️","Despensa","especia",null,null],[["coco"],"Coco","🥥","Despensa","paquete_basico",null,null],[["gelatina"],"Gelatina","🍮","Despensa","paquete_basico",null,null],[["levadura","bicarbonato","polvo de hornear","polvo hornear","polvo para hornear"],"Levadura/bicarbonato","🧁","Despensa","paquete_basico",null,null],[["rape"],"Rape","🐟","Pescadería",null,null,null],[["lenguado"],"Lenguado","🐟","Pescadería",null,null,null],[["marisco"],"Marisco variado","🦐","Pescadería",null,null,null],[["pescado"],"Pescado","🐟","Pescadería",null,null,null],[["conejo"],"Conejo","🍖","Carnicería",null,null,null],[["mortadela"],"Mortadela","🥓","Carnicería",null,null,null],[["apio"],"Apio","🥬","Frutas y verduras",null,null,null],[["acelga"],"Acelgas","🥬","Frutas y verduras",null,null,null],[["alcachofa"],"Alcachofas","🌿","Frutas y verduras",null,null,null],[["berro"],"Berros","🥬","Frutas y verduras",null,null,null],[["endibia","endivia"],"Endibias","🥬","Frutas y verduras",null,null,null],[["hinojo"],"Hinojo","🌿","Frutas y verduras",null,null,null],[["germinado"],"Germinados","🌱","Frutas y verduras",null,null,null],[["guindilla"],"Guindilla","🌶️","Frutas y verduras",null,null,null],[["jalapeno","chile"],"Chile/jalapeño","🌶️","Frutas y verduras",null,null,null],[["col rizada","repollo","berza","lombarda","kale","col"],"Col/repollo","🥬","Frutas y verduras",null,null,null],[["granada"],"Granada","🔴","Frutas y verduras",null,null,null],[["higo"],"Higos","🟣","Frutas y verduras",null,null,null],[["sandia"],"Sandía","🍉","Frutas y verduras",null,null,null],[["menestra"],"Menestra de verduras","🥗","Frutas y verduras",null,null,null],[["chalota"],"Chalotas","🧅","Frutas y verduras",null,null,null],[["ajete"],"Ajetes","🧄","Frutas y verduras",null,null,null],[["ricotta","ricota","mascarpone","cottage"],"Queso fresco (ricotta/cottage)","🧀","Huevos y lácteos",null,null,null],[["cuajada"],"Cuajada","🥛","Huevos y lácteos",null,null,null],[["natillas","natilla"],"Natillas","🍮","Huevos y lácteos",null,null,null],[["bebida vegetal","bebida de avena","leche vegetal","bebida a base de almendra","bebida de almendra"],"Bebida vegetal","🥛","Huevos y lácteos",null,null,null],[["galleta"],"Galletas","🍪","Despensa",null,null,null],[["tortilla de trigo","tortillas de trigo","tortilla de maiz"],"Tortillas/wraps","🌯","Legumbres y cereales",null,null,null],[["oblea"],"Obleas","🥟","Legumbres y cereales",null,null,null],[["focaccia"],"Focaccia","🍞","Legumbres y cereales",null,null,null],[["judias pintas","judia pinta","alubia pinta","frijol pinto"],"Alubias pintas","🫘","Legumbres y cereales",null,null,null],[["proteina en polvo","proteina de suero","proteina aislada","whey","caseina"],"Proteína en polvo","🥤","Despensa",null,null,null],[["bechamel"],"Bechamel","🥫","Despensa",null,null,null],[["mayonesa"],"Mayonesa","🥫","Despensa",null,null,null],[["pesto"],"Pesto","🥫","Despensa",null,null,null],[["vinagreta"],"Vinagreta","🥫","Despensa",null,null,null],[["alcaparra"],"Alcaparras","🫒","Despensa",null,null,null],[["palmito"],"Palmitos","🥫","Despensa",null,null,null],[["miso"],"Miso","🍜","Despensa",null,null,null],[["pipas de girasol","pipa de girasol","semilla de girasol"],"Pipas de girasol","🌻","Despensa",null,null,null],[["pipas de calabaza","pipa de calabaza","semilla de calabaza"],"Pipas de calabaza","🎃","Despensa",null,null,null],[["margarina"],"Margarina","🧈","Despensa",null,null,null],[["pepinillo"],"Pepinillos","🥒","Despensa",null,null,null],[["helado"],"Helado","🍨","Despensa",null,null,null],[["licor"],"Licor","🍸","Despensa",null,null,null],[["pate de higado","pate"],"Paté","🥫","Despensa",null,null,null]];
 
 // Matching idéntico al script: gana la coincidencia más a la IZQUIERDA del texto
 // y, a igual posición, la clave más LARGA. Tolera plurales (almendra→almendras).
@@ -14817,7 +15011,9 @@ function _fmtCompra(e, c){
 // El cambio de receta con gemas debe respetar los rechazos/alergias igual que
 // la generación: sin esto, un paciente que rechaza pescado podía traerse un
 // salmón con un cambio (fuga detectada jul-2026, casos Joselyn/Virginia).
-const _RECH_EXP={"pescado":["abadejo","anchoa","anguila","atun","bacalao","besugo","bonito","boqueron","caballa","dorada","emperador","gulas","huevas","jurel","lenguado","lubina","merluza","mero","mojama","palitos de cangrejo","palitos de mar","palometa","panga","perca","pescadilla","pescado","pez espada","rape","rodaballo","salmon","salmonete","sardina","surimi","tilapia","trucha","ventresca"],"pescados":["abadejo","anchoa","anguila","atun","bacalao","besugo","bonito","boqueron","caballa","dorada","emperador","gulas","huevas","jurel","lenguado","lubina","merluza","mero","mojama","palitos de cangrejo","palitos de mar","palometa","panga","perca","pescadilla","pescado","pez espada","rape","rodaballo","salmon","salmonete","sardina","surimi","tilapia","trucha","ventresca"],"marisco":["almeja","berberecho","bogavante","calamar","cangrejo","carabinero","centollo","chipiron","chirla","cigala","coquina","gamba","langosta","langostino","marisco","mejillon","navaja","necora","ostra","percebe","pulpo","quisquilla","sepia","vieira","zamburina"],"mariscos":["almeja","berberecho","bogavante","calamar","cangrejo","carabinero","centollo","chipiron","chirla","cigala","coquina","gamba","langosta","langostino","marisco","mejillon","navaja","necora","ostra","percebe","pulpo","quisquilla","sepia","vieira","zamburina"],"carne":["albondiga","bacon","beicon","buey","butifarra","carne","carrillada","cerdo","chorizo","chuleta","codillo","conejo","contramuslo","cordero","costilla","embutido","entrecot","fiambre","hamburguesa","jamon","lomo","longaniza","morcilla","mortadela","muslo","panceta","pato","pavo","pechuga","pollo","presa","rabo","salami","salchicha","salchichon","solomillo","ternera","tocino","vaca","vacuno"],"carnes":["albondiga","bacon","beicon","buey","butifarra","carne","carrillada","cerdo","chorizo","chuleta","codillo","conejo","contramuslo","cordero","costilla","embutido","entrecot","fiambre","hamburguesa","jamon","lomo","longaniza","morcilla","mortadela","muslo","panceta","pato","pavo","pechuga","pollo","presa","rabo","salami","salchicha","salchichon","solomillo","ternera","tocino","vaca","vacuno"],"huevo":["clara","flan","frittata","huevo","mayonesa","merengue","quiche","revuelto","tortilla espanola","tortilla francesa","yema"],"huevos":["clara","flan","frittata","huevo","mayonesa","merengue","quiche","revuelto","tortilla espanola","tortilla francesa","yema"],"lacteo":["bechamel","burgos","cheddar","cottage","cuajada","emmental","feta","gouda","helado","kefir","lacteo","leche","mantequilla","mascarpone","mozzarella","nata","natillas","parmesano","queso","queso crema","queso fresco","requeson","ricotta","yogur","yogurt"],"lacteos":["bechamel","burgos","cheddar","cottage","cuajada","emmental","feta","gouda","helado","kefir","lacteo","leche","mantequilla","mascarpone","mozzarella","nata","natillas","parmesano","queso","queso crema","queso fresco","requeson","ricotta","yogur","yogurt"],"lactosa":["bechamel","burgos","cheddar","cottage","cuajada","emmental","feta","gouda","helado","kefir","lacteo","leche","mantequilla","mascarpone","mozzarella","nata","natillas","parmesano","queso","queso crema","queso fresco","requeson","ricotta","yogur","yogurt"],"gluten":["baguette","biscote","bizcocho","bocadillo","canelon","cebada","centeno","colines","cous cous","crepe","croqueta","cuscus","empanada","empanadilla","espagueti","fideo","focaccia","galleta","gluten","gnocchi","gofre","harina","hojaldre","lasana","macarron","magdalena","masa","noodles","noquis","pan","pan rallado","pasta","picos","pizza","raviolis","rebozado","seitan","tallarin","tostada","trigo","wrap"],"trigo":["baguette","biscote","bizcocho","bocadillo","canelon","cebada","centeno","colines","cous cous","crepe","croqueta","cuscus","empanada","empanadilla","espagueti","fideo","focaccia","galleta","gluten","gnocchi","gofre","harina","hojaldre","lasana","macarron","magdalena","masa","noodles","noquis","pan","pan rallado","pasta","picos","pizza","raviolis","rebozado","seitan","tallarin","tostada","trigo","wrap"],"fruto seco":["almendra","anacardo","avellana","cacahuete","castana","fruto seco","frutos secos","macadamia","mani","nueces","nuez","pecana","pinon","pistacho"],"frutos secos":["almendra","anacardo","avellana","cacahuete","castana","fruto seco","frutos secos","macadamia","mani","nueces","nuez","pecana","pinon","pistacho"],"frutoseco":["almendra","anacardo","avellana","cacahuete","castana","fruto seco","frutos secos","macadamia","mani","nueces","nuez","pecana","pinon","pistacho"],"soja":["edamame","miso","soja","soja texturizada","tempeh","tofu"],"legumbre":["alubia","frijol","garbanzo","haba","judia blanca","judion","legumbre","lenteja"],"legumbres":["alubia","frijol","garbanzo","haba","judia blanca","judion","legumbre","lenteja"],"casqueria":["callos","casqueria","higado","molleja","rinon","sesos"],"conserva":["conserva","lata"],"conservas":["conserva","lata"],"baina":["judia verde","vaina"],"bainas":["judia verde","vaina"],"vinagrillo":["encurtido","pepinillo","vinagre"],"vinagrillos":["encurtido","pepinillo","vinagre"],"col":["berza","col","coliflor","kale","lombarda","repollo"],"coles":["berza","col","coliflor","kale","lombarda","repollo"]};
+// NO editar a mano: regenerar con `py exportar_canon_app.py --rech --escribir` (Drive, 07. App GBH)
+// si cambia _RECHAZO_EXPANSION; `--rech --comprobar` dice si esta línea sigue al día (PEND-2026-306).
+const _RECH_EXP={"pescado":["abadejo","anchoa","anguila","atun","bacalao","besugo","bonito","boqueron","caballa","dorada","emperador","gulas","huevas","jurel","lenguado","lubina","merluza","mero","mojama","palitos de cangrejo","palitos de mar","palometa","panga","perca","pescadilla","pescado","pez espada","rape","rodaballo","salmon","salmonete","sardina","surimi","tilapia","trucha","ventresca"],"pescados":["abadejo","anchoa","anguila","atun","bacalao","besugo","bonito","boqueron","caballa","dorada","emperador","gulas","huevas","jurel","lenguado","lubina","merluza","mero","mojama","palitos de cangrejo","palitos de mar","palometa","panga","perca","pescadilla","pescado","pez espada","rape","rodaballo","salmon","salmonete","sardina","surimi","tilapia","trucha","ventresca"],"marisco":["almeja","berberecho","bogavante","calamar","cangrejo","carabinero","centollo","chipiron","chirla","cigala","coquina","gamba","langosta","langostino","marisco","mejillon","navaja","necora","ostra","percebe","pulpo","quisquilla","sepia","vieira","zamburina"],"mariscos":["almeja","berberecho","bogavante","calamar","cangrejo","carabinero","centollo","chipiron","chirla","cigala","coquina","gamba","langosta","langostino","marisco","mejillon","navaja","necora","ostra","percebe","pulpo","quisquilla","sepia","vieira","zamburina"],"carne":["albondiga","bacon","beicon","buey","butifarra","carne","carrillada","cerdo","chorizo","chuleta","codillo","conejo","contramuslo","cordero","costilla","embutido","entrecot","fiambre","hamburguesa","jamon","lomo","longaniza","morcilla","mortadela","muslo","panceta","pato","pavo","pechuga","pollo","presa","rabo","salami","salchicha","salchichon","solomillo","ternera","tocino","vaca","vacuno"],"carnes":["albondiga","bacon","beicon","buey","butifarra","carne","carrillada","cerdo","chorizo","chuleta","codillo","conejo","contramuslo","cordero","costilla","embutido","entrecot","fiambre","hamburguesa","jamon","lomo","longaniza","morcilla","mortadela","muslo","panceta","pato","pavo","pechuga","pollo","presa","rabo","salami","salchicha","salchichon","solomillo","ternera","tocino","vaca","vacuno"],"huevo":["clara","flan","frittata","huevo","mayonesa","merengue","quiche","revuelto","tortilla espanola","tortilla francesa","yema"],"huevos":["clara","flan","frittata","huevo","mayonesa","merengue","quiche","revuelto","tortilla espanola","tortilla francesa","yema"],"lacteo":["bechamel","burgos","cheddar","cottage","cuajada","emmental","feta","gouda","helado","kefir","lacteo","leche","mantequilla","mascarpone","mozzarella","nata","natillas","parmesano","queso","queso crema","queso fresco","requeson","ricotta","yogur","yogurt"],"lacteos":["bechamel","burgos","cheddar","cottage","cuajada","emmental","feta","gouda","helado","kefir","lacteo","leche","mantequilla","mascarpone","mozzarella","nata","natillas","parmesano","queso","queso crema","queso fresco","requeson","ricotta","yogur","yogurt"],"lactosa":["bechamel","burgos","cheddar","cottage","cuajada","emmental","feta","gouda","helado","kefir","lacteo","leche","mantequilla","mascarpone","mozzarella","nata","natillas","parmesano","queso","queso crema","queso fresco","requeson","ricotta","yogur","yogurt"],"gluten":["baguette","biscote","bizcocho","bocadillo","canelon","cebada","centeno","colines","cous cous","crepe","croqueta","cuscus","empanada","empanadilla","espagueti","fideo","focaccia","galleta","gluten","gnocchi","gofre","harina","hojaldre","lasana","macarron","magdalena","masa","noodles","noquis","pan","pan rallado","pasta","picos","pizza","raviolis","rebozado","seitan","tallarin","tostada","trigo","wrap"],"trigo":["baguette","biscote","bizcocho","bocadillo","canelon","cebada","centeno","colines","cous cous","crepe","croqueta","cuscus","empanada","empanadilla","espagueti","fideo","focaccia","galleta","gluten","gnocchi","gofre","harina","hojaldre","lasana","macarron","magdalena","masa","noodles","noquis","pan","pan rallado","pasta","picos","pizza","raviolis","rebozado","seitan","tallarin","tostada","trigo","wrap"],"fruto seco":["almendra","anacardo","avellana","cacahuete","castana","fruto seco","frutos secos","macadamia","mani","nueces","nuez","pecana","pinon","pistacho"],"frutos secos":["almendra","anacardo","avellana","cacahuete","castana","fruto seco","frutos secos","macadamia","mani","nueces","nuez","pecana","pinon","pistacho"],"frutoseco":["almendra","anacardo","avellana","cacahuete","castana","fruto seco","frutos secos","macadamia","mani","nueces","nuez","pecana","pinon","pistacho"],"soja":["edamame","miso","soja","soja texturizada","tempeh","tofu"],"legumbre":["alubia","frijol","garbanzo","haba","hummus","humus","judia blanca","judion","legumbre","lenteja"],"legumbres":["alubia","frijol","garbanzo","haba","hummus","humus","judia blanca","judion","legumbre","lenteja"],"garbanzo":["garbanzo","hummus","humus"],"garbanzos":["garbanzo","hummus","humus"],"casqueria":["callos","casqueria","higado","molleja","rinon","sesos"],"conserva":["conserva","lata"],"conservas":["conserva","lata"],"baina":["judia verde","vaina"],"bainas":["judia verde","vaina"],"vinagrillo":["encurtido","pepinillo","vinagre"],"vinagrillos":["encurtido","pepinillo","vinagre"],"col":["berza","col","coliflor","kale","lombarda","repollo"],"coles":["berza","col","coliflor","kale","lombarda","repollo"]};
 const _RECH_STOP=new Set(["los","las","que","con","por","del","una","uno","este","esta","como","muy","para","the","and","alimentos","alimento","comida","comidas","ningun","ninguna","nada","tipo","tipos"]);
 function interpretarRechazados(notas){
   const pref={terms:new Set(), tipos:new Set()};
@@ -14991,7 +15187,7 @@ function agregarListaCompra(planJ, planB){
 // ─── Precios de ingredientes (GENERADO desde GBH_Precios_Ingredientes.xlsx) ───
 // NO editar a mano: regenerar con `py gbh_precios.py --js` si cambia el Excel.
 // Formato: nombre canónico → [€/kg, g por unidad, g si «al gusto»].
-const _PRECIOS_ING={"Aceite de oliva":[6,10,10],"Aceitunas":[5,10,12],"Acelgas":[2.2,150,0],"Aguacate":[5.5,150,65],"Ajetes":[8,15,0],"Ajo":[4.5,5,5],"Alcachofas":[3.5,120,0],"Alcaparras":[12,5,0],"Almejas":[9,10,0],"Alubias":[2.5,120,0],"Alubias pintas":[2.5,120,0],"Anchoas":[25,10,0],"Apio":[2,50,50],"Arroz":[1.6,80,70],"Atún":[12,60,0],"Avena":[2.2,40,0],"Azúcar":[1.1,10,0],"Bacalao":[15,150,0],"Bacon":[8.5,15,0],"Barritas de cereales":[8,25,0],"Bebida vegetal":[1.3,1000,100],"Bechamel":[3,50,0],"Berenjena":[1.3,250,0],"Berros":[12,20,0],"Boniato":[2,250,0],"Brócoli":[2.5,400,150],"Calabacín":[2,300,150],"Calabaza":[1.5,400,100],"Calamar":[13,150,100],"Caldo":[1.2,250,100],"Carne picada":[8,125,0],"Cebolla":[1.5,150,40],"Cerdo":[7.5,150,0],"Chalotas":[4,30,0],"Champiñones/setas":[3.5,20,120],"Chile/jalapeño":[6,15,2],"Chocolate/cacao":[12,10,16],"Chorizo":[10,30,50],"Cinta de lomo":[6.5,150,0],"Coco":[7,10,23],"Col/repollo":[1.5,800,100],"Coliflor":[2.2,800,0],"Conejo":[8.5,1200,0],"Cordero":[17,150,0],"Crema de cacahuete":[7,15,10],"Crema ácida":[5,10,0],"Cuajada":[3.5,125,0],"Cuscús":[2.5,60,0],"Dorada":[11,180,0],"Edulcorante":[15,2,1],"Endibias":[4,80,0],"Especias":[25,3,1],"Espinacas":[4.5,150,50],"Espárragos":[5,20,100],"Focaccia":[6,120,120],"Fresas":[4,15,90],"Fruta desecada":[8,10,0],"Frutos rojos":[9,10,40],"Frutos secos":[13,15,20],"Galletas":[4.5,15,0],"Gambas":[15,15,0],"Garbanzos":[2.5,120,80],"Gelatina":[15,10,0],"Germinados":[15,10,5],"Granada":[3,250,0],"Guindilla":[6,3,1],"Guisantes":[2.5,100,60],"Habas":[3,100,0],"Harina":[0.9,15,50],"Heura":[12,90,0],"Hierbas aromáticas":[25,5,2],"Higos":[6,40,0],"Hinojo":[3,250,0],"Huevos":[5,60,55],"Hummus":[6.5,60,0],"Jamón":[12,15,40],"Jengibre":[6,10,2],"Judías verdes":[4.85,100,90],"Kiwi":[3.5,75,0],"Leche":[1.05,1000,113],"Lechuga/hojas verdes":[4,300,60],"Lenguado":[13,150,0],"Lentejas":[2.5,120,0],"Levadura/bicarbonato":[8,8,16],"Lima":[3,70,0],"Limón":[2,100,10],"Lubina":[12,180,0],"Mahonesa":[4,15,0],"Maicena":[2.5,10,10],"Mango":[3.5,300,0],"Mantequilla":[10,10,18],"Manzana":[2.2,180,0],"Marisco variado":[14,75,0],"Mayonesa":[4,15,16],"Maíz":[3.5,70,0],"Mejillones":[4,15,0],"Melocotón":[2.5,150,0],"Melón":[1.5,2000,0],"Menestra de verduras":[2.5,100,0],"Merluza":[12,150,0],"Mermelada":[4.5,20,0],"Mero":[18,150,0],"Miel":[8,15,9],"Morcilla":[7,60,0],"Mortadela":[6,20,0],"Mostaza":[4,10,20],"Naranja/mandarina":[1.8,180,150],"Nata":[3,200,50],"Natillas":[2.5,125,0],"Obleas":[8,15,0],"Palmitos":[8,30,0],"Pan/tostadas":[3.8,30,60],"Papaya":[4.5,800,0],"Pasta":[1.6,80,72],"Pasta de sésamo (tahini)":[10,15,0],"Patata":[1.4,180,165],"Pavo":[8.5,150,50],"Pepino":[1.1,300,0],"Pera":[2.2,160,0],"Pescado":[12,150,0],"Pesto":[8,15,0],"Pimienta":[30,2,0.5],"Pimiento":[2.3,150,75],"Piña":[2,1500,50],"Plátano":[2.5,120,0],"Pollo":[7.3,150,170],"Proteína en polvo":[25,30,0],"Puerro":[2.2,150,0],"Pulpo":[24,150,0],"Queso":[11,20,30],"Queso fresco (ricotta/cottage)":[7,250,0],"Quinoa":[5,60,0],"Rape":[18,150,0],"Sal":[0.6,2,1],"Salchichas":[5.5,50,0],"Salmón":[22,180,0],"Salsa de soja":[4,15,5],"Sandía":[1.2,2500,0],"Sardinas":[7,60,0],"Seitán":[9,125,0],"Semillas":[8,10,3],"Sirope de agave":[8,7,0],"Soja":[4,15,5],"Surimi":[6,17,0],"Ternera":[13.5,150,175],"Tofu":[7,125,0],"Tomate":[2.2,150,75],"Tortillas/wraps":[6,45,75],"Trucha":[9,200,0],"Vainilla":[40,4,1],"Vinagre":[1.5,10,5],"Vinagreta":[5,15,10],"Vino":[3,150,50],"Yogur":[2.5,125,0],"Yuca":[2.5,300,0],"Zanahoria":[1.2,100,70]};
+const _PRECIOS_ING={"Aceite de oliva":[6,10,10],"Aceitunas":[5,10,12],"Acelgas":[2.2,150,0],"Aguacate":[5.5,150,65],"Ajetes":[8,15,0],"Ajo":[4.5,5,5],"Alcachofas":[3.5,120,0],"Alcaparras":[12,5,0],"Almejas":[9,10,0],"Alubias":[2.5,120,0],"Alubias pintas":[2.5,120,0],"Anchoas":[25,10,0],"Anís":[25,10,3],"Apio":[2,50,50],"Arroz":[1.6,80,70],"Atún":[12,60,0],"Avena":[2.2,40,0],"Azúcar":[1.1,10,0],"Bacalao":[15,150,0],"Bacon":[8.5,15,0],"Barritas de cereales":[8,25,0],"Bebida vegetal":[1.3,1000,100],"Bechamel":[3,50,0],"Berenjena":[1.3,250,0],"Berros":[12,20,0],"Boniato":[2,250,0],"Brócoli":[2.5,400,150],"Caballa":[12,60,0],"Calabacín":[2,300,150],"Calabaza":[1.5,400,100],"Calamar":[13,150,100],"Caldo":[1.2,250,100],"Carne picada":[8,125,0],"Cebolla":[1.5,150,40],"Cerdo":[7.5,150,0],"Chalotas":[4,30,0],"Champiñones/setas":[3.5,20,120],"Chile/jalapeño":[6,15,2],"Chocolate/cacao":[12,10,16],"Chorizo":[10,30,50],"Chía":[8,10,3],"Cinta de lomo":[6.5,150,0],"Coco":[7,10,23],"Col/repollo":[1.5,800,100],"Coliflor":[2.2,800,0],"Conejo":[8.5,1200,0],"Cordero":[17,150,0],"Crema de cacahuete":[7,15,10],"Crema ácida":[5,10,0],"Cuajada":[3.5,125,0],"Cuscús":[2.5,60,0],"Dorada":[11,180,0],"Edulcorante":[15,2,1],"Endibias":[4,80,0],"Especias":[25,3,1],"Espinacas":[4.5,150,50],"Espárragos":[5,20,100],"Focaccia":[6,120,120],"Fresas":[4,15,90],"Fruta desecada":[8,10,0],"Frutos rojos":[9,10,40],"Frutos secos":[13,15,20],"Galletas":[4.5,15,0],"Gambas":[15,15,0],"Garbanzos":[2.5,120,80],"Gelatina":[15,10,0],"Germinados":[15,10,5],"Granada":[3,250,0],"Guindilla":[6,3,1],"Guisantes":[2.5,100,60],"Habas":[3,100,0],"Harina":[0.9,15,50],"Helado":[5,60,0],"Heura":[12,90,0],"Hierbas aromáticas":[25,5,2],"Higos":[6,40,0],"Hinojo":[3,250,0],"Huevos":[5,60,55],"Hummus":[6.5,60,0],"Jamón":[12,15,40],"Jengibre":[6,10,2],"Judías verdes":[4.85,100,90],"Kiwi":[3.5,75,0],"Konjac":[9,200,0],"Leche":[1.05,1000,113],"Lechuga/hojas verdes":[4,300,60],"Lenguado":[13,150,0],"Lentejas":[2.5,120,0],"Levadura/bicarbonato":[8,8,16],"Licor":[15,15,0],"Lima":[3,70,0],"Limón":[2,100,10],"Lino":[8,10,3],"Lubina":[12,180,0],"Mahonesa":[4,15,0],"Maicena":[2.5,10,10],"Mango":[3.5,300,0],"Mantequilla":[10,10,18],"Manzana":[2.2,180,0],"Margarina":[4,10,0],"Marisco variado":[14,75,0],"Mayonesa":[4,15,16],"Maíz":[3.5,70,0],"Mejillones":[4,15,0],"Melocotón":[2.5,150,0],"Melva":[14,60,0],"Melón":[1.5,2000,0],"Menestra de verduras":[2.5,100,0],"Merluza":[12,150,0],"Mermelada":[4.5,20,0],"Mero":[18,150,0],"Miel":[8,15,9],"Miso":[20,15,0],"Morcilla":[7,60,0],"Mortadela":[6,20,0],"Mostaza":[4,10,20],"Naranja/mandarina":[1.8,180,150],"Nata":[3,200,50],"Natillas":[2.5,125,0],"Obleas":[8,15,0],"Palmitos":[8,30,0],"Pan/tostadas":[3.8,30,60],"Papaya":[4.5,800,0],"Pasta":[1.6,80,72],"Pasta de sésamo (tahini)":[10,15,0],"Patata":[1.4,180,165],"Paté":[10,20,0],"Pavo":[8.5,150,50],"Pepinillos":[4,15,0],"Pepino":[1.1,300,0],"Pera":[2.2,160,0],"Pescado":[12,150,0],"Pesto":[8,15,0],"Pimienta":[30,2,0.5],"Pimiento":[2.3,150,75],"Pipas de calabaza":[12,20,0],"Pipas de girasol":[5,20,0],"Piña":[2,1500,50],"Plátano":[2.5,120,0],"Pollo":[7.3,150,170],"Proteína en polvo":[25,30,0],"Puerro":[2.2,150,0],"Pulpo":[24,150,0],"Queso":[11,20,30],"Queso fresco (ricotta/cottage)":[7,250,0],"Quinoa":[5,60,0],"Rape":[18,150,0],"Sal":[0.6,2,1],"Salchichas":[5.5,50,0],"Salmón":[22,180,0],"Salsa de soja":[4,15,5],"Sandía":[1.2,2500,0],"Sardinas":[7,60,0],"Seitán":[9,125,0],"Semilla de cilantro":[25,10,3],"Semillas":[8,10,3],"Sirope de agave":[8,7,0],"Soja":[4,15,5],"Surimi":[6,17,0],"Sésamo":[8,10,3],"Ternera":[13.5,150,175],"Tinta de calamar":[60,4,0],"Tofu":[7,125,0],"Tomate":[2.2,150,75],"Tortillas/wraps":[6,45,75],"Trucha":[9,200,0],"Vainilla":[40,4,1],"Vinagre":[1.5,10,5],"Vinagreta":[5,15,10],"Vino":[3,150,50],"Yogur":[2.5,125,0],"Yuca":[2.5,300,0],"Zanahoria":[1.2,100,70]};
 
 // Coste estimado de la lista: la MISMA base de precios que el PDF (el Excel
 // GBH_Precios_Ingredientes.xlsx es la única fuente; esto es su export --js).
@@ -16357,96 +16553,45 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
     }
     const mapa = await cargarRecetasCache();
     const recetas = Object.values(mapa);
+    // ── Qué receta sale: src/cambioReceta.js (28-sep-2026) ────────────────────
+    // DURO: la franja, la lista del servidor (plan_json.cambio_receta: dieta,
+    // sin gluten, sin carne, desayuno realista, rechazados y alergias de su
+    // pauta y «solo sencillas»), los rechazados de patient_config.notas (lo
+    // que el paciente apunta en «Alimentos que no quieres»), las descartadas 🗑️
+    // y que la ración quepa en 0,70-1,40. El tipo y los macros solo ordenan.
+    // Antes las notas se leían de profile.notas, una columna que no existe: el
+    // filtro de alergias no vetaba nada. Cada hueco recuerda lo ya enseñado.
     const tipoActual = tomaReceta.tipo;
-    const kcalActual = tomaReceta.calorias||0;
-    const nombreActual = normNombre(tomaReceta.nombre);
-    // ── Franja de comida (Categoria) que DEBE respetarse ──────────────────────
-    // La toma que se está cambiando determina la franja: desayuno/almuerzo/
-    // merienda NO puede sustituirse por un plato de comida/cena (p. ej. unas
-    // tortitas no deben convertirse en una ensalada de arroz). El recetario solo
-    // tiene dos categorías: 'Desayuno/Almuerzo/Merienda' y 'Comida/Cena'.
-    const catBucket = (r)=>{
-      const c = String(r.categoria||r.Categoria||r['categoría']||'').toLowerCase();
-      if(/comida|cena/.test(c)) return 'cd';
-      if(/desayuno|almuerzo|merienda/.test(c)) return 'dam';
-      return null;
-    };
-    const hayCategorias = recetas.some(r=>catBucket(r)!==null);   // red de seguridad si faltara el dato
-    const bucketObj = (openToma==='Comida'||openToma==='Cena') ? 'cd' : 'dam';
-    const nomDe    = (r)=>normNombre(r.nombre||r.nombre_receta||'');
-    const kcalDe   = (r)=>parseFloat(r.calorias||r.calorias_totales)||0;
-    const okTipo   = (r)=>(r.tipo||'')===tipoActual;
-    const okFranja = (r)=> !hayCategorias || catBucket(r)===bucketObj; // franja: restricción DURA (nunca se relaja)
-    const okOtra   = (r)=>nomDe(r)!==nombreActual;
-    // ── Objetivo calórico de la toma (el que fijó el generador) ─────────────
-    const kcalObjetivo = tomaReceta.kcal_objetivo || kcalActual || 0;
-    // COMPATIBILIDAD POR RACIÓN (restricción DURA, nunca se relaja): la
-    // candidata solo vale si escalando su ración dentro del MISMO rango que
-    // usa el generador (RACION_MIN/MAX = 0.70–1.40) clava el objetivo de la
-    // toma. Esto elimina de raíz el fallo del bizcocho→"2 naranjas y 2
-    // limones": una receta de 70 kcal jamás puede cubrir una merienda de 250
-    // (necesitaría ración ×3.6) y por tanto queda fuera del pool. Sustituye
-    // al antiguo ±20% en crudo, que además se ABANDONABA en los niveles 2 y 4
-    // de la cascada, dejando pasar cualquier kcal.
-    const F_MIN=0.70, F_MAX=1.40;
-    const okEscala = (r)=>{const k=kcalDe(r); if(!kcalObjetivo||!k) return false;
-      const f=kcalObjetivo/k; return f>=F_MIN&&f<=F_MAX;};
-    // PERFIL DE MACROS: la sustitución debe conservar las PROPORCIONES de
-    // macronutrientes, no solo las kcal. Se compara el reparto calórico
-    // (P×4, H×4, G×9 sobre el total) y se mide la distancia L1 entre
-    // perfiles: 0 = idéntico reparto, 2 = opuesto. Un bizcocho keto
-    // (43% grasa) nunca casará con fruta pura (0% grasa) en el nivel
-    // estricto, y como mucho en el laxo si no existe nada mejor.
-    const perfilDe = (p,h,g)=>{const kc=p*4+h*4+g*9;
-      return kc>0?[p*4/kc,h*4/kc,g*9/kc]:null;};
-    const perfilActual = perfilDe(parseFloat(tomaReceta.proteinas_g)||0,
-                                  parseFloat(tomaReceta.hidratos_g)||0,
-                                  parseFloat(tomaReceta.grasas_g)||0);
-    const distMacro = (r)=>{
-      const q = perfilDe(parseFloat(r.proteinas_g)||0,
-                         parseFloat(r.hidratos_g)||0,
-                         parseFloat(r.grasas_g)||0);
-      if(!perfilActual||!q) return 0.5;   // sin datos: ni premia ni descarta
-      return Math.abs(q[0]-perfilActual[0])+Math.abs(q[1]-perfilActual[1])+Math.abs(q[2]-perfilActual[2]);
-    };
-    const MACRO_ESTRICTO=0.35, MACRO_LAXO=0.60;
-    // SEGURIDAD: alimentos rechazados/alergias del paciente (notas del perfil).
-    // Filtro DURO en TODOS los niveles de relajación — nunca se sirve un rechazado.
-    const rechPref = interpretarRechazados(profile?.notas);
-    const okRech   = (r)=>!recetaRechazadaJS(r, rechPref);
-    // DESCARTADAS: la receta que el paciente marcó con 🗑️ no puede volver a
-    // salirle tampoco al cambiar con gemas — filtro DURO como los rechazados.
-    const descSet = new Set((descartadas||[]).map(r=>normNombre(r.nombre||'')));
-    const okNoDesc = (r)=>!descSet.has(nomDe(r));
-    // Base común: franja + rechazados + descartadas + escala son SIEMPRE duras.
-    // Solo se relajan el tipo (carne/pescado/postre…) y el umbral de macros:
-    //   1) mismo tipo + macros muy parecidos
-    //   2) macros muy parecidos (otro tipo, misma franja)
-    //   3) mismo tipo + macros razonables
-    //   4) macros razonables
-    // Si ni así hay nada, se avisa "Sin alternativa" (y NO se cobran gemas):
-    // mejor no cambiar que servir un despropósito nutricional.
-    const baseCands = recetas.filter(r=>okRech(r)&&okNoDesc(r)&&okFranja(r)&&okOtra(r)&&okEscala(r));
-    const pools = [
-      baseCands.filter(r=>okTipo(r)&&distMacro(r)<=MACRO_ESTRICTO),
-      baseCands.filter(r=>distMacro(r)<=MACRO_ESTRICTO),
-      baseCands.filter(r=>okTipo(r)&&distMacro(r)<=MACRO_LAXO),
-      baseCands.filter(r=>distMacro(r)<=MACRO_LAXO),
-    ];
-    let pool = pools.find(p=>p.length) || [];
-    if(!pool.length){
+    const kcalObjetivo = tomaReceta.kcal_objetivo || tomaReceta.calorias || 0;
+    let almacen = null;
+    try{ almacen = window.localStorage; }catch(e){ almacen = null; }
+    const memClave = claveMemoriaCambio(profile.id, plan?.semana ?? '', openToma, selDay);
+    const mem = leerMemoriaCambio(almacen, memClave, tomaReceta);
+    const enPlan = new Set();   // lo que ya sale en la semana (fuera de este hueco): se deja para después
+    for(const tm of PLAN_TOMAS){
+      for(const [d,c] of Object.entries(planJ?.[tm]||{})){
+        if(tm===openToma && String(d)===String(selDay)) continue;
+        if(c?.Nombre_Receta) enPlan.add(normNombreCambio(c.Nombre_Receta));
+        (Array.isArray(c?.platos)?c.platos:[]).forEach(pl=>{ if(pl?.Nombre_Receta) enPlan.add(normNombreCambio(pl.Nombre_Receta)); });
+      }
+    }
+    const rechPref = interpretarRechazados(config?.notas);
+    const res = elegirRecetaCambio({
+      recetas, actual:tomaReceta, ancla:mem.ancla, toma:openToma,
+      permitidas: permitidasDePlanes(planes, openToma),
+      rechazada:  (r)=>recetaRechazadaJS(r, rechPref),
+      descartadas:new Set((descartadas||[]).map(r=>normNombreCambio(r.nombre||''))),
+      favoritas:  new Set((savedRecipes||[]).map(r=>normNombreCambio(r.nombre||r.nombre_receta||''))),
+      vistas:mem.vistas, enPlan,
+    });
+    // Si no hay nada que ofrecer se avisa «Sin alternativa» y NO se cobran
+    // gemas: mejor no cambiar que servir un despropósito o un alimento vetado.
+    if(!res.receta){
       showT&&showT({icon:"🚫",title:lang==='en'?'No alternative':'Sin alternativa',sub:lang==='en'?'No similar recipe available':'No hay receta similar disponible'});
       return;
     }
-    // Sorteo entre las 8 candidatas de macros MÁS parecidos (variedad sin
-    // perder coherencia), ponderado ×4 hacia las FAVORITAS del paciente —
-    // mismo FAVORITO_BOOST que el generador: sus preferencias mandan.
-    pool = pool.slice().sort((a,b)=>distMacro(a)-distMacro(b)).slice(0,8);
-    const favSet = new Set((savedRecipes||[]).map(r=>normNombre(r.nombre||r.nombre_receta||'')));
-    const pesos = pool.map(r=>favSet.has(nomDe(r))?4:1);
-    const totPeso = pesos.reduce((s,x)=>s+x,0);
-    let rnd = Math.random()*totPeso, acc=0, elegida=pool[pool.length-1];
-    for(let i=0;i<pool.length;i++){ acc+=pesos[i]; if(rnd<=acc){ elegida=pool[i]; break; } }
+    const elegida = res.receta;
+    guardarMemoriaCambio(almacen, memClave, {...mem, actual:tomaReceta, elegida, reinicio:res.reinicio});
     // Descontar gemas (0 durante la prueba: invita la casa)
     if(costeCambio>0){
       const newGems = gems - costeCambio;
@@ -16455,17 +16600,11 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
       sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:newGems});
     }
     sfx&&sfx("recipe");
-    // ── Escalar la nueva receta a las kcal de la toma. El pool ya garantiza
-    //    que el factor cae en 0.70–1.40 (rango RACION_MIN/MAX del generador),
-    //    así que el clamp es solo un cinturón de seguridad. ──
+    // ── La ración: el factor de elegirRecetaCambio (0,70-1,40 en pasos de
+    //    0,05, el rango RACION_MIN/MAX del generador). ──
     const kcalObj = kcalObjetivo;
     const kcalBase = parseFloat(elegida.calorias||elegida.calorias_totales)||0;
-    let f = 1;
-    if(kcalObj>0 && kcalBase>0){
-      f = Math.max(F_MIN, Math.min(F_MAX, kcalObj/kcalBase));
-      f = Math.round(f*20)/20; // pasos de 0,05
-      if(Math.abs(f-1)<0.05) f = 1;
-    }
+    const f = res.factor;
     setTomaReceta({
       nombre:       elegida.nombre||elegida.nombre_receta||'',
       tipo:         elegida.tipo||tipoActual,
