@@ -55,14 +55,53 @@ export const CASOS = [
     ok(!r.some((a) => dia(a) === '2026-09-28' && (a.tipo === 'comidas' || a.tipo === 'registro')));
     ok(r.some((a) => dia(a) === '2026-09-29' && a.tipo === 'comidas'));
   } },
-  { que: 'sin avisos de comida: el de las 20:00 dice lo que falta y nombra la racha, sin culpa', prueba: () => {
+  { que: 'sin avisos de comida: el de las 20:00 dice lo que falta, y la racha va en su propio aviso de la noche', prueba: () => {
     const plan = { Desayuno: TODOS, Comida: TODOS, Cena: TODOS };
     const r = planificarAvisos({ ahora: F(28, 18), planTomas: plan, marcadasHoy: { Comida: 'seguida' }, racha: 5, prefs: { pesaje: false, tomas: false } });
-    igual(r.map((a) => `${dia(a)} ${hhmm(a)} ${a.tipo}`), ['2026-09-28 20:00 registro', '2026-09-29 20:00 registro', '2026-09-30 20:00 registro']);
+    igual(r.map((a) => `${dia(a)} ${hhmm(a)} ${a.tipo}`),
+      ['2026-09-28 20:00 registro', '2026-09-28 21:30 racha', '2026-09-29 20:00 registro', '2026-09-30 20:00 registro']);
     igual(r[0].titulo, '🐑 ¿Qué tal ha ido hoy?');
+    igual(r[0].cuerpo, 'Te quedan el desayuno y la cena por marcar.', 'la racha no se repite a las 20:00');
+    igual(r[2].cuerpo, 'Marca lo que has comido: son diez segundos.', 'mañana no se sabe qué faltará');
+    ok(!/fallad|no has|perder/i.test(r.map((a) => `${a.titulo} ${a.cuerpo}`).join(' ')), 'Bo no culpabiliza');
+  } },
+  { que: 'con el aviso de racha apagado, el de las 20:00 vuelve a nombrarla', prueba: () => {
+    const r = planificarAvisos({ ahora: F(28, 18), planTomas: { Desayuno: TODOS, Cena: TODOS }, racha: 5, prefs: { pesaje: false, racha: false } });
     igual(r[0].cuerpo, 'Te quedan el desayuno y la cena por marcar. Tu racha de 5 días te espera.');
-    igual(r[1].cuerpo, 'Marca lo que has comido: son diez segundos.', 'mañana no se sabe qué faltará');
-    ok(!/fallad|no has|perder/i.test(r.map((a) => a.cuerpo).join(' ')), 'Bo no culpabiliza');
+    ok(!r.some((a) => a.tipo === 'racha'));
+  } },
+  { que: 'racha de noche: hoy abierto → hoy a las 21:30, en positivo; mañana no se sabe y no se programa', prueba: () => {
+    const r = planificarAvisos({ ahora: F(28, 9), racha: 12, prefs: { registro: false, pesaje: false, tomas: false } });
+    igual(r.map((a) => `${dia(a)} ${hhmm(a)} ${a.tipo}`), ['2026-09-28 21:30 racha']);
+    igual(r[0].titulo, '🔥 Tu racha de 12 días sigue viva');
+    igual(r[0].cuerpo, 'Marca lo de hoy antes de medianoche y mañana serán 13.');
+    igual(r[0].destino, 'plan');
+  } },
+  { que: 'racha de noche: hoy ya cerrado → nada hoy y la de mañana con la racha que ya incluye hoy', prueba: () => {
+    const r = planificarAvisos({ ahora: F(28, 20), dietaHoy: true, racha: 13, prefs: { registro: false, pesaje: false, tomas: false } });
+    igual(r.map((a) => `${dia(a)} ${hhmm(a)} ${a.tipo}`), ['2026-09-29 21:30 racha']);
+    igual(r[0].titulo, '🔥 Tu racha de 13 días sigue viva');
+  } },
+  { que: 'racha de noche: con escudo, en pausa o con menos de 3 días, no hay aviso', prueba: () => {
+    const base = { ahora: F(28, 9), prefs: { registro: false, pesaje: false, tomas: false } };
+    igual(planificarAvisos({ ...base, racha: 12, escudos: 1 }).length, 0, 'escudo');
+    igual(planificarAvisos({ ...base, racha: 12, pausas: [{ d: '2026-09-27', h: '2026-10-02' }] }).length, 0, 'pausa');
+    igual(planificarAvisos({ ...base, racha: 2 }).length, 0, 'racha corta');
+    igual(planificarAvisos({ ...base, racha: 12, pausas: [{ d: '2026-10-01', h: '2026-10-05' }] }).length, 1, 'una pausa que empieza después no la tapa');
+  } },
+  { que: 'racha de noche: si el paciente cena tarde, el aviso va 45 min después de la cena, con tope a las 23:00', prueba: () => {
+    const r = planificarAvisos({ ...ELIA, ahora: F(28, 6), racha: 8 });
+    igual(hhmm(r.find((a) => a.tipo === 'racha')), '21:45', 'Elia cena a las 21:00');
+    const tarde = { turno: 'tarde', manana: {}, tarde: { Cena: '22:45' } };
+    igual(hhmm(planificarAvisos({ ...ELIA, horario: tarde, ahora: F(28, 6), racha: 8 }).find((a) => a.tipo === 'racha')), '23:00', 'tope');
+  } },
+  { que: 'semana nueva del estándar: el lunes a las 09:30 si su plan es de una semana anterior; nada si es de esa semana', prueba: () => {
+    const s = (fechaGen, activa = true) => planificarAvisos({ ahora: FO(3, 8), prefs: { registro: false, pesaje: false, tomas: false, racha: false }, semana: { activa, fechaGen } });
+    igual(s('2026-09-27T10:12:00+02:00').map((a) => `${dia(a)} ${hhmm(a)} ${a.tipo}`), ['2026-10-05 09:30 semana']);
+    igual(s(null).map((a) => a.tipo), ['semana'], 'sin plan todavía');
+    igual(s('2026-09-27T10:12:00+02:00', false).length, 0, 'premium o en prueba: sin candado');
+    const r = planificarAvisos({ ahora: FO(5, 8), prefs: { registro: false, pesaje: false, tomas: false, racha: false }, semana: { activa: true, fechaGen: '2026-10-05T07:30:00+02:00' } });
+    igual(r.length, 0, 'generado ese mismo lunes');
   } },
   { que: 'con una sola toma pendiente, en singular; con racha corta, sin racha', prueba: () => {
     const r = planificarAvisos({ ahora: F(28, 18), planTomas: { Comida: TODOS, Cena: TODOS }, marcadasHoy: { Comida: 'seguida' }, racha: 2, prefs: { pesaje: false } });
@@ -128,9 +167,12 @@ export const CASOS = [
     ok(!r.some((a) => dia(a) === '2026-10-03' && a.toma === 'Merienda'), 'el sábado no');
   } },
   { que: 'en inglés', prueba: () => {
-    const r = planificarAvisos({ ...ELIA, lang: 'en', ahora: F(28, 6) });
+    const r = planificarAvisos({ ...ELIA, lang: 'en', ahora: F(28, 6), racha: 8 });
     igual(r.find((a) => a.toma === 'Comida').titulo, '🍽️ Lunch · 12:30');
     ok(r.find((a) => a.toma === 'Cena').cuerpo.endsWith("And while you're at it, log today."));
+    igual(r.find((a) => a.tipo === 'racha').titulo, '🔥 Your 8-day streak is still alive');
+    const s = planificarAvisos({ lang: 'en', ahora: FO(3, 8), prefs: { registro: false, pesaje: false, tomas: false, racha: false }, semana: { activa: true, fechaGen: null } });
+    igual(s[0].titulo, '🗓️ Your new week is ready to generate');
   } },
   { que: 'normHora entiende las horas como las escribe un paciente', prueba: () => {
     igual(['7am', '7', '07:00', '12:30', '9.15', '1730', '7pm', '12am', '21h', ' 10 am '].map(normHora),

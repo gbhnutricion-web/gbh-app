@@ -12,8 +12,13 @@ export const MAX_AVISOS = 60;         // iOS guarda como mucho 64 pendientes por
 export const TOMAS_ORDEN = ['Desayuno', 'Almuerzo', 'Comida', 'Merienda', 'Cena'];
 export const HORA_REGISTRO = '20:00';
 export const HORA_PESAJE = { 3: '09:30', 6: '09:30', 0: '10:30' };   // getDay(): miércoles, sábado, domingo
-export const FRANJA_CASA = ['09:00', '21:30'];   // solo para los avisos de la casa; los del paciente suenan a su hora (§3.5)
-export const PREFS_POR_DEFECTO = { comidas: false, tomas: true, registro: true, pesaje: true };
+export const HORA_SEMANA = '09:30';   // lunes: la semana nueva del estándar ya se puede generar
+export const HORA_RACHA = '21:30';    // la racha que se acaba a medianoche…
+export const RACHA_TRAS_CENA_MIN = 45; // …o 45 min después de la cena del paciente, si cena más tarde
+export const RACHA_TOPE = '23:00';
+export const RACHA_MINIMA = 3;        // como el rescate de dentro: una racha corta no merece aviso
+export const FRANJA_CASA = ['09:00', '21:30'];   // avisos de la casa; los del paciente suenan a su hora (§3.5) y la racha puede ir hasta RACHA_TOPE
+export const PREFS_POR_DEFECTO = { comidas: false, tomas: true, registro: true, pesaje: true, racha: true, semana: true };
 export const TURNOS = ['manana', 'tarde'];
 
 // «7am», «7», «7:00», «07.00», «12:30», «1730», «7pm» → «HH:MM»; lo que no es una hora → null.
@@ -85,6 +90,10 @@ const TX = {
     tomaCuerpo: 'Toca para marcarla como hecha.',
     pesoTit: '⚖️ Hoy toca pesarse',
     pesoCuerpo: 'Te llevo directamente a Medidas.',
+    rachaTit: (n) => `🔥 Tu racha de ${n} días sigue viva`,
+    rachaCuerpo: (n) => `Marca lo de hoy antes de medianoche y mañana serán ${n + 1}.`,
+    semanaTit: '🗓️ Tu semana nueva ya se puede generar',
+    semanaCuerpo: 'Elige tu programación y en un minuto la tienes.',
   },
   en: {
     toma: { Desayuno: 'Breakfast', Almuerzo: 'Morning snack', Comida: 'Lunch', Merienda: 'Afternoon snack', Cena: 'Dinner' },
@@ -102,18 +111,30 @@ const TX = {
     tomaCuerpo: 'Tap to mark it as done.',
     pesoTit: '⚖️ Weigh-in day',
     pesoCuerpo: "I'll take you straight to Measurements.",
+    rachaTit: (n) => `🔥 Your ${n}-day streak is still alive`,
+    rachaCuerpo: (n) => `Log today before midnight and tomorrow it'll be ${n + 1}.`,
+    semanaTit: '🗓️ Your new week is ready to generate',
+    semanaCuerpo: 'Pick your programme and have it in a minute.',
   },
 };
 
 const unir = (xs, y) => (xs.length <= 1 ? (xs[0] || '') : `${xs.slice(0, -1).join(', ')}${y}${xs[xs.length - 1]}`);
 const enFecha = (d, hhmm) => { const [h, m] = hhmm.split(':').map(Number); return new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, m, 0, 0); };
 const masDias = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n, 12, 0, 0, 0);
+const aMin = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
+const deMin = (n) => `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
+// Lunes de la semana natural de una fecha, como clave de día (la del candado del estándar).
+export const lunesDe = (d) => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12); const w = x.getDay(); x.setDate(x.getDate() - (w === 0 ? 6 : w - 1)); return claveDia(x); };
+// ¿Cubre una pausa ese día? Mismo formato que pausaRangos() de App.jsx: [{d, h}] en claves de día.
+const enPausa = (pausas, fecha) => (pausas || []).some((r) => r && r.d && r.h && r.d <= fecha && fecha <= r.h);
 
 // Entrada (todo opcional salvo ahora):
-//   ahora, lang, prefs {comidas,tomas,registro,pesaje}, horario {turno, manana:{Toma:hora}, tarde:{…}},
+//   ahora, lang, prefs {comidas,tomas,registro,pesaje,racha,semana}, horario {turno, manana:{Toma:hora}, tarde:{…}},
 //   planTomas {Toma:{'1':true…}}, planNombres {Toma:{'1':'Nombre'…}}, marcadasHoy {Toma:x},
-//   dietaHoy (día cerrado), racha, supl [{nombre,tipo,hora}], suplHechosHoy {nombre:true},
-//   pesadoVentanaActual (ya hay peso en la ventana en curso), horizonteDias.
+//   dietaHoy (día cerrado), racha (la `streak` de la app: hasta ayer si hoy sigue abierto,
+//   con hoy si ya está cerrado), escudos, pausas [{d,h}], supl [{nombre,tipo,hora}],
+//   suplHechosHoy {nombre:true}, pesadoVentanaActual (ya hay peso en la ventana en curso),
+//   semana {activa (estándar fuera de la prueba), fechaGen (del plan más reciente)}, horizonteDias.
 // Salida: [{id, at, titulo, cuerpo, tipo, destino, fecha, toma?}] por hora, sin nada pasado.
 export function planificarAvisos(e = {}) {
   const ahora = e.ahora instanceof Date ? e.ahora : new Date();
@@ -150,7 +171,8 @@ export function planificarAvisos(e = {}) {
       const pend = tomas.filter((tm) => !marcadas[tm]);
       if (pend.length) {
         let cuerpo = hoy ? t.registroQueda(unir(pend.map((tm) => t.art[tm]), t.y), pend.length) : t.registroGen;
-        if (hoy && (e.racha || 0) >= 3) cuerpo += t.racha(e.racha);
+        // Con el aviso propio de la racha (§5 de abajo) no se repite aquí.
+        if (hoy && !prefs.racha && (e.racha || 0) >= RACHA_MINIMA) cuerpo += t.racha(e.racha);
         poner({ tipo: 'registro', fecha, at: enFecha(dia, HORA_REGISTRO), titulo: t.registroTit, cuerpo, destino: 'plan' });
       }
     }
@@ -172,6 +194,32 @@ export function planificarAvisos(e = {}) {
       if (!(deLaVentanaActual && e.pesadoVentanaActual)) {
         poner({ tipo: 'pesaje', fecha, at: enFecha(dia, HORA_PESAJE[dia.getDay()]),
                 titulo: t.pesoTit, cuerpo: t.pesoCuerpo, destino: 'medidas' });
+      }
+    }
+
+    // 5 · La racha que se acaba a medianoche, por la noche. Solo se sabe con certeza la de
+    //     HOY (si el día sigue abierto) y la de MAÑANA (si hoy ya está cerrado): más allá
+    //     depende de lo que el paciente haga. Con un escudo o una pausa la racha no se pierde.
+    if (prefs.racha && i <= 1 && !((e.escudos || 0) > 0) && !enPausa(e.pausas, fecha)) {
+      const racha = e.racha || 0;
+      const aplica = (hoy && !e.dietaHoy) || (i === 1 && !!e.dietaHoy);
+      if (aplica && racha >= RACHA_MINIMA) {
+        let min = aMin(HORA_RACHA);
+        if (conHora.length) min = Math.max(min, Math.max(...conHora.map((tm) => aMin(horas[tm]))) + RACHA_TRAS_CENA_MIN);
+        min = Math.min(min, aMin(RACHA_TOPE));
+        poner({ tipo: 'racha', fecha, at: enFecha(dia, deMin(min)),
+                titulo: t.rachaTit(racha), cuerpo: t.rachaCuerpo(racha), destino: 'plan' });
+      }
+    }
+
+    // 6 · Semana nueva del estándar: los lunes, mientras su plan sea de una semana anterior
+    //     (el mismo candado que la pestaña Plan: se abre el lunes siguiente al de generarlo).
+    if (prefs.semana && e.semana && e.semana.activa && dia.getDay() === 1) {
+      const fg = e.semana.fechaGen ? new Date(e.semana.fechaGen) : null;
+      const deEstaSemana = !!(fg && !isNaN(fg) && lunesDe(fg) >= fecha);
+      if (!deEstaSemana) {
+        poner({ tipo: 'semana', fecha, at: enFecha(dia, HORA_SEMANA),
+                titulo: t.semanaTit, cuerpo: t.semanaCuerpo, destino: 'plan' });
       }
     }
   }

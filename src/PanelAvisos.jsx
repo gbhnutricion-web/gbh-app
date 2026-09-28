@@ -15,7 +15,7 @@ import { TOMAS_ORDEN, PREFS_POR_DEFECTO, normHora } from "./motorAvisos";
 const TXT = {
   es: {
     cardTit: "¿Te aviso fuera de la app?",
-    cardSub: "Tus comidas, tus tomas y el día de pesarte, aunque tengas la app cerrada. Tú eliges cuáles.",
+    cardSub: "Tus comidas, tus tomas, el día de pesarte y tu racha, aunque tengas la app cerrada. Tú eliges cuáles.",
     si: "Sí, avísame", ahoraNo: "Ahora no",
     fila: "Recordatorios", filaOff: "Desactivados", filaSinPermiso: "Sin permiso en el móvil",
     panelTit: "Recordatorios",
@@ -23,7 +23,9 @@ const TXT = {
       comidas: ["🍽️", "Comidas", "A la hora de cada comida, con el plato del día"],
       tomas: ["💊", "Suplementos y medicación", "A la hora de cada toma"],
       registro: ["🐑", "Registro del día", "A las 20:00 si te queda algo por marcar"],
+      racha: ["🔥", "Racha", "Por la noche, si tu racha se acaba a medianoche y aún no has marcado el día"],
       pesaje: ["⚖️", "Pesaje", "Miércoles y fin de semana, si aún no te has pesado"],
+      semana: ["🗓️", "Semana nueva", "Los lunes, cuando ya puedes generar tu semana"],
     },
     registroDentro: "Con los avisos de comida, va dentro del de la última comida",
     horarioTit: "Tu horario de comidas", semana: "Esta semana voy de", manana: "☀️ Mañana", tarde: "🌙 Tarde",
@@ -36,7 +38,7 @@ const TXT = {
   },
   en: {
     cardTit: "Want reminders outside the app?",
-    cardSub: "Your meals, your supplements and weigh-in day, even with the app closed. You choose which ones.",
+    cardSub: "Your meals, your supplements, weigh-in day and your streak, even with the app closed. You choose which ones.",
     si: "Yes, remind me", ahoraNo: "Not now",
     fila: "Reminders", filaOff: "Off", filaSinPermiso: "No permission on this phone",
     panelTit: "Reminders",
@@ -44,7 +46,9 @@ const TXT = {
       comidas: ["🍽️", "Meals", "At each meal time, with the dish of the day"],
       tomas: ["💊", "Supplements and medication", "At the time of each dose"],
       registro: ["🐑", "Daily log", "At 20:00 if something is still to log"],
+      racha: ["🔥", "Streak", "At night, if your streak ends at midnight and today isn't logged yet"],
       pesaje: ["⚖️", "Weigh-in", "Wednesday and weekend, if you haven't weighed in yet"],
+      semana: ["🗓️", "New week", "On Mondays, when you can generate your week"],
     },
     registroDentro: "With meal reminders, it goes inside the last meal's one",
     horarioTit: "Your meal times", semana: "This week I'm on", manana: "☀️ Morning", tarde: "🌙 Afternoon",
@@ -57,7 +61,9 @@ const TXT = {
   },
 };
 const tx = (lang) => TXT[lang === "en" ? "en" : "es"];
-const TIPOS_UI = ["comidas", "tomas", "registro", "pesaje"];
+const TIPOS_UI = ["comidas", "tomas", "registro", "racha", "pesaje", "semana"];
+// «Semana nueva» solo tiene sentido con el candado semanal del estándar.
+const tiposDe = (esEstandar) => TIPOS_UI.filter((k) => k !== "semana" || esEstandar);
 
 export function TarjetaPermisoAvisos({ lang = "es", T, onSi, onAhoraNo }) {
   const s = tx(lang);
@@ -83,10 +89,10 @@ export function TarjetaPermisoAvisos({ lang = "es", T, onSi, onAhoraNo }) {
   );
 }
 
-export function FilaRecordatorios({ lang = "es", T, prefs, permiso, onAbrir }) {
+export function FilaRecordatorios({ lang = "es", T, prefs, permiso, onAbrir, esEstandar = false }) {
   const s = tx(lang);
   const p = { ...PREFS_POR_DEFECTO, ...(prefs || {}) };
-  const activos = TIPOS_UI.filter((k) => p[k]).map((k) => s.tipos[k][1].toLowerCase());
+  const activos = tiposDe(esEstandar).filter((k) => p[k]).map((k) => s.tipos[k][1].toLowerCase());
   const sub = permiso === "denied" ? s.filaSinPermiso : (permiso !== "granted" || !activos.length) ? s.filaOff : activos.join(" · ");
   return (
     <button data-avisos="fila" onClick={onAbrir} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10,
@@ -115,7 +121,7 @@ function Interruptor({ on, onClick, T, label }) {
 
 // prefs y horario llegan de App.jsx (profiles.avisos); onCambiar({prefs}) u onCambiar({horario})
 // devuelve el trozo nuevo y App.jsx lo guarda y reprograma.
-export function PanelRecordatorios({ lang = "es", T, prefs, horario, permiso, tomasPlan, onCambiar, onPedirPermiso, onCerrar, sfx }) {
+export function PanelRecordatorios({ lang = "es", T, prefs, horario, permiso, tomasPlan, onCambiar, onPedirPermiso, onCerrar, sfx, esEstandar = false }) {
   const s = tx(lang);
   const p = { ...PREFS_POR_DEFECTO, ...(prefs || {}) };
   const h = { turno: "manana", manana: {}, tarde: {}, ...(horario || {}) };
@@ -153,7 +159,7 @@ export function PanelRecordatorios({ lang = "es", T, prefs, horario, permiso, to
         )}
 
         <div style={caja}>
-          {TIPOS_UI.map((k, i) => {
+          {tiposDe(esEstandar).map((k, i) => {
             const [ic, tit, sub] = s.tipos[k];
             const nota = k === "registro" && p.comidas ? s.registroDentro : sub;
             return (

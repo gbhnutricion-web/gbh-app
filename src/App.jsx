@@ -7912,7 +7912,7 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
               locales. Solo en la app de tienda y con el interruptor del operador
               encendido: en la web volvería a ofrecer algo que no funciona. */}
           {avisosOn&&(
-            <FilaRecordatorios lang={lang} T={T} prefs={avisosPrefs} permiso={avisosPermiso} onAbrir={onAbrirAvisos}/>
+            <FilaRecordatorios lang={lang} T={T} prefs={avisosPrefs} permiso={avisosPermiso} onAbrir={onAbrirAvisos} esEstandar={profile?.plan==="standard"}/>
           )}
 
           {lastW!=="—"&&String(lastW)!==String(initW)&&(
@@ -8678,6 +8678,7 @@ function GBHApp(){
   const [showAvisos,setShowAvisos]=useState(false);
   const [avisosPospuestoTs,setAvisosPospuestoTs]=useState(()=>profile?.id?lsGet(`gbh:avisosPospuesto:${profile.id}`,0):0);
   const [planNombres,setPlanNombres]=useState(()=>profile?.id?lsGet(`gbh:plannombres:${profile.id}`,null):null);
+  const [planFechaGen,setPlanFechaGen]=useState(null);     // fecha_gen del plan más reciente: el candado semanal del estándar
   const avisosCfg = profile?.avisos || null;
   const avisosPrefs = {...AVISOS_PREFS, ...(avisosCfg?.prefs||{})};
   const avisosListos = avisosOn && avisosPermiso==='granted';
@@ -8687,6 +8688,7 @@ function GBHApp(){
     if(!profile?.id) return;
     setAvisosPospuestoTs(lsGet(`gbh:avisosPospuesto:${profile.id}`,0));
     setPlanNombres(prev=>prev||lsGet(`gbh:plannombres:${profile.id}`,null));
+    setPlanFechaGen(prev=>prev||lsGet(`gbh:planfechagen:${profile.id}`,null));
   },[profile?.id]);
   // ── Medicación/suplementación del plan vigente (para el recordatorio) ──────
   const [suplPlan,setSuplPlan]=useState(()=>profile?.id?lsGet(`gbh:suplplan:${profile.id}`,null):null);
@@ -8724,9 +8726,17 @@ function GBHApp(){
     }catch{}
   };
   // Plato de cada toma y día, para que el aviso de la comida diga qué toca.
-  const guardarNombresPlan=(pj)=>{
+  const guardarNombresPlan=(pj,row)=>{
     try{
-      if(!profile?.id || !pj) return;
+      if(!profile?.id) return;
+      // row===false: la petición falló (no llegó una lista) → no se toca lo guardado;
+      // undefined: el paciente no tiene plan todavía.
+      if(row!==false){
+        const fg=row?.fecha_gen||null;
+        setPlanFechaGen(fg);
+        lsSet(`gbh:planfechagen:${profile.id}`,fg);
+      }
+      if(!pj) return;
       const n=nombresDePlan(pj);
       setPlanNombres(n);
       lsSet(`gbh:plannombres:${profile.id}`,n);
@@ -8774,7 +8784,7 @@ function GBHApp(){
         const pj=row?.plan_json;
         guardarSuplPlan(pj);
         guardarSeguimiento(pj);
-        guardarNombresPlan(pj);
+        guardarNombresPlan(pj,row);
         if(!pj) return;
         const red=reducir(pj);
         setPlanTomas(red);
@@ -8797,7 +8807,7 @@ function GBHApp(){
         const pj=row?.plan_json;
         guardarSuplPlan(pj);
         guardarSeguimiento(pj);
-        guardarNombresPlan(pj);
+        guardarNombresPlan(pj,row);
         if(!pj) return;
         const m={};
         for(const tm of PLAN_TOMAS){
@@ -10899,13 +10909,16 @@ function GBHApp(){
           planTomas, planNombres, marcadasHoy:mealsHoy, dietaHoy:!!tLog.diet, racha:streak,
           supl:suplPlan||[], suplHechosHoy:lsGet(suplHechosKey(profile.id,toKey()),{}),
           pesadoVentanaActual:!!pesajeEnVentana(weights),
+          escudos:profile?.shields||0, pausas:pausaRangos(profile),
+          semana:{activa:profile?.plan==="standard" && !trialDiasRest, fechaGen:planFechaGen},
         });
         sincronizarAvisos(lista).then(r=>{ if(r?.ok) lsSet(kProg, r.programados>0); });
       }catch{}
     },1500);
     return ()=>clearTimeout(tmr);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[avisosOn, avisosPermiso, JSON.stringify(avisosCfg||null), planTomas, planNombres, mealsHoy, tLog.diet, streak, suplPlan, weights, hoyKey, lang, avisosTick, profile?.id]);
+  },[avisosOn, avisosPermiso, JSON.stringify(avisosCfg||null), planTomas, planNombres, mealsHoy, tLog.diet, streak, suplPlan, weights, hoyKey, lang, avisosTick, profile?.id,
+     profile?.shields, profile?.pausa_desde, profile?.pausa_hasta, profile?.plan, trialDiasRest, planFechaGen]);
   useEffect(()=>{
     if(!ES_NATIVO) return;
     return alTocarAviso((extra)=>{
@@ -12883,7 +12896,7 @@ function GBHApp(){
         />
       )}
       {showAvisos&&avisosOn&&(
-        <PanelRecordatorios lang={lang} T={T} sfx={sfx}
+        <PanelRecordatorios lang={lang} T={T} sfx={sfx} esEstandar={profile?.plan==="standard"}
           prefs={avisosPrefs} horario={avisosCfg?.horario} permiso={avisosPermiso}
           tomasPlan={AVISOS_TOMAS.filter(tm=>planTomas?.[tm])}
           onCambiar={guardarAvisos} onPedirPermiso={activarAvisos}
