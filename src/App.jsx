@@ -1323,6 +1323,10 @@ const abrirCheckoutStripe = (profileId) => {
 // Portal de clientes de Stripe (cancelar suscripción / cambiar método de pago).
 // Pide la URL de sesión al servicio de Railway y navega a ella.
 const abrirPortalStripe = async (profileId) => {
+  // Segunda red de la PEND-2026-317 (MAESTRO-2026-690): fuera de EE. UU., Apple no deja
+  // enlazar desde la app a un portal de pago externo (3.1.1(a) y 3.1.3). En las apps de
+  // tienda el botón «Gestionar» ya no se pinta; si algo llegara a llamar aquí, no abre nada.
+  if(ES_NATIVO) return false;
   try{
     const r = await fetch(`${STRIPE_API}/stripe/portal`, {
       method:"POST", headers:{ "Content-Type":"application/json" },
@@ -7883,7 +7887,7 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
                 )}
               </div>
               {profile?.plan==="premium" ? null
-                : (profile?.plan==="standard" && !profile?.trial_ends_at && profile?.plan_until) ? (
+                : (profile?.plan==="standard" && !profile?.trial_ends_at && profile?.plan_until) ? (ES_NATIVO ? null : (
                 <button disabled={portalLoading}
                   onClick={async()=>{
                     setPortalLoading(true);
@@ -7897,7 +7901,7 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
                     opacity:portalLoading?0.6:1}}>
                   {portalLoading ? "⏳" : (lang==="en"?"Manage":"Gestionar")}
                 </button>
-              ) : ES_IOS_NATIVO ? null : (
+              )) : ES_IOS_NATIVO ? null : (
                 <button onClick={()=>abrirCheckoutStripe(profile?.id)}
                   style={{background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:"none",
                     borderRadius:10,padding:"8px 12px",color:T.t1,fontWeight:900,fontSize:12,
