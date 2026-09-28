@@ -13,6 +13,7 @@ import { _NUTRI_ING } from "./nutriIng";                                     // 
 import { esDiaDeMedicion, ventanaKeys, proximoDiaMedicion } from "./ventanaMedicion"; // peso y medidas: miércoles + fin de semana (15-sep-2026)
 import { TOPE_PUNTOS, clasificarRespuesta, yaEstaEnElServidor, opDePartidaCaducada, esPendienteDeHoy } from "./partidaPendiente"; // la partida es del paciente hasta que el servidor la confirma (26-sep-2026)
 import { racionesDeLaLista, costePorRacion, textosCajaRacion } from "./raciones";   // qué cocinar y cuánto comer (17-sep-2026)
+import { elegirRecetaCambio, permitidasDePlanes, normNombreCambio, claveMemoriaCambio, leerMemoriaCambio, guardarMemoriaCambio } from "./cambioReceta"; // cambio de receta con gemas: lista del servidor, sin repetir (28-sep-2026)
 import { Cafeina } from "./Cafeina";                                     // calculadora de cafeína, fase 1 (25-sep-2026)
 import { Suplementacion } from "./Suplementacion";                       // pestaña 💊 Suplementación: ☕ Cafeína y 💪 Creatina (próximamente) (26-sep-2026)
 import { BarraPestanas } from "./BarraPestanas";                         // la barra de pestañas de abajo (26-sep-2026)
@@ -16361,96 +16362,45 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
     }
     const mapa = await cargarRecetasCache();
     const recetas = Object.values(mapa);
+    // ── Qué receta sale: src/cambioReceta.js (28-sep-2026) ────────────────────
+    // DURO: la franja, la lista del servidor (plan_json.cambio_receta: dieta,
+    // sin gluten, sin carne, desayuno realista, rechazados y alergias de su
+    // pauta y «solo sencillas»), los rechazados de patient_config.notas (lo
+    // que el paciente apunta en «Alimentos que no quieres»), las descartadas 🗑️
+    // y que la ración quepa en 0,70-1,40. El tipo y los macros solo ordenan.
+    // Antes las notas se leían de profile.notas, una columna que no existe: el
+    // filtro de alergias no vetaba nada. Cada hueco recuerda lo ya enseñado.
     const tipoActual = tomaReceta.tipo;
-    const kcalActual = tomaReceta.calorias||0;
-    const nombreActual = normNombre(tomaReceta.nombre);
-    // ── Franja de comida (Categoria) que DEBE respetarse ──────────────────────
-    // La toma que se está cambiando determina la franja: desayuno/almuerzo/
-    // merienda NO puede sustituirse por un plato de comida/cena (p. ej. unas
-    // tortitas no deben convertirse en una ensalada de arroz). El recetario solo
-    // tiene dos categorías: 'Desayuno/Almuerzo/Merienda' y 'Comida/Cena'.
-    const catBucket = (r)=>{
-      const c = String(r.categoria||r.Categoria||r['categoría']||'').toLowerCase();
-      if(/comida|cena/.test(c)) return 'cd';
-      if(/desayuno|almuerzo|merienda/.test(c)) return 'dam';
-      return null;
-    };
-    const hayCategorias = recetas.some(r=>catBucket(r)!==null);   // red de seguridad si faltara el dato
-    const bucketObj = (openToma==='Comida'||openToma==='Cena') ? 'cd' : 'dam';
-    const nomDe    = (r)=>normNombre(r.nombre||r.nombre_receta||'');
-    const kcalDe   = (r)=>parseFloat(r.calorias||r.calorias_totales)||0;
-    const okTipo   = (r)=>(r.tipo||'')===tipoActual;
-    const okFranja = (r)=> !hayCategorias || catBucket(r)===bucketObj; // franja: restricción DURA (nunca se relaja)
-    const okOtra   = (r)=>nomDe(r)!==nombreActual;
-    // ── Objetivo calórico de la toma (el que fijó el generador) ─────────────
-    const kcalObjetivo = tomaReceta.kcal_objetivo || kcalActual || 0;
-    // COMPATIBILIDAD POR RACIÓN (restricción DURA, nunca se relaja): la
-    // candidata solo vale si escalando su ración dentro del MISMO rango que
-    // usa el generador (RACION_MIN/MAX = 0.70–1.40) clava el objetivo de la
-    // toma. Esto elimina de raíz el fallo del bizcocho→"2 naranjas y 2
-    // limones": una receta de 70 kcal jamás puede cubrir una merienda de 250
-    // (necesitaría ración ×3.6) y por tanto queda fuera del pool. Sustituye
-    // al antiguo ±20% en crudo, que además se ABANDONABA en los niveles 2 y 4
-    // de la cascada, dejando pasar cualquier kcal.
-    const F_MIN=0.70, F_MAX=1.40;
-    const okEscala = (r)=>{const k=kcalDe(r); if(!kcalObjetivo||!k) return false;
-      const f=kcalObjetivo/k; return f>=F_MIN&&f<=F_MAX;};
-    // PERFIL DE MACROS: la sustitución debe conservar las PROPORCIONES de
-    // macronutrientes, no solo las kcal. Se compara el reparto calórico
-    // (P×4, H×4, G×9 sobre el total) y se mide la distancia L1 entre
-    // perfiles: 0 = idéntico reparto, 2 = opuesto. Un bizcocho keto
-    // (43% grasa) nunca casará con fruta pura (0% grasa) en el nivel
-    // estricto, y como mucho en el laxo si no existe nada mejor.
-    const perfilDe = (p,h,g)=>{const kc=p*4+h*4+g*9;
-      return kc>0?[p*4/kc,h*4/kc,g*9/kc]:null;};
-    const perfilActual = perfilDe(parseFloat(tomaReceta.proteinas_g)||0,
-                                  parseFloat(tomaReceta.hidratos_g)||0,
-                                  parseFloat(tomaReceta.grasas_g)||0);
-    const distMacro = (r)=>{
-      const q = perfilDe(parseFloat(r.proteinas_g)||0,
-                         parseFloat(r.hidratos_g)||0,
-                         parseFloat(r.grasas_g)||0);
-      if(!perfilActual||!q) return 0.5;   // sin datos: ni premia ni descarta
-      return Math.abs(q[0]-perfilActual[0])+Math.abs(q[1]-perfilActual[1])+Math.abs(q[2]-perfilActual[2]);
-    };
-    const MACRO_ESTRICTO=0.35, MACRO_LAXO=0.60;
-    // SEGURIDAD: alimentos rechazados/alergias del paciente (notas del perfil).
-    // Filtro DURO en TODOS los niveles de relajación — nunca se sirve un rechazado.
-    const rechPref = interpretarRechazados(profile?.notas);
-    const okRech   = (r)=>!recetaRechazadaJS(r, rechPref);
-    // DESCARTADAS: la receta que el paciente marcó con 🗑️ no puede volver a
-    // salirle tampoco al cambiar con gemas — filtro DURO como los rechazados.
-    const descSet = new Set((descartadas||[]).map(r=>normNombre(r.nombre||'')));
-    const okNoDesc = (r)=>!descSet.has(nomDe(r));
-    // Base común: franja + rechazados + descartadas + escala son SIEMPRE duras.
-    // Solo se relajan el tipo (carne/pescado/postre…) y el umbral de macros:
-    //   1) mismo tipo + macros muy parecidos
-    //   2) macros muy parecidos (otro tipo, misma franja)
-    //   3) mismo tipo + macros razonables
-    //   4) macros razonables
-    // Si ni así hay nada, se avisa "Sin alternativa" (y NO se cobran gemas):
-    // mejor no cambiar que servir un despropósito nutricional.
-    const baseCands = recetas.filter(r=>okRech(r)&&okNoDesc(r)&&okFranja(r)&&okOtra(r)&&okEscala(r));
-    const pools = [
-      baseCands.filter(r=>okTipo(r)&&distMacro(r)<=MACRO_ESTRICTO),
-      baseCands.filter(r=>distMacro(r)<=MACRO_ESTRICTO),
-      baseCands.filter(r=>okTipo(r)&&distMacro(r)<=MACRO_LAXO),
-      baseCands.filter(r=>distMacro(r)<=MACRO_LAXO),
-    ];
-    let pool = pools.find(p=>p.length) || [];
-    if(!pool.length){
+    const kcalObjetivo = tomaReceta.kcal_objetivo || tomaReceta.calorias || 0;
+    let almacen = null;
+    try{ almacen = window.localStorage; }catch(e){ almacen = null; }
+    const memClave = claveMemoriaCambio(profile.id, plan?.semana ?? '', openToma, selDay);
+    const mem = leerMemoriaCambio(almacen, memClave, tomaReceta);
+    const enPlan = new Set();   // lo que ya sale en la semana (fuera de este hueco): se deja para después
+    for(const tm of PLAN_TOMAS){
+      for(const [d,c] of Object.entries(planJ?.[tm]||{})){
+        if(tm===openToma && String(d)===String(selDay)) continue;
+        if(c?.Nombre_Receta) enPlan.add(normNombreCambio(c.Nombre_Receta));
+        (Array.isArray(c?.platos)?c.platos:[]).forEach(pl=>{ if(pl?.Nombre_Receta) enPlan.add(normNombreCambio(pl.Nombre_Receta)); });
+      }
+    }
+    const rechPref = interpretarRechazados(config?.notas);
+    const res = elegirRecetaCambio({
+      recetas, actual:tomaReceta, ancla:mem.ancla, toma:openToma,
+      permitidas: permitidasDePlanes(planes, openToma),
+      rechazada:  (r)=>recetaRechazadaJS(r, rechPref),
+      descartadas:new Set((descartadas||[]).map(r=>normNombreCambio(r.nombre||''))),
+      favoritas:  new Set((savedRecipes||[]).map(r=>normNombreCambio(r.nombre||r.nombre_receta||''))),
+      vistas:mem.vistas, enPlan,
+    });
+    // Si no hay nada que ofrecer se avisa «Sin alternativa» y NO se cobran
+    // gemas: mejor no cambiar que servir un despropósito o un alimento vetado.
+    if(!res.receta){
       showT&&showT({icon:"🚫",title:lang==='en'?'No alternative':'Sin alternativa',sub:lang==='en'?'No similar recipe available':'No hay receta similar disponible'});
       return;
     }
-    // Sorteo entre las 8 candidatas de macros MÁS parecidos (variedad sin
-    // perder coherencia), ponderado ×4 hacia las FAVORITAS del paciente —
-    // mismo FAVORITO_BOOST que el generador: sus preferencias mandan.
-    pool = pool.slice().sort((a,b)=>distMacro(a)-distMacro(b)).slice(0,8);
-    const favSet = new Set((savedRecipes||[]).map(r=>normNombre(r.nombre||r.nombre_receta||'')));
-    const pesos = pool.map(r=>favSet.has(nomDe(r))?4:1);
-    const totPeso = pesos.reduce((s,x)=>s+x,0);
-    let rnd = Math.random()*totPeso, acc=0, elegida=pool[pool.length-1];
-    for(let i=0;i<pool.length;i++){ acc+=pesos[i]; if(rnd<=acc){ elegida=pool[i]; break; } }
+    const elegida = res.receta;
+    guardarMemoriaCambio(almacen, memClave, {...mem, actual:tomaReceta, elegida, reinicio:res.reinicio});
     // Descontar gemas (0 durante la prueba: invita la casa)
     if(costeCambio>0){
       const newGems = gems - costeCambio;
@@ -16459,17 +16409,11 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
       sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:newGems});
     }
     sfx&&sfx("recipe");
-    // ── Escalar la nueva receta a las kcal de la toma. El pool ya garantiza
-    //    que el factor cae en 0.70–1.40 (rango RACION_MIN/MAX del generador),
-    //    así que el clamp es solo un cinturón de seguridad. ──
+    // ── La ración: el factor de elegirRecetaCambio (0,70-1,40 en pasos de
+    //    0,05, el rango RACION_MIN/MAX del generador). ──
     const kcalObj = kcalObjetivo;
     const kcalBase = parseFloat(elegida.calorias||elegida.calorias_totales)||0;
-    let f = 1;
-    if(kcalObj>0 && kcalBase>0){
-      f = Math.max(F_MIN, Math.min(F_MAX, kcalObj/kcalBase));
-      f = Math.round(f*20)/20; // pasos de 0,05
-      if(Math.abs(f-1)<0.05) f = 1;
-    }
+    const f = res.factor;
     setTomaReceta({
       nombre:       elegida.nombre||elegida.nombre_receta||'',
       tipo:         elegida.tipo||tipoActual,
