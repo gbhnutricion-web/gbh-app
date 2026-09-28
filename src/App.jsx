@@ -17,6 +17,9 @@ import { elegirRecetaCambio, permitidasDePlanes, normNombreCambio, claveMemoriaC
 import { Cafeina } from "./Cafeina";                                     // calculadora de cafeína, fase 1 (25-sep-2026)
 import { Suplementacion } from "./Suplementacion";                       // pestaña 💊 Suplementación: ☕ Cafeína y 💪 Creatina (próximamente) (26-sep-2026)
 import { BarraPestanas } from "./BarraPestanas";                         // la barra de pestañas de abajo (26-sep-2026)
+import { planificarAvisos, nombresDePlan, PREFS_POR_DEFECTO as AVISOS_PREFS, TOMAS_ORDEN as AVISOS_TOMAS } from "./motorAvisos"; // avisos fuera de la app, fase 1 (28-sep-2026)
+import { estadoPermiso, pedirPermiso, sincronizarAvisos, cancelarAvisos, alTocarAviso, plataforma as plataformaNativa } from "./avisosNativos";
+import { TarjetaPermisoAvisos, FilaRecordatorios, PanelRecordatorios } from "./PanelAvisos";
 import { DistribucionKcal, AlimentosDescartados, leerDescartes, escribirDescartes, BannerSemanaNueva,
          CabeceraPlan, PillTotal, PatronCocina, Recordatorios, BotonesGuardar, FUENTE_PIXEL } from "./PlanArcade";
 
@@ -7686,7 +7689,7 @@ function UserAvatar({size=52, photoB64, initials, borderColor, onClick, frame=nu
 }
 
 // ─── ProfileCardModal — tarjeta de perfil del paciente ──────────────────────
-function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, onSaveProfile, weights, lv, xp, streak, badges, lang, setLang, onDeleteAccount}){
+function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, onSaveProfile, weights, lv, xp, streak, badges, lang, setLang, onDeleteAccount, avisosOn, avisosPrefs, avisosPermiso, onAbrirAvisos}){
   const t=useLang();
   const [photo,       setPhoto]      = useState(userPhoto||null);
   const [editField,   setEditField]  = useState(null);
@@ -7904,9 +7907,13 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
               )}
             </div>
           </div>
-          {/* Fila «Recordatorios» retirada con las push (6-ago-2026): ofrecía
-              activar algo que no funciona. Los avisos internos de la app no
-              piden permiso al navegador. */}
+          {/* Fila «Recordatorios»: se retiró con las push el 6-ago-2026 porque
+              ofrecía algo que no funcionaba, y vuelve el 28-sep con los avisos
+              locales. Solo en la app de tienda y con el interruptor del operador
+              encendido: en la web volvería a ofrecer algo que no funciona. */}
+          {avisosOn&&(
+            <FilaRecordatorios lang={lang} T={T} prefs={avisosPrefs} permiso={avisosPermiso} onAbrir={onAbrirAvisos}/>
+          )}
 
           {lastW!=="—"&&String(lastW)!==String(initW)&&(
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0"}}>
@@ -8658,6 +8665,29 @@ function GBHApp(){
   // Identidad del plan: semana|fecha_gen. La primera vez que se conoce un plan
   // se guarda en silencio (evita avisar a toda la base en el despliegue inicial).
   const [avisoNuevoPlan,setAvisoNuevoPlan]=useState(null);   // {semana} | null
+  // ── Avisos fuera de la app · fase 1, locales (28-sep-2026) ─────────────────
+  // 07. App GBH/BRIEF_notificaciones.md. Solo en la app de tienda y con el
+  // interruptor del operador encendido (profiles.avisos_activos, que la app solo
+  // lee). Lo que elige el paciente vive en profiles.avisos: {prefs, horario,
+  // permiso}. Cuando un aviso ya sale fuera, su pop-up de dentro no sale
+  // (avisosCubreRegistro / avisosCubreTomas). Se declaran aquí, antes de los
+  // efectos que los leen en sus dependencias (TDZ).
+  const avisosOn = ES_NATIVO && profile?.avisos_activos===true;
+  const [avisosPermiso,setAvisosPermiso]=useState('desconocido');
+  const [avisosTick,setAvisosTick]=useState(0);          // sube al volver a primer plano: reprogramar
+  const [showAvisos,setShowAvisos]=useState(false);
+  const [avisosPospuestoTs,setAvisosPospuestoTs]=useState(()=>profile?.id?lsGet(`gbh:avisosPospuesto:${profile.id}`,0):0);
+  const [planNombres,setPlanNombres]=useState(()=>profile?.id?lsGet(`gbh:plannombres:${profile.id}`,null):null);
+  const avisosCfg = profile?.avisos || null;
+  const avisosPrefs = {...AVISOS_PREFS, ...(avisosCfg?.prefs||{})};
+  const avisosListos = avisosOn && avisosPermiso==='granted';
+  const avisosCubreRegistro = avisosListos && !!(avisosPrefs.registro || avisosPrefs.comidas);
+  const avisosCubreTomas = avisosListos && !!avisosPrefs.tomas;
+  useEffect(()=>{   // el perfil llega después del primer render: releer lo guardado en el móvil
+    if(!profile?.id) return;
+    setAvisosPospuestoTs(lsGet(`gbh:avisosPospuesto:${profile.id}`,0));
+    setPlanNombres(prev=>prev||lsGet(`gbh:plannombres:${profile.id}`,null));
+  },[profile?.id]);
   // ── Medicación/suplementación del plan vigente (para el recordatorio) ──────
   const [suplPlan,setSuplPlan]=useState(()=>profile?.id?lsGet(`gbh:suplplan:${profile.id}`,null):null);
   // ── Seguimiento (TDEE) del plan vigente → tarjeta premium en Peso ──────────
@@ -8691,6 +8721,15 @@ function GBHApp(){
       }
       setSuplPlan(sup);
       lsSet(`gbh:suplplan:${profile.id}`,sup);
+    }catch{}
+  };
+  // Plato de cada toma y día, para que el aviso de la comida diga qué toca.
+  const guardarNombresPlan=(pj)=>{
+    try{
+      if(!profile?.id || !pj) return;
+      const n=nombresDePlan(pj);
+      setPlanNombres(n);
+      lsSet(`gbh:plannombres:${profile.id}`,n);
     }catch{}
   };
   const chkNuevoPlan=(row)=>{
@@ -8735,6 +8774,7 @@ function GBHApp(){
         const pj=row?.plan_json;
         guardarSuplPlan(pj);
         guardarSeguimiento(pj);
+        guardarNombresPlan(pj);
         if(!pj) return;
         const red=reducir(pj);
         setPlanTomas(red);
@@ -8757,6 +8797,7 @@ function GBHApp(){
         const pj=row?.plan_json;
         guardarSuplPlan(pj);
         guardarSeguimiento(pj);
+        guardarNombresPlan(pj);
         if(!pj) return;
         const m={};
         for(const tm of PLAN_TOMAS){
@@ -8782,7 +8823,7 @@ function GBHApp(){
     const refrescar=async()=>{
       if(!navigator.onLine||document.hidden) return;
       try{
-        let fresh=await sbReq("GET",`profiles?id=eq.${profile.id}&select=plan,gems,xp,shields,target_kcal,trial_ends_at,plan_until&limit=1`);
+        let fresh=await sbReq("GET",`profiles?id=eq.${profile.id}&select=plan,gems,xp,shields,target_kcal,trial_ends_at,plan_until,avisos,avisos_activos&limit=1`);
         if(fresh===null){ // columna trial_ends_at aún sin migrar → select clásica
           fresh=await sbReq("GET",`profiles?id=eq.${profile.id}&select=plan,gems,xp,shields,target_kcal&limit=1`);
         }
@@ -8799,16 +8840,26 @@ function GBHApp(){
           const tieneSub = ('trial_ends_at' in f) || ('plan_until' in f);
           const trialNew = tieneSub ? (f.trial_ends_at ?? null) : prev.trial_ends_at;
           const untilNew = tieneSub ? (f.plan_until    ?? null) : prev.plan_until;
+          // Avisos fuera de la app (28-sep-2026): el interruptor del operador y lo
+          // que eligió el paciente, también en caliente. La select de respaldo no
+          // los trae: entonces se conserva lo previo.
+          const tieneAvisos = ('avisos_activos' in f);
+          const avisosActNew = tieneAvisos ? (f.avisos_activos===true) : prev.avisos_activos;
+          const avisosNew = tieneAvisos ? (f.avisos ?? null) : prev.avisos;
           // Solo actualizar si algo cambió, para no re-renderizar de más
           // (incluidas las fechas, para que el NULL remoto se propague en caliente)
           if(prev.plan===f.plan && prev.gems===f.gems && prev.xp===f.xp
-             && prev.trial_ends_at===trialNew && prev.plan_until===untilNew) return prev;
+             && prev.trial_ends_at===trialNew && prev.plan_until===untilNew
+             && prev.avisos_activos===avisosActNew
+             && JSON.stringify(prev.avisos??null)===JSON.stringify(avisosNew??null)) return prev;
           const merged={...prev,
             plan:f.plan??prev.plan, gems:f.gems??prev.gems,
             xp:f.xp??prev.xp, shields:f.shields??prev.shields,
             target_kcal:f.target_kcal??prev.target_kcal,
             trial_ends_at:trialNew,
-            plan_until:untilNew};
+            plan_until:untilNew,
+            avisos_activos:avisosActNew,
+            avisos:avisosNew};
           lsSet(`gbh:p:${prev.id}`, merged);
           return merged;
         });
@@ -10762,6 +10813,7 @@ function GBHApp(){
   const [avisoRegistro,setAvisoRegistro]=useState(null);   // {pendientes:[...]} | null
   useEffect(()=>{
     if(!profile?.id || tLog.diet || !tomasHoy) return;
+    if(avisosCubreRegistro) return;   // ya avisa el móvil fuera de la app (28-sep-2026)
     const chk=()=>{
       try{
         if(new Date().getHours()<20) return;
@@ -10780,7 +10832,7 @@ function GBHApp(){
     document.addEventListener("visibilitychange",onVis);
     return ()=>{ clearInterval(id); document.removeEventListener("visibilitychange",onVis); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[profile?.id, tLog.diet, tomasHoy, mealsHoy, avisoNuevoPlan]);
+  },[profile?.id, tLog.diet, tomasHoy, mealsHoy, avisoNuevoPlan, avisosCubreRegistro]);
 
   // ── Recordatorio de medicación/suplementación ───────────────────────────────
   // Mismo mecanismo que los otros pop-ups: cada minuto (y al volver a primer
@@ -10789,6 +10841,7 @@ function GBHApp(){
   const [avisoSupl,setAvisoSupl]=useState(null);   // item | null
   useEffect(()=>{
     if(!profile?.id || !suplPlan?.length) return;
+    if(avisosCubreTomas) return;      // ya avisa el móvil fuera de la app (28-sep-2026)
     const chk=()=>{
       try{
         if(avisoNuevoPlan || avisoRegistro || avisoSupl) return;
@@ -10812,7 +10865,85 @@ function GBHApp(){
     document.addEventListener("visibilitychange",onVis);
     return ()=>{ clearInterval(id); document.removeEventListener("visibilitychange",onVis); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[profile?.id, suplPlan, avisoNuevoPlan, avisoRegistro, avisoSupl]);
+  },[profile?.id, suplPlan, avisoNuevoPlan, avisoRegistro, avisoSupl, avisosCubreTomas]);
+
+  // ── Avisos fuera de la app: permiso, programación y toque (28-sep-2026) ────
+  // El móvil deja programados los avisos de los 3 días siguientes cada vez que
+  // cambia algo que los afecta (una toma marcada, el plan, el horario…) y al
+  // volver a primer plano. sincronizarAvisos() cancela lo pendiente y programa
+  // la lista nueva, así que repetir no duplica. Todo esto solo corre en la app
+  // de tienda: en la web las funciones de avisosNativos vuelven sin hacer nada.
+  useEffect(()=>{
+    if(!avisosOn) return;
+    let vivo=true;
+    const mirar=()=>{ estadoPermiso().then(e=>{ if(vivo) setAvisosPermiso(e); }); };
+    mirar();
+    const onVis=()=>{ if(!document.hidden){ mirar(); setAvisosTick(n=>n+1); } };
+    document.addEventListener("visibilitychange",onVis);
+    return ()=>{ vivo=false; document.removeEventListener("visibilitychange",onVis); };
+  },[avisosOn]);
+  useEffect(()=>{
+    if(!ES_NATIVO || !profile?.id) return;
+    const kProg=`gbh:avisosProg:${profile.id}`;
+    if(!avisosOn || avisosPermiso==='denied'){
+      // Interruptor del operador apagado (o permiso retirado): lo que este móvil
+      // hubiera dejado programado se cancela en la primera apertura. Vuelta atrás sin build.
+      if(lsGet(kProg,false)) cancelarAvisos().then(r=>{ if(r?.ok) lsSet(kProg,false); });
+      return;
+    }
+    if(avisosPermiso!=='granted') return;
+    const tmr=setTimeout(()=>{
+      try{
+        const lista=planificarAvisos({
+          ahora:new Date(), lang, prefs:avisosPrefs, horario:avisosCfg?.horario,
+          planTomas, planNombres, marcadasHoy:mealsHoy, dietaHoy:!!tLog.diet, racha:streak,
+          supl:suplPlan||[], suplHechosHoy:lsGet(suplHechosKey(profile.id,toKey()),{}),
+          pesadoVentanaActual:!!pesajeEnVentana(weights),
+        });
+        sincronizarAvisos(lista).then(r=>{ if(r?.ok) lsSet(kProg, r.programados>0); });
+      }catch{}
+    },1500);
+    return ()=>clearTimeout(tmr);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[avisosOn, avisosPermiso, JSON.stringify(avisosCfg||null), planTomas, planNombres, mealsHoy, tLog.diet, streak, suplPlan, weights, hoyKey, lang, avisosTick, profile?.id]);
+  useEffect(()=>{
+    if(!ES_NATIVO) return;
+    return alTocarAviso((extra)=>{
+      const d=extra?.destino;
+      setTab(d==='plan'?'plan':d==='medidas'?'weight':'home');
+    });
+  },[]);
+  // Guardar lo que elige el paciente (profiles.avisos) y reprogramar.
+  const guardarAvisos=(parcial)=>{
+    if(!profile?.id) return;
+    const nuevo={...(profile.avisos||{}), ...parcial, plataforma:plataformaNativa(), actualizado:new Date().toISOString()};
+    const u={...profile, avisos:nuevo};
+    setProfile(u); lsSet(`gbh:p:${u.id}`,u);
+    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{avisos:nuevo});
+  };
+  const activarAvisos=async()=>{
+    const e=await pedirPermiso();
+    setAvisosPermiso(e);
+    guardarAvisos({prefs:{...avisosPrefs}, permiso:e});
+    if(e==='granted'){
+      sfx("coin");
+      showT({icon:"🔔",title:lang==='en'?'Reminders on':'Avisos activados',
+             sub:lang==='en'?'Change them in your profile › Reminders':'Los cambias en tu perfil › Recordatorios'});
+    }
+  };
+  const posponerAvisos=()=>{ const ts=Date.now(); lsSet(`gbh:avisosPospuesto:${profile?.id}`,ts); setAvisosPospuestoTs(ts); };
+  const avisosTarjeta = avisosOn && (avisosPermiso==='prompt' || avisosPermiso==='prompt-with-rationale')
+    && (Date.now()-(avisosPospuestoTs||0)) > 14*24*60*60*1000;
+  // Plataforma de cada paciente, una vez al día por dispositivo: sin esto no se
+  // sabe a cuántos llega un aviso nativo (BRIEF §0 y §3.10).
+  useEffect(()=>{
+    if(!profile?.id) return;
+    const k=`gbh:plataforma:${profile.id}:${toKey()}`;
+    if(lsGet(k,false)) return;
+    lsSet(k,true);
+    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{plataforma:ES_NATIVO?plataformaNativa():'web', plataforma_at:new Date().toISOString()});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.id]);
 
   // Completar un suplemento/medicación desde el pop-up: marca el día, suma
   // +5 gemas y lo registra en daily_logs (clave 'supl|Nombre', solo seguimiento
@@ -12745,7 +12876,18 @@ function GBHApp(){
           lang={lang}
           setLang={switchLang}
           onDeleteAccount={deleteAccount}
+          avisosOn={avisosOn}
+          avisosPrefs={avisosPrefs}
+          avisosPermiso={avisosPermiso}
+          onAbrirAvisos={()=>{setShowPhotoPicker(false);setShowAvisos(true);}}
         />
+      )}
+      {showAvisos&&avisosOn&&(
+        <PanelRecordatorios lang={lang} T={T} sfx={sfx}
+          prefs={avisosPrefs} horario={avisosCfg?.horario} permiso={avisosPermiso}
+          tomasPlan={AVISOS_TOMAS.filter(tm=>planTomas?.[tm])}
+          onCambiar={guardarAvisos} onPedirPermiso={activarAvisos}
+          onCerrar={()=>setShowAvisos(false)}/>
       )}
 
       {/* Toast */}
@@ -12949,6 +13091,13 @@ function GBHApp(){
           </div>
         );
       })()}
+
+      {/* Avisos fuera de la app (28-sep-2026): la tarjeta propia antes del diálogo
+          del sistema. Solo en la app de tienda, con el interruptor del operador
+          encendido y el permiso aún sin pedir; «Ahora no» la aplaza 14 días. */}
+      {avisosTarjeta&&(
+        <TarjetaPermisoAvisos lang={lang} T={T} onSi={activarAvisos} onAhoraNo={posponerAvisos}/>
+      )}
 
       {/* Banner de pesaje (miércoles y fin de semana) — con X para cerrar */}
       {puedePesarseHoy()&&!pesajeEnVentana(weights)&&!weightBannerDismissed&&(
