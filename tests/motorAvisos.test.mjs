@@ -3,7 +3,7 @@
 // Fechas fijas: lun 28-sep-2026 … dom 4-oct-2026, en hora local.
 import test from 'node:test';
 import {
-  planificarAvisos, normHora, idAviso, nombresDePlan, horarioDeTurno, diaPlan,
+  planificarAvisos, normHora, idAviso, nombresDePlan, horarioDeTurno, diaPlan, horasTipicas,
   HORIZONTE_DIAS, MAX_AVISOS, FRANJA_CASA,
 } from '../src/motorAvisos.js';
 
@@ -154,6 +154,17 @@ export const CASOS = [
     igual(['7am', '7', '07:00', '12:30', '9.15', '1730', '7pm', '12am', '21h', ' 10 am '].map(normHora),
       ['07:00', '07:00', '07:00', '12:30', '09:15', '17:30', '19:00', '00:00', '21:00', '10:00']);
     igual(['', null, '25:00', '12:61', 'mediodía', '7:5'].map(normHora), [null, null, null, null, null, null]);
+  } },
+  { que: 'horas típicas: solo las de las comidas del plan (2, 3, 4 o 5), y sirven tal cual al motor', prueba: () => {
+    igual(horasTipicas(['Comida', 'Cena']), { Comida: '14:00', Cena: '21:00' }, '2 comidas');
+    igual(horasTipicas(['Comida', 'Merienda', 'Cena']), { Comida: '14:00', Merienda: '17:30', Cena: '21:00' }, '3 comidas');
+    igual(Object.keys(horasTipicas(['Desayuno', 'Almuerzo', 'Comida', 'Merienda', 'Cena'])).length, 5);
+    igual(horasTipicas([]), {}, 'sin plan');
+    igual(horasTipicas(['Recena']), {}, 'lo que no es una toma');
+    const plan = { Comida: TODOS, Merienda: TODOS, Cena: TODOS };
+    const r = planificarAvisos({ ahora: F(28, 6), planTomas: plan, prefs: { comidas: true, tomas: false, pesaje: false },
+      horario: { turno: 'manana', manana: horasTipicas(Object.keys(plan)), tarde: {} } });
+    igual(r.filter((a) => dia(a) === '2026-09-28').map((a) => `${hhmm(a)} ${a.toma}`), ['14:00 Comida', '17:30 Merienda', '21:00 Cena']);
   } },
   { que: 'horarioDeTurno: solo horas válidas y solo del turno activo', prueba: () => {
     igual(horarioDeTurno({ turno: 'tarde', manana: { Comida: '14:00' }, tarde: { Comida: '12:30', Cena: 'luego' } }), { Comida: '12:30' });
