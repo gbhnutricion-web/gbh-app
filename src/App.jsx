@@ -10913,7 +10913,6 @@ function GBHApp(){
           planTomas, planNombres, marcadasHoy:mealsHoy, dietaHoy:!!tLog.diet, racha:streak,
           supl:suplPlan||[], suplHechosHoy:lsGet(suplHechosKey(profile.id,toKey()),{}),
           pesadoVentanaActual:!!pesajeEnVentana(weights),
-          escudos:profile?.shields||0, pausas:pausaRangos(profile),
           semana:{activa:profile?.plan==="standard" && !trialDiasRest, fechaGen:planFechaGen},
         });
         sincronizarAvisos(lista).then(r=>{ if(r?.ok) lsSet(kProg, r.programados>0); });
@@ -10922,7 +10921,7 @@ function GBHApp(){
     return ()=>clearTimeout(tmr);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[avisosOn, avisosPermiso, JSON.stringify(avisosCfg||null), planTomas, planNombres, mealsHoy, tLog.diet, streak, suplPlan, weights, hoyKey, lang, avisosTick, profile?.id,
-     profile?.shields, profile?.pausa_desde, profile?.pausa_hasta, profile?.plan, trialDiasRest, planFechaGen]);
+     profile?.plan, trialDiasRest, planFechaGen]);
   useEffect(()=>{
     if(!ES_NATIVO) return;
     return alTocarAviso((extra)=>{
