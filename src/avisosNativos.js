@@ -13,6 +13,20 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 
 export const ICONO_ANDROID = 'ic_stat_gbh';   // res/drawable del proyecto nativo (prep-native.mjs)
 export const COLOR_ANDROID = '#4DC97A';       // T.g2
+// Canal propio de Android con importancia ALTA (4): así el aviso sale como banner y no se
+// queda escondido en la barra. Si crearlo falla, los avisos van al canal por defecto: un
+// channelId que no existe haría que NO sonaran (definitions.d.ts del complemento).
+export const CANAL_ANDROID = { id: 'gbh-avisos', name: 'Avisos de GBH', description: 'Comidas, tomas, pesaje y racha', importance: 4, vibration: true };
+let canalListo = null;   // null = sin intentar · true · false
+async function asegurarCanal() {
+  if (canalListo !== null) return canalListo;
+  try {
+    if (Capacitor.getPlatform() !== 'android') { canalListo = false; return false; }
+    await LocalNotifications.createChannel(CANAL_ANDROID);
+    canalListo = true;
+  } catch { canalListo = false; }
+  return canalListo;
+}
 
 export const esAppNativa = () => { try { return Capacitor.isNativePlatform(); } catch { return false; } };
 export const plataforma = () => { try { return Capacitor.getPlatform(); } catch { return 'web'; } };
@@ -40,6 +54,7 @@ export async function sincronizarAvisos(lista) {
     const pend = ((await LocalNotifications.getPending()) || {}).notifications || [];
     if (pend.length) await LocalNotifications.cancel({ notifications: pend.map((n) => ({ id: n.id })) });
     if (!lista || !lista.length) return { ok: true, programados: 0, cancelados: pend.length };
+    const canal = await asegurarCanal();
     await LocalNotifications.schedule({
       notifications: lista.map((a) => ({
         id: a.id,
@@ -49,6 +64,11 @@ export async function sincronizarAvisos(lista) {
         isExactNotification: false,
         smallIcon: ICONO_ANDROID,
         iconColor: COLOR_ANDROID,
+        ...(canal ? { channelId: CANAL_ANDROID.id } : {}),
+        foreground: true,          // con la app abierta también se ve: su pop-up de dentro ya no sale
+        autoCancel: true,
+        group: 'gbh',              // Android agrupa los avisos de GBH
+        threadIdentifier: 'gbh',   // iOS igual
         extra: { destino: a.destino, tipo: a.tipo, fecha: a.fecha, toma: a.toma || null },
       })),
     });
