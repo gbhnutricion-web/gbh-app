@@ -13,7 +13,7 @@ import { _NUTRI_ING } from "./nutriIng";                                     // 
 import { esDiaDeMedicion, ventanaKeys, proximoDiaMedicion } from "./ventanaMedicion"; // peso y medidas: miércoles + fin de semana (15-sep-2026)
 import { TOPE_PUNTOS, clasificarRespuesta, yaEstaEnElServidor, opDePartidaCaducada, esPendienteDeHoy } from "./partidaPendiente"; // la partida es del paciente hasta que el servidor la confirma (26-sep-2026)
 import { racionesDeLaLista, costePorRacion, textosCajaRacion } from "./raciones";   // qué cocinar y cuánto comer (17-sep-2026)
-import { elegirRecetaCambio, permitidasDePlanes, normNombreCambio, claveMemoriaCambio, leerMemoriaCambio, guardarMemoriaCambio } from "./cambioReceta"; // cambio de receta con gemas: lista del servidor, sin repetir (28-sep-2026)
+import { elegirRecetaCambio, permitidasDePlanes, normNombreCambio, claveMemoriaCambio, leerMemoriaCambio, guardarMemoriaCambio, permitidasTodas, puedeComer, recetaDelDiaAlAzar, recetaDelDiaFija } from "./cambioReceta"; // cambio de receta con gemas y receta del día: lista del servidor, sin repetir (28-sep-2026)
 import { Cafeina } from "./Cafeina";                                     // calculadora de cafeína, fase 1 (25-sep-2026)
 import { Suplementacion } from "./Suplementacion";                       // pestaña 💊 Suplementación: ☕ Cafeína y 💪 Creatina (próximamente) (26-sep-2026)
 import { BarraPestanas } from "./BarraPestanas";                         // la barra de pestañas de abajo (26-sep-2026)
@@ -9553,6 +9553,25 @@ function GBHApp(){
 
 
   // ─── Receta diaria — selección determinista por fecha ───────────────────────
+  // Lo que ESTE paciente puede comer (28-sep-2026): la del día era la misma para
+  // todos y su cambio con gemas daba cada día las MISMAS tres a todo el mundo,
+  // sin mirar alergias ni dieta. Mismas fuentes que el cambio de receta del plan
+  // (src/cambioReceta.js): la lista del servidor (plan_json.cambio_receta), los
+  // rechazados de patient_config.notas y las descartadas 🗑️.
+  const restriccionesReceta = async () => {
+    if(!profile?.id) return { permitidas:null, rechazada:()=>false, descartadas:new Set() };
+    const [pl, cf] = await Promise.all([
+      sbReq("GET", `weekly_plans?profile_id=eq.${profile.id}&select=fecha_gen,cambio_receta:plan_json->cambio_receta&order=fecha_gen.desc.nullslast&limit=12`),
+      sbReq("GET", `patient_config?profile_id=eq.${profile.id}&select=notas&limit=1`),
+    ]);
+    const planesR = (Array.isArray(pl)?pl:[]).map(p=>({ fecha_gen:p.fecha_gen, plan_json:{ cambio_receta:p.cambio_receta } }));
+    const pref = interpretarRechazados(Array.isArray(cf)&&cf[0] ? cf[0].notas : '');
+    return {
+      permitidas: permitidasTodas(planesR),
+      rechazada:  (r)=>recetaRechazadaJS(r, pref),
+      descartadas:new Set((descartadas||[]).map(x=>normNombreCambio(x.nombre||''))),
+    };
+  };
   // Carga inicial del día — gratis
   const fetchDailyRecipe = async () => {
     const todayKey = toKey();
@@ -9575,8 +9594,18 @@ function GBHApp(){
       const dayOfYear = Math.floor((d - new Date(d.getFullYear(),0,0)) / 86400000);
       const offset = (dayOfYear * 7 + d.getFullYear()) % 472;
       const r = await sbReq("GET", `recipes?select=*&order=id_receta.asc&limit=1&offset=${offset}`);
-      if(r?.length){
-        const recipe = await getRecipeForDisplay(r[0]);
+      let base = r?.length ? normalizeRecipe(r[0]) : null;
+      // La del día, salvo que este paciente no pueda comerla: entonces otra, fija
+      // para todo el día, entre las que sí puede. Sin restricciones legibles
+      // (sin red), la de siempre.
+      try{
+        const restr = await restriccionesReceta();
+        if(base && !puedeComer(base, restr)){
+          base = recetaDelDiaFija({ recetas: await cargarTodasRecetas(), clave: todayKey, ...restr });
+        }
+      }catch(e){ console.warn("fetchDailyRecipe (restricciones):", e); }
+      if(base){
+        const recipe = await getRecipeForDisplay(base);
         lsSet(`gbh:recipe:${todayKey}`, recipe);
         setDailyRecipe(recipe);
       }
@@ -9750,13 +9779,32 @@ function GBHApp(){
       showT({icon:"💎",title:t("insufficientGems"),sub:t("needGemsRecipe")});
       refreshingRef.current = false; return;
     }
+    setRecipeLoading(true);
+
+    // ── Qué receta sale (28-sep-2026): al AZAR entre las que este paciente puede
+    //    comer, sin repetir las enseñadas hoy. Antes salía de la fecha y del
+    //    número de cambio: las mismas tres para todo el mundo, sin mirar
+    //    alergias. Se elige ANTES de cobrar: si no hay ninguna, no se cobra.
+    const vistasKey = `gbh:recipe:vistas:${todayKey}`;
+    const vistas = new Set((lsGet(vistasKey, [])||[]).map(String));
+    if(dailyRecipe?.id_receta) vistas.add(String(dailyRecipe.id_receta));
+    let elegida = null;
+    try{
+      const [todas, restr] = await Promise.all([cargarTodasRecetas(), restriccionesReceta()]);
+      elegida = recetaDelDiaAlAzar({ recetas: todas, ...restr, excluir: vistas });
+    }catch(e){ console.warn("refreshRecipe:", e); }
+    if(!elegida){
+      setRecipeLoading(false);
+      showT({icon:"🚫",title:lang==="en"?"No alternative":"Sin alternativa",
+        sub:lang==="en"?"No other recipe available right now":"Ahora no hay otra receta disponible"});
+      refreshingRef.current = false; return;
+    }
 
     // Descontar gemas (0 en trial) y mostrar loading inmediatamente
     const newGems = enTrialR ? gems : gems - 10;
     const updP = {...profile, gems: newGems};
     setProfile(updP); lsSet(`gbh:p:${profile.id}`, updP);
     setDailyRecipe(null);
-    setRecipeLoading(true);
 
     // Guardar conteo y persistir gemas en background
     const newUsed = used + 1;
@@ -9766,24 +9814,18 @@ function GBHApp(){
     if(!enTrialR) sbReq("PATCH", `profiles?id=eq.${profile.id}`, {gems: newGems}); // fire & forget
 
     try {
-      const d = new Date();
-      const dayOfYear = Math.floor((d - new Date(d.getFullYear(),0,0)) / 86400000);
-      const base = (dayOfYear * 7 + d.getFullYear()) % 472;
-      const offset = (base + newUsed * 137) % 472;
-      const r = await sbReq("GET", `recipes?select=*&order=id_receta.asc&limit=1&offset=${offset}`);
-      if(r?.length){
-        sfx("recipe");
-        const recipe = await getRecipeForDisplay(r[0]);
-        lsSet(`gbh:recipe:current:${todayKey}`, recipe);
-        setDailyRecipe(recipe);
-        const left = 3 - newUsed;
-        showT({icon:"🍰",
-          title:lang==="en"?"New recipe!":"¡Nueva receta!",
-          sub:lang==="en"
-            ?`-10 💎 · ${left>0?left+" change"+(left>1?"s":"")+" left today":"No more changes today"}`
-            :`-10 💎 · ${left>0?left+" cambio"+(left>1?"s":"")+" más hoy":"Sin más cambios hoy"}`
-        });
-      }
+      sfx("recipe");
+      const recipe = await getRecipeForDisplay(elegida);
+      lsSet(`gbh:recipe:current:${todayKey}`, recipe);
+      lsSet(vistasKey, [...vistas, String(elegida.id_receta)]);
+      setDailyRecipe(recipe);
+      const left = 3 - newUsed;
+      showT({icon:"🍰",
+        title:lang==="en"?"New recipe!":"¡Nueva receta!",
+        sub:lang==="en"
+          ?`-10 💎 · ${left>0?left+" change"+(left>1?"s":"")+" left today":"No more changes today"}`
+          :`-10 💎 · ${left>0?left+" cambio"+(left>1?"s":"")+" más hoy":"Sin más cambios hoy"}`
+      });
     } catch(e){ console.warn("refreshRecipe:",e); }
     setRecipeLoading(false);
     refreshingRef.current = false;

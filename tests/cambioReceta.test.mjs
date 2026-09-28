@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   elegirRecetaCambio, permitidasDePlanes, franjaCambio, normNombreCambio, POOL,
   claveMemoriaCambio, leerMemoriaCambio, guardarMemoriaCambio, podarMemoriaCambio,
+  permitidasTodas, puedeComer, recetaDelDiaAlAzar, recetaDelDiaFija,
 } from '../src/cambioReceta.js';
 
 const ok = (c, m) => { if (!c) throw new Error(m || 'no se cumple'); };
@@ -161,6 +162,48 @@ export const CASOS = [
     igual(permitidasDePlanes([{ plan_json: {} }], 'Comida'), null);
     igual(permitidasDePlanes([{ plan_json: { cambio_receta: { v: 2, principal: ['X'] } } }], 'Comida'), null, 'versión desconocida');
     igual([franjaCambio('Almuerzo'), franjaCambio('Comida'), franjaCambio('Desayuno')], ['ligera', 'principal', 'desayuno']);
+  } },
+  { que: 'receta del día: la lista de todas las franjas del plan más reciente', prueba: () => {
+    const planes = [{ fecha_gen: '2026-09-26T10:00:00Z', plan_json: { cambio_receta: { v: 1, desayuno: ['A'], ligera: ['A', 'B'], principal: ['C'] } } },
+      { fecha_gen: '2026-09-19T10:00:00Z', plan_json: { cambio_receta: null } }];
+    igual([...permitidasTodas(planes)].sort(), ['A', 'B', 'C']);
+    igual(permitidasTodas([{ fecha_gen: 'x', plan_json: { cambio_receta: null } }]), null);
+  } },
+  { que: 'receta del día: puedeComer mira la lista, los rechazados y las descartadas', prueba: () => {
+    const permitidas = new Set(['REC2', 'REC3']);
+    const rechazada = (r) => /bacalao/.test(normNombreCambio(r.nombre));
+    const descartadas = new Set([normNombreCambio('Merluza en salsa')]);
+    igual([BASE[0], BASE[1], BASE[2]].map((r) => puedeComer(r, { permitidas })), [false, true, true]);
+    igual(puedeComer(BASE[2], { permitidas, rechazada }), false);
+    igual(puedeComer(BASE[1], { permitidas, descartadas }), false);
+    igual(puedeComer(null), false);
+  } },
+  { que: 'receta del día con gemas: al azar, nunca lo vetado y sin repetir lo de hoy', prueba: () => {
+    const permitidas = new Set(['REC2', 'REC3', 'REC4', 'REC5', 'REC6']);
+    const rechazada = (r) => /pollo/.test(normNombreCambio(r.nombre));
+    const salen = new Set();
+    for (let i = 0; i < 60; i++) {
+      const r = recetaDelDiaAlAzar({ recetas: BASE, permitidas, rechazada, azar: () => i / 60 });
+      ok(r && permitidas.has(r.id_receta) && r.id_receta !== 'REC4', `salió ${r && r.id_receta}`);
+      salen.add(r.id_receta);
+    }
+    igual([...salen].sort(), ['REC2', 'REC3', 'REC5', 'REC6'], 'el azar recorre todas las que puede comer');
+    const excluir = new Set(['REC2', 'REC3', 'REC5']);
+    for (let i = 0; i < 20; i++) igual(recetaDelDiaAlAzar({ recetas: BASE, permitidas, rechazada, excluir, azar: () => i / 20 }).id_receta, 'REC6');
+    const todo = new Set(['REC2', 'REC3', 'REC5', 'REC6']);
+    ok(todo.has(recetaDelDiaAlAzar({ recetas: BASE, permitidas, rechazada, excluir: todo, azar: () => 0.5 }).id_receta), 'enseñado todo: vuelve a empezar');
+    igual(recetaDelDiaAlAzar({ recetas: BASE, permitidas: new Set() }), null);
+  } },
+  { que: 'receta del día gratis: fija para el día, entre las que puede comer y sin depender del orden', prueba: () => {
+    const permitidas = new Set(['REC2', 'REC3', 'REC5']);
+    const a = recetaDelDiaFija({ recetas: BASE, clave: '2026-09-28', permitidas });
+    const b = recetaDelDiaFija({ recetas: [...BASE].reverse(), clave: '2026-09-28', permitidas });
+    igual(a.id_receta, b.id_receta);
+    ok(permitidas.has(a.id_receta));
+    const dias = new Set();
+    for (let d = 1; d <= 30; d++) dias.add(recetaDelDiaFija({ recetas: BASE, clave: `2026-09-${String(d).padStart(2, '0')}`, permitidas }).id_receta);
+    igual([...dias].sort(), ['REC2', 'REC3', 'REC5'], 'cambia de un día a otro');
+    igual(recetaDelDiaFija({ recetas: BASE, clave: 'x', permitidas: new Set() }), null);
   } },
   { que: 'la ración: pasos de 0,05 dentro de 0,70-1,40', prueba: () => {
     const recetas = [R('REC2', 'Merluza en salsa', 'Pescado', { calorias: 400, proteinas_g: 30, hidratos_g: 40, grasas_g: 13.6 })];

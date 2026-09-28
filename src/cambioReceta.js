@@ -20,6 +20,7 @@
 //  · cada hueco (semana · toma · día) recuerda lo ya enseñado y no lo repite
 //    hasta haberlo enseñado todo; el parecido se mide contra la receta que puso
 //    la programación, no contra la última que salió del cambio.
+// Lo mismo para la receta del día de la pestaña Receta y su cambio con gemas (abajo).
 // Tests: tests/cambioReceta.test.mjs (sin Node: 07. App GBH/arnes_cambio_receta.py).
 
 export const F_MIN = 0.70, F_MAX = 1.40;        // = RACION_MIN/MAX del generador
@@ -129,6 +130,46 @@ export function elegirRecetaCambio({ recetas, actual, ancla = null, toma, permit
     if (Math.abs(factor - 1) < 0.05) factor = 1;
   }
   return { receta: elegida.r, factor, pool: pool.map((x) => x.r), nivel: elegida.nivel, reinicio };
+}
+
+// ── Receta del día (pestaña Receta) ───────────────────────────────────────────
+// La del día salía de la fecha, igual para todos, y su cambio con gemas daba cada
+// día las MISMAS tres recetas a todo el mundo, sin mirar alergias ni dieta. Ahora
+// usan las mismas fuentes que el cambio del plan: la lista del servidor (todas las
+// franjas), los rechazados de patient_config.notas y las descartadas 🗑️.
+
+// Unión de las listas de las tres franjas del plan más reciente que las traiga.
+export function permitidasTodas(planes) {
+  const partes = ['Desayuno', 'Almuerzo', 'Comida'].map((t) => permitidasDePlanes(planes, t));
+  if (partes.some((p) => p === null)) return null;
+  return new Set(partes.flatMap((p) => [...p]));
+}
+
+export function puedeComer(r, { permitidas = null, rechazada = () => false, descartadas = new Set() } = {}) {
+  if (!r) return false;
+  if (permitidas && !permitidas.has(String(r.id_receta == null ? '' : r.id_receta))) return false;
+  return !descartadas.has(normNombreCambio(r.nombre || r.nombre_receta || '')) && !rechazada(r);
+}
+
+// Cambio con gemas: al azar entre las que puede comer, sin repetir lo enseñado hoy
+// (enseñado todo, vuelve a empezar). null si no puede comer ninguna.
+export function recetaDelDiaAlAzar({ recetas, permitidas = null, rechazada = () => false,
+  descartadas = new Set(), excluir = new Set(), azar = Math.random }) {
+  const ok = (recetas || []).filter((r) => puedeComer(r, { permitidas, rechazada, descartadas }));
+  if (!ok.length) return null;
+  const nuevas = ok.filter((r) => !excluir.has(String(r.id_receta)));
+  const pool = nuevas.length ? nuevas : ok;
+  return pool[Math.floor(azar() * pool.length) % pool.length];
+}
+
+// La gratuita: fija para todo el día (misma clave, misma receta) entre las que puede comer.
+export function recetaDelDiaFija({ recetas, clave, permitidas = null, rechazada = () => false, descartadas = new Set() }) {
+  const ok = (recetas || []).filter((r) => puedeComer(r, { permitidas, rechazada, descartadas }))
+    .sort((a, b) => (String(a.id_receta) < String(b.id_receta) ? -1 : String(a.id_receta) > String(b.id_receta) ? 1 : 0));
+  if (!ok.length) return null;
+  let h = 0;
+  for (const ch of String(clave)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return ok[h % ok.length];
 }
 
 // ── Memoria de cada hueco (localStorage del teléfono) ─────────────────────────
