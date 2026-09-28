@@ -28,7 +28,9 @@ const TXT = {
     },
     registroDentro: "Con los avisos de comida, va dentro del de la última comida",
     horarioTit: "Tu horario de comidas", semana: "Esta semana voy de", manana: "☀️ Mañana", tarde: "🌙 Tarde",
-    horarioAyuda: "Deja en blanco las comidas de las que no quieras aviso.",
+    horarioAyuda: "Solo salen las comidas de tu plan. Deja en blanco las que no quieras que te avisen.",
+    sinHora: "sin aviso",
+    sinPlan: "Cuando tengas tu plan, aquí saldrán tus comidas para ponerles hora.",
     denegado: "Las notificaciones de GBH están desactivadas en tu móvil. Actívalas en Ajustes › GBH Nutrición › Notificaciones y vuelve aquí.",
     pedir: "Activar notificaciones",
     pie: "Los avisos se preparan en tu móvil para los 3 días siguientes cada vez que abres la app. Si pasas unos días sin abrirla, dejan de sonar solos.",
@@ -50,7 +52,9 @@ const TXT = {
     },
     registroDentro: "With meal reminders, it goes inside the last meal's one",
     horarioTit: "Your meal times", semana: "This week I'm on", manana: "☀️ Morning", tarde: "🌙 Afternoon",
-    horarioAyuda: "Leave blank the meals you don't want a reminder for.",
+    horarioAyuda: "Only the meals in your plan show up. Leave blank the ones you don't want a reminder for.",
+    sinHora: "no reminder",
+    sinPlan: "Once you have your plan, your meals will show up here so you can set their times.",
     denegado: "GBH notifications are off on this phone. Turn them on in Settings › GBH Nutrición › Notifications and come back.",
     pedir: "Turn on notifications",
     pie: "Reminders are prepared on your phone for the next 3 days every time you open the app. If you don't open it for a few days, they stop by themselves.",
@@ -124,7 +128,9 @@ export function PanelRecordatorios({ lang = "es", T, prefs, horario, permiso, to
   const p = { ...PREFS_POR_DEFECTO, ...(prefs || {}) };
   const h = { turno: "manana", manana: {}, tarde: {}, ...(horario || {}) };
   const turno = h.turno === "tarde" ? "tarde" : "manana";
-  const tomas = (tomasPlan && tomasPlan.length ? tomasPlan : TOMAS_ORDEN).filter((tm) => TOMAS_ORDEN.includes(tm));
+  // Solo las comidas que el plan del paciente tiene (2, 3, 4 o 5; medido el 28-sep: 11 pacientes con 5,
+  // 7 con 4, 2 con 3 y 1 con 2). Sin plan no hay comidas que avisar, así que no se piden horas.
+  const tomas = (tomasPlan || []).filter((tm) => TOMAS_ORDEN.includes(tm));
   const cambiarPref = (k) => { sfx && sfx("tap"); onCambiar && onCambiar({ prefs: { ...p, [k]: !p[k] } }); };
   const cambiarTurno = (tn) => { if (tn === turno) return; sfx && sfx("tap"); onCambiar && onCambiar({ horario: { ...h, turno: tn } }); };
   const cambiarHora = (tm, v) => {
@@ -188,15 +194,24 @@ export function PanelRecordatorios({ lang = "es", T, prefs, horario, permiso, to
                 </button>
               ))}
             </div>
-            {tomas.map((tm) => (
-              <label key={tm} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }}>
-                <span style={{ flex: 1, fontSize: 14, color: T.t1, fontFamily: "'DM Sans',sans-serif" }}>{s.nombres[tm]}</span>
-                <input type="time" data-toma={tm} value={(h[turno] && h[turno][tm]) || ""} onChange={(ev) => cambiarHora(tm, ev.target.value)}
-                  style={{ background: "rgba(255,255,255,0.08)", border: "1.5px solid rgba(255,255,255,0.18)", borderRadius: 10,
-                           color: T.t1, padding: "7px 10px", fontSize: 15, fontFamily: "'DM Sans',sans-serif", colorScheme: "dark" }} />
-              </label>
-            ))}
-            <div style={{ fontSize: 11.5, color: T.t2, fontFamily: "'DM Sans',sans-serif", marginTop: 6, lineHeight: 1.4 }}>{s.horarioAyuda}</div>
+            {!tomas.length && (
+              <div data-avisos="sin-plan" style={{ fontSize: 13, color: T.t2, fontFamily: "'DM Sans',sans-serif", lineHeight: 1.5, padding: "4px 0" }}>{s.sinPlan}</div>
+            )}
+            {tomas.map((tm) => {
+              const hora = (h[turno] && h[turno][tm]) || "";
+              return (
+                <label key={tm} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }}>
+                  <span style={{ flex: 1, fontSize: 14, color: T.t1, fontFamily: "'DM Sans',sans-serif" }}>
+                    {s.nombres[tm]}
+                    {!hora && <span style={{ fontSize: 11, color: T.t3, marginLeft: 6 }}>· {s.sinHora}</span>}
+                  </span>
+                  <input type="time" data-toma={tm} value={hora} onChange={(ev) => cambiarHora(tm, ev.target.value)}
+                    style={{ background: "rgba(255,255,255,0.08)", border: "1.5px solid rgba(255,255,255,0.18)", borderRadius: 10,
+                             color: T.t1, padding: "7px 10px", fontSize: 15, fontFamily: "'DM Sans',sans-serif", colorScheme: "dark" }} />
+                </label>
+              );
+            })}
+            {!!tomas.length && <div style={{ fontSize: 11.5, color: T.t2, fontFamily: "'DM Sans',sans-serif", marginTop: 6, lineHeight: 1.4 }}>{s.horarioAyuda}</div>}
           </div>
         )}
 
