@@ -19,6 +19,14 @@ export const RACHA_MINIMA = 3;        // como el rescate de dentro: una racha co
 export const FRANJA_CASA = ['09:00', '21:30'];   // avisos de la casa; los del paciente suenan a su hora (§3.5)
 export const PREFS_POR_DEFECTO = { comidas: false, tomas: true, registro: true, pesaje: true, semana: true };
 export const TURNOS = ['manana', 'tarde'];
+// Horas que se proponen al encender «Comidas» con el turno vacío, solo para las comidas del
+// plan del paciente; él las cambia por las suyas (orden de Alejandro, 28-sep-2026, MAESTRO-2026-698).
+export const HORAS_TIPICAS = { Desayuno: '08:00', Almuerzo: '11:00', Comida: '14:00', Merienda: '17:30', Cena: '21:00' };
+export const horasTipicas = (tomas) => {
+  const r = {};
+  for (const tm of (tomas || [])) if (HORAS_TIPICAS[tm]) r[tm] = HORAS_TIPICAS[tm];
+  return r;
+};
 
 // «7am», «7», «7:00», «07.00», «12:30», «1730», «7pm» → «HH:MM»; lo que no es una hora → null.
 export function normHora(h) {

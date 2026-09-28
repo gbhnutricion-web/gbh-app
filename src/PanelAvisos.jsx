@@ -10,7 +10,7 @@
 //  · PanelRecordatorios: un interruptor por tipo y el horario de comidas con dos turnos y el
 //    selector «esta semana» — §2-bis.
 import React from "react";
-import { TOMAS_ORDEN, PREFS_POR_DEFECTO, normHora } from "./motorAvisos";
+import { TOMAS_ORDEN, PREFS_POR_DEFECTO, normHora, horasTipicas } from "./motorAvisos";
 
 const TXT = {
   es: {
@@ -31,6 +31,7 @@ const TXT = {
     horarioAyuda: "Solo salen las comidas de tu plan. Deja en blanco las que no quieras que te avisen.",
     sinHora: "sin aviso",
     sinPlan: "Cuando tengas tu plan, aquí saldrán tus comidas para ponerles hora.",
+    tipicas: "Te he puesto horas típicas: cámbialas por las tuyas.",
     denegado: "Las notificaciones de GBH están desactivadas en tu móvil. Actívalas en Ajustes › GBH Nutrición › Notificaciones y vuelve aquí.",
     pedir: "Activar notificaciones",
     pie: "Los avisos se preparan en tu móvil para los 3 días siguientes cada vez que abres la app. Si pasas unos días sin abrirla, dejan de sonar solos.",
@@ -55,6 +56,7 @@ const TXT = {
     horarioAyuda: "Only the meals in your plan show up. Leave blank the ones you don't want a reminder for.",
     sinHora: "no reminder",
     sinPlan: "Once you have your plan, your meals will show up here so you can set their times.",
+    tipicas: "These are typical times: change them to yours.",
     denegado: "GBH notifications are off on this phone. Turn them on in Settings › GBH Nutrición › Notifications and come back.",
     pedir: "Turn on notifications",
     pie: "Reminders are prepared on your phone for the next 3 days every time you open the app. If you don't open it for a few days, they stop by themselves.",
@@ -131,7 +133,19 @@ export function PanelRecordatorios({ lang = "es", T, prefs, horario, permiso, to
   // Solo las comidas que el plan del paciente tiene (2, 3, 4 o 5; medido el 28-sep: 11 pacientes con 5,
   // 7 con 4, 2 con 3 y 1 con 2). Sin plan no hay comidas que avisar, así que no se piden horas.
   const tomas = (tomasPlan || []).filter((tm) => TOMAS_ORDEN.includes(tm));
-  const cambiarPref = (k) => { sfx && sfx("tap"); onCambiar && onCambiar({ prefs: { ...p, [k]: !p[k] } }); };
+  // Al ENCENDER «Comidas» con el turno activo vacío se proponen las horas típicas, solo de las
+  // comidas de su plan (MAESTRO-2026-698). Si ya tiene alguna hora puesta, no se toca nada.
+  const tipicas = horasTipicas(tomas);
+  const cambiarPref = (k) => {
+    sfx && sfx("tap");
+    const prefs = { ...p, [k]: !p[k] };
+    const act = h[turno] || {};
+    if (k === "comidas" && prefs.comidas && tomas.length && !tomas.some((tm) => normHora(act[tm]))) {
+      onCambiar && onCambiar({ prefs, horario: { ...h, turno, [turno]: { ...act, ...tipicas } } });
+      return;
+    }
+    onCambiar && onCambiar({ prefs });
+  };
   const cambiarTurno = (tn) => { if (tn === turno) return; sfx && sfx("tap"); onCambiar && onCambiar({ horario: { ...h, turno: tn } }); };
   const cambiarHora = (tm, v) => {
     const nuevo = { ...(h[turno] || {}) };
@@ -211,6 +225,9 @@ export function PanelRecordatorios({ lang = "es", T, prefs, horario, permiso, to
                 </label>
               );
             })}
+            {!!tomas.length && tomas.every((tm) => (h[turno] || {})[tm] === tipicas[tm]) && (
+              <div data-avisos="tipicas" style={{ fontSize: 12, color: T.au1, fontFamily: "'DM Sans',sans-serif", marginTop: 6, lineHeight: 1.4 }}>{s.tipicas}</div>
+            )}
             {!!tomas.length && <div style={{ fontSize: 11.5, color: T.t2, fontFamily: "'DM Sans',sans-serif", marginTop: 6, lineHeight: 1.4 }}>{s.horarioAyuda}</div>}
           </div>
         )}

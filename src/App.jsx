@@ -10922,11 +10922,18 @@ function GBHApp(){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[avisosOn, avisosPermiso, JSON.stringify(avisosCfg||null), planTomas, planNombres, mealsHoy, tLog.diet, streak, suplPlan, weights, hoyKey, lang, avisosTick, profile?.id,
      profile?.plan, trialDiasRest, planFechaGen]);
+  // Tocar un aviso: abre su pestaña y deja constancia del toque (profiles.avisos.ultimoToque).
+  // Es la prueba de que a ese paciente le llegan los avisos: el criterio para abrirlos a todos
+  // (MAESTRO-2026-698). En frío el perfil aún no ha cargado: el toque espera en el móvil.
+  const guardarAvisosRef=useRef(null);
   useEffect(()=>{
     if(!ES_NATIVO) return;
     return alTocarAviso((extra)=>{
       const d=extra?.destino;
       setTab(d==='plan'?'plan':d==='medidas'?'weight':'home');
+      const toque={ultimoToque:new Date().toISOString(), ultimoToqueTipo:extra?.tipo||null};
+      lsSet('gbh:avisosToque',toque);
+      if(guardarAvisosRef.current) guardarAvisosRef.current(toque);
     });
   },[]);
   // Guardar lo que elige el paciente (profiles.avisos) y reprogramar.
@@ -10937,6 +10944,13 @@ function GBHApp(){
     setProfile(u); lsSet(`gbh:p:${u.id}`,u);
     sbReq("PATCH",`profiles?id=eq.${profile.id}`,{avisos:nuevo});
   };
+  guardarAvisosRef.current=guardarAvisos;
+  useEffect(()=>{   // un toque que llegó antes que el perfil (arranque en frío) se guarda al cargarlo
+    if(!ES_NATIVO || !profile?.id) return;
+    const t=lsGet('gbh:avisosToque',null);
+    if(t?.ultimoToque && t.ultimoToque>(profile?.avisos?.ultimoToque||'')) guardarAvisos(t);   // ISO: ordena como la fecha
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.id]);
   const activarAvisos=async()=>{
     const e=await pedirPermiso();
     setAvisosPermiso(e);
