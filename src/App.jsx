@@ -1328,8 +1328,12 @@ const abrirPortalStripe = async (profileId) => {
   // tienda el botón «Gestionar» ya no se pinta; si algo llegara a llamar aquí, no abre nada.
   if(ES_NATIVO) return false;
   try{
+    // El servidor abre el portal SOLO del perfil de esta sesión (PEND-2026-321):
+    // la cabecera X-GBH-Sesion es la identidad; el profile_id del cuerpo lo ignora.
+    const _s = getSesion();
     const r = await fetch(`${STRIPE_API}/stripe/portal`, {
-      method:"POST", headers:{ "Content-Type":"application/json" },
+      method:"POST",
+      headers:{ "Content-Type":"application/json", ...(_s?.token ? { "X-GBH-Sesion": _s.token } : {}) },
       body: JSON.stringify({ profile_id: profileId }),
     });
     const d = await r.json().catch(()=>null);
