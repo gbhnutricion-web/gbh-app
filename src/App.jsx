@@ -1325,7 +1325,7 @@ const CAPN = (typeof window !== "undefined" && window.Capacitor) || null;
 const ES_NATIVO = !!(CAPN && CAPN.isNativePlatform && CAPN.isNativePlatform());
 const ES_IOS_NATIVO = ES_NATIVO && CAPN.getPlatform && CAPN.getPlatform() === "ios";
 // Android también es de «solo consumo» (PEND-2026-316, orden de Alejandro del 30-sep:
-// «si a la recomendacion»; MAESTRO-2026-716): la política de Pagos de Google Play no deja
+// «si a la recomendacion»; MAESTRO-2026-717): la política de Pagos de Google Play no deja
 // vender el Estándar con Stripe desde la app. Donde iOS no enseña nada, Android dice SIN
 // enlace dónde se contrata, que Google sí permite. En iOS y en la web no cambia nada.
 const ES_ANDROID_NATIVO = ES_NATIVO && !ES_IOS_NATIVO;
