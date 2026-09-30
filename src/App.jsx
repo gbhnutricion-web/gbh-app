@@ -78,6 +78,11 @@ const TRANS = {
     pinLaterOffline:"Sin conexión — continuar sin PIN por ahora",
     pinSaved:"PIN guardado", pinSavedSub:"Tu cuenta queda protegida",
     pinSaveErr:"No se pudo guardar el PIN. Inténtalo de nuevo.",
+    // Cambiar el PIN desde el perfil (30-sep-2026, MAESTRO-2026-715)
+    pinChangeBtn:"Cambiar", pinCurrent:"PIN actual",
+    pinChangeDesc:"Pon tu PIN actual y elige uno nuevo que recuerdes.",
+    pinChangeSave:"Guardar el PIN nuevo", pinCancel:"Cancelar",
+    pinChanged:"PIN cambiado. Usa el nuevo la próxima vez que entres.",
     // Migración usuarios existentes sin contraseña
     migrateTitle:"¡Protege tu cuenta! 🔐",
     migrateDesc:"Para mayor seguridad, crea una contraseña para tu cuenta. Tus datos, racha y progreso no se tocarán.",
@@ -560,6 +565,11 @@ const TRANS = {
     pinLaterOffline:"No connection — continue without a PIN for now",
     pinSaved:"PIN saved", pinSavedSub:"Your account is now protected",
     pinSaveErr:"Couldn't save the PIN. Please try again.",
+    // Change the PIN from the profile (30-sep-2026, MAESTRO-2026-715)
+    pinChangeBtn:"Change", pinCurrent:"Current PIN",
+    pinChangeDesc:"Enter your current PIN and choose a new one you'll remember.",
+    pinChangeSave:"Save the new PIN", pinCancel:"Cancel",
+    pinChanged:"PIN changed. Use the new one next time you log in.",
     // Migration for existing users without password
     migrateTitle:"Protect your account! 🔐",
     migrateDesc:"For added security, create a password for your account. Your data, streak and progress won't be touched.",
@@ -7715,6 +7725,30 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
   const [editingHeight, setEditingHeight] = useState(false);
   const [heightEdit,    setHeightEdit]    = useState(profile?.height_cm||170);
   const [portalLoading, setPortalLoading] = useState(false);
+  // Cambiar el PIN (30-sep-2026, MAESTRO-2026-715): gbh_set_pin con el PIN actual. El servidor
+  // comparte el freno de la entrada (8 fallos en 15 min bloquean 15 min) y contesta 'pin' o 'bloqueado'.
+  const [pinCambio,  setPinCambio]  = useState(false);
+  const [pinA,       setPinA]       = useState("");
+  const [pinN1,      setPinN1]      = useState("");
+  const [pinN2,      setPinN2]      = useState("");
+  const [pinErr,     setPinErr]     = useState("");
+  const [pinOcupado, setPinOcupado] = useState(false);
+  const [pinHecho,   setPinHecho]   = useState(false);
+  const cambiarPin = async () => {
+    setPinErr("");
+    if(!/^\d{4,6}$/.test(pinA))  { setPinErr(t("pinWrong")); return; }
+    if(!/^\d{4,6}$/.test(pinN1)) { setPinErr(t("pinFormat")); return; }
+    if(pinN1!==pinN2)            { setPinErr(t("pinMismatch")); return; }
+    setPinOcupado(true);
+    const em = (profile?.email||"").trim().toLowerCase();
+    const res = await sbPinRpc("gbh_set_pin",{ p_email:em, p_old_pin:pinA, p_new_pin:pinN1 });
+    setPinOcupado(false);
+    if(res==="ok"){ setPinCambio(false); setPinA(""); setPinN1(""); setPinN2(""); setPinHecho(true); return; }
+    setPinErr(res==="bloqueado" ? t("pinBloqueado")
+            : (res==="pin"||res==="exists") ? t("pinWrong")
+            : res==="bad_format" ? t("pinFormat")
+            : res==null ? t("pinNoNet") : t("pinSaveErr"));
+  };
   const fileRef = useRef(null);
 
   const onFile = (e) => {
@@ -7879,6 +7913,53 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
               ))}
             </div>
           </div>
+          {/* PIN de acceso (30-sep-2026, MAESTRO-2026-715): cambiarlo por uno que se recuerde.
+              Solo con PIN ya puesto; crearlo es «Protege tu cuenta». */}
+          {profile?.pin_set&&(
+            <div style={{padding:"12px 0",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+                <div style={{fontSize:10,color:T.t2,textTransform:"uppercase",letterSpacing:"0.08em",fontFamily:"'DM Sans',sans-serif"}}>🔐 {t("pinLabel")}</div>
+                {!pinCambio&&(
+                  <button onClick={()=>{ setPinCambio(true); setPinHecho(false); setPinErr(""); }}
+                    style={{background:"rgba(255,255,255,0.08)",border:"1.5px solid rgba(255,255,255,0.14)",borderRadius:10,padding:"7px 12px",color:T.t2,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
+                    {t("pinChangeBtn")}
+                  </button>
+                )}
+              </div>
+              {pinHecho&&!pinCambio&&(
+                <div style={{fontSize:12,color:T.g1,fontWeight:800,fontFamily:"'DM Sans',sans-serif",marginTop:8}}>✅ {t("pinChanged")}</div>
+              )}
+              {pinCambio&&(
+                <div style={{marginTop:10}}>
+                  <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,marginBottom:10}}>{t("pinChangeDesc")}</div>
+                  {[[t("pinCurrent"),pinA,setPinA],[t("pinNew"),pinN1,setPinN1],[t("pinRepeat"),pinN2,setPinN2]].map(([lab,val,set],i)=>(
+                    <div key={i} style={{marginBottom:8}}>
+                      <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:4}}>{lab}</div>
+                      <input type="password" inputMode="numeric" pattern="[0-9]*" maxLength={6} value={val}
+                        autoComplete={i===0?"current-password":"new-password"}
+                        onChange={e=>{ set(e.target.value.replace(/\D/g,"").slice(0,6)); setPinErr(""); }}
+                        onKeyDown={e=>{ if(e.key==="Enter"&&i===2) cambiarPin(); }}
+                        placeholder={t("pinPH")}
+                        style={{width:"100%",boxSizing:"border-box",background:"rgba(255,255,255,0.1)",border:`1.5px solid ${T.g1}`,borderRadius:10,padding:"8px 10px",color:T.wh,fontSize:16,fontWeight:900,letterSpacing:"0.35em",textAlign:"center",fontFamily:"'DM Sans',sans-serif",outline:"none"}}/>
+                    </div>
+                  ))}
+                  {pinErr&&(
+                    <div style={{background:alpha(T.red,0.12),border:`1.5px solid ${alpha(T.red,0.4)}`,borderRadius:10,padding:"8px 11px",marginBottom:8,fontSize:12,color:"#FF8080",fontFamily:"'DM Sans',sans-serif",textAlign:"center"}}>⚠️ {pinErr}</div>
+                  )}
+                  <div style={{display:"flex",gap:8}}>
+                    <button onClick={cambiarPin} disabled={pinOcupado||pinA.length<4||pinN1.length<4}
+                      style={{flex:1,background:(pinOcupado||pinA.length<4||pinN1.length<4)?"rgba(255,255,255,0.12)":T.g1,border:"none",borderRadius:10,padding:"8px 0",color:(pinOcupado||pinA.length<4||pinN1.length<4)?T.t2:T.t1,fontWeight:900,fontSize:13,cursor:(pinOcupado||pinA.length<4||pinN1.length<4)?"not-allowed":"pointer",fontFamily:"'Nunito',sans-serif"}}>
+                      {pinOcupado ? t("verifying") : "✓ "+t("pinChangeSave")}
+                    </button>
+                    <button onClick={()=>{ setPinCambio(false); setPinA(""); setPinN1(""); setPinN2(""); setPinErr(""); }}
+                      style={{background:"rgba(255,255,255,0.08)",border:"1.5px solid rgba(255,255,255,0.14)",borderRadius:10,padding:"8px 14px",color:T.t2,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
+                      {t("pinCancel")}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           {/* ── Suscripción (Stripe) ── */}
           <div style={{padding:"12px 0",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
