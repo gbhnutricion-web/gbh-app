@@ -76,10 +76,10 @@ workflows:
           grep -q 'POST_NOTIFICATIONS' "$M" || { echo "Falta POST_NOTIFICATIONS: los avisos no se podrían pedir"; exit 1; }
           echo "OK: sin alarmas exactas y con POST_NOTIFICATIONS"
       - name: Pasos · diagnostico del APK con aapt2 (outputs/diagnostico)
-        # TROCEADO (30-sep-2026): las builds #38 y #39 fallaron en la comprobacion de los pasos y el
-        # registro no se puede leer desde el PC. Cada comprobacion va ahora en su propio paso con
-        # ignore_failure, y GitHub (check-runs de Codemagic) dice cual falla. Cuando se sepa, se quita
-        # ignore_failure para que vuelvan a tumbar la build (BRIEF_pasos.md, §7).
+        # TROCEADO (30-sep-2026): un paso por condicion, y GitHub (check-runs de Codemagic) dice cual
+        # falla sin leer el registro. Leido el APK #41: pedia READ_VO2_MAX y WRITE_VO2_MAX (prep-native
+        # cortaba los nombres con digitos; arreglado) y la linea del minSdk se buscaba con otra forma.
+        # Desde entonces las comprobaciones TUMBAN la build otra vez.
         script: |
           D=android/app/build/outputs/diagnostico; mkdir -p "$D"
           APK=$(ls android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -1)
@@ -100,39 +100,27 @@ workflows:
       - name: Pasos · hay APK de release
         script: |
           [ -s android/app/build/outputs/diagnostico/apk.txt ] && [ -n "$(cat android/app/build/outputs/diagnostico/apk.txt)" ]
-        ignore_failure: true
       - name: Pasos · hay aapt2 en el SDK
         script: |
           [ -n "$(cat android/app/build/outputs/diagnostico/aapt2.txt 2>/dev/null)" ]
-        ignore_failure: true
       - name: Pasos · Health Connect pide SOLO READ_STEPS
         script: |
-          H=$(grep -o "android.permission.health.[A-Z_]*" android/app/build/outputs/diagnostico/permisos.txt | sort -u | tr "\n" " "); echo "salud: $H"; [ "$H" = "android.permission.health.READ_STEPS " ]
-        ignore_failure: true
+          H=$(grep -o "android.permission.health.[A-Z0-9_]*" android/app/build/outputs/diagnostico/permisos.txt | sort -u | tr "\n" " "); echo "salud: $H"; [ "$H" = "android.permission.health.READ_STEPS " ]
       - name: Pasos · ACTIVITY_RECOGNITION (sensor en vivo)
         script: |
           grep -q "android.permission.ACTIVITY_RECOGNITION" android/app/build/outputs/diagnostico/permisos.txt
-        ignore_failure: true
       - name: Pasos · sin alarmas exactas
         script: |
           ! grep -q "SCHEDULE_EXACT_ALARM\|USE_EXACT_ALARM" android/app/build/outputs/diagnostico/permisos.txt
-        ignore_failure: true
       - name: Pasos · minSdk 26
         script: |
-          grep "sdkVersion:" android/app/build/outputs/diagnostico/badging.txt; grep -q "^sdkVersion:'26'" android/app/build/outputs/diagnostico/badging.txt
-        ignore_failure: true
+          grep -i "sdkversion" android/app/build/outputs/diagnostico/badging.txt; grep -qE "(^|[^t])[sS]dkVersion:'26'" android/app/build/outputs/diagnostico/badging.txt || grep -q "minSdkVersion(0x0101020c)=26" android/app/build/outputs/diagnostico/manifiesto_apk.txt
       - name: Pasos · pantalla de la politica Android 13-
         script: |
           grep -q "androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" android/app/build/outputs/diagnostico/manifiesto_apk.txt
-        ignore_failure: true
       - name: Pasos · pantalla de la politica Android 14+
         script: |
           grep -q "android.intent.action.VIEW_PERMISSION_USAGE" android/app/build/outputs/diagnostico/manifiesto_apk.txt
-        ignore_failure: true
-      - name: Pasos · el find del paso de los avisos encuentra el manifiesto
-        script: |
-          [ -s android/app/build/outputs/diagnostico/find_avisos.txt ]
-        ignore_failure: true
     artifacts:
       - android/app/build/outputs/bundle/**/*.aab
       - android/app/build/outputs/apk/**/*.apk

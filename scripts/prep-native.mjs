@@ -139,8 +139,11 @@ if (existsSync(ANDROID)) {
   //     permisos también se quitan. codemagic.yaml lo comprueba en el manifiesto fusionado.
   //     ACTIVITY_RECOGNITION (el sensor de pasos en vivo) lo declara @capgo/capacitor-pedometer.
   const HC_MANIFEST = join(ROOT, "node_modules", "@capgo", "capacitor-health", "android", "src", "main", "AndroidManifest.xml");
+  //     Los nombres se leen ENTEROS del atributo, sin suponer qué caracteres llevan: con [A-Z_]+,
+  //     READ_VO2_MAX se cortaba en «READ_VO» (el 2 es un dígito) y el APK #41 salió pidiendo
+  //     READ_VO2_MAX y WRITE_VO2_MAX (leído en su manifiesto el 30-sep).
   const HC_PERMISOS = existsSync(HC_MANIFEST)
-    ? [...new Set([...readFileSync(HC_MANIFEST, "utf8").matchAll(/android\.permission\.health\.[A-Z_]+/g)].map((m) => m[0]))]
+    ? [...new Set([...readFileSync(HC_MANIFEST, "utf8").matchAll(/android:name="(android\.permission\.health\.[^"]+)"/g)].map((m) => m[1]))]
     : [];
   if (!HC_PERMISOS.length) log("AVISO: no encuentro el manifiesto de @capgo/capacitor-health; no se quita ningún permiso");
   editar(join(ANDROID, "app", "src", "main", "AndroidManifest.xml"), (t) => {
