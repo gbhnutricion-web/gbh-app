@@ -75,12 +75,11 @@ workflows:
           fi
           grep -q 'POST_NOTIFICATIONS' "$M" || { echo "Falta POST_NOTIFICATIONS: los avisos no se podrían pedir"; exit 1; }
           echo "OK: sin alarmas exactas y con POST_NOTIFICATIONS"
-      - name: Comprobar los pasos del movil en el APK que se entrega (aapt2) · MODO DIAGNOSTICO
-        # MODO DIAGNOSTICO (30-sep-2026): las builds #38 y #39 fallaron aqui sin que el registro se
-        # pudiera leer desde el PC. Hasta saber que pasa, este paso NO tumba la build: escribe lo que ve
-        # en android/app/build/outputs/diagnostico/ (artefacto) y deja un FALLO_<motivo>.txt por cada
-        # comprobacion que no pasa, o OK_pasos.txt si pasan todas. Los nombres salen en el correo.
-        # Volver a hacerlo estricto (exit 1) en cuanto se lea el primero (BRIEF_pasos.md, §7).
+      - name: Pasos · diagnostico del APK con aapt2 (outputs/diagnostico)
+        # TROCEADO (30-sep-2026): las builds #38 y #39 fallaron en la comprobacion de los pasos y el
+        # registro no se puede leer desde el PC. Cada comprobacion va ahora en su propio paso con
+        # ignore_failure, y GitHub (check-runs de Codemagic) dice cual falla. Cuando se sepa, se quita
+        # ignore_failure para que vuelvan a tumbar la build (BRIEF_pasos.md, §7).
         script: |
           D=android/app/build/outputs/diagnostico; mkdir -p "$D"
           APK=$(ls android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -1)
@@ -89,31 +88,51 @@ workflows:
             [ -n "$R" ] && [ -d "$R/build-tools" ] || continue
             AAPT2=$(ls -d "$R"/build-tools/*/aapt2 2>/dev/null | tail -1); [ -n "$AAPT2" ] && break
           done
-          {
-            echo "apk: $APK"; echo "aapt2: $AAPT2"; echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT ANDROID_HOME=$ANDROID_HOME"
-            echo "salidas apk:"; ls -la android/app/build/outputs/apk/release/ 2>&1
-            echo "manifiestos intermedios que ve el find del paso de los avisos:"
-            find android/app/build/intermediates -name AndroidManifest.xml -path '*merged_manifest*' -path '*release*' 2>/dev/null
-            echo "--- variables.gradle"; grep -n "SdkVersion" android/variables.gradle
-            echo "--- manifiesto de la app (lo que dejo prep-native)"; grep -c 'tools:node="remove"' android/app/src/main/AndroidManifest.xml
-            echo "--- permisos"; [ -n "$APK" ] && [ -n "$AAPT2" ] && "$AAPT2" dump permissions "$APK"
-            echo "--- sdk"; [ -n "$APK" ] && [ -n "$AAPT2" ] && "$AAPT2" dump badging "$APK" | grep -E "^(package|sdkVersion|targetSdkVersion)"
-          } > "$D/pasos.txt" 2>&1 || true
-          if [ -n "$APK" ] && [ -n "$AAPT2" ]; then "$AAPT2" dump xmltree --file AndroidManifest.xml "$APK" > "$D/manifiesto_apk.txt" 2>&1 || true; fi
-          cat "$D/pasos.txt"
-          fallo() { echo "FALLO: $1"; echo "$1" > "$D/FALLO_$2.txt"; }
-          [ -n "$APK" ] || fallo "No encuentro el APK de release" sin_apk
-          [ -n "$AAPT2" ] || fallo "No encuentro aapt2 en el SDK de Android" sin_aapt2
-          H=$(grep -o 'android.permission.health.[A-Z_]*' "$D/pasos.txt" | sort -u | tr '\n' ' ')
-          echo "permisos de salud en el APK: $H"
-          [ "$H" = "android.permission.health.READ_STEPS " ] || fallo "Health Connect pide algo mas que READ_STEPS: $H" salud
-          grep -q "android.permission.ACTIVITY_RECOGNITION" "$D/pasos.txt" || fallo "Falta ACTIVITY_RECOGNITION" sensor
-          if grep -q "SCHEDULE_EXACT_ALARM\|USE_EXACT_ALARM" "$D/pasos.txt"; then fallo "El APK pide alarmas exactas" alarmas; fi
-          grep -q "sdkVersion:'26'" "$D/pasos.txt" || fallo "minSdk del APK no es 26" minsdk
-          grep -q "androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" "$D/manifiesto_apk.txt" 2>/dev/null || fallo "Falta la pantalla de la politica (Android 13-)" politica13
-          grep -q "android.intent.action.VIEW_PERMISSION_USAGE" "$D/manifiesto_apk.txt" 2>/dev/null || fallo "Falta la pantalla de la politica (Android 14+)" politica14
-          if ls "$D"/FALLO_*.txt >/dev/null 2>&1; then echo "HAY FALLOS (modo diagnostico: no se tumba la build)"; else echo "OK" > "$D/OK_pasos.txt"; echo "OK: todo en regla"; fi
+          echo "$APK" > "$D/apk.txt"; echo "$AAPT2" > "$D/aapt2.txt"
+          find android/app/build/intermediates -name AndroidManifest.xml -path '*merged_manifest*' -path '*release*' > "$D/find_avisos.txt" 2>/dev/null || true
+          if [ -n "$APK" ] && [ -n "$AAPT2" ]; then
+            "$AAPT2" dump permissions "$APK" > "$D/permisos.txt" 2>&1 || true
+            "$AAPT2" dump badging "$APK" > "$D/badging.txt" 2>&1 || true
+            "$AAPT2" dump xmltree --file AndroidManifest.xml "$APK" > "$D/manifiesto_apk.txt" 2>&1 || true
+          fi
+          for f in apk aapt2 find_avisos permisos badging; do echo "== $f"; cat "$D/$f.txt" 2>/dev/null | head -60; done
           exit 0
+      - name: Pasos · hay APK de release
+        script: |
+          [ -s android/app/build/outputs/diagnostico/apk.txt ] && [ -n "$(cat android/app/build/outputs/diagnostico/apk.txt)" ]
+        ignore_failure: true
+      - name: Pasos · hay aapt2 en el SDK
+        script: |
+          [ -n "$(cat android/app/build/outputs/diagnostico/aapt2.txt 2>/dev/null)" ]
+        ignore_failure: true
+      - name: Pasos · Health Connect pide SOLO READ_STEPS
+        script: |
+          H=$(grep -o "android.permission.health.[A-Z_]*" android/app/build/outputs/diagnostico/permisos.txt | sort -u | tr "\n" " "); echo "salud: $H"; [ "$H" = "android.permission.health.READ_STEPS " ]
+        ignore_failure: true
+      - name: Pasos · ACTIVITY_RECOGNITION (sensor en vivo)
+        script: |
+          grep -q "android.permission.ACTIVITY_RECOGNITION" android/app/build/outputs/diagnostico/permisos.txt
+        ignore_failure: true
+      - name: Pasos · sin alarmas exactas
+        script: |
+          ! grep -q "SCHEDULE_EXACT_ALARM\|USE_EXACT_ALARM" android/app/build/outputs/diagnostico/permisos.txt
+        ignore_failure: true
+      - name: Pasos · minSdk 26
+        script: |
+          grep "sdkVersion:" android/app/build/outputs/diagnostico/badging.txt; grep -q "^sdkVersion:'26'" android/app/build/outputs/diagnostico/badging.txt
+        ignore_failure: true
+      - name: Pasos · pantalla de la politica Android 13-
+        script: |
+          grep -q "androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" android/app/build/outputs/diagnostico/manifiesto_apk.txt
+        ignore_failure: true
+      - name: Pasos · pantalla de la politica Android 14+
+        script: |
+          grep -q "android.intent.action.VIEW_PERMISSION_USAGE" android/app/build/outputs/diagnostico/manifiesto_apk.txt
+        ignore_failure: true
+      - name: Pasos · el find del paso de los avisos encuentra el manifiesto
+        script: |
+          [ -s android/app/build/outputs/diagnostico/find_avisos.txt ]
+        ignore_failure: true
     artifacts:
       - android/app/build/outputs/bundle/**/*.aab
       - android/app/build/outputs/apk/**/*.apk
