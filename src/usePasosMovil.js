@@ -81,10 +81,18 @@ export function usePasosMovil({ nativo, activo, perfilId, hoyKey, puedePedir, pa
       if (document.hidden) return;
       setOcupado(true);
       try {
-        const r = await pedirPermisoPasos();
+        let r = await pedirPermisoPasos();
+        if (r.total === 'error') r = await permisoPasos();
+        // iPhone: CoreMotion puede contestar antes que el paciente, y el diálogo del sistema no
+        // cambia la visibilidad de la página. Se vuelve a MIRAR (nunca a pedir) cada 1,5 s durante
+        // 30 s, para que el vivo arranque en cuanto diga que sí, sin tener que reabrir la app.
+        for (let i = 0; i < 20 && r.total === 'pendiente' && plataformaPasos() === 'ios'; i++) {
+          await new Promise((ok) => setTimeout(ok, 1500));
+          r = await permisoPasos();
+        }
         const ahora = new Date().toISOString();
         guardarCfg({ pedido: ahora, ...(r.total === 'concedido' ? { desde: ahora } : {}) });
-        setPerm(r.total === 'error' ? await permisoPasos() : r);
+        setPerm(r);
         rastro({ estado: r.total, sensor: r.sensor, pedido: ahora });
       } finally { setOcupado(false); }
     }, ESPERA_PEDIR_MS);
