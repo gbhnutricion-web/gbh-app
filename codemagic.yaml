@@ -75,22 +75,43 @@ workflows:
           fi
           grep -q 'POST_NOTIFICATIONS' "$M" || { echo "Falta POST_NOTIFICATIONS: los avisos no se podrían pedir"; exit 1; }
           echo "OK: sin alarmas exactas y con POST_NOTIFICATIONS"
-      - name: Comprobar los pasos del movil (Health Connect SOLO con READ_STEPS, sensor y minSdk 26)
+      - name: Comprobar los pasos del movil en el APK que se entrega (aapt2; Health Connect SOLO READ_STEPS, sensor, minSdk 26)
+        # Se lee el APK firmado con aapt2, no un manifiesto intermedio: la ruta de los intermedios cambia
+        # con la version de Gradle (el 30-sep, build #38, el find de antes no se pudo leer). Lo leido se
+        # deja en android/app/build/outputs/diagnostico/ (artefacto: sale enlazado en el correo).
         script: |
-          M=$(find android/app/build/intermediates -name AndroidManifest.xml -path '*merged_manifest*' -path '*release*' | head -1)
-          [ -n "$M" ] || { echo "No encuentro el manifiesto fusionado de release"; exit 1; }
-          H=$(grep -o 'android.permission.health.[A-Z_]*' "$M" | sort -u | tr '\n' ' ')
-          echo "permisos de salud en el manifiesto: $H"
+          D=android/app/build/outputs/diagnostico; mkdir -p "$D"
+          APK=$(ls android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -1)
+          AAPT2=""
+          for R in "$ANDROID_SDK_ROOT" "$ANDROID_HOME" "$HOME/programs/android-sdk-macosx" "$HOME/Library/Android/sdk"; do
+            [ -n "$R" ] && [ -d "$R/build-tools" ] || continue
+            AAPT2=$(ls -d "$R"/build-tools/*/aapt2 2>/dev/null | tail -1); [ -n "$AAPT2" ] && break
+          done
+          {
+            echo "apk: $APK"; echo "aapt2: $AAPT2"
+            echo "manifiestos intermedios que ve el find del paso de los avisos:"
+            find android/app/build/intermediates -name AndroidManifest.xml -path '*merged_manifest*' -path '*release*' 2>/dev/null
+            echo "--- permisos"; [ -n "$APK" ] && [ -n "$AAPT2" ] && "$AAPT2" dump permissions "$APK"
+            echo "--- sdk"; [ -n "$APK" ] && [ -n "$AAPT2" ] && "$AAPT2" dump badging "$APK" | grep -E "^(package|sdkVersion|targetSdkVersion)"
+          } > "$D/pasos.txt" 2>&1
+          [ -n "$APK" ] && [ -n "$AAPT2" ] && "$AAPT2" dump xmltree --file AndroidManifest.xml "$APK" > "$D/manifiesto_apk.txt" 2>&1
+          cat "$D/pasos.txt"
+          [ -n "$APK" ] || { echo "No encuentro el APK de release"; exit 1; }
+          [ -n "$AAPT2" ] || { echo "No encuentro aapt2 en el SDK de Android"; exit 1; }
+          H=$(grep -o 'android.permission.health.[A-Z_]*' "$D/pasos.txt" | sort -u | tr '\n' ' ')
+          echo "permisos de salud en el APK: $H"
           [ "$H" = "android.permission.health.READ_STEPS " ] || { echo "Health Connect debe pedir SOLO READ_STEPS: Play exige justificar cada permiso (BRIEF_pasos.md)"; exit 1; }
-          grep -q 'android.permission.ACTIVITY_RECOGNITION' "$M" || { echo "Falta ACTIVITY_RECOGNITION: sin pasos en vivo"; exit 1; }
-          grep -q 'androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE' "$M" || { echo "Falta la pantalla de la politica para Health Connect (Android 13-)"; exit 1; }
-          grep -q 'android.intent.action.VIEW_PERMISSION_USAGE' "$M" || { echo "Falta la pantalla de la politica para Health Connect (Android 14+)"; exit 1; }
-          grep -q 'minSdkVersion = 26' android/variables.gradle || { echo "minSdk no es 26: Health Connect lo exige"; exit 1; }
-          echo "OK: pasos del movil con READ_STEPS, ACTIVITY_RECOGNITION, politica y minSdk 26"
+          grep -q "android.permission.ACTIVITY_RECOGNITION" "$D/pasos.txt" || { echo "Falta ACTIVITY_RECOGNITION: sin pasos en vivo"; exit 1; }
+          if grep -q "SCHEDULE_EXACT_ALARM\|USE_EXACT_ALARM" "$D/pasos.txt"; then echo "El APK pide alarmas exactas: Play las restringe (BRIEF_notificaciones.md)"; exit 1; fi
+          grep -q "sdkVersion:'26'" "$D/pasos.txt" || { echo "minSdk del APK no es 26: Health Connect lo exige"; exit 1; }
+          grep -q "androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" "$D/manifiesto_apk.txt" || { echo "Falta la pantalla de la politica para Health Connect (Android 13-)"; exit 1; }
+          grep -q "android.intent.action.VIEW_PERMISSION_USAGE" "$D/manifiesto_apk.txt" || { echo "Falta la pantalla de la politica para Health Connect (Android 14+)"; exit 1; }
+          echo "OK: el APK pide READ_STEPS y ACTIVITY_RECOGNITION, sin alarmas exactas, minSdk 26 y con la pantalla de la politica"
     artifacts:
       - android/app/build/outputs/bundle/**/*.aab
       - android/app/build/outputs/apk/**/*.apk
       - android/app/build/outputs/**/mapping.txt
+      - android/app/build/outputs/diagnostico/*.txt
     publishing:
       email:
         recipients: [gbh.nutricion@gmail.com]
