@@ -75,6 +75,18 @@ workflows:
           fi
           grep -q 'POST_NOTIFICATIONS' "$M" || { echo "Falta POST_NOTIFICATIONS: los avisos no se podrían pedir"; exit 1; }
           echo "OK: sin alarmas exactas y con POST_NOTIFICATIONS"
+      - name: Comprobar los pasos del movil (Health Connect SOLO con READ_STEPS, sensor y minSdk 26)
+        script: |
+          M=$(find android/app/build/intermediates -name AndroidManifest.xml -path '*merged_manifest*' -path '*release*' | head -1)
+          [ -n "$M" ] || { echo "No encuentro el manifiesto fusionado de release"; exit 1; }
+          H=$(grep -o 'android.permission.health.[A-Z_]*' "$M" | sort -u | tr '\n' ' ')
+          echo "permisos de salud en el manifiesto: $H"
+          [ "$H" = "android.permission.health.READ_STEPS " ] || { echo "Health Connect debe pedir SOLO READ_STEPS: Play exige justificar cada permiso (BRIEF_pasos.md)"; exit 1; }
+          grep -q 'android.permission.ACTIVITY_RECOGNITION' "$M" || { echo "Falta ACTIVITY_RECOGNITION: sin pasos en vivo"; exit 1; }
+          grep -q 'androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE' "$M" || { echo "Falta la pantalla de la politica para Health Connect (Android 13-)"; exit 1; }
+          grep -q 'android.intent.action.VIEW_PERMISSION_USAGE' "$M" || { echo "Falta la pantalla de la politica para Health Connect (Android 14+)"; exit 1; }
+          grep -q 'minSdkVersion = 26' android/variables.gradle || { echo "minSdk no es 26: Health Connect lo exige"; exit 1; }
+          echo "OK: pasos del movil con READ_STEPS, ACTIVITY_RECOGNITION, politica y minSdk 26"
     artifacts:
       - android/app/build/outputs/bundle/**/*.aab
       - android/app/build/outputs/apk/**/*.apk
@@ -131,6 +143,16 @@ workflows:
           for k in NSCameraUsageDescription NSPhotoLibraryUsageDescription ITSAppUsesNonExemptEncryption; do
             grep -q "$k" ios/App/App/Info.plist || { echo "Falta $k en Info.plist"; exit 1; }
           done
+      - name: Comprobar los pasos del movil en iOS (podometro si; Health Connect y HealthKit no)
+        script: |
+          grep -q NSMotionUsageDescription ios/App/App/Info.plist || { echo "Falta NSMotionUsageDescription: iOS mataria la app al leer los pasos"; exit 1; }
+          P=ios/App/CapApp-SPM/Package.swift
+          grep -q 'capacitor-pedometer' "$P" || { echo "El podometro no entro en el proyecto iOS"; exit 1; }
+          if grep -q 'capacitor-health' "$P"; then echo "Health Connect entro en iOS y arrastra HealthKit: revisar ios.includePlugins"; exit 1; fi
+          # ios.includePlugins es una LISTA BLANCA: un complemento nuevo que no este en ella no
+          # entra en el iPhone y nadie lo nota. Se tumba la build si alguno se queda fuera.
+          node -e "const p=require('./package.json'),c=require('./capacitor.config.json');const fuera=['@capgo/capacitor-health','@capacitor/android','@capacitor/ios','@capacitor/core'];const n=Object.keys(p.dependencies).filter(d=>{try{return !!require('./node_modules/'+d+'/package.json').capacitor}catch(e){return false}}).filter(d=>!fuera.includes(d)&&!c.ios.includePlugins.includes(d));if(n.length){console.log('Complementos fuera de ios.includePlugins: '+n.join(', '));process.exit(1)}console.log('OK: todos los complementos de iOS estan en ios.includePlugins')"
+          echo "OK: iOS con podometro, sin Health Connect"
       - name: Comprobar que el binario es SOLO para iPhone (iPad fuera, 12-sep-2026)
         script: |
           grep -q 'TARGETED_DEVICE_FAMILY = "1";' ios/App/App.xcodeproj/project.pbxproj \

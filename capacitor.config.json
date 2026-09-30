@@ -15,7 +15,8 @@
   "ios": {
     "contentInset": "always",
     "backgroundColor": "#081208",
-    "preferredContentMode": "mobile"
+    "preferredContentMode": "mobile",
+    "includePlugins": ["@capacitor/app", "@capacitor/local-notifications", "@capgo/capacitor-pedometer"]
   },
   "plugins": {
     "SplashScreen": {
