@@ -20,6 +20,8 @@ import { BarraPestanas } from "./BarraPestanas";                         // la b
 import { planificarAvisos, nombresDePlan, PREFS_POR_DEFECTO as AVISOS_PREFS, TOMAS_ORDEN as AVISOS_TOMAS } from "./motorAvisos"; // avisos fuera de la app, fase 1 (28-sep-2026)
 import { estadoPermiso, pedirPermiso, sincronizarAvisos, cancelarAvisos, alTocarAviso, plataforma as plataformaNativa } from "./avisosNativos";
 import { TarjetaPermisoAvisos, FilaRecordatorios, PanelRecordatorios } from "./PanelAvisos";
+import { usePasosMovil } from "./usePasosMovil";                            // pasos del móvil, solos y en vivo (30-sep-2026)
+import { FilaPasosMovil } from "./PasosMovil";
 import { DistribucionKcal, AlimentosDescartados, leerDescartes, escribirDescartes, BannerSemanaNueva,
          CabeceraPlan, PillTotal, PatronCocina, Recordatorios, BotonesGuardar, FUENTE_PIXEL } from "./PlanArcade";
 
@@ -5403,9 +5405,12 @@ function MRow({num,icon,label,done,onToggle,xpR=5,children}){
 }
 
 // ─── Steps progress bar ───────────────────────────────────────────────────────
-function StepsWidget({done,stepCount,onToggle,onUpdateSteps}){
+function StepsWidget({done,stepCount,onToggle,onUpdateSteps,movil}){
   const t=useLang();
   const pct=Math.min((stepCount/10000)*100,100);
+  // Pasos del móvil (30-sep-2026): cuando el móvil los cuenta, fuera los botones de sumar a mano.
+  // Con el permiso negado o sin datos siguen, con la pista de qué hacer debajo.
+  const delMovil=movil&&movil.estado==="vivo";
   return(
     <div style={{background:done?`linear-gradient(135deg,${alpha(T.g3,0.45)},${alpha(T.g1,0.2)})`:T.bgCard,border:`2px solid ${done?T.g1:T.bW}`,borderRadius:20,padding:"14px 16px",marginBottom:10,boxShadow:done?`0 5px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)"}}>
       <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:12}}>
@@ -5426,10 +5431,11 @@ function StepsWidget({done,stepCount,onToggle,onUpdateSteps}){
         <div style={{height:"100%",width:`${pct}%`,background:`linear-gradient(90deg,${T.g1},${T.g2})`,borderRadius:10,transition:"width 0.5s ease",boxShadow:`0 0 8px ${T.g1}60`}}/>
       </div>
       <div style={{display:"flex",gap:8}}>
-        {!done&&[1000,2500,5000,10000].map(v=>(
+        {!done&&!delMovil&&[1000,2500,5000,10000].map(v=>(
           <button key={v} onClick={()=>onUpdateSteps(Math.min(stepCount+v,99999))} style={{flex:1,background:"rgba(255,255,255,0.08)",border:`1.5px solid rgba(255,255,255,0.12)`,borderRadius:12,padding:"10px 0",color:T.t1,fontWeight:800,fontSize:11,cursor:"pointer",boxShadow:"0 3px 0 rgba(0,0,0,0.4)",fontFamily:"'Nunito',sans-serif"}}>+{v>=1000?v/1000+"k":v}</button>
         ))}
       </div>
+      {movil?<FilaPasosMovil {...movil} T={T}/>:null}
     </div>
   );
 }
@@ -8841,7 +8847,7 @@ function GBHApp(){
     const refrescar=async()=>{
       if(!navigator.onLine||document.hidden) return;
       try{
-        let fresh=await sbReq("GET",`profiles?id=eq.${profile.id}&select=plan,gems,xp,shields,target_kcal,trial_ends_at,plan_until,avisos,avisos_activos&limit=1`);
+        let fresh=await sbReq("GET",`profiles?id=eq.${profile.id}&select=plan,gems,xp,shields,target_kcal,trial_ends_at,plan_until,avisos,avisos_activos,pasos_movil_activo&limit=1`);
         if(fresh===null){ // columna trial_ends_at aún sin migrar → select clásica
           fresh=await sbReq("GET",`profiles?id=eq.${profile.id}&select=plan,gems,xp,shields,target_kcal&limit=1`);
         }
@@ -8864,11 +8870,15 @@ function GBHApp(){
           const tieneAvisos = ('avisos_activos' in f);
           const avisosActNew = tieneAvisos ? (f.avisos_activos===true) : prev.avisos_activos;
           const avisosNew = tieneAvisos ? (f.avisos ?? null) : prev.avisos;
+          // Pasos del móvil (30-sep-2026): solo el interruptor del operador. profiles.pasos_movil
+          // lo escribe la app y no se relee (la copia del móvil es la más nueva).
+          const pasosActNew = ('pasos_movil_activo' in f) ? (f.pasos_movil_activo===true) : prev.pasos_movil_activo;
           // Solo actualizar si algo cambió, para no re-renderizar de más
           // (incluidas las fechas, para que el NULL remoto se propague en caliente)
           if(prev.plan===f.plan && prev.gems===f.gems && prev.xp===f.xp
              && prev.trial_ends_at===trialNew && prev.plan_until===untilNew
              && prev.avisos_activos===avisosActNew
+             && prev.pasos_movil_activo===pasosActNew
              && JSON.stringify(prev.avisos??null)===JSON.stringify(avisosNew??null)) return prev;
           const merged={...prev,
             plan:f.plan??prev.plan, gems:f.gems??prev.gems,
@@ -8877,7 +8887,8 @@ function GBHApp(){
             trial_ends_at:trialNew,
             plan_until:untilNew,
             avisos_activos:avisosActNew,
-            avisos:avisosNew};
+            avisos:avisosNew,
+            pasos_movil_activo:pasosActNew};
           lsSet(`gbh:p:${prev.id}`, merged);
           return merged;
         });
@@ -11212,7 +11223,9 @@ function GBHApp(){
     chkTomasCompletas(meals);
   },[chkTomasCompletas, profile?.id]);
 
-  const updSteps=useCallback(async(val)=>{
+  // opts.auto (30-sep-2026): lo guarda el móvil solo (usePasosMovil). Mismo camino que a mano
+  // —meta, XP y racha idénticas— pero sin el «tic» de cada suma; la celebración de la meta, sí.
+  const updSteps=useCallback(async(val,opts)=>{
     const sc=Math.max(0,Math.min(99999,val));
     // Éste es el camino por el que se coló la racha fantasma de Juan Gil: su
     // rama de abajo llamaba a saveLog con el tLog de AYER ENTERO. Ahora la base
@@ -11224,8 +11237,29 @@ function GBHApp(){
     setSteps(sc);
     const done=sc>=10000;
     if(done!==base.steps){const nl={...base,steps:done};setTLog(nl);await saveLog(nl,sc,{steps:done,sc});if(done){sfx("missionDone");haptic("doble");await addXG(5,2);showT({icon:"👟",title:"¡10.000 pasos!",sub:"Meta de pasos alcanzada ✅"});}}
-    else{ sfx("step"); await saveLog(base,sc,{sc}); }
+    else{ if(!opts?.auto) sfx("step"); await saveLog(base,sc,{sc}); }
   },[tLog,saveLog,addXG,relevoDia]);
+
+  // ── Pasos del móvil, solos y en vivo (30-sep-2026, 07. App GBH/BRIEF_pasos.md) ─────────
+  // Solo en la app de tienda y con el interruptor del operador (profiles.pasos_movil_activo, que
+  // la app solo lee). El permiso lo pide la app sola con Inicio a la vista y sin nada encima; los
+  // pasos se guardan por updSteps (auto). Rastro para medir en profiles.pasos_movil.
+  const pasosRastroRef=useRef(null); pasosRastroRef.current=profile?.pasos_movil||null;
+  const guardarRastroPasos=useCallback((parcial)=>{
+    const id=profile?.id; if(!id) return;
+    const nuevo={...(pasosRastroRef.current||{}), ...parcial, actualizado:new Date().toISOString()};
+    pasosRastroRef.current=nuevo;
+    setProfile(prev=>{ if(!prev) return prev; const u={...prev, pasos_movil:nuevo}; lsSet(`gbh:p:${u.id}`,u); return u; });
+    sbReq("PATCH",`profiles?id=eq.${id}`,{pasos_movil:nuevo});
+  },[profile?.id]);
+  const pasosMovil=usePasosMovil({
+    nativo:ES_NATIVO, activo:profile?.pasos_movil_activo===true, perfilId:profile?.id||null, hoyKey,
+    puedePedir: tab==="home" && !tutoPaso && !pinPrompt && !avisosTarjeta && !showAvisos,
+    pasosGuardados:steps, guardarPasos:(v)=>updSteps(v,{auto:true}), guardarRastro:guardarRastroPasos,
+    leerLocal:lsGet, escribirLocal:lsSet,
+  });
+  // Lo que enseña la misión: nunca menos de lo guardado (lo apuntado a mano no se pierde).
+  const pasosVista = pasosMovil.estado==="vivo" ? Math.max(steps, pasosMovil.total||0) : steps;
 
   const saveW=async(isEdit=false)=>{
     const val=parseFloat(wInput);if(!puedePesarseHoy()||isNaN(val)||val<20||val>300)return;
@@ -13410,7 +13444,9 @@ function GBHApp(){
           </div>
 
           <div data-tuto="sueno" className="stagger-in" style={{animationDelay:escalon(1)}}><MRow num="2" icon="🌙" label={t("sleepLabel")} done={tLog.sleep} onToggle={()=>toggleM("sleep")} xpR={5}/></div>
-          <div data-tuto="pasos" className="stagger-in" style={{animationDelay:escalon(2)}} onClickCapture={()=>tutoTapAvanza('B1_pasos')}><StepsWidget done={tLog.steps} stepCount={steps} onToggle={()=>toggleM("steps")} onUpdateSteps={updSteps}/></div>
+          <div data-tuto="pasos" className="stagger-in" style={{animationDelay:escalon(2)}} onClickCapture={()=>tutoTapAvanza('B1_pasos')}><StepsWidget done={tLog.steps} stepCount={pasosVista} onToggle={()=>toggleM("steps")} onUpdateSteps={updSteps}
+            movil={pasosMovil.estado==="oculto"?null:{estado:pasosMovil.estado, plataforma:pasosMovil.plataforma, lang, ocupado:pasosMovil.ocupado,
+              sensor:pasosMovil.sensor, onAbrirAjustes:pasosMovil.abrirAjustes, onInstalar:pasosMovil.instalar, onReintentar:pasosMovil.reintentar}}/></div>
           <div data-tuto="agua" className="stagger-in" style={{animationDelay:escalon(3)}} onClickCapture={()=>tutoTapAvanza('B1_agua')}><HydrationWidget key={hoyKey} done={tLog.hydration} onToggle={()=>toggleM("hydration")}/></div>
 
           {/* ── Quiz + Ruleta ── */}
