@@ -1324,13 +1324,21 @@ const STRIPE_API          = "https://gbh-stripe-production.up.railway.app";
 const CAPN = (typeof window !== "undefined" && window.Capacitor) || null;
 const ES_NATIVO = !!(CAPN && CAPN.isNativePlatform && CAPN.isNativePlatform());
 const ES_IOS_NATIVO = ES_NATIVO && CAPN.getPlatform && CAPN.getPlatform() === "ios";
+// Android también es de «solo consumo» (PEND-2026-316, orden de Alejandro del 30-sep:
+// «si a la recomendacion»; MAESTRO-2026-716): la política de Pagos de Google Play no deja
+// vender el Estándar con Stripe desde la app. Donde iOS no enseña nada, Android dice SIN
+// enlace dónde se contrata, que Google sí permite. En iOS y en la web no cambia nada.
+const ES_ANDROID_NATIVO = ES_NATIVO && !ES_IOS_NATIVO;
+const txtWebAndroid = (lang, que) => que === "gestionar"
+  ? (lang === "en" ? "Your subscription is managed on the web: app.gbhnutricion.es" : "Tu suscripción se gestiona en la web: app.gbhnutricion.es")
+  : (lang === "en" ? "The Standard plan is available on the web: app.gbhnutricion.es" : "El plan Estándar se contrata en la web: app.gbhnutricion.es");
 
 // Abre el checkout de Stripe con el paciente enganchado (client_reference_id):
 // el webhook usa ese id para poner plan=standard al completarse el pago.
-// En iOS nativo NUNCA se abre (cumplimiento App Store); los botones que lo
-// llaman están además ocultos con ES_IOS_NATIVO.
+// En las apps nativas NUNCA se abre: iOS (App Store 3.1.1) y, desde el 30-sep, Android
+// (Pagos de Google Play, PEND-2026-316). Los botones que lo llaman están además ocultos.
 const abrirCheckoutStripe = (profileId) => {
-  if(!profileId || ES_IOS_NATIVO) return;
+  if(!profileId || ES_NATIVO) return;
   window.open(`${STRIPE_PAYMENT_LINK}?client_reference_id=${profileId}`, "_blank", "noopener");
 };
 
@@ -7980,7 +7988,9 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
                 )}
               </div>
               {profile?.plan==="premium" ? null
-                : (profile?.plan==="standard" && !profile?.trial_ends_at && profile?.plan_until) ? (ES_NATIVO ? null : (
+                : (profile?.plan==="standard" && !profile?.trial_ends_at && profile?.plan_until) ? (ES_NATIVO ? (ES_ANDROID_NATIVO ? (
+                <div style={{fontSize:10,color:T.t3,fontFamily:"'DM Sans',sans-serif",maxWidth:150,textAlign:"right",lineHeight:1.4}}>{txtWebAndroid(lang,"gestionar")}</div>
+                ) : null) : (
                 <button disabled={portalLoading}
                   onClick={async()=>{
                     setPortalLoading(true);
@@ -7994,7 +8004,9 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
                     opacity:portalLoading?0.6:1}}>
                   {portalLoading ? "⏳" : (lang==="en"?"Manage":"Gestionar")}
                 </button>
-              )) : ES_IOS_NATIVO ? null : (
+              )) : ES_NATIVO ? (ES_ANDROID_NATIVO ? (
+                <div style={{fontSize:10,color:T.t3,fontFamily:"'DM Sans',sans-serif",maxWidth:150,textAlign:"right",lineHeight:1.4}}>{txtWebAndroid(lang,"estandar")}</div>
+              ) : null) : (
                 <button onClick={()=>abrirCheckoutStripe(profile?.id)}
                   style={{background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:"none",
                     borderRadius:10,padding:"8px 12px",color:T.t1,fontWeight:900,fontSize:12,
@@ -13366,7 +13378,7 @@ function GBHApp(){
             </div>
           )}
           {/* ── Countdown de semana de prueba (tap → checkout) ── */}
-          {trialDiasRest&&!ES_IOS_NATIVO&&(
+          {trialDiasRest&&!ES_NATIVO&&(
             <button onClick={()=>{sfx("tap");abrirCheckoutStripe(profile?.id);}} style={{
               width:"100%",boxSizing:"border-box",display:"flex",alignItems:"center",gap:10,
               background:trialDiasRest<=2?"rgba(229,115,115,0.12)":alpha(T.au1,0.10),
@@ -13384,6 +13396,23 @@ function GBHApp(){
                 </div>
               </div>
             </button>
+          )}
+          {/* Android (PEND-2026-316): la misma cuenta atrás, sin botón de pago y diciendo sin enlace dónde se contrata */}
+          {trialDiasRest&&ES_ANDROID_NATIVO&&(
+            <div style={{width:"100%",boxSizing:"border-box",display:"flex",alignItems:"center",gap:10,
+              background:trialDiasRest<=2?"rgba(229,115,115,0.12)":alpha(T.au1,0.10),
+              border:`1.5px solid ${trialDiasRest<=2?"rgba(229,115,115,0.5)":alpha(T.au1,0.45)}`,
+              borderRadius:14,padding:"10px 14px",marginBottom:14,textAlign:"left"}}>
+              <span style={{fontSize:20,lineHeight:1}}>{trialDiasRest<=2?"⏳":"🎁"}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:12.5,fontWeight:900,color:trialDiasRest<=2?"#e57373":T.au1,fontFamily:"'Nunito',sans-serif"}}>
+                  {lang==='en'
+                    ? (trialDiasRest===1?'Last day of your free trial!':`Free trial · ${trialDiasRest} days left`)
+                    : (trialDiasRest===1?'¡Último día de tu semana gratis!':`Semana de prueba · quedan ${trialDiasRest} días`)}
+                </div>
+                <div style={{fontSize:10.5,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>{txtWebAndroid(lang,"estandar")}</div>
+              </div>
+            </div>
           )}
           {/* Mascot + bubble con diana y mute a los lados */}
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,paddingTop:4,paddingBottom:18}}>
@@ -14149,7 +14178,7 @@ function GBHApp(){
                     <div style={{fontSize:14,color:T.t2,lineHeight:1.7,maxWidth:300,fontFamily:"'DM Sans',sans-serif"}}>
                       {lang==='en'?'All 571 recipes, sorted by calories and grouped by category, are available to Standard and Premium subscribers.':'Las 571 recetas, ordenadas por calorías y agrupadas por categoría, están disponibles para suscriptores Estándar y Premium.'}
                     </div>
-                    {!ES_IOS_NATIVO&&<>
+                    {!ES_NATIVO&&<>
                     <button onClick={()=>{sfx&&sfx("tap");abrirCheckoutStripe(profile?.id);}}
                       style={{marginTop:4,width:'100%',maxWidth:300,background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:'none',color:T.t1,fontWeight:900,fontSize:15,borderRadius:18,padding:'16px 20px',cursor:'pointer',boxShadow:`0 4px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif",display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
                       <span style={{fontSize:20}}>⭐</span>{lang==='en'?'Subscribe · €7/month':'Suscribirme · 7 €/mes'}
@@ -14158,11 +14187,14 @@ function GBHApp(){
                       {lang==='en'?'Instant access · cancel anytime':'Acceso al momento · cancela cuando quieras'}
                     </div>
                     </>}
+                    {ES_ANDROID_NATIVO&&(<div style={{fontSize:12.5,color:T.t2,lineHeight:1.6,maxWidth:300,fontFamily:"'DM Sans',sans-serif"}}>{txtWebAndroid(lang,"estandar")}</div>)}
+                    {!ES_ANDROID_NATIVO&&(
                     <a href={`https://wa.me/${GBH_WHATSAPP}?text=${encodeURIComponent(lang==='en'?`Hi! I'm ${profile?.name||''} and I have a question about the GBH subscription 📚`:`¡Hola! Soy ${profile?.name||''} y tengo una duda sobre la suscripción de GBH 📚`)}`}
                       target="_blank" rel="noopener noreferrer" onClick={()=>sfx&&sfx("tap")}
                       style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",textDecoration:'underline'}}>
                       {lang==='en'?'Questions? Message me 💬':'¿Dudas? Escríbeme 💬'}
                     </a>
+                    )}
                   </div>
                 ) : (<>
                   {/* ── Buscador por ingrediente: siempre visible arriba ── */}
@@ -14384,7 +14416,7 @@ function GBHApp(){
                     :<>{streak>0?`Tu racha de ${streak} días 🔥`:''}{streak>0&&(profile?.gems||0)>0?' y ':''}{(profile?.gems||0)>0?`tus ${profile.gems} gemas 💎`:''} te esperan al otro lado.</>}
                 </div>
               )}
-              {!ES_IOS_NATIVO&&(
+              {!ES_NATIVO&&(
               <button onClick={()=>{sfx("tap");setAvisoTrial(null);abrirCheckoutStripe(profile?.id);}} style={{
                 width:"100%",padding:"15px",borderRadius:16,border:"none",cursor:"pointer",
                 background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,fontWeight:900,fontSize:15,
@@ -14392,6 +14424,7 @@ function GBHApp(){
                 ⭐ {lang==='en'?'Subscribe · €7/month':'Suscribirme · 7 €/mes'}
               </button>
               )}
+              {ES_ANDROID_NATIVO&&(<div style={{fontSize:13,color:T.t2,lineHeight:1.5,fontFamily:"'DM Sans',sans-serif",textAlign:"center",marginBottom:10}}>{txtWebAndroid(lang,"estandar")}</div>)}
               <button onClick={()=>{sfx("tap");setAvisoTrial(null);}} style={{
                 background:"none",border:"none",color:T.t3,fontWeight:800,fontSize:13,cursor:"pointer",
                 fontFamily:"'Nunito',sans-serif",padding:"6px"}}>
@@ -14419,7 +14452,7 @@ function GBHApp(){
                 fontFamily:"'Nunito',sans-serif",boxShadow:`0 5px 0 ${T.g3}`,marginBottom:10}}>
                 📤 {lang==='en'?'Share my milestone':'Compartir mi hito'}
               </button>
-              {(profile?.plan==='free'||trialDiasRest)&&!ES_IOS_NATIVO&&(
+              {(profile?.plan==='free'||trialDiasRest)&&!ES_NATIVO&&(
                 <button onClick={()=>{sfx("tap");setHitoCard(null);abrirCheckoutStripe(profile?.id);}} style={{
                   width:"100%",padding:"13px",borderRadius:16,cursor:"pointer",
                   background:alpha(T.au1,0.10),border:`1.5px solid ${T.au1}`,color:T.au1,
@@ -14429,6 +14462,7 @@ function GBHApp(){
                     :(trialDiasRest?'Conservar mi plan · 7 €/mes':'Volver a mi plan · 7 €/mes')}
                 </button>
               )}
+              {(profile?.plan==='free'||trialDiasRest)&&ES_ANDROID_NATIVO&&(<div style={{fontSize:13,color:T.t2,lineHeight:1.5,fontFamily:"'DM Sans',sans-serif",textAlign:"center",marginBottom:10}}>{txtWebAndroid(lang,"estandar")}</div>)}
               <button onClick={()=>{sfx("tap");setHitoCard(null);}} style={{
                 background:"none",border:"none",color:T.t3,fontWeight:800,fontSize:13,cursor:"pointer",
                 fontFamily:"'Nunito',sans-serif",padding:"6px"}}>
@@ -14451,7 +14485,7 @@ function GBHApp(){
                   ?'All 4 missions completed. This is what following a plan made just for you feels like — don\u2019t let it end with your trial.'
                   :'Las 4 misiones del día completadas. Así se siente seguir un plan hecho solo para ti — que no se acabe con la semana de prueba.'}
               </div>
-              {!ES_IOS_NATIVO&&(
+              {!ES_NATIVO&&(
               <button onClick={()=>{sfx("tap");setAvisoVictoria(false);abrirCheckoutStripe(profile?.id);}} style={{
                 width:"100%",padding:"15px",borderRadius:16,border:"none",cursor:"pointer",
                 background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,fontWeight:900,fontSize:15,
@@ -14459,6 +14493,7 @@ function GBHApp(){
                 ⭐ {lang==='en'?'Keep my plan · €7/month':'Conservar mi plan · 7 €/mes'}
               </button>
               )}
+              {ES_ANDROID_NATIVO&&(<div style={{fontSize:13,color:T.t2,lineHeight:1.5,fontFamily:"'DM Sans',sans-serif",textAlign:"center",marginBottom:10}}>{txtWebAndroid(lang,"estandar")}</div>)}
               <button onClick={()=>{sfx("tap");setAvisoVictoria(false);}} style={{
                 background:"none",border:"none",color:T.t3,fontWeight:800,fontSize:13,cursor:"pointer",
                 fontFamily:"'Nunito',sans-serif",padding:"6px"}}>
@@ -14846,6 +14881,15 @@ function ConsultaTab({profile,lang,sfx}){
           ? 'Direct consultation with your nutritionist is Premium-only.'
           : 'La consulta directa con tu nutricionista es solo para Premium.'}
       </div>
+      {/* Android (PEND-2026-316): sin la tarjeta del Premium, su precio ni el botón de WhatsApp;
+          dice sin enlace dónde se contrata. En iOS y en la web, como estaba. */}
+      {ES_ANDROID_NATIVO&&(
+        <div style={{fontSize:12.5,color:T.t2,lineHeight:1.6,maxWidth:300,fontFamily:"'DM Sans',sans-serif"}}>
+          {lang==='en'?'Premium is arranged directly with your nutritionist, outside the app (Instagram: @gbhnutricion).'
+                      :'El Premium se contrata directamente con tu nutricionista, fuera de la app (Instagram: @gbhnutricion).'}
+        </div>
+      )}
+      {!ES_ANDROID_NATIVO&&<>
       <div style={{marginTop:8,width:'100%',maxWidth:300,boxSizing:'border-box',textAlign:'left',
         background:`linear-gradient(135deg,${alpha(T.au1,0.12)},rgba(255,160,0,0.08))`,
         border:'1.5px solid '+T.au1,borderRadius:18,padding:'18px 20px'}}>
@@ -14909,6 +14953,7 @@ function ConsultaTab({profile,lang,sfx}){
       <div style={{fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>
         {lang==='en'?'We reply the same day · @gbhnutricion':'Te respondemos en el día · @gbhnutricion'}
       </div>
+      </>}
       <div style={{width:'100%',maxWidth:300,marginTop:6}}>
         <TarjetaDesplegable sfx={sfx} icono="🧑‍⚕️"
           titulo={lang==='en'?'Physiotherapy':'Fisioterapia'}
@@ -16896,9 +16941,10 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
       </div>
 
       {/* Tarifas: Estándar → pago directo Stripe · Premium → WhatsApp.
-          En iOS nativo se ocultan ambas (cumplimiento App Store 3.1.1) y se
-          muestra un texto neutro de estado de cuenta. */}
-      {!ES_IOS_NATIVO?<>
+          En las apps nativas se ocultan ambas (App Store 3.1.1; Pagos de Google Play,
+          PEND-2026-316) y se muestra un texto neutro de estado de cuenta; en Android,
+          además, dónde se contrata, sin enlace. */}
+      {!ES_NATIVO?<>
       <div style={{display:'flex',flexDirection:'column',gap:10,width:'100%',maxWidth:330,marginTop:4}}>
         <button onClick={()=>{sfx&&sfx("tap");abrirCheckoutStripe(profile?.id);}}
           style={{background:alpha(T.g1,0.08),border:'2px solid '+T.bG,borderRadius:18,padding:'14px 16px',textAlign:'left',display:'flex',alignItems:'center',gap:12,cursor:'pointer',width:'100%',boxShadow:'0 3px 0 rgba(0,0,0,0.25)'}}>
@@ -16946,6 +16992,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
         {lang==='en'
           ?'The weekly plan is not available on your current account.'
           :'La programación semanal no está disponible en tu cuenta actual.'}
+        {ES_ANDROID_NATIVO&&<><br/>{txtWebAndroid(lang,"estandar")}</>}
       </div>
       )}
     </div>
