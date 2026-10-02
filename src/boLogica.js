@@ -131,6 +131,78 @@ export function opcionesIngredientes(ingList) {
   return out.slice(0, 12);
 }
 
+// ── Fase 2: escribir con IA (2-oct-2026, BRIEF §16) ────────────────────────────────
+// El servidor (/bo/entender) devuelve una ESTRUCTURA cerrada; esto la convierte en el siguiente
+// paso de la hoja. Ningún texto de la IA llega aquí: los mensajes son datos del plan que compone
+// el servidor (tipo «dato»), textos firmados/publicados, o la copia de la app de abajo.
+export const TOMAS_BO = ["Desayuno", "Almuerzo", "Comida", "Merienda", "Cena"];
+const DIAS_ES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
+const DIAS_EN = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const TOMA_ES = { Desayuno: "el desayuno", Almuerzo: "el almuerzo", Comida: "la comida", Merienda: "la merienda", Cena: "la cena" };
+const TOMA_EN = { Desayuno: "breakfast", Almuerzo: "morning snack", Comida: "lunch", Merienda: "afternoon snack", Cena: "dinner" };
+const TIPO_ES = { Carne: "de carne", Pescado: "de pescado", Vegetariana: "vegetariana", Vegana: "vegana", Ensalada: "de ensalada", "Sopa/Crema": "de sopa o crema", Postre: "de postre" };
+const TIPO_EN = { Carne: "with meat", Pescado: "with fish", Vegetariana: "vegetarian", Vegana: "vegan", Ensalada: "salad", "Sopa/Crema": "soup or cream", Postre: "dessert" };
+
+export function huecoTxt(dia, toma, lang) {
+  const d = (lang === "en" ? DIAS_EN : DIAS_ES)[(parseInt(dia, 10) || 1) - 1] || "";
+  if (lang === "en") return toma ? `${d}'s ${TOMA_EN[toma] || toma}` : d;
+  return toma ? `${TOMA_ES[toma] || toma} del ${d}` : `el ${d}`;
+}
+// La pregunta de confirmación de una acción: aritmética y nombres, nunca consejo.
+export function confirmarTxt(p, receta, ctx, lang) {
+  const EN = lang === "en", r = receta ? `«${receta}»` : (EN ? "this recipe" : "esta receta");
+  if (p.accion === "descartar") return EN ? `Shall I set ${r} aside? I won't offer it again when you swap recipes.` : `¿Aparto ${r}? No te la volveré a ofrecer al cambiar recetas.`;
+  const extra = p.accion === "cambiar_sin" && p.ingrediente ? (EN ? ` without ${p.ingrediente}` : ` sin ${p.ingrediente}`)
+    : p.tipo_receta ? " " + ((EN ? TIPO_EN : TIPO_ES)[p.tipo_receta] || p.tipo_receta) : "";
+  return (EN ? `Shall I swap ${r} for another one from your plan${extra}? ` : `¿Te cambio ${r} por otra de tu plan${extra}? `) + costeTxt(ctx, lang);
+}
+// La respuesta del servidor → {mensajes:[{tx, firma}], fase, pend?, ir?, tema?, tomas?, base?, prellenar?}
+export function pasoIA(r, ctx, lang, texto, filas = _BO_RESP) {
+  const EN = lang === "en";
+  const t = r && r.tipo;
+  const msg = (tx, firma) => ({ tx, firma: firma || null });
+  if (t === "dato") return { mensajes: [msg(r.texto || "")], fase: "temas" };
+  if (t === "tema") {
+    const f = (filas || []).find((x) => x.id === r.tema_id && valePlan(x, ctx));
+    return f ? { tema: f } : pasoIA({ tipo: "alejandro" }, ctx, lang, texto, filas);
+  }
+  if (t === "accion") {
+    const p = { tema: "ia", accion: r.accion, ingrediente: r.ingrediente || null, tipo_receta: r.tipo_receta || null };
+    if (ctx?.contexto === "receta" && r.dia === ctx.dia && r.toma === ctx.toma) {
+      if (p.accion === "cambiar_sin" && !p.ingrediente) return { mensajes: [], fase: "ingrediente", pend: p };
+      return { mensajes: [msg(confirmarTxt(p, ctx.receta, ctx, lang))], fase: "confirmar", pend: p };
+    }
+    const h = huecoTxt(r.dia, r.toma, lang);
+    const tx = r.receta ? (EN ? `That's ${h}: «${r.receta}».` : `Eso es ${h}: «${r.receta}».`) : (EN ? `Let's go to ${h}.` : `Vamos a ${h}.`);
+    return { mensajes: [msg(tx)], fase: "ir", ir: { dia: r.dia, toma: r.toma, bo: { accion: p.accion, ingrediente: p.ingrediente, tipo_receta: p.tipo_receta } } };
+  }
+  if (t === "aclarar") return { mensajes: [msg(EN ? "Which meal?" : "¿De qué comida?")], fase: "aclarar", tomas: r.tomas || [], base: r };
+  if (t === "no_en_plan") return { mensajes: [msg(EN ? `There is no ${huecoTxt(r.dia, r.toma, lang)} in this week's plan.` : `No tengo ${huecoTxt(r.dia, r.toma, lang)} en tu plan de esta semana.`)], fase: "temas" };
+  if (t === "sensible") {
+    const f = filaSistema("sensible", ctx, filas);
+    const m = f ? msg(textoTema(f, ctx, lang, filas), firmaTema(f, ctx, filas))
+      : msg(EN ? "A healthcare professional should see this in person. If it's urgent, call 112." : "Esto tiene que verlo un profesional sanitario en persona. Si es urgente, llama al 112.");
+    return ctx?.plan === "premium" ? { mensajes: [m], fase: "abrir", pend: { tema: "sensible", destino: "consulta" } } : { mensajes: [m], fase: "temas" };
+  }
+  if (t === "fuera") return { mensajes: [msg(EN ? "I can only help with your plan and the app." : "Solo puedo ayudarte con tu plan y con la app.")], fase: "temas" };
+  // «alejandro» (y cualquier cosa que no se reconozca): criterio del nutricionista
+  if (puedeEscribir(ctx, filas))
+    return { mensajes: [msg(EN ? "That's one for Alejandro: better that he answers it himself. Shall I send it to him?" : "Esto es criterio de Alejandro: mejor que te lo responda él. ¿Se lo mando?")], fase: "escribir", prellenar: texto || "" };
+  return { mensajes: [msg(EN ? "That's a question for Alejandro." : "Esto es mejor preguntárselo a Alejandro.")], fase: "abrir", pend: { tema: "alejandro", destino: "consulta" } };
+}
+// Lo que viaja al servidor: la frase y los temas de esta pantalla (ids y texto del botón), nada más.
+export function cuerpoIA(texto, ctx, temas, lang, hoy) {
+  return { texto: String(texto || "").slice(0, 500), contexto: ctx?.contexto || "inicio", dia: ctx?.dia || null, toma: ctx?.toma || null,
+           hoy: hoy || null, temas: (temas || []).map((f) => ({ id: f.id, boton: (f.boton && f.boton.es) || "" })), lang: lang === "en" ? "en" : "es" };
+}
+// Un error del servidor, en palabras de la app.
+export function errorIA(status, detalle, lang) {
+  const EN = lang === "en";
+  if (status === 429) return EN ? "You've written a lot to Bo today. More tomorrow!" : "Por hoy ya me has escrito mucho. ¡Mañana más!";
+  if (status === 403 && detalle === "sin_consentimiento") return null;      // la hoja vuelve a pedir el permiso
+  return EN ? "I can't understand writing right now. Use the buttons or try again later." : "Ahora no puedo entender lo que escribes. Usa los botones o prueba en un rato.";
+}
+
 // ── Registro (tabla bo_registro: el uso y lo escrito) ──────────────────────────────
 export function filaRegistro({ pid, tipo, contexto, tema, resultado, texto, sensible }) {
   const r = { profile_id: pid, tipo, contexto: contexto || null, tema: tema || null, resultado: resultado || null };

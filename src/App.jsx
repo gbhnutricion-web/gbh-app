@@ -1987,6 +1987,32 @@ const boRegistrar = async (fila) => {
     return { ok: r.ok, status: r.status };
   } catch { return { ok: false, status: 0 }; }
 };
+// «Pregúntale a Bo», fase 2 (2-oct-2026, BRIEF §16): escribir con IA. El servidor (gbh_bo.py en
+// Railway) saca al paciente de su sesión, mira los interruptores (bo_activo, bo_ia_activo), el
+// permiso (bo_ia_ok) y la edad, y CLASIFICA la frase; la IA no redacta nada que vea el paciente.
+// Al servidor solo va la sesión (X-GBH-Sesion), nunca la clave de Supabase.
+const boIA = {
+  estado: async () => {
+    const s = getSesion(); if(!s?.token) return { ia:false, motivo:"sin_sesion" };
+    try{ const r = await fetch(`${GBH_SERVER_URL}/bo/estado`, { method:"POST", headers:{ "X-GBH-Sesion": s.token } });
+         return r.ok ? await r.json() : { ia:false, status:r.status }; }
+    catch { return { ia:false, motivo:"red" }; }
+  },
+  entender: async (cuerpo) => {
+    const s = getSesion(); if(!s?.token) return { ok:false, status:401 };
+    try{ const r = await fetch(`${GBH_SERVER_URL}/bo/entender`, { method:"POST", headers:{ "Content-Type":"application/json", "X-GBH-Sesion": s.token }, body: JSON.stringify(cuerpo) });
+         let data = null; try{ data = await r.json(); }catch{}
+         return { ok:r.ok, status:r.status, data }; }
+    catch { return { ok:false, status:0 }; }
+  },
+};
+// El permiso del paciente (Apple 5.1.2(i), RGPD): cuándo aceptó que su frase vaya a la IA.
+const boIAConsentir = async (pid) => {
+  if(!pid) return false;
+  const r = await sbDirect("PATCH", `profiles?id=eq.${pid}`, { bo_ia_ok: new Date().toISOString() });
+  if(r.ok){ try{ const p = lsGet(`gbh:p:${pid}`, null); if(p) lsSet(`gbh:p:${pid}`, { ...p, bo_ia_ok: new Date().toISOString() }); }catch{} }
+  return !!r.ok;
+};
 
 // Escritura best-effort de weekly_state: si la columna aún no existe (SQL
 // pendiente), falla en silencio sin romper nada ni encolar reintentos.
@@ -14629,6 +14655,8 @@ function GBHApp(){
           intro={enPrimeraSemana(profile)?(lang==='en'?'Shall I help you find something?':'¿Te ayudo a encontrar algo?'):null}
           onAbrir={(d)=>{ if(d==='consulta'){ setTab('consulta'); return; }
             setTab('plan'); setPlanVista((d==='daily'||d==='lista'||d==='config')?d:null); }}
+          ia={{...boIA, consentir:()=>boIAConsentir(profile?.id)}}
+          onIr={(d)=>{ setTab('plan'); setPlanVista({vista:'daily', dia:d.dia, toma:d.toma, bo:d.bo}); }}
           onRegistrar={boRegistrar}
           onCerrar={()=>setBoInicio(false)}/>}
         {tab==="consulta"&&<ConsultaTab profile={profile} lang={lang} sfx={sfx}/>}
@@ -16150,7 +16178,12 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
   // manual a Programación arranque en el menú de siempre.
   React.useEffect(()=>{
     // 'config' (desde «Pregúntale a Bo»): la pantalla «Configura tu plan», solo del estándar.
-    if(vistaInicial){ if(vistaInicial==='config'){ if(isStandard) setConfigView(true); } else setView(vistaInicial); onVistaConsumida&&onVistaConsumida(); }
+    // {vista:'daily', dia, toma, bo} (Bo con IA desde Inicio): esa comida, con el cambio ya preparado.
+    if(vistaInicial){
+      if(typeof vistaInicial==='object'){ setView('daily'); setBoNav({dia:vistaInicial.dia, toma:vistaInicial.toma, bo:vistaInicial.bo||null}); }
+      else if(vistaInicial==='config'){ if(isStandard) setConfigView(true); }
+      else setView(vistaInicial);
+      onVistaConsumida&&onVistaConsumida(); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[vistaInicial]);
   // ── Tour guiado: la lista de la compra vista de verdad avanza su paso ──────
@@ -16511,6 +16544,18 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
     });
   },[profile?.id]);
   const plan=planes[idx];const planJ=plan?.plan_json;
+  // «Pregúntale a Bo» con IA: ir a una comida concreta (día y toma) y abrir Bo en su ficha con el
+  // cambio ya preparado. Va aquí, detrás de planJ: el efecto lo lee en su lista de dependencias.
+  const [boNav,setBoNav] = React.useState(null);               // {dia, toma, bo} | null
+  const [boPendiente,setBoPendiente] = React.useState(null);   // {accion, ingrediente, tipo_receta} | null
+  React.useEffect(()=>{
+    if(!boNav || !planJ) return;
+    if(view!=='daily'){ setView('daily'); return; }
+    if(selDay!==boNav.dia){ setSelDay(boNav.dia); return; }
+    const nav = boNav; setBoNav(null);
+    (async()=>{ await abrirToma(nav.toma); setBoPendiente(nav.bo||null); setBoHoja(true); })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[boNav, planJ, view, selDay]);
   // ── Plan de la pareja, de LA MISMA SEMANA que se está mirando ──────────────
   // Tiene que ir aquí abajo (después de `plan`): arriba, junto al vínculo, la
   // semana todavía no se conoce. Antes se traía "el último plan" de la pareja
@@ -16856,6 +16901,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
   // {ok, nombre} o {ok:false, motivo} para que Bo diga qué pasó; el botón lo ignora.
   async function cambiarRecetaToma(opc){
     const sinIng = (opc && typeof opc==='object' && typeof opc.sinIngrediente==='string' && opc.sinIngrediente.trim()) ? opc.sinIngrediente.trim() : null;
+    const tipoR  = (opc && typeof opc==='object' && typeof opc.tipo==='string' && opc.tipo.trim()) ? opc.tipo.trim() : null;   // «algo de pescado» (Bo con IA)
     if(!tomaReceta||!profile) return {ok:false};
     const costeCambio = enTrial ? 0 : 10;   // gratis mientras dura la prueba
     if(costeCambio>0 && gems < costeCambio){
@@ -16891,7 +16937,8 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
     const res = elegirRecetaCambio({
       recetas, actual:tomaReceta, ancla:mem.ancla, toma:openToma,
       permitidas: permitidasDePlanes(planes, openToma),
-      rechazada:  (r)=>recetaRechazadaJS(r, rechPref) || (!!sinIng && contieneIngrediente(r?.ingredientes||'', sinIng)),
+      rechazada:  (r)=>recetaRechazadaJS(r, rechPref) || (!!sinIng && contieneIngrediente(r?.ingredientes||'', sinIng))
+                       || (!!tipoR && String(r?.tipo||'')!==tipoR),
       descartadas:new Set((descartadas||[]).map(r=>normNombreCambio(r.nombre||''))),
       favoritas:  new Set((savedRecipes||[]).map(r=>normNombreCambio(r.nombre||r.nombre_receta||''))),
       vistas:mem.vistas, enPlan,
@@ -17926,6 +17973,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
           {boHoja&&boActivo(profile)&&<PreguntaBo T={T} Sheep={Sheep} lang={lang} pid={profile?.id}
             bo={{nombre:profile?.bo_nombre||'Bo',color:profile?.bo_color||'blanca',equipados:Array.isArray(profile?.bo_equipados)?profile.bo_equipados:[]}}
             ctx={{contexto:'receta',plan:planBo(profile),enTrial:!!enTrial,raciones:tomaReceta.raciones,puedeCambiar:!tomaMenu,descartada:!!recetaDescartada,
+                  dia:selDay,toma:openToma,receta:tomaReceta.nombre,
                   cajaRacion:(()=>{ const c=textosCajaRacion({raciones:tomaReceta.raciones,factor:tomaReceta.racion_factor,racionTexto:tomaReceta.racion_texto,lang}); return c?`${c.titulo}. ${c.detalle}`:''; })()}}
             receta={{nombre:tomaReceta.nombre,ingList}}
             onAccion={async(a,extra)=>{
@@ -17933,8 +17981,11 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
               if(a==='descartar'){ if(recetaDescartada) return {ok:true}; await descartarRecetaToma(); return {ok:true}; }
               return {ok:false}; }}
             onAbrir={(d)=>{ if(d==='consulta'&&setTab) setTab('consulta'); }}
+            ia={{...boIA, consentir:()=>boIAConsentir(profile?.id)}}
+            pendiente={boPendiente}
+            onIr={(d)=>{ setBoHoja(false); setBoPendiente(null); setBoNav(d); }}
             onRegistrar={boRegistrar}
-            onCerrar={()=>setBoHoja(false)}/>}
+            onCerrar={()=>{ setBoHoja(false); setBoPendiente(null); }}/>}
         </>)}
       </div>)}
     </div>);

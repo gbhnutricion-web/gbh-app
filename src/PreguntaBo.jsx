@@ -1,16 +1,20 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { temasPara, botonTema, textoTema, firmaTema, puedeEscribir, filaEscrito, filaSistema, esSensible,
-         opcionesIngredientes, filaRegistro } from "./boLogica";
+         opcionesIngredientes, filaRegistro, pasoIA, cuerpoIA, errorIA, confirmarTxt, huecoTxt } from "./boLogica";
 
-// ─── «Pregúntale a Bo», fase 1 (sin IA) ──────────────────────────────────────────
-// Hoja inferior con forma de conversación y BOTONES en vez de teclado. Bo no redacta: enseña
-// textos de boRespuestas.js (lo que la app ya publica o lo que firmó Alejandro) y hace cosas
-// SOLO por las funciones que ya usa el paciente, que le llegan por `onAccion` / `onAbrir`.
-// Texto libre únicamente en «Escríbele a Alejandro», que se guarda en bo_registro por
-// `onRegistrar` (la escritura la hace App.jsx). Lo sensible (SENSIBLE_RE) no se contesta.
-// Diseño: BRIEF_pregunta_a_bo.md §3 y §12. Recibe T y Sheep por props, como MedidasCorporales.
+// ─── «Pregúntale a Bo» ───────────────────────────────────────────────────────────
+// Hoja inferior con forma de conversación. Fase 1 (sin IA): BOTONES con textos de boRespuestas.js
+// (lo que la app ya publica o lo que firmó Alejandro) y acciones SOLO por las funciones que ya usa
+// el paciente (`onAccion` / `onAbrir`). «Escríbele a Alejandro» se guarda en bo_registro.
+// Fase 2 (2-oct-2026, con `ia`): además, el paciente ESCRIBE lo que quiera; el servidor
+// (/bo/entender) lo clasifica con IA en una estructura cerrada y pasoIA (boLogica.js) decide el
+// siguiente paso. La IA no redacta nada de lo que se lee aquí. Antes de la primera frase, permiso
+// explícito (Apple 5.1.2(i), RGPD) y, siempre, el aviso de que hay IA (Ley de IA, art. 50).
+// Diseño: BRIEF_pregunta_a_bo.md §3, §12 y §16. Recibe T y Sheep por props, como MedidasCorporales.
 const FT = "'Nunito',sans-serif", FD = "'DM Sans',sans-serif";
+const TOMA_LBL = { es: { Desayuno: "Desayuno", Almuerzo: "Almuerzo", Comida: "Comida", Merienda: "Merienda", Cena: "Cena" },
+                   en: { Desayuno: "Breakfast", Almuerzo: "Morning snack", Comida: "Lunch", Merienda: "Afternoon snack", Cena: "Dinner" } };
 const TX = {
   es: { hola: "¿En qué te ayudo?", escribir: "✍️ Escríbele a Alejandro", cerrar: "Cerrar", ahoraNo: "Ahora no",
         si: { cambiar: "Sí, cámbiala", cambiar_sin: "Sí, cámbiala", descartar: "Sí, apártala" },
@@ -18,15 +22,26 @@ const TX = {
         escribirAqui: "Escribe aquí tu pregunta para Alejandro…", enviar: "Enviar", enviando: "Enviando…",
         hecho: (n) => n ? `Hecho. Ahora toca: ${n}.` : "Hecho.", apartada: "Hecho: apartada.",
         sinGemas: "No te llegan las gemas para cambiarla (10 💎).", sinAlt: "No hay receta similar disponible",
-        error: "No he podido enviarlo. Cópialo y vuelve a probar en un rato:", otra: "¿Algo más?" },
+        error: "No he podido enviarlo. Cópialo y vuelve a probar en un rato:", cualFalta: "¿Qué ingrediente te falta?",
+        iaPh: "Escríbeme lo que necesites…", pensando: "Bo está pensando…",
+        iaAviso: (p) => `✨ Bo usa IA (${p}) para entender lo que escribes. Lo que te contesta sale de tu plan o de Alejandro.`,
+        consTit: "Antes de escribirme",
+        consTx: (p) => `Para entender lo que escribes, Bo usa la inteligencia artificial de ${p}. Se le envía tu frase y los nombres de las recetas de tu semana; nunca tu nombre ni tu correo. Lo que escribas se guarda para que Alejandro pueda revisarlo y mejorar las respuestas. Puedes seguir usando los botones sin aceptar.`,
+        acepto: "Acepto", consFallo: "No he podido guardar tu permiso. Prueba en un rato.", ir: (h) => `Ir a ${h}` },
   en: { hola: "How can I help?", escribir: "✍️ Write to Alejandro", cerrar: "Close", ahoraNo: "Not now",
         si: { cambiar: "Yes, swap it", cambiar_sin: "Yes, swap it", descartar: "Yes, set it aside" },
         abrir: { daily: "Go to Daily meals", lista: "Open the shopping list", config: "Open my settings", consulta: "Go to Consultation" },
         escribirAqui: "Write your question for Alejandro here…", enviar: "Send", enviando: "Sending…",
         hecho: (n) => n ? `Done. Now you have: ${n}.` : "Done.", apartada: "Done: set aside.",
         sinGemas: "You don't have enough gems to swap it (10 💎).", sinAlt: "No similar recipe available",
-        error: "I couldn't send it. Copy it and try again in a while:", otra: "Anything else?" },
+        error: "I couldn't send it. Copy it and try again in a while:", cualFalta: "Which ingredient are you missing?",
+        iaPh: "Tell me what you need…", pensando: "Bo is thinking…",
+        iaAviso: (p) => `✨ Bo uses AI (${p}) to understand what you write. Its answers come from your plan or from Alejandro.`,
+        consTit: "Before you write to me",
+        consTx: (p) => `To understand what you write, Bo uses ${p}'s artificial intelligence. It receives your sentence and the names of this week's recipes; never your name or email. What you write is stored so Alejandro can review it and improve the answers. You can keep using the buttons without accepting.`,
+        acepto: "I agree", consFallo: "I couldn't save your permission. Try again later.", ir: (h) => `Go to ${h}` },
 };
+const hoyN = () => new Date().getDay() || 7;          // 1 = lunes … 7 = domingo, como el plan
 
 function Burbuja({ T, Sheep, bo, m }) {
   if (m.de === "yo") return (
@@ -36,33 +51,49 @@ function Burbuja({ T, Sheep, bo, m }) {
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 10 }}>
       <div style={{ flexShrink: 0 }}><Sheep estado="feliz" equipados={bo?.equipados || []} color={bo?.color || "blanca"} size={40} /></div>
-      <div style={{ background: "linear-gradient(180deg,#1d3a14,#142a0e)", border: `1.5px solid ${T.bG}`, borderRadius: "18px 18px 18px 6px", padding: "10px 13px", maxWidth: "80%", fontSize: 13.5, color: T.t1, fontFamily: FD, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
+      <div style={{ background: "linear-gradient(180deg,#1d3a14,#142a0e)", border: `1.5px solid ${T.bG}`, borderRadius: "18px 18px 18px 6px", padding: "10px 13px", maxWidth: "80%", fontSize: 13.5, color: T.t1, fontFamily: FD, lineHeight: 1.55, whiteSpace: "pre-wrap", opacity: m.pensando ? 0.7 : 1 }}>
         {m.tx}
         {m.firma && <div style={{ marginTop: 6, fontSize: 11, color: T.au1, fontWeight: 900, fontFamily: FT, textAlign: "right" }}>✍️ {m.firma}</div>}
       </div>
     </div>);
 }
 
-export function PreguntaBo({ T, Sheep, lang, bo, ctx, receta, intro, filas, onAccion, onAbrir, onRegistrar, onCerrar, pid }) {
+export function PreguntaBo({ T, Sheep, lang, bo, ctx, receta, intro, filas, ia: iaApi, pendiente, onAccion, onAbrir, onIr, onRegistrar, onCerrar, pid }) {
   const EN = lang === "en", tx = TX[EN ? "en" : "es"];
   const temas = React.useMemo(() => temasPara(ctx, filas), [ctx, filas]);
   const escribe = puedeEscribir(ctx, filas);
-  const [msgs, setMsgs] = React.useState(() => [{ de: "bo", tx: intro || tx.hola }]);
-  // fase: 'temas' · 'confirmar' (acción pendiente) · 'ingrediente' · 'abrir' · 'escribir'
-  const [fase, setFase] = React.useState("temas");
-  const [pend, setPend] = React.useState(null);            // {tema, accion, ingrediente?, destino?}
+  const faseIni = pendiente ? (pendiente.accion === "cambiar_sin" && !pendiente.ingrediente ? "ingrediente" : "confirmar") : "temas";
+  const [msgs, setMsgs] = React.useState(() => pendiente
+    ? [{ de: "bo", tx: faseIni === "ingrediente" ? tx.cualFalta : confirmarTxt(pendiente, receta?.nombre, ctx, lang) }]
+    : [{ de: "bo", tx: intro || tx.hola }]);
+  // fase: 'temas' · 'confirmar' · 'ingrediente' · 'abrir' · 'escribir' · 'consentir' · 'aclarar' · 'ir'
+  const [fase, setFase] = React.useState(faseIni);
+  const [pend, setPend] = React.useState(() => (pendiente ? { tema: "ia", ...pendiente } : null));
   const [texto, setTexto] = React.useState("");
   const [ocupado, setOcupado] = React.useState(false);
+  const [ia, setIa] = React.useState(null);                // {ia, proveedor, consentido} desde /bo/estado
+  const [frase, setFrase] = React.useState("");
+  const [pensando, setPensando] = React.useState(false);
+  const [aclarar, setAclarar] = React.useState(null);      // {tomas, base}
+  const [ir, setIr] = React.useState(null);                // {dia, toma, bo}
+  const [fraseCons, setFraseCons] = React.useState(null);
+  const ultima = React.useRef("");
   const finRef = React.useRef(null);
-  React.useEffect(() => { try { finRef.current && finRef.current.scrollIntoView({ behavior: "smooth", block: "end" }); } catch (e) {} }, [msgs, fase]);
+  React.useEffect(() => { try { finRef.current && finRef.current.scrollIntoView({ behavior: "smooth", block: "end" }); } catch (e) {} }, [msgs, fase, pensando]);
 
   const registrar = (tema, resultado) => { try { onRegistrar && onRegistrar(filaRegistro({ pid, tipo: "uso", contexto: ctx?.contexto, tema, resultado })); } catch (e) {} };
-  React.useEffect(() => { registrar(null, "abierto"); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => {
+    registrar(pendiente ? "ia" : null, "abierto");
+    let vivo = true;
+    if (iaApi && typeof iaApi.estado === "function")
+      Promise.resolve(iaApi.estado()).then((r) => { if (vivo && r && r.ia) setIa(r); }).catch(() => {});
+    return () => { vivo = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const di = (m) => setMsgs((xs) => [...xs, m]);
   const volver = () => { setPend(null); setFase("temas"); };
 
-  const elegirTema = (f) => {
-    di({ de: "yo", tx: botonTema(f, lang) });
+  const elegirTema = (f, conYo = true) => {
+    if (conYo) di({ de: "yo", tx: botonTema(f, lang) });
     di({ de: "bo", tx: textoTema(f, ctx, lang, filas), firma: firmaTema(f, ctx, filas) });
     const a = f.accion || "ninguna";
     if (a === "ninguna") { registrar(f.id, "respondido"); return volver(); }
@@ -76,7 +107,8 @@ export function PreguntaBo({ T, Sheep, lang, bo, ctx, receta, intro, filas, onAc
     if (!pend || ocupado) return;
     setOcupado(true);
     let r = null;
-    try { r = await onAccion(pend.accion, pend.ingrediente ? { sinIngrediente: pend.ingrediente } : {}); } catch (e) { r = { ok: false }; }
+    const opc = { ...(pend.ingrediente ? { sinIngrediente: pend.ingrediente } : {}), ...(pend.tipo_receta ? { tipo: pend.tipo_receta } : {}) };
+    try { r = await onAccion(pend.accion, opc); } catch (e) { r = { ok: false }; }
     setOcupado(false);
     if (r && r.ok) {
       di({ de: "bo", tx: pend.accion === "descartar" ? tx.apartada : tx.hecho(r.nombre) });
@@ -113,14 +145,70 @@ export function PreguntaBo({ T, Sheep, lang, bo, ctx, receta, intro, filas, onAc
   const abrir = () => {
     const d = pend?.destino;
     // Desde estándar o free, ir a Consulta tras el acuse es el paso a premium: se cuenta aparte.
-    registrar(pend?.tema, d === "consulta" && ctx?.plan !== "premium" && (pend?.tema === "escrito" || pend?.tema === "consulta") ? "premium" : "accion");
+    registrar(pend?.tema, d === "consulta" && ctx?.plan !== "premium" && ["escrito", "consulta", "alejandro"].includes(pend?.tema) ? "premium" : "accion");
     onAbrir && onAbrir(d);
     onCerrar && onCerrar();
   };
 
+  // ── Fase 2: lo que el paciente escribe ─────────────────────────────────────
+  const aplicar = (p) => {
+    if (p.tema) return elegirTema(p.tema, false);
+    (p.mensajes || []).forEach((m) => di({ de: "bo", tx: m.tx, firma: m.firma }));
+    if (p.fase === "confirmar" || p.fase === "ingrediente") {
+      setPend(p.pend);
+      if (p.fase === "ingrediente") di({ de: "bo", tx: tx.cualFalta });
+      return setFase(p.fase);
+    }
+    if (p.fase === "ir") { setIr(p.ir); return setFase("ir"); }
+    if (p.fase === "aclarar") { setAclarar({ tomas: p.tomas, base: p.base }); return setFase("aclarar"); }
+    if (p.fase === "escribir") { setTexto(p.prellenar || ""); setPend({ tema: "alejandro" }); return setFase("escribir"); }
+    if (p.fase === "abrir") { setPend(p.pend); return setFase("abrir"); }
+    volver();
+  };
+  const preguntar = async (t, c) => {
+    setPensando(true);
+    let r = null;
+    try { r = await iaApi.entender(cuerpoIA(t, c, temas, lang, hoyN())); } catch (e) { r = { ok: false, status: 0 }; }
+    setPensando(false);
+    if (!r || !r.ok) {
+      const det = r && r.data && r.data.detail;
+      if (r && r.status === 403 && det === "sin_consentimiento") { setIa((x) => ({ ...(x || {}), consentido: false })); setFraseCons(t); return setFase("consentir"); }
+      di({ de: "bo", tx: errorIA(r && r.status, det, lang) });
+      return volver();
+    }
+    registrar("ia", "respondido");
+    aplicar(pasoIA(r.data, ctx, lang, t, filas));
+  };
+  const enviarIA = async (t0, consentido) => {
+    const t = String(t0 || "").trim();
+    if (!t || pensando || !iaApi) return;
+    if (!(consentido || (ia && ia.consentido))) { setFraseCons(t); return setFase("consentir"); }
+    di({ de: "yo", tx: t }); setFrase(""); ultima.current = t;
+    await preguntar(t, ctx);
+  };
+  const aceptar = async () => {
+    if (ocupado) return;
+    setOcupado(true);
+    let ok = false;
+    try { ok = await iaApi.consentir(); } catch (e) { ok = false; }
+    setOcupado(false);
+    if (!ok) { di({ de: "bo", tx: tx.consFallo }); return volver(); }
+    setIa((x) => ({ ...(x || {}), consentido: true }));
+    const t = fraseCons; setFraseCons(null); setFase("temas");
+    if (t) await enviarIA(t, true);
+  };
+  const elegirToma = async (toma) => {
+    const a = aclarar; setAclarar(null);
+    di({ de: "yo", tx: TOMA_LBL[EN ? "en" : "es"][toma] || toma });
+    if (a && a.base && a.base.pendiente === "accion") return aplicar(pasoIA({ ...a.base, tipo: "accion", toma }, ctx, lang, ultima.current, filas));
+    await preguntar(ultima.current, { ...ctx, contexto: "receta", dia: a && a.base ? a.base.dia : null, toma });   // un dato: el servidor lo vuelve a mirar con esa comida
+  };
+  const irA = () => { registrar("ia", "accion"); onIr && onIr(ir); onCerrar && onCerrar(); };
+
   const chip = (sel) => ({ fontFamily: FT, fontWeight: 900, fontSize: 12.5, padding: "9px 12px", borderRadius: 14, cursor: "pointer", textAlign: "left",
     border: sel ? `2px solid ${T.au2}` : "1.5px solid rgba(255,255,255,0.16)", background: sel ? T.g3 : "rgba(255,255,255,0.05)", color: sel ? T.wh : T.t1 });
   const ingredientes = fase === "ingrediente" ? opcionesIngredientes(receta?.ingList) : [];
+  const inputSty = { font: `600 14px ${FD}`, color: T.t1, background: "rgba(255,255,255,0.06)", border: "2px solid rgba(255,255,255,0.12)", borderRadius: 12, padding: "10px 12px", width: "100%", boxSizing: "border-box", outline: "none" };
 
   return createPortal(
     <div onClick={onCerrar} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", zIndex: 2000, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
@@ -131,13 +219,43 @@ export function PreguntaBo({ T, Sheep, lang, bo, ctx, receta, intro, filas, onAc
         </div>
         <div style={{ overflowY: "auto", flex: 1, minHeight: 120, scrollbarWidth: "none" }}>
           {msgs.map((m, i) => <Burbuja key={i} T={T} Sheep={Sheep} bo={bo} m={m} />)}
+          {pensando && <Burbuja T={T} Sheep={Sheep} bo={bo} m={{ de: "bo", tx: tx.pensando, pensando: true }} />}
           <div ref={finRef} />
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 7, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 7, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,0.08)", maxHeight: "46vh", overflowY: "auto", scrollbarWidth: "none" }}>
           {fase === "temas" && (<>
+            {ia && ia.ia && (<div data-bo-ia>
+              <div style={{ display: "flex", gap: 6 }}>
+                <input data-bo-frase value={frase} onChange={(e) => setFrase(e.target.value.slice(0, 500))} placeholder={tx.iaPh} autoComplete="off" disabled={pensando}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); enviarIA(frase); } }} style={inputSty} />
+                <button data-bo-enviar-ia onClick={() => enviarIA(frase)} disabled={pensando || !frase.trim()} aria-label={tx.enviar}
+                  style={{ ...chip(true), padding: "0 14px", textAlign: "center", opacity: (pensando || !frase.trim()) ? 0.5 : 1 }}>➤</button>
+              </div>
+              <div style={{ fontSize: 10.5, color: T.t3, fontFamily: FD, marginTop: 4, lineHeight: 1.35 }}>{tx.iaAviso(ia.proveedor || "IA")}</div>
+            </div>)}
             {temas.map((f) => <button key={f.id} data-bo-tema={f.id} onClick={() => elegirTema(f)} style={chip(false)}>{botonTema(f, lang)}</button>)}
             {escribe && <button data-bo-tema="escribir" onClick={() => { di({ de: "yo", tx: tx.escribir.replace("✍️ ", "") }); setPend(null); setFase("escribir"); }} style={chip(false)}>{tx.escribir}</button>}
           </>)}
+          {fase === "consentir" && (
+            <div data-bo-consentir style={{ background: "rgba(255,255,255,0.05)", border: "1.5px solid rgba(255,255,255,0.14)", borderRadius: 14, padding: "12px 12px" }}>
+              <div style={{ fontSize: 13.5, fontWeight: 900, fontFamily: FT, marginBottom: 6 }}>🔐 {tx.consTit}</div>
+              <div style={{ fontSize: 12.5, color: T.t2, fontFamily: FD, lineHeight: 1.5, marginBottom: 10 }}>{tx.consTx((ia && ia.proveedor) || "IA")}</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button data-bo-acepto onClick={aceptar} disabled={ocupado} style={{ ...chip(true), flex: 1, textAlign: "center", opacity: ocupado ? 0.6 : 1 }}>{tx.acepto}</button>
+                <button onClick={() => { setFraseCons(null); volver(); }} style={{ ...chip(false), flex: 1, textAlign: "center" }}>{tx.ahoraNo}</button>
+              </div>
+            </div>)}
+          {fase === "aclarar" && aclarar && (<>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {(aclarar.tomas || []).map((t) => <button key={t} data-bo-toma={t} onClick={() => elegirToma(t)} style={{ ...chip(false), padding: "7px 10px", fontSize: 12 }}>{TOMA_LBL[EN ? "en" : "es"][t] || t}</button>)}
+            </div>
+            <button onClick={() => { setAclarar(null); volver(); }} style={{ ...chip(false), textAlign: "center" }}>{tx.ahoraNo}</button>
+          </>)}
+          {fase === "ir" && ir && (
+            <div style={{ display: "flex", gap: 8 }}>
+              <button data-bo-ir onClick={irA} style={{ ...chip(true), flex: 1, textAlign: "center" }}>{tx.ir(huecoTxt(ir.dia, ir.toma, lang))}</button>
+              <button onClick={() => { setIr(null); volver(); }} style={{ ...chip(false), flex: 1, textAlign: "center" }}>{tx.ahoraNo}</button>
+            </div>)}
           {fase === "confirmar" && (
             <div style={{ display: "flex", gap: 8 }}>
               <button data-bo-si onClick={ejecutar} disabled={ocupado} style={{ ...chip(true), flex: 1, textAlign: "center", opacity: ocupado ? 0.6 : 1 }}>{tx.si[pend?.accion] || "OK"}</button>
@@ -156,7 +274,7 @@ export function PreguntaBo({ T, Sheep, lang, bo, ctx, receta, intro, filas, onAc
             </div>)}
           {fase === "escribir" && (<>
             <textarea value={texto} onChange={(e) => setTexto(e.target.value.slice(0, 1000))} placeholder={tx.escribirAqui} rows={3}
-              style={{ font: `600 14px ${FD}`, color: T.t1, background: "rgba(255,255,255,0.06)", border: "2px solid rgba(255,255,255,0.12)", borderRadius: 12, padding: "10px 12px", width: "100%", boxSizing: "border-box", outline: "none", resize: "none" }} />
+              style={{ ...inputSty, resize: "none" }} />
             <div style={{ display: "flex", gap: 8 }}>
               <button data-bo-enviar onClick={enviar} disabled={ocupado || !texto.trim()} style={{ ...chip(true), flex: 1, textAlign: "center", opacity: (ocupado || !texto.trim()) ? 0.55 : 1 }}>{ocupado ? tx.enviando : tx.enviar}</button>
               <button onClick={() => { registrar(null, "abandonado"); volver(); }} style={{ ...chip(false), flex: 1, textAlign: "center" }}>{tx.ahoraNo}</button>
