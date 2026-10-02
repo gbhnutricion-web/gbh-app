@@ -67,7 +67,10 @@ const TRANS = {
     pinNoNet:"Sin conexión. No se pudo verificar el PIN.",
     pinForgot:"¿Has olvidado tu PIN?",
     pinEnterHint:"Introduce tu PIN para entrar",
-    pinSinPinHint:"Tu cuenta aún no tiene PIN: pulsa «¿Has olvidado tu PIN?» y te llega uno a tu correo.",
+    pinSinPinHint:"Tu cuenta todavía no tiene PIN.",
+    pinSinPinExpl:"Para protegerla, te mandamos uno a tu correo: pulsa el botón, envía el correo que se abre y en unos 5 minutos te llegará tu PIN a {e}.",
+    pinSinPinBtn:"📩 Recibir mi PIN por correo",
+    pinYaLlego:"Ya me ha llegado el PIN",
     pinCreateTitle:"Protege tu cuenta 🔐",
     pinCreateDesc:"Crea un PIN de 4 a 6 dígitos. Te lo pediremos al entrar con tu correo en un dispositivo nuevo, para que nadie más pueda acceder a tus datos.",
     pinNew:"Nuevo PIN", pinRepeat:"Repite el PIN",
@@ -554,7 +557,10 @@ const TRANS = {
     pinNoNet:"No connection. Couldn't verify your PIN.",
     pinForgot:"Forgot your PIN?",
     pinEnterHint:"Enter your PIN to continue",
-    pinSinPinHint:"Your account has no PIN yet: tap «Forgot your PIN?» and we'll email you one.",
+    pinSinPinHint:"Your account doesn't have a PIN yet.",
+    pinSinPinExpl:"To protect it, we'll email you one: tap the button, send the email that opens, and your PIN will reach {e} in about 5 minutes.",
+    pinSinPinBtn:"📩 Email me my PIN",
+    pinYaLlego:"I've got my PIN",
     pinCreateTitle:"Protect your account 🔐",
     pinCreateDesc:"Create a 4-6 digit PIN. We'll ask for it when you log in with your email on a new device, so nobody else can access your data.",
     pinNew:"New PIN", pinRepeat:"Repeat PIN",
@@ -8527,6 +8533,12 @@ function GBHApp(){
   // Una cuenta sin PIN NO lo crea aquí (bastaría saber su correo para quedarse con
   // ella): lo pide con «¿Has olvidado tu PIN?», que lo manda al correo registrado.
   const aPinPide = SESION_OBLIGATORIA || aPinNeed;
+  // 2-oct-2026 (MAESTRO-2026-754, orden de Alejandro: «es un fallo importante que pida PIN
+  // sin haberlo metido»): una cuenta SIN PIN no ve una caja de PIN que no puede rellenar,
+  // sino una tarjeta con un botón para pedirlo al correo (el mismo camino del reloj).
+  // «Ya me ha llegado el PIN» enseña la caja.
+  const [pinYaLlego, setPinYaLlego] = useState(false);
+  const aSinPin = SESION_OBLIGATORIA && !aPinNeed && !pinYaLlego;
   const [pinPrompt,setPinPrompt]= useState(false);  // modal "crea tu PIN"
   const [pinV1,setPinV1]=useState(""); const [pinV2,setPinV2]=useState("");
   const [pinBusy,setPinBusy]=useState(false); const [pinSetErr,setPinSetErr]=useState("");
@@ -10358,12 +10370,14 @@ function GBHApp(){
     setAuthErr("");
     // Sistema SIN contraseñas: solo miramos si el email ya tiene cuenta para
     // recuperarla (modo "returning" = entra directo) o es nuevo (pide datos).
-    if(emailChkLast.current !== em){ setAPin(""); emailChkLast.current = em; }
+    if(emailChkLast.current !== em){ setAPin(""); setPinYaLlego(false); emailChkLast.current = em; }
     const localId = lsGet(`gbh:em:${em}`, null);
     const localP  = localId ? lsGet(`gbh:p:${localId}`, null) : null;
     // Solo confiamos en la copia local si YA sabe si hay PIN (cachés antiguas
-    // no traen pin_set → hay que preguntar al servidor igualmente).
-    if(localP?.id && typeof localP.pin_set === "boolean"){
+    // no traen pin_set → hay que preguntar al servidor igualmente). Con la sesión
+    // obligatoria, un «false» local tampoco vale: el PIN puede habérsele creado
+    // en el servidor después (2-oct-2026, MAESTRO-2026-754).
+    if(localP?.id && typeof localP.pin_set === "boolean" && (localP.pin_set || !SESION_OBLIGATORIA)){
       setAName(localP.name || "");
       setAPinNeed(localP.pin_set);
       setAuthMode("returning");
@@ -10607,6 +10621,11 @@ function GBHApp(){
           return;
         }
       }
+      // 2-oct-2026 (MAESTRO-2026-754): quien ha entrado con PIN TIENE PIN, aunque la copia
+      // local diga pin_set:false (cuentas a las que se les creó en el servidor). Sin esto,
+      // enterApp abre «Protege tu cuenta», gbh_set_pin contesta 'exists' y el PIN tecleado
+      // ahí se da por guardado sin estarlo.
+      if(aPinPide && perfil?.id && perfil.pin_set!==true){ perfil = {...perfil, pin_set:true}; lsSet(`gbh:p:${perfil.id}`, perfil); }
       await enterApp(perfil);
       return;
     }
@@ -12301,14 +12320,34 @@ function GBHApp(){
             <div>
               <div style={{fontSize:13,fontWeight:900,color:T.g2}}>{t("welcomeBack",{n:aName.split(" ")[0]})}</div>
               <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:2}}>
-                {aPinPide ? t(aPinNeed ? "pinEnterHint" : "pinSinPinHint") : (lang==="en"?"Tap below to enter":"Pulsa abajo para entrar")}
+                {aPinPide ? t(aSinPin ? "pinSinPinHint" : "pinEnterHint") : (lang==="en"?"Tap below to enter":"Pulsa abajo para entrar")}
               </div>
             </div>
           </div>
         )}
 
+        {/* ── Cuenta SIN PIN: botón para pedirlo al correo, sin caja (MAESTRO-2026-754) ── */}
+        {authMode==="returning"&&aSinPin&&(
+          <div style={{marginBottom:6,textAlign:"center"}}>
+            <div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,marginBottom:14}}>
+              {t("pinSinPinExpl",{e:aEmail.trim().toLowerCase()})}
+            </div>
+            <a href={`mailto:${GBH_EMAIL}?subject=${encodeURIComponent("He olvidado mi PIN — GBH Nutrición")}&body=${encodeURIComponent("Hola Alejandro, mi cuenta de la app aún no tiene PIN y necesito uno para entrar. Mi correo es: "+aEmail.trim().toLowerCase())}`}
+              style={{display:"block",boxSizing:"border-box",width:"100%",padding:"17px 20px",borderRadius:18,border:`3px solid ${T.g3}`,
+                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,fontSize:17,fontWeight:900,
+                boxShadow:`0 6px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif",textDecoration:"none",marginBottom:14}}>
+              {t("pinSinPinBtn")}
+            </a>
+            <button onClick={()=>{ setPinYaLlego(true); setAuthErr(""); }}
+              style={{background:"none",border:"none",padding:4,cursor:"pointer",fontSize:12,color:T.t2,
+                fontFamily:"'DM Sans',sans-serif",textDecoration:"underline"}}>
+              {t("pinYaLlego")}
+            </button>
+          </div>
+        )}
+
         {/* ── PIN de acceso: la cuenta lo tiene → pedirlo antes de entrar ── */}
-        {authMode==="returning"&&aPinPide&&(
+        {authMode==="returning"&&aPinPide&&!aSinPin&&(
           <div style={{marginBottom:14}}>
             <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>{t("pinLabel")}</div>
             <input type="password" inputMode="numeric" pattern="[0-9]*" maxLength={6} value={aPin}
@@ -12366,6 +12405,7 @@ function GBHApp(){
           const isReturning = authMode==="returning";
           // El alta nueva vive en la conversación con Bo: aquí solo se entra
           if(!isReturning && authMode!=="migrate") return null;
+          if(isReturning && aSinPin) return null;   // sin PIN: el botón es el del correo
           const dis = loading || authMode==="checking" || !aEmail.trim() || (isReturning && aPinPide && aPin.length<4);
           const label = loading ? t("verifying") : t("recoverAccount");
           return(
