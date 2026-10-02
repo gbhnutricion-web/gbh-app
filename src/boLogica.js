@@ -35,10 +35,14 @@ export function costeTxt(ctx, lang) {
   if (ctx?.enTrial) return lang === "en" ? "Free while your trial lasts." : "Gratis mientras dure tu prueba.";
   return lang === "en" ? "It costs 10 💎." : "Cuesta 10 💎.";
 }
+// «{caja_racion}» es el texto que la ficha YA enseña en su caja de ración (textosCajaRacion de
+// raciones.js, calculado con los datos de esa receta): lo pasa App.jsx en ctx.cajaRacion.
 export function rellenar(s, ctx, lang) {
   return String(s || "")
     .replace(/\{raciones\}/g, String(parseInt(ctx?.raciones, 10) || 1))
     .replace(/\{coste\}/g, costeTxt(ctx, lang))
+    .replace(/\{caja_racion\}/g, String(ctx?.cajaRacion || ""))
+    .replace(/[ \t]{2,}/g, " ")
     .trim();
 }
 // El texto de un tema, con sus anexos (filas `anexo_de`) que valgan para este paciente.

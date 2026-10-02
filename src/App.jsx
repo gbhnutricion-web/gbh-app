@@ -1968,6 +1968,20 @@ const sbDirect = async (method, path, body) => {
   } catch { return { ok: false, status: 0, data: null }; }
 };
 
+// ─── «Pregúntale a Bo»: el registro es SOLO alta ──────────────────────────────
+// sbDirect pide «resolution=merge-duplicates» en todo POST (un upsert), y eso exige
+// permiso y regla de ACTUALIZAR, que bo_registro no da a propósito: la base contestaba
+// 401 a cada escritura (medido el 2-oct-2026 en la cuenta de Alejandro, MAESTRO-2026-753).
+// Sin cola offline: una pregunta que no llega se le dice al paciente y se queda en su caja.
+// 07. App GBH/bo_prueba_vivo.py lee BO_PREFER de aquí y lo prueba contra la base real.
+const BO_PREFER = "return=minimal";
+const boRegistrar = async (fila) => {
+  try{
+    const r = await fetch(`${SB}/rest/v1/bo_registro`, { method:"POST", headers: gbhHeaders({ "Prefer": BO_PREFER }), body: JSON.stringify(fila) });
+    return { ok: r.ok, status: r.status };
+  } catch { return { ok: false, status: 0 }; }
+};
+
 // Escritura best-effort de weekly_state: si la columna aún no existe (SQL
 // pendiente), falla en silencio sin romper nada ni encolar reintentos.
 const patchWeeklyState = (profileId, merged) => {
@@ -8952,7 +8966,7 @@ function GBHApp(){
     const refrescar=async()=>{
       if(!navigator.onLine||document.hidden) return;
       try{
-        let fresh=await sbReq("GET",`profiles?id=eq.${profile.id}&select=plan,gems,xp,shields,target_kcal,trial_ends_at,plan_until,avisos,avisos_activos,pasos_movil_activo&limit=1`);
+        let fresh=await sbReq("GET",`profiles?id=eq.${profile.id}&select=plan,gems,xp,shields,target_kcal,trial_ends_at,plan_until,avisos,avisos_activos,pasos_movil_activo,bo_activo&limit=1`);
         if(fresh===null){ // columna trial_ends_at aún sin migrar → select clásica
           fresh=await sbReq("GET",`profiles?id=eq.${profile.id}&select=plan,gems,xp,shields,target_kcal&limit=1`);
         }
@@ -8978,12 +8992,15 @@ function GBHApp(){
           // Pasos del móvil (30-sep-2026): solo el interruptor del operador. profiles.pasos_movil
           // lo escribe la app y no se relee (la copia del móvil es la más nueva).
           const pasosActNew = ('pasos_movil_activo' in f) ? (f.pasos_movil_activo===true) : prev.pasos_movil_activo;
+          // «Pregúntale a Bo» (2-oct-2026): el interruptor del operador también en caliente.
+          const boActNew = ('bo_activo' in f) ? (f.bo_activo===true) : prev.bo_activo;
           // Solo actualizar si algo cambió, para no re-renderizar de más
           // (incluidas las fechas, para que el NULL remoto se propague en caliente)
           if(prev.plan===f.plan && prev.gems===f.gems && prev.xp===f.xp
              && prev.trial_ends_at===trialNew && prev.plan_until===untilNew
              && prev.avisos_activos===avisosActNew
              && prev.pasos_movil_activo===pasosActNew
+             && prev.bo_activo===boActNew
              && JSON.stringify(prev.avisos??null)===JSON.stringify(avisosNew??null)) return prev;
           const merged={...prev,
             plan:f.plan??prev.plan, gems:f.gems??prev.gems,
@@ -8993,7 +9010,8 @@ function GBHApp(){
             plan_until:untilNew,
             avisos_activos:avisosActNew,
             avisos:avisosNew,
-            pasos_movil_activo:pasosActNew};
+            pasos_movil_activo:pasosActNew,
+            bo_activo:boActNew};
           lsSet(`gbh:p:${prev.id}`, merged);
           return merged;
         });
@@ -14563,7 +14581,7 @@ function GBHApp(){
           intro={enPrimeraSemana(profile)?(lang==='en'?'Shall I help you find something?':'¿Te ayudo a encontrar algo?'):null}
           onAbrir={(d)=>{ if(d==='consulta'){ setTab('consulta'); return; }
             setTab('plan'); setPlanVista((d==='daily'||d==='lista'||d==='config')?d:null); }}
-          onRegistrar={(fila)=>sbDirect('POST','bo_registro',fila)}
+          onRegistrar={boRegistrar}
           onCerrar={()=>setBoInicio(false)}/>}
         {tab==="consulta"&&<ConsultaTab profile={profile} lang={lang} sfx={sfx}/>}
         {tab==="supl"&&<Suplementacion t={t} T={T} sfx={sfx} onAbrir={id=>{ if(id==="cafeina") setCafeinaAbierta(true); }}/>}
@@ -16304,7 +16322,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
     if(momentoVisto(alm, profile?.id, hoyKey)) return;
     marcarMomentoVisto(alm, profile?.id, hoyKey);
     setBoMomento({texto:textoTema(f, ctxB, lang), firma:firmaTema(f, ctxB), tema:f.id});
-    sbDirect('POST','bo_registro',{profile_id:profile?.id,tipo:'uso',contexto:f.contexto[0],tema:f.id,resultado:'abierto'});
+    boRegistrar({profile_id:profile?.id,tipo:'uso',contexto:f.contexto[0],tema:f.id,resultado:'abierto'});
   };
   // Kcal reales (fase 2): la hoja «¿Qué comiste?» — 'sustituir' (la cambié / comí fuera) o 'extras' (sobre cualquier estado).
   // Los ítems viajan con sus números dentro; el total se recalcula aquí con sumaItems y se guarda en meals_real[toma].
@@ -17859,14 +17877,15 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
             </button>)}
           {boHoja&&boActivo(profile)&&<PreguntaBo T={T} Sheep={Sheep} lang={lang} pid={profile?.id}
             bo={{nombre:profile?.bo_nombre||'Bo',color:profile?.bo_color||'blanca',equipados:Array.isArray(profile?.bo_equipados)?profile.bo_equipados:[]}}
-            ctx={{contexto:'receta',plan:planBo(profile),enTrial:!!enTrial,raciones:tomaReceta.raciones,puedeCambiar:!tomaMenu,descartada:!!recetaDescartada}}
+            ctx={{contexto:'receta',plan:planBo(profile),enTrial:!!enTrial,raciones:tomaReceta.raciones,puedeCambiar:!tomaMenu,descartada:!!recetaDescartada,
+                  cajaRacion:(()=>{ const c=textosCajaRacion({raciones:tomaReceta.raciones,factor:tomaReceta.racion_factor,racionTexto:tomaReceta.racion_texto,lang}); return c?`${c.titulo}. ${c.detalle}`:''; })()}}
             receta={{nombre:tomaReceta.nombre,ingList}}
             onAccion={async(a,extra)=>{
               if(a==='cambiar'||a==='cambiar_sin') return await cambiarRecetaToma(extra||{});
               if(a==='descartar'){ if(recetaDescartada) return {ok:true}; await descartarRecetaToma(); return {ok:true}; }
               return {ok:false}; }}
             onAbrir={(d)=>{ if(d==='consulta'&&setTab) setTab('consulta'); }}
-            onRegistrar={(fila)=>sbDirect('POST','bo_registro',fila)}
+            onRegistrar={boRegistrar}
             onCerrar={()=>setBoHoja(false)}/>}
         </>)}
       </div>)}
