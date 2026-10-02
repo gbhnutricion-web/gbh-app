@@ -10374,13 +10374,21 @@ function GBHApp(){
     const localId = lsGet(`gbh:em:${em}`, null);
     const localP  = localId ? lsGet(`gbh:p:${localId}`, null) : null;
     // Solo confiamos en la copia local si YA sabe si hay PIN (cachés antiguas
-    // no traen pin_set → hay que preguntar al servidor igualmente). Con la sesión
-    // obligatoria, un «false» local tampoco vale: el PIN puede habérsele creado
-    // en el servidor después (2-oct-2026, MAESTRO-2026-754).
-    if(localP?.id && typeof localP.pin_set === "boolean" && (localP.pin_set || !SESION_OBLIGATORIA)){
+    // no traen pin_set → hay que preguntar al servidor igualmente).
+    if(localP?.id && typeof localP.pin_set === "boolean"){
       setAName(localP.name || "");
       setAPinNeed(localP.pin_set);
       setAuthMode("returning");
+      // 2-oct-2026 (MAESTRO-2026-754): con la sesión obligatoria, un «false» local se
+      // vuelve a mirar en el servidor (el PIN puede habérsele creado después), pero SIN
+      // pasar por "checking": quitar la tarjeta en el blur se comía el toque de sus botones.
+      if(localP.pin_set || !SESION_OBLIGATORIA) return;
+      const rs = await sbPinRpc("gbh_buscar_cuenta", { p_email: em });
+      if(seq !== emailChkSeq.current) return;
+      if(rs && typeof rs==="object" && rs.id && rs.pin_set===true){
+        setAPinNeed(true);
+        lsSet(`gbh:p:${localP.id}`, {...localP, pin_set:true});
+      }
       return;
     }
     setAuthMode("checking");
