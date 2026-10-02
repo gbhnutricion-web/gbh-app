@@ -24,6 +24,8 @@ import { usePasosMovil } from "./usePasosMovil";                            // p
 import { FilaPasosMovil } from "./PasosMovil";
 import { DistribucionKcal, AlimentosDescartados, leerDescartes, escribirDescartes, BannerSemanaNueva,
          CabeceraPlan, PillTotal, PatronCocina, Recordatorios, BotonesGuardar, FUENTE_PIXEL } from "./PlanArcade";
+import { PreguntaBo, BoMomento } from "./PreguntaBo";                     // «Pregúntale a Bo», fase 1 sin IA (2-oct-2026, BRIEF_pregunta_a_bo.md): interruptor profiles.bo_activo
+import { boActivo, planBo, filaMomento, textoTema, firmaTema, momentoVisto, marcarMomentoVisto, enPrimeraSemana, contieneIngrediente } from "./boLogica";
 
 // ─── Servidor de generación de programaciones (Railway) ─────────────────────
 // Rellena estos dos valores tras desplegar el servidor (ver GUIA_DESPLIEGUE_RAILWAY.md)
@@ -5075,10 +5077,13 @@ function getBoEstadoInicio(streak, dietDone, allDone, sleepDone, hora){
 }
 
 // ─── Speech bubble ─────────────────────────────────────────────────────────
-function Bubble({msg}){
+// `onClick` y `pista` solo llegan con Bo encendido (profiles.bo_activo): el bocadillo abre
+// «Pregúntale a Bo». Bo en sí NO se toca: sus 5 toques son la puerta de administración.
+function Bubble({msg,onClick,pista}){
   return(
-    <div style={{background:T.cr,borderRadius:22,padding:"11px 18px",maxWidth:230,position:"relative",boxShadow:"0 6px 20px rgba(0,0,0,0.45)",border:`3px solid ${T.au1}`,animation:"popIn 0.4s cubic-bezier(0.34,1.56,0.64,1)"}}>
+    <div onClick={onClick} role={onClick?"button":undefined} data-bo-bocadillo={onClick?"":undefined} style={{background:T.cr,borderRadius:22,padding:"11px 18px",maxWidth:230,position:"relative",boxShadow:"0 6px 20px rgba(0,0,0,0.45)",border:`3px solid ${T.au1}`,animation:"popIn 0.4s cubic-bezier(0.34,1.56,0.64,1)",cursor:onClick?"pointer":"default"}}>
       <p style={{fontSize:13,fontWeight:800,color:"#2A1800",lineHeight:1.45,textAlign:"center",margin:0,fontFamily:"'Nunito',sans-serif"}}>{msg}</p>
+      {pista&&<p style={{fontSize:11,fontWeight:900,color:"#7A5200",lineHeight:1.3,textAlign:"center",margin:"5px 0 0",fontFamily:"'Nunito',sans-serif"}}>{pista}</p>}
       <div style={{position:"absolute",bottom:-17,left:"50%",transform:"translateX(-50%)",width:0,height:0,borderLeft:"13px solid transparent",borderRight:"13px solid transparent",borderTop:`17px solid ${T.au1}`}}/>
       <div style={{position:"absolute",bottom:-12,left:"50%",transform:"translateX(-50%)",width:0,height:0,borderLeft:"10px solid transparent",borderRight:"10px solid transparent",borderTop:`12px solid ${T.cr}`}}/>
     </div>
@@ -11146,6 +11151,7 @@ function GBHApp(){
   // como mostrado y lo enseña la próxima vez.
   const [espejoDia,setEspejoDia]=useState(null);          // [{id,texto,tono}] | null
   const [planVista,setPlanVista]=useState(null);          // vista inicial que PlanTab debe abrir
+  const [boInicio,setBoInicio]=useState(false);           // «Pregúntale a Bo» abierto desde el bocadillo de Inicio
   // Ref y no deps: los pop-ups no deben reiniciar el temporizador del espejo,
   // solo consultarse en el instante de mostrarlo (mismo criterio que avisoRacha).
   const espejoPopupsRef=useRef(false);
@@ -13474,7 +13480,11 @@ function GBHApp(){
                   const cs = (pj && pj.coletillas) || [];
                   // Coletilla del carácter de Bo, estable durante el día (sin parpadeos)
                   return cs.length ? base + "  " + cs[new Date().getDate() % cs.length] : base;
-                })()}/>
+                })()}
+                  onClick={boActivo(profile)?()=>{SFX.tap&&SFX.tap();setBoInicio(true);}:undefined}
+                  pista={boActivo(profile)?(enPrimeraSemana(profile)
+                    ?(lang==='en'?'💬 Shall I help you find something? Tap me':'💬 ¿Te ayudo a encontrar algo? Tócame')
+                    :(lang==='en'?'💬 Ask me':'💬 Pregúntame')):null}/>
               </div>
 
               {/* ── Mute (derecha) ── */}
@@ -14545,6 +14555,16 @@ function GBHApp(){
             onClose={()=>{sfx("tap");setEspejoDia(null);}}/>
         )}
         {tab==="plan"&&<div data-tuto="plan-zona"><PlanTab profile={profile} lang={lang} hoyKey={hoyKey} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} descartadas={descartadas} setDescartadas={setDescartadas} showT={showT} sfx={sfx} t={t} setTab={setTab} onMealRegistered={onMealRegistered} vistaInicial={planVista} onVistaConsumida={()=>setPlanVista(null)} onTutoEvent={tutoEvento}/></div>}
+        {/* «Pregúntale a Bo» desde el bocadillo de Inicio (src/PreguntaBo.jsx). Las acciones
+            solo abren pestañas que ya existen; la escritura va a bo_registro sin cola (sbDirect). */}
+        {boInicio&&boActivo(profile)&&<PreguntaBo T={T} Sheep={Sheep} lang={lang} pid={profile?.id}
+          bo={{nombre:boNombre,color:boColor,equipados:boEquipados}}
+          ctx={{contexto:'inicio',plan:planBo(profile)}}
+          intro={enPrimeraSemana(profile)?(lang==='en'?'Shall I help you find something?':'¿Te ayudo a encontrar algo?'):null}
+          onAbrir={(d)=>{ if(d==='consulta'){ setTab('consulta'); return; }
+            setTab('plan'); setPlanVista((d==='daily'||d==='lista'||d==='config')?d:null); }}
+          onRegistrar={(fila)=>sbDirect('POST','bo_registro',fila)}
+          onCerrar={()=>setBoInicio(false)}/>}
         {tab==="consulta"&&<ConsultaTab profile={profile} lang={lang} sfx={sfx}/>}
         {tab==="supl"&&<Suplementacion t={t} T={T} sfx={sfx} onAbrir={id=>{ if(id==="cafeina") setCafeinaAbierta(true); }}/>}
       </div>
@@ -16063,7 +16083,8 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
   // se consume una vez y se limpia en el padre, para que la siguiente entrada
   // manual a Programación arranque en el menú de siempre.
   React.useEffect(()=>{
-    if(vistaInicial){ setView(vistaInicial); onVistaConsumida&&onVistaConsumida(); }
+    // 'config' (desde «Pregúntale a Bo»): la pantalla «Configura tu plan», solo del estándar.
+    if(vistaInicial){ if(vistaInicial==='config'){ if(isStandard) setConfigView(true); } else setView(vistaInicial); onVistaConsumida&&onVistaConsumida(); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[vistaInicial]);
   // ── Tour guiado: la lista de la compra vista de verdad avanza su paso ──────
@@ -16270,7 +16291,21 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
     if(toma && typeof onMealRegistered==='function') onMealRegistered(dateKey, meals);
   };
   const setEstadoComida = (toma,estado)=>{ if(!puedeRegistrar) return; const seSetea = regDia[selDateKey]?.meals?.[toma]!==estado; persistDia(selDateKey,{toma,estado}); sfx&&sfx('step'); onTutoEvent&&onTutoEvent('comida_marcada');
-    if(seSetea&&estado==='fuera') setHoja({toma,modo:'sustituir'}); else if(seSetea&&estado==='anadida') setHoja({toma,modo:'anadir'}); };   // al marcar: 🔄 pregunta qué comiste en vez de la receta; ➕ qué añadiste (las dos se cierran con «Ahora no»)
+    if(seSetea&&estado==='fuera') setHoja({toma,modo:'sustituir'}); else if(seSetea&&estado==='anadida') setHoja({toma,modo:'anadir'});   // al marcar: 🔄 pregunta qué comiste en vez de la receta; ➕ qué añadiste (las dos se cierran con «Ahora no»)
+    if(seSetea&&boActivo(profile)) avisoBoMomento(estado); };
+  // «Pregúntale a Bo»: al marcar ⏭️ o 🔄, el texto FIRMADO de ese momento, una vez al día (hoyKey,
+  // no el día que se marca), en un bocadillo que no bloquea. Sin fila firmada, no sale nada.
+  const [boMomento,setBoMomento] = React.useState(null);       // {texto, firma, tema} | null
+  const [boHoja,setBoHoja] = React.useState(false);            // «Pregúntale a Bo» desde la ficha de receta
+  const avisoBoMomento = (estado)=>{
+    const ctxB = {plan:planBo(profile)};
+    const f = filaMomento(estado, ctxB); if(!f) return;
+    let alm=null; try{ alm=window.localStorage; }catch(e){ alm=null; }
+    if(momentoVisto(alm, profile?.id, hoyKey)) return;
+    marcarMomentoVisto(alm, profile?.id, hoyKey);
+    setBoMomento({texto:textoTema(f, ctxB, lang), firma:firmaTema(f, ctxB), tema:f.id});
+    sbDirect('POST','bo_registro',{profile_id:profile?.id,tipo:'uso',contexto:f.contexto[0],tema:f.id,resultado:'abierto'});
+  };
   // Kcal reales (fase 2): la hoja «¿Qué comiste?» — 'sustituir' (la cambié / comí fuera) o 'extras' (sobre cualquier estado).
   // Los ítems viajan con sus números dentro; el total se recalcula aquí con sumaItems y se guarda en meals_real[toma].
   const [hoja,setHoja] = React.useState(null);                 // {toma, modo} | null
@@ -16747,13 +16782,17 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
   }
 
   // ── Cambiar la receta por otra de composición similar (10 💎) ──────────────
-  async function cambiarRecetaToma(){
-    if(!tomaReceta||!profile) return;
+  // `opc.sinIngrediente` (desde «Pregúntale a Bo», «Me falta un ingrediente»): veta además las recetas
+  // que lo lleven. Desde el botón 🔄 llega el evento del clic, que no lo trae. Devuelve
+  // {ok, nombre} o {ok:false, motivo} para que Bo diga qué pasó; el botón lo ignora.
+  async function cambiarRecetaToma(opc){
+    const sinIng = (opc && typeof opc==='object' && typeof opc.sinIngrediente==='string' && opc.sinIngrediente.trim()) ? opc.sinIngrediente.trim() : null;
+    if(!tomaReceta||!profile) return {ok:false};
     const costeCambio = enTrial ? 0 : 10;   // gratis mientras dura la prueba
     if(costeCambio>0 && gems < costeCambio){
       sfx&&sfx("error");
       showT&&showT({icon:"💎",title:lang==='en'?'Not enough gems':'Sin gemas suficientes',sub:lang==='en'?'You need 10 💎 to change the recipe':'Necesitas 10 💎 para cambiar la receta'});
-      return;
+      return {ok:false, motivo:'gemas'};
     }
     const mapa = await cargarRecetasCache();
     const recetas = Object.values(mapa);
@@ -16783,7 +16822,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
     const res = elegirRecetaCambio({
       recetas, actual:tomaReceta, ancla:mem.ancla, toma:openToma,
       permitidas: permitidasDePlanes(planes, openToma),
-      rechazada:  (r)=>recetaRechazadaJS(r, rechPref),
+      rechazada:  (r)=>recetaRechazadaJS(r, rechPref) || (!!sinIng && contieneIngrediente(r?.ingredientes||'', sinIng)),
       descartadas:new Set((descartadas||[]).map(r=>normNombreCambio(r.nombre||''))),
       favoritas:  new Set((savedRecipes||[]).map(r=>normNombreCambio(r.nombre||r.nombre_receta||''))),
       vistas:mem.vistas, enPlan,
@@ -16792,7 +16831,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
     // gemas: mejor no cambiar que servir un despropósito o un alimento vetado.
     if(!res.receta){
       showT&&showT({icon:"🚫",title:lang==='en'?'No alternative':'Sin alternativa',sub:lang==='en'?'No similar recipe available':'No hay receta similar disponible'});
-      return;
+      return {ok:false, motivo:'sin_alternativa'};
     }
     const elegida = res.receta;
     guardarMemoriaCambio(almacen, memClave, {...mem, actual:tomaReceta, elegida, reinicio:res.reinicio});
@@ -16848,6 +16887,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
           {plan_json:nuevoJson});
       }catch(e){ console.warn("[cambiar-receta] no se pudo persistir:", e); }
     }
+    return {ok:true, nombre: elegida.nombre||elegida.nombre_receta||''};
   }
 
   // ── Guardar la receta en el recetario personal (20 💎) ─────────────────────
@@ -17539,6 +17579,9 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
                  cargarRecetas={cargarRecetasCache} nutri={_NUTRI_ING}
                  inicial={hoja.modo==='extras'?(realDia[hoja.toma]?.extras||[]):(realDia[hoja.toma]?.items||[])}
                  onGuardar={guardarHoja} onCerrar={()=>setHoja(null)}/>}
+          {boMomento&&!hoja&&<BoMomento T={T} Sheep={Sheep} lang={lang} texto={boMomento.texto} firma={boMomento.firma}
+                 bo={{color:profile?.bo_color||'blanca',equipados:Array.isArray(profile?.bo_equipados)?profile.bo_equipados:[]}}
+                 onCerrar={()=>setBoMomento(null)}/>}
           {puedeRegistrar&&(<>
             <div style={{background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:16,padding:'12px 14px'}}>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
@@ -17802,6 +17845,26 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
               <span style={{fontSize:10,color:T.t3}}>{recetaDescartada?(lang==='en'?'Tap to undo':'Toca para deshacer'):(lang==='en'?'Free':'Gratis')}</span>
             </button>
           </div>
+          {/* «Pregúntale a Bo» sobre esta receta: las acciones son las tres de arriba, por sus
+              mismas funciones (cambiarRecetaToma admite {sinIngrediente}). */}
+          {boActivo(profile)&&(
+            <button data-bo-abrir-receta onClick={()=>{sfx&&sfx('tap');setBoHoja(true);}}
+              style={{width:'100%',marginTop:10,background:'rgba(255,255,255,0.05)',border:`1.5px solid ${alpha(T.au1,0.35)}`,borderRadius:16,
+                      padding:'12px 10px',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+              <span style={{fontSize:18}}>💬</span>
+              <span style={{fontSize:12.5,fontWeight:900,color:T.au1,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Ask Bo about this recipe':'Pregúntale a Bo por esta receta'}</span>
+            </button>)}
+          {boHoja&&boActivo(profile)&&<PreguntaBo T={T} Sheep={Sheep} lang={lang} pid={profile?.id}
+            bo={{nombre:profile?.bo_nombre||'Bo',color:profile?.bo_color||'blanca',equipados:Array.isArray(profile?.bo_equipados)?profile.bo_equipados:[]}}
+            ctx={{contexto:'receta',plan:planBo(profile),enTrial:!!enTrial,raciones:tomaReceta.raciones,puedeCambiar:!tomaMenu,descartada:!!recetaDescartada}}
+            receta={{nombre:tomaReceta.nombre,ingList}}
+            onAccion={async(a,extra)=>{
+              if(a==='cambiar'||a==='cambiar_sin') return await cambiarRecetaToma(extra||{});
+              if(a==='descartar'){ if(recetaDescartada) return {ok:true}; await descartarRecetaToma(); return {ok:true}; }
+              return {ok:false}; }}
+            onAbrir={(d)=>{ if(d==='consulta'&&setTab) setTab('consulta'); }}
+            onRegistrar={(fila)=>sbDirect('POST','bo_registro',fila)}
+            onCerrar={()=>setBoHoja(false)}/>}
         </>)}
       </div>)}
     </div>);
