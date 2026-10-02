@@ -16378,7 +16378,10 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
       try{
         resp=await fetch(GBH_SERVER_URL.replace(/\/$/,'')+'/generar',{
           method:'POST',
-          headers:{'Content-Type':'application/json','X-GBH-Token':GBH_GEN_TOKEN},
+          // La identidad es la sesión (MAESTRO-2026-738): el servidor genera para el perfil de
+          // X-GBH-Sesion e ignora el profile_id del cuerpo, que queda solo para servidores antiguos.
+          headers:{'Content-Type':'application/json','X-GBH-Token':GBH_GEN_TOKEN,
+                   ...(getSesion()?.token ? {'X-GBH-Sesion':getSesion().token} : {})},
           body:JSON.stringify({profile_id:profile.id}),
           signal:ctrl.signal,
         });
