@@ -143,6 +143,12 @@ const TOMA_EN = { Desayuno: "breakfast", Almuerzo: "morning snack", Comida: "lun
 const TIPO_ES = { Carne: "de carne", Pescado: "de pescado", Vegetariana: "vegetariana", Vegana: "vegana", Ensalada: "de ensalada", "Sopa/Crema": "de sopa o crema", Postre: "de postre" };
 const TIPO_EN = { Carne: "with meat", Pescado: "with fish", Vegetariana: "vegetarian", Vegana: "vegan", Ensalada: "salad", "Sopa/Crema": "soup or cream", Postre: "dessert" };
 
+// Peso y consulta (3-oct-2026, BRIEF §18): cómo se dicen el peso y el día de la consulta.
+const PREF_ES = { sabado: "el sábado", domingo: "el domingo", cualquiera: "el fin de semana" };
+const PREF_EN = { sabado: "Saturday", domingo: "Sunday", cualquiera: "the weekend" };
+export const prefTxt = (pref, lang) => { const t = lang === "en" ? PREF_EN : PREF_ES; return t[pref] || t.cualquiera; };
+export const kgTxt = (v, lang) => (lang === "en" ? String(v) : String(v).replace(".", ",")) + " kg";
+
 export function huecoTxt(dia, toma, lang) {
   const d = (lang === "en" ? DIAS_EN : DIAS_ES)[(parseInt(dia, 10) || 1) - 1] || "";
   if (lang === "en") return toma ? `${d}'s ${TOMA_EN[toma] || toma}` : d;
@@ -151,6 +157,13 @@ export function huecoTxt(dia, toma, lang) {
 // La pregunta de confirmación de una acción: aritmética y nombres, nunca consejo.
 export function confirmarTxt(p, receta, ctx, lang) {
   const EN = lang === "en", r = receta ? `«${receta}»` : (EN ? "this recipe" : "esta receta");
+  if (p.accion === "peso") return ctx?.pesoVentana != null
+    ? (EN ? `You already logged ${kgTxt(ctx.pesoVentana, lang)} in this weigh-in. Shall I change it to ${kgTxt(p.valor, lang)}?`
+          : `Ya apuntaste ${kgTxt(ctx.pesoVentana, lang)} en este pesaje. ¿Lo cambio por ${kgTxt(p.valor, lang)}?`)
+    : (EN ? `Shall I log ${kgTxt(p.valor, lang)} as today's weight?` : `¿Apunto ${kgTxt(p.valor, lang)} como tu peso de hoy?`);
+  if (p.accion === "consulta") return EN
+    ? `Shall I ask Alejandro for a consultation on ${prefTxt(p.preferencia, lang)}? Then you choose the time in his calendar.`
+    : `¿Le pido a Alejandro una consulta para ${prefTxt(p.preferencia, lang)}? Después eliges la hora en su agenda.`;
   if (p.accion === "descartar") return EN ? `Shall I set ${r} aside? I won't offer it again when you swap recipes.` : `¿Aparto ${r}? No te la volveré a ofrecer al cambiar recetas.`;
   const extra = p.accion === "cambiar_sin" && p.ingrediente ? (EN ? ` without ${p.ingrediente}` : ` sin ${p.ingrediente}`)
     : p.tipo_receta ? " " + ((EN ? TIPO_EN : TIPO_ES)[p.tipo_receta] || p.tipo_receta) : "";
@@ -166,6 +179,8 @@ export function pasoIA(r, ctx, lang, texto, filas = _BO_RESP) {
     const f = (filas || []).find((x) => x.id === r.tema_id && valePlan(x, ctx));
     return f ? { tema: f } : pasoIA({ tipo: "alejandro" }, ctx, lang, texto, filas);
   }
+  if (t === "accion" && r.accion === "peso") return pasoPeso(r, ctx, lang);
+  if (t === "accion" && r.accion === "consulta") return pasoConsulta(r, ctx, lang);
   if (t === "accion") {
     const p = { tema: "ia", accion: r.accion, ingrediente: r.ingrediente || null, tipo_receta: r.tipo_receta || null };
     if (ctx?.contexto === "receta" && r.dia === ctx.dia && r.toma === ctx.toma) {
@@ -189,6 +204,37 @@ export function pasoIA(r, ctx, lang, texto, filas = _BO_RESP) {
   if (puedeEscribir(ctx, filas))
     return { mensajes: [msg(EN ? "That's one for Alejandro: better that he answers it himself. Shall I send it to him?" : "Esto es criterio de Alejandro: mejor que te lo responda él. ¿Se lo mando?")], fase: "escribir", prellenar: texto || "" };
   return { mensajes: [msg(EN ? "That's a question for Alejandro." : "Esto es mejor preguntárselo a Alejandro.")], fase: "abrir", pend: { tema: "alejandro", destino: "consulta" } };
+}
+// Peso (3-oct-2026, BRIEF §18): con número, se confirma y lo guarda la app con la regla de la pestaña
+// Peso (miércoles y fin de semana; si ya hay pesaje en la ventana, se corrige ese). Sin número, o desde
+// la ficha de una receta, a la pestaña Peso. El número lo reconoce el servidor: no pasa por la IA.
+function pasoPeso(r, ctx, lang) {
+  const EN = lang === "en", msg = (tx) => ({ tx, firma: null });
+  const v = Number(r.valor);
+  if (ctx?.contexto !== "inicio" || !(v >= 30 && v <= 250))
+    return { mensajes: [msg(EN ? "Let's go to Weight to log it." : "Vamos a Peso para apuntarlo.")], fase: "abrir", pend: { tema: "ia", destino: "peso" } };
+  if (!ctx.puedePesar)
+    return { mensajes: [msg(EN ? "Weight is logged on Wednesdays and at the weekend, when it's time to weigh in. I can't log it today."
+                               : "El peso se apunta los miércoles y el fin de semana, que es cuando toca pesarse. Hoy no puedo apuntarlo.")], fase: "temas" };
+  const p = { tema: "ia", accion: "peso", valor: Math.round(v * 10) / 10 };
+  return { mensajes: [msg(confirmarTxt(p, null, ctx, lang))], fase: "confirmar", pend: p };
+}
+// Consulta (parte A, orden de Alejandro del 3-oct): es del plan Premium. Se elige el día (sábado,
+// domingo o me da igual), la app deja la solicitud en Supabase (consulta_solicitudes) y abre el
+// Calendly para elegir la hora. Fuera de Inicio, a la pestaña Consulta.
+function pasoConsulta(r, ctx, lang) {
+  const EN = lang === "en", msg = (tx) => ({ tx, firma: null });
+  if (ctx?.plan !== "premium")
+    return { mensajes: [msg(EN ? "Consultations with Alejandro are part of the Premium plan. In Consultation you'll see how to move up."
+                               : "Las consultas con Alejandro son parte del plan Premium. En Consulta tienes cómo pasarte.")], fase: "abrir", pend: { tema: "consulta", destino: "consulta" } };
+  if (ctx?.contexto !== "inicio")
+    return { mensajes: [msg(EN ? "Let's go to Consultation." : "Vamos a Consulta.")], fase: "abrir", pend: { tema: "ia", destino: "consulta" } };
+  const pref = r.dia === 6 ? "sabado" : r.dia === 7 ? "domingo" : null;
+  if (!pref)
+    return { mensajes: [msg(EN ? "Consultations are at the weekend. Which day suits you best?" : "Las consultas son el fin de semana. ¿Qué día te viene mejor?")],
+             fase: "consulta_dia", pend: { tema: "ia", accion: "consulta" } };
+  const p = { tema: "ia", accion: "consulta", preferencia: pref };
+  return { mensajes: [msg(confirmarTxt(p, null, ctx, lang))], fase: "confirmar", pend: p };
 }
 // Lo que viaja al servidor: la frase y los temas de esta pantalla (ids y texto del botón), nada más.
 export function cuerpoIA(texto, ctx, temas, lang, hoy) {

@@ -1993,6 +1993,16 @@ const boRegistrar = async (fila) => {
     return { ok: r.ok, status: r.status };
   } catch { return { ok: false, status: 0 }; }
 };
+// «Pregúntale a Bo» pide una consulta (3-oct-2026, BRIEF §18, parte A de Alejandro): la solicitud
+// queda en consulta_solicitudes (solo alta y lectura propias, como bo_registro: BO_PREFER) y
+// Alejandro la ve en la matinal; la hora la elige el paciente en el Calendly.
+const boPedirConsulta = async (pid, preferencia) => {
+  try{
+    const r = await fetch(`${SB}/rest/v1/consulta_solicitudes`, { method:"POST", headers: gbhHeaders({ "Prefer": BO_PREFER }),
+      body: JSON.stringify({ profile_id: pid, preferencia }) });
+    return { ok: r.ok, status: r.status };
+  } catch { return { ok: false, status: 0 }; }
+};
 // «Pregúntale a Bo», fase 2 (2-oct-2026, BRIEF §16): escribir con IA. El servidor (gbh_bo.py en
 // Railway) saca al paciente de su sesión, mira los interruptores (bo_activo, bo_ia_activo), el
 // permiso (bo_ia_ok) y la edad, y CLASIFICA la frase; la IA no redacta nada que vea el paciente.
@@ -11445,8 +11455,10 @@ function GBHApp(){
   // Lo que enseña la misión: nunca menos de lo guardado (lo apuntado a mano no se pierde).
   const pasosVista = pasosMovil.estado==="vivo" ? Math.max(steps, pasosMovil.total||0) : steps;
 
-  const saveW=async(isEdit=false)=>{
-    const val=parseFloat(wInput);if(!puedePesarseHoy()||isNaN(val)||val<20||val>300)return;
+  // El pesaje con un valor dado. Lo usan la pestaña Peso (saveW) y «Pregúntale a Bo» (3-oct-2026,
+  // BRIEF §18): la misma regla para los dos, y {ok} para que Bo sepa qué decir.
+  const guardarPeso=async(val,isEdit=false)=>{
+    if(!puedePesarseHoy()||isNaN(val)||val<20||val>300)return {ok:false,motivo:"ventana"};
     // El pesaje es por VENTANA: si ya hay uno en la ventana en curso (p.ej. el sábado y hoy
     // es domingo), editamos esa misma fila —no creamos otra— y conservamos su fecha real.
     // El pesaje del miércoles es otra ventana y otra fila.
@@ -11455,7 +11467,7 @@ function GBHApp(){
     const alreadyLogged=!!existing;
     const nw=weights.filter(w=>w.date!==targetDate);
     nw.push({date:targetDate,weight:val});nw.sort((a,b)=>a.date>b.date?1:-1);
-    setWeights(nw);lsSet(`gbh:weights:${profile.id}`,nw);setWInput("");
+    setWeights(nw);lsSet(`gbh:weights:${profile.id}`,nw);
     // on_conflict → editar sobrescribe la fila (profile_id+log_date) en vez de duplicarla.
     await sbReq("POST","weight_logs?on_conflict=profile_id,log_date",{profile_id:profile.id,log_date:targetDate,weight_kg:val});
     // Solo dar XP/gemas la primera vez, no en ediciones
@@ -11465,6 +11477,12 @@ function GBHApp(){
       if(nw.length>=4){const l4=nw.slice(-4).map(w=>w.weight);const ma=l4.reduce((a,b)=>a+b,0)/4;if(val<ma){setConfetti(true);setTimeout(()=>setConfetti(false),2400);showT({icon:"📉",title:"¡Tendencia bajando!",sub:"La línea va en la dirección correcta 💚"});}}
       await chkBadges(streak,nw,badges);
     }
+    return {ok:true};
+  };
+  const saveW=async(isEdit=false)=>{
+    const val=parseFloat(wInput);if(!puedePesarseHoy()||isNaN(val)||val<20||val>300)return;
+    setWInput("");
+    await guardarPeso(val,isEdit);
     // Tras guardar: ir directamente a la gráfica (modo vista)
     setWeightMode("chart");
   };
@@ -14657,9 +14675,15 @@ function GBHApp(){
             solo abren pestañas que ya existen; la escritura va a bo_registro sin cola (sbDirect). */}
         {boInicio&&boActivo(profile)&&<PreguntaBo T={T} Sheep={Sheep} lang={lang} pid={profile?.id}
           bo={{nombre:boNombre,color:boColor,equipados:boEquipados}}
-          ctx={{contexto:'inicio',plan:planBo(profile)}}
+          ctx={{contexto:'inicio',plan:planBo(profile),puedePesar:puedePesarseHoy(),pesoVentana:(pesajeEnVentana(weights)||{}).weight??null}}
           intro={enPrimeraSemana(profile)?(lang==='en'?'Shall I help you find something?':'¿Te ayudo a encontrar algo?'):null}
+          onAccion={async(a,extra)=>{                         // 3-oct-2026 (BRIEF §18): apuntar el peso y pedir consulta
+            if(a==='peso') return await guardarPeso(Number(extra&&extra.valor));
+            if(a==='consulta') return await boPedirConsulta(profile?.id,(extra&&extra.preferencia)||'cualquiera');
+            return {ok:false}; }}
           onAbrir={(d)=>{ if(d==='consulta'){ setTab('consulta'); return; }
+            if(d==='peso'){ setTab('weight'); return; }
+            if(d==='calendly'){ window.open(GBH_CALENDLY,'_blank','noopener'); return; }
             setTab('plan'); setPlanVista((d==='daily'||d==='lista'||d==='config')?d:null); }}
           ia={{...boIA, consentir:()=>boIAConsentir(profile?.id)}}
           onIr={(d)=>{ setTab('plan'); setPlanVista({vista:'daily', dia:d.dia, toma:d.toma, bo:d.bo}); }}
@@ -17986,7 +18010,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
               if(a==='cambiar'||a==='cambiar_sin') return await cambiarRecetaToma(extra||{});
               if(a==='descartar'){ if(recetaDescartada) return {ok:true}; await descartarRecetaToma(); return {ok:true}; }
               return {ok:false}; }}
-            onAbrir={(d)=>{ if(d==='consulta'&&setTab) setTab('consulta'); }}
+            onAbrir={(d)=>{ if(d==='consulta'&&setTab) setTab('consulta'); if(d==='peso'&&setTab) setTab('weight'); }}
             ia={{...boIA, consentir:()=>boIAConsentir(profile?.id)}}
             pendiente={boPendiente}
             onIr={(d)=>{ setBoHoja(false); setBoPendiente(null); setBoNav(d); }}

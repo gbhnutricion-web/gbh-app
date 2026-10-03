@@ -1,7 +1,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { temasPara, botonTema, textoTema, firmaTema, puedeEscribir, filaEscrito, filaSistema, esSensible,
-         opcionesIngredientes, filaRegistro, pasoIA, cuerpoIA, errorIA, confirmarTxt, huecoTxt } from "./boLogica";
+         opcionesIngredientes, filaRegistro, pasoIA, cuerpoIA, errorIA, confirmarTxt, huecoTxt, prefTxt, kgTxt } from "./boLogica";
 
 // ─── «Pregúntale a Bo» ───────────────────────────────────────────────────────────
 // Hoja inferior con forma de conversación. Fase 1 (sin IA): BOTONES con textos de boRespuestas.js
@@ -17,8 +17,13 @@ const TOMA_LBL = { es: { Desayuno: "Desayuno", Almuerzo: "Almuerzo", Comida: "Co
                    en: { Desayuno: "Breakfast", Almuerzo: "Morning snack", Comida: "Lunch", Merienda: "Afternoon snack", Cena: "Dinner" } };
 const TX = {
   es: { hola: "¿En qué te ayudo?", escribir: "✍️ Escríbele a Alejandro", cerrar: "Cerrar", ahoraNo: "Ahora no",
-        si: { cambiar: "Sí, cámbiala", cambiar_sin: "Sí, cámbiala", descartar: "Sí, apártala" },
-        abrir: { daily: "Ir a Platos diarios", lista: "Abrir la lista de la compra", config: "Abrir mi configuración", consulta: "Ir a Consulta" },
+        si: { cambiar: "Sí, cámbiala", cambiar_sin: "Sí, cámbiala", descartar: "Sí, apártala", peso: "Sí, apúntalo", consulta: "Sí, pídela" },
+        abrir: { daily: "Ir a Platos diarios", lista: "Abrir la lista de la compra", config: "Abrir mi configuración", consulta: "Ir a Consulta",
+                 peso: "Ir a Peso", calendly: "📅 Elegir la hora en su agenda" },
+        pesoOk: (k) => `Apuntado: ${k}.`, pesoFallo: "No he podido apuntarlo. Pruébalo en la pestaña Peso.",
+        consultaOk: (d) => `Hecho: Alejandro ya tiene tu solicitud para ${d}. Ahora elige la hora en su agenda.`,
+        consultaFallo: "No he podido dejar la solicitud, pero puedes reservar igualmente en su agenda.",
+        dias: { sabado: "Sábado", domingo: "Domingo", cualquiera: "Me da igual" },
         escribirAqui: "Escribe aquí tu pregunta para Alejandro…", enviar: "Enviar", enviando: "Enviando…",
         hecho: (n) => n ? `Hecho. Ahora toca: ${n}.` : "Hecho.", apartada: "Hecho: apartada.",
         sinGemas: "No te llegan las gemas para cambiarla (10 💎).", sinAlt: "No hay receta similar disponible",
@@ -29,8 +34,13 @@ const TX = {
         consTx: (p) => `Para entender lo que escribes, Bo usa la inteligencia artificial de ${p}. Se le envía tu frase y los nombres de las recetas de tu semana; nunca tu nombre ni tu correo. Lo que escribas se guarda para que Alejandro pueda revisarlo y mejorar las respuestas. Puedes seguir usando los botones sin aceptar.`,
         acepto: "Acepto", consFallo: "No he podido guardar tu permiso. Prueba en un rato.", ir: (h) => `Ir a ${h}` },
   en: { hola: "How can I help?", escribir: "✍️ Write to Alejandro", cerrar: "Close", ahoraNo: "Not now",
-        si: { cambiar: "Yes, swap it", cambiar_sin: "Yes, swap it", descartar: "Yes, set it aside" },
-        abrir: { daily: "Go to Daily meals", lista: "Open the shopping list", config: "Open my settings", consulta: "Go to Consultation" },
+        si: { cambiar: "Yes, swap it", cambiar_sin: "Yes, swap it", descartar: "Yes, set it aside", peso: "Yes, log it", consulta: "Yes, ask for it" },
+        abrir: { daily: "Go to Daily meals", lista: "Open the shopping list", config: "Open my settings", consulta: "Go to Consultation",
+                 peso: "Go to Weight", calendly: "📅 Choose the time in his calendar" },
+        pesoOk: (k) => `Logged: ${k}.`, pesoFallo: "I couldn't log it. Try it in the Weight tab.",
+        consultaOk: (d) => `Done: Alejandro has your request for ${d}. Now choose the time in his calendar.`,
+        consultaFallo: "I couldn't leave the request, but you can still book in his calendar.",
+        dias: { sabado: "Saturday", domingo: "Sunday", cualquiera: "Either" },
         escribirAqui: "Write your question for Alejandro here…", enviar: "Send", enviando: "Sending…",
         hecho: (n) => n ? `Done. Now you have: ${n}.` : "Done.", apartada: "Done: set aside.",
         sinGemas: "You don't have enough gems to swap it (10 💎).", sinAlt: "No similar recipe available",
@@ -66,7 +76,7 @@ export function PreguntaBo({ T, Sheep, lang, bo, ctx, receta, intro, filas, ia: 
   const [msgs, setMsgs] = React.useState(() => pendiente
     ? [{ de: "bo", tx: faseIni === "ingrediente" ? tx.cualFalta : confirmarTxt(pendiente, receta?.nombre, ctx, lang) }]
     : [{ de: "bo", tx: intro || tx.hola }]);
-  // fase: 'temas' · 'confirmar' · 'ingrediente' · 'abrir' · 'escribir' · 'consentir' · 'aclarar' · 'ir'
+  // fase: 'temas' · 'confirmar' · 'ingrediente' · 'abrir' · 'escribir' · 'consentir' · 'aclarar' · 'ir' · 'consulta_dia'
   const [fase, setFase] = React.useState(faseIni);
   const [pend, setPend] = React.useState(() => (pendiente ? { tema: "ia", ...pendiente } : null));
   const [texto, setTexto] = React.useState("");
@@ -103,22 +113,37 @@ export function PreguntaBo({ T, Sheep, lang, bo, ctx, receta, intro, filas, ia: 
     setPend({ tema: f.id, accion: a }); setFase("confirmar");
   };
 
-  const ejecutar = async () => {
-    if (!pend || ocupado) return;
+  // p0: la acción a ejecutar si no es la pendiente (el día de la consulta se elige y se ejecuta de un toque)
+  const ejecutar = async (p0) => {
+    const p = p0 || pend;
+    if (!p || ocupado) return;
     setOcupado(true);
     let r = null;
-    const opc = { ...(pend.ingrediente ? { sinIngrediente: pend.ingrediente } : {}), ...(pend.tipo_receta ? { tipo: pend.tipo_receta } : {}) };
-    try { r = await onAccion(pend.accion, opc); } catch (e) { r = { ok: false }; }
+    const opc = { ...(p.ingrediente ? { sinIngrediente: p.ingrediente } : {}), ...(p.tipo_receta ? { tipo: p.tipo_receta } : {}),
+                  ...(p.valor != null ? { valor: p.valor } : {}), ...(p.preferencia ? { preferencia: p.preferencia } : {}) };
+    try { r = await (onAccion ? onAccion(p.accion, opc) : null); } catch (e) { r = { ok: false }; }
     setOcupado(false);
+    // Peso y consulta (3-oct-2026, BRIEF §18): sus propios acuses; la consulta sigue en el Calendly
+    if (p.accion === "peso") {
+      if (r && r.ok) { di({ de: "bo", tx: tx.pesoOk(kgTxt(p.valor, lang)) }); registrar(p.tema, "accion"); }
+      else { di({ de: "bo", tx: tx.pesoFallo }); registrar(p.tema, "abandonado"); }
+      return volver();
+    }
+    if (p.accion === "consulta") {
+      if (r && r.ok) { di({ de: "bo", tx: tx.consultaOk(prefTxt(p.preferencia, lang)) }); registrar(p.tema, "accion"); }
+      else di({ de: "bo", tx: tx.consultaFallo });
+      setPend({ tema: p.tema, destino: "calendly" });
+      return setFase("abrir");
+    }
     if (r && r.ok) {
-      di({ de: "bo", tx: pend.accion === "descartar" ? tx.apartada : tx.hecho(r.nombre) });
-      registrar(pend.tema, "accion");
+      di({ de: "bo", tx: p.accion === "descartar" ? tx.apartada : tx.hecho(r.nombre) });
+      registrar(p.tema, "accion");
     } else if (r && r.motivo === "gemas") {
-      di({ de: "bo", tx: tx.sinGemas }); registrar(pend.tema, "abandonado");
+      di({ de: "bo", tx: tx.sinGemas }); registrar(p.tema, "abandonado");
     } else {
       const f = filaSistema("sin_alternativa", ctx, filas);
       di(f ? { de: "bo", tx: textoTema(f, ctx, lang, filas), firma: firmaTema(f, ctx, filas) } : { de: "bo", tx: tx.sinAlt });
-      registrar(pend.tema, "abandonado");
+      registrar(p.tema, "abandonado");
       if (f && escribe) { setPend(null); return setFase("escribir"); }
     }
     volver();
@@ -163,6 +188,7 @@ export function PreguntaBo({ T, Sheep, lang, bo, ctx, receta, intro, filas, ia: 
     if (p.fase === "aclarar") { setAclarar({ tomas: p.tomas, base: p.base }); return setFase("aclarar"); }
     if (p.fase === "escribir") { setTexto(p.prellenar || ""); setPend({ tema: "alejandro" }); return setFase("escribir"); }
     if (p.fase === "abrir") { setPend(p.pend); return setFase("abrir"); }
+    if (p.fase === "consulta_dia") { setPend(p.pend); return setFase("consulta_dia"); }
     volver();
   };
   const preguntar = async (t, c) => {
@@ -258,9 +284,17 @@ export function PreguntaBo({ T, Sheep, lang, bo, ctx, receta, intro, filas, ia: 
             </div>)}
           {fase === "confirmar" && (
             <div style={{ display: "flex", gap: 8 }}>
-              <button data-bo-si onClick={ejecutar} disabled={ocupado} style={{ ...chip(true), flex: 1, textAlign: "center", opacity: ocupado ? 0.6 : 1 }}>{tx.si[pend?.accion] || "OK"}</button>
+              <button data-bo-si onClick={() => ejecutar()} disabled={ocupado} style={{ ...chip(true), flex: 1, textAlign: "center", opacity: ocupado ? 0.6 : 1 }}>{tx.si[pend?.accion] || "OK"}</button>
               <button onClick={() => { registrar(pend?.tema, "abandonado"); volver(); }} style={{ ...chip(false), flex: 1, textAlign: "center" }}>{tx.ahoraNo}</button>
             </div>)}
+          {fase === "consulta_dia" && (<>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {["sabado", "domingo", "cualquiera"].map((d) => <button key={d} data-bo-pref={d} disabled={ocupado}
+                onClick={() => { di({ de: "yo", tx: tx.dias[d] }); ejecutar({ ...pend, preferencia: d }); }}
+                style={{ ...chip(false), padding: "7px 10px", fontSize: 12 }}>{tx.dias[d]}</button>)}
+            </div>
+            <button onClick={() => { registrar(pend?.tema, "abandonado"); volver(); }} style={{ ...chip(false), textAlign: "center" }}>{tx.ahoraNo}</button>
+          </>)}
           {fase === "ingrediente" && (<>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {ingredientes.map((n) => <button key={n} data-bo-ing={n} onClick={() => { di({ de: "yo", tx: n }); setPend((p) => ({ ...p, ingrediente: n })); setFase("confirmar"); }} style={{ ...chip(false), padding: "7px 10px", fontSize: 12 }}>{n}</button>)}
