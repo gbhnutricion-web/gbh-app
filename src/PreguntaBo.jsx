@@ -10,7 +10,9 @@ import { temasPara, botonTema, textoTema, firmaTema, puedeEscribir, filaEscrito,
 // Fase 2 (2-oct-2026, con `ia`): además, el paciente ESCRIBE lo que quiera; el servidor
 // (/bo/entender) lo clasifica con IA en una estructura cerrada y pasoIA (boLogica.js) decide el
 // siguiente paso. La IA no redacta nada de lo que se lee aquí. Antes de la primera frase, permiso
-// explícito (Apple 5.1.2(i), RGPD) y, siempre, el aviso de que hay IA (Ley de IA, art. 50).
+// explícito que dice que hay IA y de quién (Apple 5.1.2(i), RGPD, Ley de IA art. 50: «a más tardar en
+// la primera interacción»). El aviso fijo bajo la caja se quitó el 3-oct-2026 por orden de Alejandro
+// (MAESTRO-2026-798); el permiso NO se quita: es la base legal que declara la política v4 (2.5).
 // Diseño: BRIEF_pregunta_a_bo.md §3, §12 y §16. Recibe T y Sheep por props, como MedidasCorporales.
 const FT = "'Nunito',sans-serif", FD = "'DM Sans',sans-serif";
 const TOMA_LBL = { es: { Desayuno: "Desayuno", Almuerzo: "Almuerzo", Comida: "Comida", Merienda: "Merienda", Cena: "Cena" },
@@ -30,7 +32,6 @@ const TX = {
         sinGemas: "No te llegan las gemas para cambiarla (10 💎).", sinAlt: "No hay receta similar disponible",
         error: "No he podido enviarlo. Cópialo y vuelve a probar en un rato:", cualFalta: "¿Qué ingrediente te falta?",
         iaPh: "Escríbeme lo que necesites…", pensando: "Bo está pensando…",
-        iaAviso: (p) => `✨ Bo usa IA (${p}) para entender lo que escribes. Lo que te contesta sale de tu plan o de Alejandro.`,
         consTit: "Antes de escribirme",
         consTx: (p) => `Para entender lo que escribes, Bo usa la inteligencia artificial de ${p}. Se le envía tu frase y los nombres de las recetas de tu semana; nunca tu nombre ni tu correo. Lo que escribas se guarda para que Alejandro pueda revisarlo y mejorar las respuestas. Puedes seguir usando los botones sin aceptar.`,
         acepto: "Acepto", consFallo: "No he podido guardar tu permiso. Prueba en un rato.", ir: (h) => `Ir a ${h}` },
@@ -48,7 +49,6 @@ const TX = {
         sinGemas: "You don't have enough gems to swap it (10 💎).", sinAlt: "No similar recipe available",
         error: "I couldn't send it. Copy it and try again in a while:", cualFalta: "Which ingredient are you missing?",
         iaPh: "Tell me what you need…", pensando: "Bo is thinking…",
-        iaAviso: (p) => `✨ Bo uses AI (${p}) to understand what you write. Its answers come from your plan or from Alejandro.`,
         consTit: "Before you write to me",
         consTx: (p) => `To understand what you write, Bo uses ${p}'s artificial intelligence. It receives your sentence and the names of this week's recipes; never your name or email. What you write is stored so Alejandro can review it and improve the answers. You can keep using the buttons without accepting.`,
         acepto: "I agree", consFallo: "I couldn't save your permission. Try again later.", ir: (h) => `Go to ${h}` },
@@ -266,7 +266,6 @@ export function PreguntaBo({ T, Sheep, lang, bo, ctx, receta, intro, filas, ia: 
                 <button data-bo-enviar-ia onClick={() => enviarIA(frase)} disabled={pensando || !frase.trim()} aria-label={tx.enviar}
                   style={{ ...chip(true), padding: "0 14px", textAlign: "center", opacity: (pensando || !frase.trim()) ? 0.5 : 1 }}>➤</button>
               </div>
-              <div style={{ fontSize: 10.5, color: T.t3, fontFamily: FD, marginTop: 4, lineHeight: 1.35 }}>{tx.iaAviso(ia.proveedor || "IA")}</div>
             </div>)}
             {temas.map((f) => <button key={f.id} data-bo-tema={f.id} onClick={() => elegirTema(f)} style={chip(false)}>{botonTema(f, lang)}</button>)}
             {escribe && <button data-bo-tema="escribir" onClick={() => { di({ de: "yo", tx: tx.escribir.replace("✍️ ", "") }); setPend(null); setFase("escribir"); }} style={chip(false)}>{tx.escribir}</button>}
