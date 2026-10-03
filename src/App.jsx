@@ -1484,14 +1484,20 @@ const RACION_FRACCIONES = [[0.25,"¼"],[0.33,"⅓"],[0.5,"½"],[0.67,"⅔"],[0.7
 // ingrediente. 1.468 de 6.815 salidas del recetario se contradecían.
 // Se alinea la app AL GENERADOR, no al revés: así ni los planes ya guardados en
 // weekly_plans ni los PDF ya enviados cambian un solo número.
-// La granularidad de 5 g NO se toca (§7): solo se decide igual el empate.
+// La granularidad de 5 g NO se toca (§7) por ENCIMA de 7,5 g/ml: solo se decide
+// igual el empate. Por DEBAJO, un decimal (PEND-2026-328, 3-oct-2026, por orden de
+// Alejandro): «¼ cucharadita de sal (1,5 g)» salía «(5 g)» y 1 g de aceite «5 g»
+// (174 recetas, 425 casos). Igual que `_fmt_cantidad` del generador.
 const racionRedondeo = (x) => {
   const f=Math.floor(x), d=x-f;
   if(Math.abs(d-0.5)>1e-9) return Math.round(x);
   return (f%2===0)? f : f+1;
 };
 const racionFmtCantidad = (v, esPeso) => {
-  if(esPeso){ return String(Math.max(5, racionRedondeo(v/5)*5)); }
+  if(esPeso){
+    if(v < 7.5) return String(Math.max(0.1, racionRedondeo(v*10)/10));
+    return String(Math.max(5, racionRedondeo(v/5)*5));
+  }
   v = racionRedondeo(v*4)/4; // unidades sueltas: a cuartos (2.1 → 2, 1.3 → 1 ¼)
   const ent = Math.floor(v); const resto = v - ent;
   for(const [f,s] of RACION_FRACCIONES){ if(Math.abs(resto-f)<=0.06) return ent? `${ent} ${s}` : s; }
