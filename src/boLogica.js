@@ -148,6 +148,12 @@ const PREF_ES = { sabado: "el sábado", domingo: "el domingo", cualquiera: "el f
 const PREF_EN = { sabado: "Saturday", domingo: "Sunday", cualquiera: "the weekend" };
 export const prefTxt = (pref, lang) => { const t = lang === "en" ? PREF_EN : PREF_ES; return t[pref] || t.cualquiera; };
 export const kgTxt = (v, lang) => (lang === "en" ? String(v) : String(v).replace(".", ",")) + " kg";
+// Su configuración (3-oct-2026, BRIEF §19): los nombres de «Configura tu plan», tal cual.
+const DIETA_ES = { Simple: "Normal", Vegetariana: "Vegetariano", Vegana: "Vegano", "Celíaco": "Sin gluten", "Cetogénica": "Cetogénica", Descarga: "Descarga (precompetición)" };
+const DIETA_EN = { Simple: "Normal", Vegetariana: "Vegetarian", Vegana: "Vegan", "Celíaco": "Gluten-free", "Cetogénica": "Keto", Descarga: "Weigh-in (pre-competition)" };
+const MENUS_ES = { "1": "1 menú (cocinas una vez para toda la semana)", "3": "3 menús (LXV · MJ · SD)", "4": "4 menús (LJ · MS · XV · D)", "4_seguidos": "4 menús, dos días seguidos (LM · XJ · VS · D)" };
+const MENUS_EN = { "1": "1 menu (cook once for the whole week)", "3": "3 menus (M-W-F · T-Th · Sa-Su)", "4": "4 menus", "4_seguidos": "4 menus, two days in a row" };
+export const ACCIONES_CONFIG = ["dieta", "menus", "reparto", "excluir", "calorias"];
 
 export function huecoTxt(dia, toma, lang) {
   const d = (lang === "en" ? DIAS_EN : DIAS_ES)[(parseInt(dia, 10) || 1) - 1] || "";
@@ -164,6 +170,12 @@ export function confirmarTxt(p, receta, ctx, lang) {
   if (p.accion === "consulta") return EN
     ? `Shall I ask Alejandro for a consultation on ${prefTxt(p.preferencia, lang)}? Then you choose the time in his calendar.`
     : `¿Le pido a Alejandro una consulta para ${prefTxt(p.preferencia, lang)}? Después eliges la hora en su agenda.`;
+  if (p.accion === "config") {
+    const c = p.cambio || {}, cuando = EN ? " It applies from your next programme." : " Se aplica en tu próxima programación.";
+    if (c.tipo_dieta) return (EN ? `Shall I change your diet to «${DIETA_EN[c.tipo_dieta] || c.tipo_dieta}»?` : `¿Cambio tu dieta a «${DIETA_ES[c.tipo_dieta] || c.tipo_dieta}»?`) + cuando;
+    if (c.menus) return (EN ? `Shall I switch your week to ${MENUS_EN[c.menus] || c.menus}?` : `¿Paso tu semana a ${MENUS_ES[c.menus] || c.menus}?`) + cuando;
+    if (c.excluir) return (EN ? `Shall I keep «${c.excluir}» out of your next programmes?` : `¿Quito «${c.excluir}» de tus próximas programaciones?`);
+  }
   if (p.accion === "descartar") return EN ? `Shall I set ${r} aside? I won't offer it again when you swap recipes.` : `¿Aparto ${r}? No te la volveré a ofrecer al cambiar recetas.`;
   const extra = p.accion === "cambiar_sin" && p.ingrediente ? (EN ? ` without ${p.ingrediente}` : ` sin ${p.ingrediente}`)
     : p.tipo_receta ? " " + ((EN ? TIPO_EN : TIPO_ES)[p.tipo_receta] || p.tipo_receta) : "";
@@ -181,6 +193,7 @@ export function pasoIA(r, ctx, lang, texto, filas = _BO_RESP) {
   }
   if (t === "accion" && r.accion === "peso") return pasoPeso(r, ctx, lang);
   if (t === "accion" && r.accion === "consulta") return pasoConsulta(r, ctx, lang);
+  if (t === "accion" && ACCIONES_CONFIG.includes(r.accion)) return pasoConfig(r, ctx, lang, texto, filas);
   if (t === "accion") {
     const p = { tema: "ia", accion: r.accion, ingrediente: r.ingrediente || null, tipo_receta: r.tipo_receta || null };
     if (ctx?.contexto === "receta" && r.dia === ctx.dia && r.toma === ctx.toma) {
@@ -236,6 +249,30 @@ function pasoConsulta(r, ctx, lang) {
   const p = { tema: "ia", accion: "consulta", preferencia: pref };
   return { mensajes: [msg(confirmarTxt(p, null, ctx, lang))], fase: "confirmar", pend: p };
 }
+// Su configuración (orden de Alejandro, 3-oct-2026, BRIEF §19): el ESTÁNDAR cambia con Bo lo mismo que
+// ya cambia en «Configura tu plan» (dieta, menús de la semana, alimentos que no quiere) y se aplica en
+// la próxima programación; el reparto entre comidas se ajusta allí con las flechas, y las calorías
+// salen de la calculadora de Objetivo (sus límites de seguridad), así que Bo le lleva. Para el
+// PREMIUM todo eso es su pauta: lo decide Alejandro.
+function pasoConfig(r, ctx, lang, texto, filas) {
+  const EN = lang === "en", msg = (tx) => ({ tx, firma: null });
+  if (ctx?.plan === "premium") {
+    const a = pasoIA({ tipo: "alejandro" }, ctx, lang, texto, filas);
+    return { ...a, mensajes: [msg(EN ? "That's part of your plan guidelines: Alejandro decides it." : "Eso es parte de tu pauta: lo decide Alejandro.")].concat(a.mensajes || []) };
+  }
+  if (ctx?.plan !== "standard")
+    return { mensajes: [msg(EN ? "Setting up your plan comes with the Standard plan." : "Configurar tu plan va con el plan Estándar.")], fase: "temas" };
+  if (r.accion === "calorias")
+    return { mensajes: [msg(EN ? "Your calories come from the Goal calculator with your details: you can adjust them there." : "Tus calorías las calcula la calculadora de Objetivo con tus datos: ahí puedes ajustarlas.")],
+             fase: "abrir", pend: { tema: "ia", destino: "objetivo" } };
+  const cambio = r.accion === "dieta" && r.dieta ? { tipo_dieta: r.dieta }
+    : r.accion === "menus" && r.menus ? { menus: r.menus }
+    : r.accion === "excluir" && r.ingrediente ? { excluir: r.ingrediente } : null;
+  if (!cambio || ctx?.contexto !== "inicio")
+    return { mensajes: [msg(EN ? "That's changed in «Set up your plan»: let's go." : "Eso se cambia en «Configura tu plan»: te llevo.")], fase: "abrir", pend: { tema: "ia", destino: "config" } };
+  const p = { tema: "ia", accion: "config", cambio };
+  return { mensajes: [msg(confirmarTxt(p, null, ctx, lang))], fase: "confirmar", pend: p };
+}
 // Lo que viaja al servidor: la frase y los temas de esta pantalla (ids y texto del botón), nada más.
 export function cuerpoIA(texto, ctx, temas, lang, hoy) {
   return { texto: String(texto || "").slice(0, 500), contexto: ctx?.contexto || "inicio", dia: ctx?.dia || null, toma: ctx?.toma || null,
@@ -244,6 +281,7 @@ export function cuerpoIA(texto, ctx, temas, lang, hoy) {
 // Un error del servidor, en palabras de la app.
 export function errorIA(status, detalle, lang) {
   const EN = lang === "en";
+  if (status === 429 && detalle === "tope_mes") return EN ? "You've written a lot to Bo this month. You can keep using the buttons." : "Este mes ya me has escrito mucho. Puedes seguir con los botones.";
   if (status === 429) return EN ? "You've written a lot to Bo today. More tomorrow!" : "Por hoy ya me has escrito mucho. ¡Mañana más!";
   if (status === 403 && detalle === "sin_consentimiento") return null;      // la hoja vuelve a pedir el permiso
   return EN ? "I can't understand writing right now. Use the buttons or try again later." : "Ahora no puedo entender lo que escribes. Usa los botones o prueba en un rato.";

@@ -2003,6 +2003,32 @@ const boPedirConsulta = async (pid, preferencia) => {
     return { ok: r.ok, status: r.status };
   } catch { return { ok: false, status: 0 }; }
 };
+// «Pregúntale a Bo» cambia la configuración del ESTÁNDAR (3-oct-2026, BRIEF §19, orden de Alejandro):
+// solo lo que el paciente ya cambia en «Configura tu plan» y con sus MISMOS valores (las DIETAS y
+// PATRONES_OPC de PlanConfig, que lee el generador). El upsert de sbDirect solo pisa los campos enviados
+// (como la calculadora, ≈6498). Los alimentos que no quiere van a patient_config.notas con
+// leerDescartes/escribirDescartes, como «Alimentos que no quieres». Se aplica en la próxima programación.
+const BO_DIETAS = ["Simple", "Vegetariana", "Vegana", "Celíaco", "Cetogénica", "Descarga"];
+const BO_PATRONES = { "1": "Todo igual (LMXJVSD)", "3": "3+2+2 (LXV/MJ/SD)", "4": "Estándar (LJ/MS/XV/D)", "4_seguidos": "Alta repetición (LM/XJ/VS/D)" };
+const boGuardarConfig = async (pid, cambio = {}) => {
+  if (!pid) return { ok: false };
+  const fila = { profile_id: pid };
+  if (cambio.tipo_dieta) { if (!BO_DIETAS.includes(cambio.tipo_dieta)) return { ok: false }; fila.tipo_dieta = cambio.tipo_dieta; }
+  if (cambio.menus) { if (!BO_PATRONES[cambio.menus]) return { ok: false }; fila.patron_dias = BO_PATRONES[cambio.menus]; }
+  if (cambio.excluir) {
+    const nombre = String(cambio.excluir).replace(/[.\n]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
+    if (!nombre) return { ok: false };
+    const g = await sbDirect("GET", `patient_config?profile_id=eq.${pid}&select=notas&limit=1`);
+    if (!g.ok) return { ok: false };
+    const notas = (Array.isArray(g.data) && g.data[0] && g.data[0].notas) || "";
+    const { lista } = leerDescartes(notas);
+    if (!lista.some((x) => String(x.nombre).toLowerCase() === nombre.toLowerCase())) lista.push({ nombre, tipo: "gusto" });
+    fila.notas = escribirDescartes(notas, lista);
+  }
+  if (Object.keys(fila).length === 1) return { ok: false };
+  const r = await sbDirect("POST", "patient_config?on_conflict=profile_id", fila);
+  return { ok: !!(r && r.ok), status: r && r.status };
+};
 // «Pregúntale a Bo», fase 2 (2-oct-2026, BRIEF §16): escribir con IA. El servidor (gbh_bo.py en
 // Railway) saca al paciente de su sesión, mira los interruptores (bo_activo, bo_ia_activo), el
 // permiso (bo_ia_ok) y la edad, y CLASIFICA la frase; la IA no redacta nada que vea el paciente.
@@ -14680,9 +14706,11 @@ function GBHApp(){
           onAccion={async(a,extra)=>{                         // 3-oct-2026 (BRIEF §18): apuntar el peso y pedir consulta
             if(a==='peso') return await guardarPeso(Number(extra&&extra.valor));
             if(a==='consulta') return await boPedirConsulta(profile?.id,(extra&&extra.preferencia)||'cualquiera');
+            if(a==='config'&&planBo(profile)==='standard') return await boGuardarConfig(profile?.id,extra||{});   // BRIEF §19
             return {ok:false}; }}
           onAbrir={(d)=>{ if(d==='consulta'){ setTab('consulta'); return; }
             if(d==='peso'){ setTab('weight'); return; }
+            if(d==='objetivo'){ setTab('progreso'); return; }
             if(d==='calendly'){ window.open(GBH_CALENDLY,'_blank','noopener'); return; }
             setTab('plan'); setPlanVista((d==='daily'||d==='lista'||d==='config')?d:null); }}
           ia={{...boIA, consentir:()=>boIAConsentir(profile?.id)}}
@@ -18010,7 +18038,8 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
               if(a==='cambiar'||a==='cambiar_sin') return await cambiarRecetaToma(extra||{});
               if(a==='descartar'){ if(recetaDescartada) return {ok:true}; await descartarRecetaToma(); return {ok:true}; }
               return {ok:false}; }}
-            onAbrir={(d)=>{ if(d==='consulta'&&setTab) setTab('consulta'); if(d==='peso'&&setTab) setTab('weight'); }}
+            onAbrir={(d)=>{ if(d==='consulta'&&setTab) setTab('consulta'); if(d==='peso'&&setTab) setTab('weight');
+              if(d==='objetivo'&&setTab) setTab('progreso'); if(d==='config'&&isStandard){ setOpenToma(null); setConfigView(true); } }}
             ia={{...boIA, consentir:()=>boIAConsentir(profile?.id)}}
             pendiente={boPendiente}
             onIr={(d)=>{ setBoHoja(false); setBoPendiente(null); setBoNav(d); }}

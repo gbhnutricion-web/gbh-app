@@ -17,9 +17,10 @@ const TOMA_LBL = { es: { Desayuno: "Desayuno", Almuerzo: "Almuerzo", Comida: "Co
                    en: { Desayuno: "Breakfast", Almuerzo: "Morning snack", Comida: "Lunch", Merienda: "Afternoon snack", Cena: "Dinner" } };
 const TX = {
   es: { hola: "¿En qué te ayudo?", escribir: "✍️ Escríbele a Alejandro", cerrar: "Cerrar", ahoraNo: "Ahora no",
-        si: { cambiar: "Sí, cámbiala", cambiar_sin: "Sí, cámbiala", descartar: "Sí, apártala", peso: "Sí, apúntalo", consulta: "Sí, pídela" },
+        si: { cambiar: "Sí, cámbiala", cambiar_sin: "Sí, cámbiala", descartar: "Sí, apártala", peso: "Sí, apúntalo", consulta: "Sí, pídela", config: "Sí, cámbialo" },
         abrir: { daily: "Ir a Platos diarios", lista: "Abrir la lista de la compra", config: "Abrir mi configuración", consulta: "Ir a Consulta",
-                 peso: "Ir a Peso", calendly: "📅 Elegir la hora en su agenda" },
+                 peso: "Ir a Peso", calendly: "📅 Elegir la hora en su agenda", objetivo: "Ir a Objetivo" },
+        configOk: "Hecho. Lo verás en tu próxima programación.", configFallo: "No he podido guardarlo. Pruébalo en «Configura tu plan».",
         pesoOk: (k) => `Apuntado: ${k}.`, pesoFallo: "No he podido apuntarlo. Pruébalo en la pestaña Peso.",
         consultaOk: (d) => `Hecho: Alejandro ya tiene tu solicitud para ${d}. Ahora elige la hora en su agenda.`,
         consultaFallo: "No he podido dejar la solicitud, pero puedes reservar igualmente en su agenda.",
@@ -34,9 +35,10 @@ const TX = {
         consTx: (p) => `Para entender lo que escribes, Bo usa la inteligencia artificial de ${p}. Se le envía tu frase y los nombres de las recetas de tu semana; nunca tu nombre ni tu correo. Lo que escribas se guarda para que Alejandro pueda revisarlo y mejorar las respuestas. Puedes seguir usando los botones sin aceptar.`,
         acepto: "Acepto", consFallo: "No he podido guardar tu permiso. Prueba en un rato.", ir: (h) => `Ir a ${h}` },
   en: { hola: "How can I help?", escribir: "✍️ Write to Alejandro", cerrar: "Close", ahoraNo: "Not now",
-        si: { cambiar: "Yes, swap it", cambiar_sin: "Yes, swap it", descartar: "Yes, set it aside", peso: "Yes, log it", consulta: "Yes, ask for it" },
+        si: { cambiar: "Yes, swap it", cambiar_sin: "Yes, swap it", descartar: "Yes, set it aside", peso: "Yes, log it", consulta: "Yes, ask for it", config: "Yes, change it" },
         abrir: { daily: "Go to Daily meals", lista: "Open the shopping list", config: "Open my settings", consulta: "Go to Consultation",
-                 peso: "Go to Weight", calendly: "📅 Choose the time in his calendar" },
+                 peso: "Go to Weight", calendly: "📅 Choose the time in his calendar", objetivo: "Go to Goal" },
+        configOk: "Done. You'll see it in your next programme.", configFallo: "I couldn't save it. Try it in «Set up your plan».",
         pesoOk: (k) => `Logged: ${k}.`, pesoFallo: "I couldn't log it. Try it in the Weight tab.",
         consultaOk: (d) => `Done: Alejandro has your request for ${d}. Now choose the time in his calendar.`,
         consultaFallo: "I couldn't leave the request, but you can still book in his calendar.",
@@ -119,8 +121,9 @@ export function PreguntaBo({ T, Sheep, lang, bo, ctx, receta, intro, filas, ia: 
     if (!p || ocupado) return;
     setOcupado(true);
     let r = null;
-    const opc = { ...(p.ingrediente ? { sinIngrediente: p.ingrediente } : {}), ...(p.tipo_receta ? { tipo: p.tipo_receta } : {}),
-                  ...(p.valor != null ? { valor: p.valor } : {}), ...(p.preferencia ? { preferencia: p.preferencia } : {}) };
+    const opc = p.accion === "config" ? { ...(p.cambio || {}) }
+      : { ...(p.ingrediente ? { sinIngrediente: p.ingrediente } : {}), ...(p.tipo_receta ? { tipo: p.tipo_receta } : {}),
+          ...(p.valor != null ? { valor: p.valor } : {}), ...(p.preferencia ? { preferencia: p.preferencia } : {}) };
     try { r = await (onAccion ? onAccion(p.accion, opc) : null); } catch (e) { r = { ok: false }; }
     setOcupado(false);
     // Peso y consulta (3-oct-2026, BRIEF §18): sus propios acuses; la consulta sigue en el Calendly
@@ -128,6 +131,12 @@ export function PreguntaBo({ T, Sheep, lang, bo, ctx, receta, intro, filas, ia: 
       if (r && r.ok) { di({ de: "bo", tx: tx.pesoOk(kgTxt(p.valor, lang)) }); registrar(p.tema, "accion"); }
       else { di({ de: "bo", tx: tx.pesoFallo }); registrar(p.tema, "abandonado"); }
       return volver();
+    }
+    if (p.accion === "config") {           // su configuración (estándar, BRIEF §19): si no se guarda, a la pantalla
+      if (r && r.ok) { di({ de: "bo", tx: tx.configOk }); registrar(p.tema, "accion"); return volver(); }
+      di({ de: "bo", tx: tx.configFallo }); registrar(p.tema, "abandonado");
+      setPend({ tema: p.tema, destino: "config" });
+      return setFase("abrir");
     }
     if (p.accion === "consulta") {
       if (r && r.ok) { di({ de: "bo", tx: tx.consultaOk(prefTxt(p.preferencia, lang)) }); registrar(p.tema, "accion"); }
