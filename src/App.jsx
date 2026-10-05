@@ -15,6 +15,7 @@ import { TOPE_PUNTOS, clasificarRespuesta, yaEstaEnElServidor, opDePartidaCaduca
 import { racionesDeLaLista, costePorRacion, textosCajaRacion } from "./raciones";   // qué cocinar y cuánto comer (17-sep-2026)
 import { elegirRecetaCambio, permitidasDePlanes, normNombreCambio, claveMemoriaCambio, leerMemoriaCambio, guardarMemoriaCambio, permitidasTodas, puedeComer, recetaDelDiaAlAzar, recetaDelDiaFija } from "./cambioReceta"; // cambio de receta con gemas y receta del día: lista del servidor, sin repetir (28-sep-2026)
 import { Cafeina } from "./Cafeina";                                     // calculadora de cafeína, fase 1 (25-sep-2026)
+import { Creatina } from "./Creatina";                                   // calculadora de creatina, fase 1 (5-oct-2026)
 import { Suplementacion } from "./Suplementacion";                       // pestaña 💊 Suplementación: ☕ Cafeína y 💪 Creatina (próximamente) (26-sep-2026)
 import { BarraPestanas } from "./BarraPestanas";                         // la barra de pestañas de abajo (26-sep-2026)
 import { planificarAvisos, nombresDePlan, PREFS_POR_DEFECTO as AVISOS_PREFS, TOMAS_ORDEN as AVISOS_TOMAS } from "./motorAvisos"; // avisos fuera de la app, fase 1 (28-sep-2026)
@@ -516,6 +517,114 @@ const TRANS = {
     cafPildHasta:" · efecto hasta las {h}",
     cafPildVer:"ver ↓",
     cafLegal:"Orientativo, para adultos sanos. No sustituye el consejo de tu nutricionista o de tu médico.",
+    // ── Calculadora de creatina (src/Creatina.jsx; fase 1, 5-oct-2026) ──
+    creTitulo:"💪 Tu creatina",
+    creSub:"Tu dosis, cuándo se llena tu músculo y cuánta tiras",
+    creAbrir:"Abrir la calculadora de creatina",
+    creFuentesBtn:"¿De dónde sale?",
+    creCerrar:"Cerrar",
+    creFuentesTit:"De dónde sale",
+    creFuentesIntro:"La dosis sale de las guías de la ISSN. El día en que se llena tu músculo, de un metaanálisis de 10 estudios que miden la creatina del músculo, publicado en gbhnutricion.es.",
+    creDosisCarga:"{g} g al día {d} días ({n} tomas de {x} g), luego {m} g al día",
+    creDosisMant:"{m} g al día",
+    creLlenoYa:"ya estás lleno",
+    creLlenoNo:"no llega a lleno en 12 semanas",
+    creLleno1Dia:"lleno en 1 día{mas}",
+    creLlenoDias:"lleno en unos {n} días{mas}",
+    creLlenoSem:"lleno en unas {n} semanas{mas}",
+    creMas:" más",
+    creFranjaDias:"los estudios van de {a} a {b} días",
+    creFranjaSem:"los estudios van de {a} a {b} semanas",
+    creFranjaDiasMas:"los estudios van de {a} días a más de 12 semanas",
+    creFranjaSemMas:"los estudios van de {a} a más de 12 semanas",
+    creDejar:"si la dejas, deja de notarse en {a}-{b} semanas",
+    creBloqTit:"No te damos una dosis",
+    creBloq:"Por {motivos}, la creatina se decide en consulta.",
+    creBloqX:"Pide cita y lo vemos juntos.",
+    creY:" y ",
+    creMotRinon:"enfermedad del riñón",
+    creMotEmbarazo:"embarazo o lactancia",
+    creMotMenor:"tener menos de 18 años",
+    creMotReaccion:"una mala reacción previa",
+    creMotMedicacion:"tu medicación",
+    creFaltaTit:"Nos falta un dato",
+    creFaltaPeso:"Tu peso: regístralo en la pestaña Medidas.",
+    creFaltaSexo:"Tu sexo: complétalo en tu perfil.",
+    creFaltaAltura:"Tu altura: complétala en tu perfil, o registra tus pliegues.",
+    creFaltaEdad:"Tu edad: escríbela aquí abajo.",
+    creSaludTit:"Antes de nada",
+    creSaludOk:"todo bien",
+    creSaludMal:"revisar",
+    creSi:"Sí",
+    creNo:"No",
+    creCribRinon:"¿Enfermedad del riñón o un solo riñón?",
+    creCribEmbarazo:"¿Embarazo o lactancia?",
+    creCribMenor:"¿Menos de 18 años?",
+    creCribReaccion:"¿Te sentó mal la creatina alguna vez?",
+    creMedTit:"Tu medicación",
+    creMedOk:"Nada de tu plan carga el riñón",
+    creMedVacia:"No hay medicación en tu plan",
+    creMedMal:"{items}: carga el riñón, así que se decide en consulta",
+    creTu:"Tú",
+    creTuSub:"lo que ya sabe la app",
+    crePeso:"Peso",
+    crePesoPesaje:"de tu pesaje del {f}",
+    crePesoAlta:"de tu alta",
+    creGrasa:"% graso",
+    creGrasaPliegues:"de tus pliegues",
+    creGrasaEstimada:"estimado con tu IMC, tu edad y tu sexo",
+    creDieta:"Dieta",
+    creDietaTodo:"de todo",
+    creDietaVeg:"vegetariana",
+    creVegPreg:"¿Eres vegetariano o vegano?",
+    creVegPregX:"Sin carne ni pescado, el músculo parte más bajo y sube más",
+    creEdadPreg:"Tu edad",
+    creEdadGuardar:"Guardar",
+    creYaTomas:"Ya la tomas",
+    creYaTomasG:"{g} g en tu plan",
+    creYaTomasSinG:"en tu plan",
+    creGuardadoTel:"Tus respuestas se guardan solo en este teléfono.",
+    creComo:"¿Cómo empiezas?",
+    creRapido:"Rápido",
+    creRapidoX:"con carga",
+    creSinPrisa:"Sin prisa",
+    creSinPrisaX:"solo la dosis diaria",
+    creYaLaTomo:"Ya la tomo",
+    creYaLaTomoX:"sigue desde donde vas",
+    creDescargaNo:"En Descarga no hay carga: solo la dosis diaria.",
+    creCuanta:"Cuánta",
+    creDesde:"Desde hace",
+    creYa1sem:"1 semana",
+    creYa2sem:"2 semanas",
+    creYa1mes:"1 mes",
+    creYa2mes:"2 meses o más",
+    creDeposito:"Tu depósito",
+    creEstimacion:"estimación",
+    creCacitos:"{c} cacitos al día · mira la etiqueta",
+    creCacito1:"1 cacito al día · mira la etiqueta",
+    creGrafAria:"Tu depósito de creatina por semanas",
+    creEjeLleno:"lleno",
+    creEjeNivel:"tu nivel",
+    creEjeSem:"sem.",
+    creFranjaNota:"La franja sobre «lleno» es lo que cambia de un estudio a otro. A una persona le puede subir más o menos; a quien ya parte alto, apenas.",
+    creProbar:"Prueba otra dosis",
+    creMenos:"Quitar 1 g",
+    creMas1:"Añadir 1 g",
+    creLlega:"¿Llega a lleno?",
+    creNoLlega:"no llega",
+    creSeVa:"Se va sin usar",
+    creSeVaX:"{g} g a la semana",
+    creVolver:"Volver a {g} g",
+    creTomarTit:"Cómo tomarla",
+    creTomarHidratos:"Con una comida que lleve hidratos: se retiene más.",
+    creTomarDiario:"Todos los días, también los de descanso.",
+    creTomarHora:"La hora da igual: antes o después de entrenar.",
+    creTomarAlto:"A quien ya parte alto apenas le sube: es normal.",
+    creAvBascula:"La báscula puede subir 1-3 kg la primera semana de carga: es agua dentro del músculo, no grasa.",
+    creAvAnalitica:"Si te haces una analítica, di que tomas creatina: sube la creatinina en sangre sin que el riñón vaya peor.",
+    creAvDescarga:"Estás en Descarga: sin carga. Solo la dosis diaria, y cuenta con el agua antes del pesaje.",
+    creLegal:"Orientativo, para adultos sanos. No sustituye el consejo de tu nutricionista o de tu médico.",
+    creMeses:["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"],
     // ── Pestaña 💊 Suplementación (src/Suplementacion.jsx; 26-sep-2026). La tarjeta de ☕ usa cafSub y cafAbrir ──
     tabSupl:"Suplementos",                 // en la barra; el título de la pantalla (suplTitulo) dice «Suplementación»
     suplTitulo:"💊 Suplementación",
@@ -1005,6 +1114,114 @@ const TRANS = {
     cafPildHasta:" · works until {h}",
     cafPildVer:"see ↓",
     cafLegal:"For guidance only, for healthy adults. It does not replace advice from your dietitian or your doctor.",
+    // ── Creatine calculator (src/Creatina.jsx; phase 1, 5-oct-2026) ──
+    creTitulo:"💪 Your creatine",
+    creSub:"Your dose, when your muscle fills up and how much you waste",
+    creAbrir:"Open the creatine calculator",
+    creFuentesBtn:"Where does it come from?",
+    creCerrar:"Close",
+    creFuentesTit:"Where it comes from",
+    creFuentesIntro:"The dose comes from the ISSN guidelines. The day your muscle fills up comes from a meta-analysis of 10 studies that measure muscle creatine, published on gbhnutricion.es.",
+    creDosisCarga:"{g} g a day for {d} days ({n} doses of {x} g), then {m} g a day",
+    creDosisMant:"{m} g a day",
+    creLlenoYa:"you are already full",
+    creLlenoNo:"does not fill up within 12 weeks",
+    creLleno1Dia:"full in 1 day{mas}",
+    creLlenoDias:"full in about {n} days{mas}",
+    creLlenoSem:"full in about {n} weeks{mas}",
+    creMas:" more",
+    creFranjaDias:"studies range from {a} to {b} days",
+    creFranjaSem:"studies range from {a} to {b} weeks",
+    creFranjaDiasMas:"studies range from {a} days to over 12 weeks",
+    creFranjaSemMas:"studies range from {a} to over 12 weeks",
+    creDejar:"if you stop, the effect fades in {a}-{b} weeks",
+    creBloqTit:"We will not give you a dose",
+    creBloq:"Because of {motivos}, creatine is decided in a consultation.",
+    creBloqX:"Book an appointment and we will look at it together.",
+    creY:" and ",
+    creMotRinon:"kidney disease",
+    creMotEmbarazo:"pregnancy or breastfeeding",
+    creMotMenor:"being under 18",
+    creMotReaccion:"a previous bad reaction",
+    creMotMedicacion:"your medication",
+    creFaltaTit:"We are missing one detail",
+    creFaltaPeso:"Your weight: log it in the Measurements tab.",
+    creFaltaSexo:"Your sex: add it to your profile.",
+    creFaltaAltura:"Your height: add it to your profile, or log your skinfolds.",
+    creFaltaEdad:"Your age: type it below.",
+    creSaludTit:"Before anything else",
+    creSaludOk:"all good",
+    creSaludMal:"check",
+    creSi:"Yes",
+    creNo:"No",
+    creCribRinon:"Kidney disease, or only one kidney?",
+    creCribEmbarazo:"Pregnant or breastfeeding?",
+    creCribMenor:"Under 18?",
+    creCribReaccion:"Has creatine ever made you feel unwell?",
+    creMedTit:"Your medication",
+    creMedOk:"Nothing in your plan puts load on the kidneys",
+    creMedVacia:"There is no medication in your plan",
+    creMedMal:"{items}: puts load on the kidneys, so it is decided in a consultation",
+    creTu:"You",
+    creTuSub:"what the app already knows",
+    crePeso:"Weight",
+    crePesoPesaje:"from your weigh-in on {f}",
+    crePesoAlta:"from your sign-up",
+    creGrasa:"Body fat %",
+    creGrasaPliegues:"from your skinfolds",
+    creGrasaEstimada:"estimated from your BMI, age and sex",
+    creDieta:"Diet",
+    creDietaTodo:"everything",
+    creDietaVeg:"vegetarian",
+    creVegPreg:"Are you vegetarian or vegan?",
+    creVegPregX:"Without meat or fish, muscle starts lower and rises more",
+    creEdadPreg:"Your age",
+    creEdadGuardar:"Save",
+    creYaTomas:"You already take it",
+    creYaTomasG:"{g} g in your plan",
+    creYaTomasSinG:"in your plan",
+    creGuardadoTel:"Your answers are saved only on this phone.",
+    creComo:"How do you start?",
+    creRapido:"Fast",
+    creRapidoX:"with loading",
+    creSinPrisa:"No rush",
+    creSinPrisaX:"daily dose only",
+    creYaLaTomo:"I take it",
+    creYaLaTomoX:"carry on from where you are",
+    creDescargaNo:"On Weigh-in there is no loading: daily dose only.",
+    creCuanta:"How much",
+    creDesde:"For",
+    creYa1sem:"1 week",
+    creYa2sem:"2 weeks",
+    creYa1mes:"1 month",
+    creYa2mes:"2 months or more",
+    creDeposito:"Your store",
+    creEstimacion:"estimate",
+    creCacitos:"{c} scoops a day · check the label",
+    creCacito1:"1 scoop a day · check the label",
+    creGrafAria:"Your creatine store by week",
+    creEjeLleno:"full",
+    creEjeNivel:"your level",
+    creEjeSem:"wk",
+    creFranjaNota:"The band on «full» is how much it changes from one study to another. A person may rise more or less; someone who already starts high barely rises.",
+    creProbar:"Try another dose",
+    creMenos:"Remove 1 g",
+    creMas1:"Add 1 g",
+    creLlega:"Does it fill up?",
+    creNoLlega:"it does not",
+    creSeVa:"Goes unused",
+    creSeVaX:"{g} g a week",
+    creVolver:"Back to {g} g",
+    creTomarTit:"How to take it",
+    creTomarHidratos:"With a meal that has carbs: you keep more.",
+    creTomarDiario:"Every day, rest days too.",
+    creTomarHora:"The time does not matter: before or after training.",
+    creTomarAlto:"If you already start high, it barely rises: that is normal.",
+    creAvBascula:"The scale may go up 1-3 kg in the first loading week: it is water inside the muscle, not fat.",
+    creAvAnalitica:"If you get a blood test, say you take creatine: blood creatinine rises without your kidneys getting worse.",
+    creAvDescarga:"You are on Weigh-in: no loading. Daily dose only, and expect some water before the weigh-in.",
+    creLegal:"For guidance only, for healthy adults. It does not replace advice from your dietitian or your doctor.",
+    creMeses:["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
     // ── 💊 Supplements tab (src/Suplementacion.jsx; 26-sep-2026). The ☕ card uses cafSub and cafAbrir ──
     tabSupl:"Supplements",
     suplTitulo:"💊 Supplements",
@@ -9454,6 +9671,23 @@ function GBHApp(){
   const [boPersonalidad,setBoPersonalidad]=useState("normal");
   const [zonaJuego,setZonaJuego]=useState(false);
   const [cafeinaAbierta,setCafeinaAbierta]=useState(false);   // calculadora de cafeína a pantalla completa
+  const [creatinaAbierta,setCreatinaAbierta]=useState(false);   // calculadora de creatina a pantalla completa (fase 1, 5-oct-2026)
+  const [creatinaDatos,setCreatinaDatos]=useState({tipoDieta:null,sumaPliegues:null});
+  // Al abrirla se leen los dos datos que la pantalla no puede pedir (no tiene sbReq): la última toma COMPLETA de los 7
+  // pliegues y, en estándar, la dieta. Si fallan, la pantalla estima el % graso con el IMC y pregunta la dieta.
+  const abrirCreatina=()=>{
+    setCreatinaAbierta(true);
+    if(!profile?.id) return;
+    const PLI=["pectoral","midaxilar","triceps","subescapular","abdominal","suprailiaco","muslo_pl"];
+    sbReq("GET",`body_measurements?profile_id=eq.${profile.id}&select=fecha,${PLI.join(",")}&order=fecha.desc,created_at.desc&limit=20`)
+      .then(rows=>{ const r=(Array.isArray(rows)?rows:[]).find(x=>PLI.every(k=>x[k]!=null));
+                    setCreatinaDatos(d=>({...d,sumaPliegues:r?PLI.reduce((s,k)=>s+Number(r[k]),0):null})); })
+      .catch(()=>{});
+    if(profile.plan==="standard")
+      sbReq("GET",`patient_config?profile_id=eq.${profile.id}&select=tipo_dieta&limit=1`)
+        .then(rows=>{ const row=Array.isArray(rows)?rows[0]:null; setCreatinaDatos(d=>({...d,tipoDieta:row?.tipo_dieta??null})); })
+        .catch(()=>{});
+  };
   const [panelBo,setPanelBo]=useState(false);
   const [partidasRestantes,setPartidasRestantes]=useState(3);
   const partidaEnCursoRef=useRef(false);  // hay partida pagada sin registrar (anti-exploit de la X)
@@ -13065,6 +13299,7 @@ function GBHApp(){
           y un position:fixed dentro de un transform deja de ser pantalla completa.
           Sin sbReq a propósito: 0 llamadas a Supabase. */}
       {cafeinaAbierta&&<Cafeina profile={profile} weights={weights} medicacion={suplPlan} lang={lang} t={t} T={T} sfx={sfx} onClose={()=>setCafeinaAbierta(false)}/>}
+      {creatinaAbierta&&<Creatina profile={profile} weights={weights} medicacion={suplPlan} tipoDieta={creatinaDatos.tipoDieta} sumaPliegues={creatinaDatos.sumaPliegues} lang={lang} t={t} T={T} sfx={sfx} onClose={()=>setCreatinaAbierta(false)}/>}
       {zonaJuego&&(
         <div style={{position:"fixed",inset:0,zIndex:9000,background:T.bg,display:"flex",flexDirection:"column"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"calc(14px + env(safe-area-inset-top, 0px)) 16px 8px"}}>
@@ -14718,7 +14953,7 @@ function GBHApp(){
           onRegistrar={boRegistrar}
           onCerrar={()=>setBoInicio(false)}/>}
         {tab==="consulta"&&<ConsultaTab profile={profile} lang={lang} sfx={sfx}/>}
-        {tab==="supl"&&<Suplementacion t={t} T={T} sfx={sfx} onAbrir={id=>{ if(id==="cafeina") setCafeinaAbierta(true); }}/>}
+        {tab==="supl"&&<Suplementacion t={t} T={T} sfx={sfx} onAbrir={id=>{ if(id==="cafeina") setCafeinaAbierta(true); if(id==="creatina") abrirCreatina(); }}/>}
       </div>
 
       {/* ── BOTTOM NAV ────────────────────────────────────────────────────── */}
