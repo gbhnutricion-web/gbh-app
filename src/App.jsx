@@ -95,7 +95,7 @@ const TRANS = {
     migrateBtn:"Crear mi contraseña 🔐",
     authErrGeneric:"Error al iniciar sesión. Inténtalo de nuevo.",
     // Nav
-    tabHome:"Inicio", tabRecipe:"Receta", tabWeight:"Medidas",
+    tabHome:"Inicio", tabRecipe:"Recetas", tabWeight:"Medidas", tabProgreso:"Progreso", tabTu:"Tú",
     tabRanking:"Ranking", tabAchievements:"Logros", tabCalc:"Objetivo",
     // Tiers / levels
     tiers:["Novato","Aprendiz","Constante","Comprometido","Disciplinado","Atleta","Experto","Élite","Maestro","Leyenda"],
@@ -693,7 +693,7 @@ const TRANS = {
     migrateBtn:"Create my password 🔐",
     authErrGeneric:"Sign in error. Please try again.",
     // Nav
-    tabHome:"Home", tabRecipe:"Recipe", tabWeight:"Measures",
+    tabHome:"Home", tabRecipe:"Recipes", tabWeight:"Measures", tabProgreso:"Progress", tabTu:"You",
     tabRanking:"Ranking", tabAchievements:"Medals", tabCalc:"Goal",
     // Tiers / levels
     tiers:["Beginner","Apprentice","Consistent","Committed","Disciplined","Athlete","Expert","Elite","Master","Legend"],
@@ -8673,6 +8673,18 @@ function GBHApp(){
     }catch{ return "landing"; }
   });
   const [tab,     setTab]     = useState("home");
+  // 6-oct-2026 (PEND-2026-353): la barra tiene 5 pestañas. Peso, Objetivo y Ranking son vistas de «progreso»;
+  // Consulta vive en «tu». irA() traduce los destinos de siempre (banner de pesaje, tutorial, botones).
+  const [progVista,setProgVista]=useState("peso");
+  const [suplAbierta,setSuplAbierta]=useState(false);   // 💊 Suplementación, encima de Plan
+  const irA=(d)=>{
+    if(d==="peso"||d==="weight"){ setProgVista("peso"); setTab("progreso"); }
+    else if(d==="objetivo"){ setProgVista("objetivo"); setTab("progreso"); }
+    else if(d==="ranking"){ setProgVista("ranking"); setTab("progreso"); }
+    else if(d==="consulta"){ setTab("tu"); }
+    else if(d==="supl"){ setTab("plan"); setSuplAbierta(true); }
+    else setTab(d);
+  };
   const [lang,    setLang]    = useState(()=>lsGet("gbh:lang","es"));
   const [muted,   setMuted]   = useState(()=>lsGet("gbh:mute",false));
   const sfx = (name,...args) => { if(!muted){ SFX[name]?.(...args); if(HAPTIC_DE_SFX[name]) haptic(HAPTIC_DE_SFX[name]); } };
@@ -9790,8 +9802,8 @@ function GBHApp(){
   // El tour lleva de la mano: cada paso fuerza su pestaña real
   useEffect(()=>{
     if(!tutoPaso) return;
-    const destino={B1:'home',B2:'progreso',B3:'plan',B4:'plan',B5:'weight',B6:'receta',B7:'consulta',B8:'ranking',B9:'home'}[tutoPaso.slice(0,2)];
-    if(destino) setTab(destino);
+    const destino={B1:'home',B2:'objetivo',B3:'plan',B4:'plan',B5:'peso',B6:'receta',B7:'consulta',B8:'ranking',B9:'home'}[tutoPaso.slice(0,2)];
+    if(destino) irA(destino);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[tutoPaso]);
   // Pasos que se completan con la acción real observada en el estado
@@ -12250,7 +12262,7 @@ function GBHApp(){
   `;
 
   // Cargar ranking cuando se activa la pestaña
-  useEffect(()=>{ if(tab==="ranking") loadRanking(); },[tab]);
+  useEffect(()=>{ if(tab==="progreso"&&progVista==="ranking") loadRanking(); },[tab,progVista]);
   useEffect(()=>{ if(tab==="receta"&&!dailyRecipe&&!recipeLoading) fetchDailyRecipe(); },[tab]);
   useEffect(()=>{ if(tab==="receta"){ setRecipeView("menu"); setCompletoCat(null); setBusqTexto(""); setBusqResults(null); setBusqLoading(false); } },[tab]);
   // Cuenta de recetas por categoría (consulta ligera: solo tipo+categoria, una vez).
@@ -13298,6 +13310,12 @@ function GBHApp(){
           la ✕ vuelve a ella. Vive aquí fuera, y no dentro de la pestaña, porque .tab-in anima con transform
           y un position:fixed dentro de un transform deja de ser pantalla completa.
           Sin sbReq a propósito: 0 llamadas a Supabase. */}
+      {suplAbierta&&(
+        <div data-supl-pantalla style={{position:"fixed",inset:0,zIndex:9000,background:T.bg,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:"14px 18px 40px",boxSizing:"border-box"}}>
+          <button onClick={()=>{ sfx("tap"); setSuplAbierta(false); }} style={{background:"none",border:"none",color:T.au1,fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif",cursor:"pointer",padding:"6px 0",marginBottom:4}}>‹ Plan</button>
+          <Suplementacion t={t} T={T} sfx={sfx} onAbrir={id=>{ if(id==="cafeina") setCafeinaAbierta(true); if(id==="creatina") abrirCreatina(); }}/>
+        </div>
+      )}
       {cafeinaAbierta&&<Cafeina profile={profile} weights={weights} medicacion={suplPlan} lang={lang} t={t} T={T} sfx={sfx} onClose={()=>setCafeinaAbierta(false)}/>}
       {creatinaAbierta&&<Creatina profile={profile} weights={weights} medicacion={suplPlan} tipoDieta={creatinaDatos.tipoDieta} sumaPliegues={creatinaDatos.sumaPliegues} lang={lang} t={t} T={T} sfx={sfx} onClose={()=>setCreatinaAbierta(false)}/>}
       {zonaJuego&&(
@@ -13661,7 +13679,7 @@ function GBHApp(){
           position:"relative",
         }}>
           {/* Zona clickable */}
-          <div onClick={()=>{setTab("weight");setWeightMode("input");}}
+          <div onClick={()=>{irA("peso");setWeightMode("input");}}
             style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}}>
             <span style={{fontSize:24}}>⚖️</span>
             <div>
@@ -13800,54 +13818,8 @@ function GBHApp(){
           {/* Mascot + bubble con diana y mute a los lados */}
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,paddingTop:4,paddingBottom:18}}>
 
-            {/* Fila: 🎯 | Bocadillo | 🔇 */}
+            {/* Fila: el bocadillo de Bo (6-oct-2026: la diana y el sonido ya no van a los lados) */}
             <div style={{display:"flex",alignItems:"center",width:"100%",gap:8,paddingLeft:4,paddingRight:4}}>
-
-              {/* ── Diana desafíos (izquierda) ── */}
-              {(()=>{
-                const weekChs    = getWeekChallenges();
-                const allClaimed = claimedChallenges.length>=weekChs.length;
-                const anyDone    = weekChs.some(ch=>{
-                  const prog=getChallengeProgress(ch,logs,weights,xp,streak);
-                  return prog>=ch.goal && !claimedChallenges.includes(ch.id);
-                });
-                const claimCount = weekChs.filter(ch=>{
-                  const prog=getChallengeProgress(ch,logs,weights,xp,streak);
-                  return prog>=ch.goal && !claimedChallenges.includes(ch.id);
-                }).length;
-                return(
-                  <div style={{position:"relative",flexShrink:0}}>
-                    <button
-                      onClick={()=>setShowChallenges(true)}
-                      style={{
-                        width:44,height:44,borderRadius:16,
-                        background:anyDone
-                          ?'linear-gradient(135deg,'+T.au1+','+T.au2+')'
-                          :allClaimed
-                            ?alpha(T.g1,0.18)
-                            :"linear-gradient(180deg, rgba(255,208,60,0.38), rgba(150,105,0,0.34))",
-                        border:anyDone?`2px solid ${T.au3}`:allClaimed?`1.5px solid ${T.g3}`:`1.5px solid ${alpha(T.au1,0.55)}`,
-                        boxShadow:anyDone?`0 4px 0 ${T.au3},0 0 14px ${T.au1}60`:allClaimed?`0 3px 0 ${T.g3}`:"0 3px 0 rgba(110,78,0,0.9)",
-                        cursor:"pointer",
-                        display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:1,
-                        animation:anyDone?"pulse 1.5s ease-in-out infinite":"none",
-                        transition:"all 0.3s",
-                      }}>
-                      <span style={{fontSize:20,lineHeight:1}}>{allClaimed?"✓":anyDone?"❕":"🎯"}</span>
-                    </button>
-                    {anyDone&&claimCount>0&&(
-                      <div style={{
-                        position:"absolute",top:-5,right:-5,
-                        width:18,height:18,borderRadius:"50%",
-                        background:"#FF3B30",border:`2px solid ${T.bg}`,
-                        fontSize:10,fontWeight:900,color:T.t1,
-                        display:"flex",alignItems:"center",justifyContent:"center",
-                        fontFamily:"'Nunito',sans-serif",
-                      }}>{claimCount}</div>
-                    )}
-                  </div>
-                );
-              })()}
 
               {/* Bocadillo centrado */}
               <div style={{flex:1,display:"flex",justifyContent:"center"}}>
@@ -13864,22 +13836,7 @@ function GBHApp(){
                     :(lang==='en'?'💬 Ask me':'💬 Pregúntame')):null}/>
               </div>
 
-              {/* ── Mute (derecha) ── */}
-              <button
-                onClick={()=>{ const nm=!muted; setMuted(nm); lsSet("gbh:mute",nm); if(!nm) SFX.tap(); }}
-                style={{
-                  flexShrink:0,
-                  width:44,height:44,borderRadius:16,
-                  background:"linear-gradient(180deg, rgba(255,208,60,0.38), rgba(150,105,0,0.34))",
-                  border:`1.5px solid ${alpha(T.au1,0.55)}`,
-                  cursor:"pointer",fontSize:20,
-                  display:"flex",alignItems:"center",justifyContent:"center",
-                  boxShadow:"0 3px 0 rgba(110,78,0,0.9)",
-                  transition:"all 0.2s",
-                }}>
-                {muted?"🔇":"🔊"}
-              </button>
-
+              
             </div>
 
             {/* 🐑 Bo — la mascota personalizable sustituye al avatar genérico */}
@@ -13899,31 +13856,36 @@ function GBHApp(){
            es decisión de la app (clave gbh:reducemotion), no del sistema. */
       `}</style>
             <div style={{position:"relative",width:"100%"}}>
-              {/* 🎮 bajo el botón de la diana (misma columna izquierda) */}
-              <button onClick={()=>{ cargarPartidasHoy(); setZonaJuego(true); }} title="Zona de juego"
-                style={{position:"absolute",left:0,top:2,zIndex:2,width:44,height:44,borderRadius:16,
-                  background:"linear-gradient(180deg, rgba(255,208,60,0.38), rgba(150,105,0,0.34))",
-                  border:`1.5px solid ${alpha(T.au1,0.55)}`,
-                  boxShadow:"0 3px 0 rgba(110,78,0,0.9)",cursor:"pointer",fontFamily:"inherit",padding:0,
-                  display:"flex",alignItems:"center",justifyContent:"center"}}>
-                <span style={{fontSize:20,lineHeight:1}}>🎮</span>
-              </button>
-              <div onClick={tocarBo} className={`sin-sel${boToque && !MOVIMIENTO_REDUCIDO() ? " bo-toque" : ""}`}
+                            <div onClick={tocarBo} className={`sin-sel${boToque && !MOVIMIENTO_REDUCIDO() ? " bo-toque" : ""}`}
                    style={{cursor:"pointer",display:"flex",justifyContent:"center"}}>
                 <Sheep estado={boToque ? "feliz" : boEstado} equipados={boEquipados} color={boColor} size={200}/>
               </div>
-              {/* Nombre de Bo + 🎨 pequeñito al lado */}
-              <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:7,marginTop:2}}>
-                <span style={{fontSize:12.5,fontWeight:900,color:T.t2}}>🐑 {boNombre}</span>
-                <button onClick={()=>setPanelBo(true)} title="Personalizar a tu oveja"
-                  style={{width:26,height:26,borderRadius:9,
-                    background:"linear-gradient(180deg, rgba(255,208,60,0.38), rgba(150,105,0,0.34))",
-                    border:`1.5px solid ${alpha(T.au1,0.55)}`,boxShadow:"0 2px 0 rgba(110,78,0,0.9)",
-                    cursor:"pointer",padding:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  <span style={{fontSize:13,lineHeight:1}}>🎨</span>
-                </button>
-              </div>
-            </div>
+              {/* Nombre de Bo en un chip y, al lado, 🎯 Retos y 🎮 Juegos (6-oct-2026, PEND-2026-353).
+                  Sustituye a los cuatro botones sueltos que rodeaban a Bo; el 🔊 vive ahora en «Tú». */}
+              {(()=>{
+                const weekChs=getWeekChallenges();
+                const allClaimed=claimedChallenges.length>=weekChs.length;
+                const claimCount=weekChs.filter(ch=>getChallengeProgress(ch,logs,weights,xp,streak)>=ch.goal&&!claimedChallenges.includes(ch.id)).length;
+                const anyDone=claimCount>0;
+                const chip=(key,onClick,icono,texto,vivo,aviso)=>(
+                  <button key={key} onClick={onClick} style={{position:"relative",display:"flex",alignItems:"center",gap:6,padding:"8px 13px",borderRadius:999,
+                    background:vivo?`linear-gradient(135deg,${T.au1},${T.au2})`:"linear-gradient(180deg, rgba(255,208,60,0.38), rgba(150,105,0,0.34))",
+                    border:vivo?`2px solid ${T.au3}`:`1.5px solid ${alpha(T.au1,0.55)}`,boxShadow:vivo?`0 3px 0 ${T.au3},0 0 12px ${T.au1}60`:"0 3px 0 rgba(110,78,0,0.9)",
+                    color:vivo?T.bgWood:T.t1,fontWeight:900,fontSize:12,fontFamily:"'Nunito',sans-serif",cursor:"pointer",
+                    animation:vivo?"pulse 1.5s ease-in-out infinite":"none",transition:"all 0.3s"}}>
+                    <span style={{fontSize:16,lineHeight:1}}>{icono}</span>{texto}
+                    {aviso>0&&<span style={{position:"absolute",top:-6,right:-6,width:18,height:18,borderRadius:"50%",background:"#FF3B30",border:`2px solid ${T.bg}`,fontSize:10,fontWeight:900,color:T.t1,display:"flex",alignItems:"center",justifyContent:"center"}}>{aviso}</span>}
+                  </button>
+                );
+                return(
+                  <div style={{display:"flex",justifyContent:"center",gap:8,flexWrap:"wrap",marginTop:6}}>
+                    {chip("retos",()=>setShowChallenges(true),allClaimed?"✓":"🎯",lang==='en'?'Challenges':'Retos',anyDone,claimCount)}
+                    {chip("juegos",()=>{ cargarPartidasHoy(); setZonaJuego(true); },"🎮",lang==='en'?'Games':'Juegos',false,0)}
+                    {chip("bo",()=>setPanelBo(true),"🎨",boNombre,false,0)}
+                  </div>
+                );
+              })()}
+                          </div>
           </div>
 
           <WeeklyXPGoal logs={logs} xp={xp}/>
@@ -14008,7 +13970,8 @@ function GBHApp(){
         </>}
 
         {/* ── WEIGHT ────────────────────────────────────────────────────────── */}
-        {tab==="weight"&&(
+        {tab==="progreso"&&<SelectorProgreso vista={progVista} setVista={v=>{sfx("tap");setProgVista(v);}} lang={lang} T={T}/>}
+        {tab==="progreso"&&progVista==="peso"&&(
           <>
             <SelectorMedidas vista={medidasVista} setVista={v=>{sfx("tap");setMedidasVista(v);}} lang={lang} T={T}/>
             {medidasVista==="cuerpo"
@@ -14130,7 +14093,7 @@ function GBHApp(){
 
         {/* ── ACHIEVEMENTS ──────────────────────────────────────────────────── */}
         {/* ── RANKING ──────────────────────────────────────────────────────── */}
-        {tab==="ranking"&&(()=>{
+        {tab==="progreso"&&progVista==="ranking"&&(()=>{
           const medal=["👑","🥈","🥉"];
           const medalColor=[T.moneda,"#C0C0C0","#CD7F32"];
 
@@ -14209,7 +14172,7 @@ function GBHApp(){
                       : t("rankFueraDesc",{d:DIAS_REGULARIDAD})}
                   </div>
                   {soyIrregular&&(
-                    <button onClick={()=>setTab("weight")} style={{marginTop:10,background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:"none",borderRadius:14,padding:"9px 20px",color:T.t1,fontWeight:900,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif",boxShadow:`0 3px 0 ${T.g3}`}}>
+                    <button onClick={()=>irA("peso")} style={{marginTop:10,background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:"none",borderRadius:14,padding:"9px 20px",color:T.t1,fontWeight:900,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif",boxShadow:`0 3px 0 ${T.g3}`}}>
                       {t("rankFueraCta")}
                     </button>
                   )}
@@ -14684,7 +14647,7 @@ function GBHApp(){
         })()}
 
 
-        {tab==="progreso"&&<div data-tuto="objetivo"><CalcTab weights={weights} profile={profile} setProfile={setProfile} lang={lang}/></div>}
+        {tab==="progreso"&&progVista==="objetivo"&&<div data-tuto="objetivo"><CalcTab weights={weights} profile={profile} setProfile={setProfile} lang={lang}/></div>}
         {avisoNuevoPlan&&(
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"flex-start",justifyContent:"center",overflowY:"auto",padding:"calc(14px + env(safe-area-inset-top, 0px)) 24px 24px"}}>
             <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
@@ -14931,7 +14894,7 @@ function GBHApp(){
             onVerSeguimiento={espejoAbrirSeguimiento}
             onClose={()=>{sfx("tap");setEspejoDia(null);}}/>
         )}
-        {tab==="plan"&&<div data-tuto="plan-zona"><PlanTab profile={profile} lang={lang} hoyKey={hoyKey} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} descartadas={descartadas} setDescartadas={setDescartadas} showT={showT} sfx={sfx} t={t} setTab={setTab} onMealRegistered={onMealRegistered} vistaInicial={planVista} onVistaConsumida={()=>setPlanVista(null)} onTutoEvent={tutoEvento}/></div>}
+        {tab==="plan"&&<div data-tuto="plan-zona"><PlanTab onSupl={()=>setSuplAbierta(true)} profile={profile} lang={lang} hoyKey={hoyKey} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} descartadas={descartadas} setDescartadas={setDescartadas} showT={showT} sfx={sfx} t={t} setTab={setTab} onMealRegistered={onMealRegistered} vistaInicial={planVista} onVistaConsumida={()=>setPlanVista(null)} onTutoEvent={tutoEvento}/></div>}
         {/* «Pregúntale a Bo» desde el bocadillo de Inicio (src/PreguntaBo.jsx). Las acciones
             solo abren pestañas que ya existen; la escritura va a bo_registro sin cola (sbDirect). */}
         {boInicio&&boActivo(profile)&&<PreguntaBo T={T} Sheep={Sheep} lang={lang} pid={profile?.id}
@@ -14952,8 +14915,9 @@ function GBHApp(){
           onIr={(d)=>{ setTab('plan'); setPlanVista({vista:'daily', dia:d.dia, toma:d.toma, bo:d.bo}); }}
           onRegistrar={boRegistrar}
           onCerrar={()=>setBoInicio(false)}/>}
-        {tab==="consulta"&&<ConsultaTab profile={profile} lang={lang} sfx={sfx}/>}
-        {tab==="supl"&&<Suplementacion t={t} T={T} sfx={sfx} onAbrir={id=>{ if(id==="cafeina") setCafeinaAbierta(true); if(id==="creatina") abrirCreatina(); }}/>}
+        {tab==="tu"&&<TuTab profile={profile} lang={lang} sfx={sfx} T={T} lv={lv} xp={xp} streak={streak} badges={badges.length} userPhoto={userPhoto}
+          onPerfil={()=>setShowPhotoPicker(true)} avisosOn={avisosOn} onAvisos={()=>setShowAvisos(true)}
+          muted={muted} onMute={()=>{ const nm=!muted; setMuted(nm); lsSet("gbh:mute",nm); if(!nm) SFX.tap(); }} switchLang={switchLang}/>}
       </div>
 
       {/* ── BOTTOM NAV ────────────────────────────────────────────────────── */}
@@ -15267,7 +15231,62 @@ function TarjetaFisioterapia({profile,lang,sfx}){
 
 // ─── ConsultaTab — contacto con el nutricionista (exclusivo premium) ────────
 // ═══════════════════════════════════════════════════════════════════════════
-function ConsultaTab({profile,lang,sfx}){
+// ═══ PROGRESO y TÚ (6-oct-2026, PEND-2026-353 / MAESTRO-2026-857) ═══
+// La barra pasa de 8 pestañas deslizables (Consulta y Ranking quedaban tapadas a 375 px) a 5 fijas:
+// Inicio · Plan · Recetas · Progreso · Tú. Las pantallas son las mismas; cambian las puertas:
+// - Progreso agrupa Peso (la antigua pestaña Medidas), Objetivo (la calculadora) y Ranking con un selector.
+// - Tú lleva la tarjeta de perfil (abre la ficha de siempre), lo que vivía en Consulta (Premium, pareja,
+//   invitar) y los ajustes (avisos, sonidos, idioma, PIN y cuenta). El 🔊 que estaba junto a Bo vive aquí.
+// - Suplementación es una tarjeta de Plan que abre su pantalla encima (ver suplAbierta en App).
+function SelectorProgreso({vista,setVista,lang,T}){
+  const ops=[["peso","⚖️",lang==='en'?'Weight':'Peso'],["objetivo","🎯",lang==='en'?'Goal':'Objetivo'],["ranking","👑","Ranking"]];
+  return(
+    <div data-progreso={vista} style={{display:"flex",background:"rgba(255,255,255,0.07)",borderRadius:14,padding:3,margin:"6px 0 12px"}}>
+      {ops.map(([id,ic,tx])=>{ const a=vista===id; return(
+        <button key={id} data-vista={id} aria-current={a?"page":undefined} onClick={()=>{ if(!a) setVista(id); }}
+          style={{flex:1,padding:"9px 0",borderRadius:11,border:"none",cursor:"pointer",fontFamily:"'Nunito',sans-serif",fontWeight:900,fontSize:12.5,
+            background:a?T.g3:"transparent",color:a?T.t1:T.t2,boxShadow:a?"0 2px 6px rgba(0,0,0,0.4)":"none",transition:"all 0.18s"}}>
+          <span style={{marginRight:5}}>{ic}</span>{tx}
+        </button>); })}
+    </div>
+  );
+}
+function TuTab({profile,lang,sfx,T,lv,xp,streak,badges,userPhoto,onPerfil,avisosOn,onAvisos,muted,onMute,switchLang}){
+  const EN=lang==='en';
+  const fila=(icono,titulo,sub,onClick,derecha)=>(
+    <button onClick={()=>{ sfx&&sfx("tap"); onClick&&onClick(); }} style={{width:"100%",boxSizing:"border-box",display:"flex",alignItems:"center",gap:12,background:T.bgWood,border:`2px solid ${T.bW}`,borderRadius:16,padding:"12px 14px",marginBottom:8,textAlign:"left",cursor:"pointer",boxShadow:"0 3px 0 rgba(0,0,0,0.35)",fontFamily:"inherit"}}>
+      <span style={{fontSize:22,lineHeight:1,flexShrink:0}}>{icono}</span>
+      <span style={{flex:1,minWidth:0}}>
+        <span style={{display:"block",fontSize:14,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif"}}>{titulo}</span>
+        {sub&&<span style={{display:"block",fontSize:11.5,color:T.t2,marginTop:2,fontFamily:"'DM Sans',sans-serif"}}>{sub}</span>}
+      </span>
+      <span style={{color:T.au1,fontSize:18,fontWeight:900,flexShrink:0,fontFamily:"'Nunito',sans-serif"}}>{derecha||"›"}</span>
+    </button>
+  );
+  const seccion=(tx)=><div style={{fontSize:11,fontWeight:900,letterSpacing:"0.08em",textTransform:"uppercase",color:T.t2,margin:"14px 0 8px",fontFamily:"'Nunito',sans-serif"}}>{tx}</div>;
+  return(
+    <div data-tu style={{paddingBottom:24}}>
+      {/* Tarjeta de perfil: abre la ficha completa (foto, datos, idioma, PIN, cuenta), la misma que abre el avatar */}
+      <button onClick={()=>{ sfx&&sfx("tap"); onPerfil(); }} style={{width:"100%",boxSizing:"border-box",display:"flex",alignItems:"center",gap:14,background:T.bgCard,border:`2px solid ${T.bA}`,borderRadius:22,padding:"14px 16px",margin:"6px 0 4px",textAlign:"left",cursor:"pointer",fontFamily:"inherit"}}>
+        <UserAvatar size={60} photoB64={userPhoto} initials={profile?.name||"?"} borderColor={T.au1} frame={Math.floor(Math.min(lv.l,500)/100)||0}/>
+        <span style={{flex:1,minWidth:0}}>
+          <span style={{display:"block",fontSize:17,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{profile?.name||""}</span>
+          <span style={{display:"block",fontSize:12,color:T.t2,marginTop:3,fontFamily:"'DM Sans',sans-serif"}}>{translateLvName(lv.n,lang)} · Lv {lv.l} · {xp} XP · 🔥 {streak} · 🏅 {badges}</span>
+          <span style={{display:"block",fontSize:11,color:T.au1,marginTop:3,fontWeight:800,fontFamily:"'DM Sans',sans-serif"}}>{EN?'Profile, photo, language, PIN and account':'Perfil, foto, idioma, PIN y cuenta'}</span>
+        </span>
+        <span style={{color:T.au1,fontSize:20,fontWeight:900,fontFamily:"'Nunito',sans-serif"}}>›</span>
+      </button>
+      {/* Premium / consulta, pareja e invitar: lo que vivía en la pestaña Consulta, tal cual */}
+      <ConsultaTab profile={profile} lang={lang} sfx={sfx} enTu/>
+      {seccion(EN?'Settings':'Ajustes')}
+      {avisosOn&&fila("🔔",EN?'Notifications':'Avisos',EN?'Meals, water and weigh-in':'Comidas, agua y pesaje',onAvisos)}
+      {fila(muted?"🔇":"🔊",EN?'Sounds':'Sonidos',muted?(EN?'Off · tap to turn on':'Apagados · toca para encender'):(EN?'On · tap to mute':'Encendidos · toca para silenciar'),onMute,muted?"○":"●")}
+      {fila("🌐",EN?'Language':'Idioma',EN?'English · tap for Spanish':'Español · toca para inglés',()=>switchLang(EN?'es':'en'),EN?"EN":"ES")}
+      {fila("🔐",EN?'PIN and account':'PIN y cuenta',EN?'Change PIN, edit your data, delete account':'Cambiar el PIN, editar tus datos, borrar la cuenta',onPerfil)}
+    </div>
+  );
+}
+function ConsultaTab({profile,lang,sfx,enTu=false}){
   // Estado de la tarjeta de pareja, para abrir su plegable si hay invitación
   const [parejaEstado,setParejaEstado]=React.useState(null);
   const isPremium=profile?.plan==='premium';
@@ -15285,8 +15304,8 @@ function ConsultaTab({profile,lang,sfx}){
   const pingPremium=()=>{ try{ if(profile?.id) sbDirect("GET",`profiles?select=plan,referred_by&id=eq.${profile.id}&limit=1`).catch(()=>{}); }catch{} };
 
   if(!isPremium) return(
-    <div style={{padding:'48px 24px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:18}}>
-      <div style={{fontSize:56}}>📩</div>
+    <div style={{padding:enTu?'10px 0 8px':'48px 24px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:18}}>
+      {!enTu&&<div style={{fontSize:56}}>📩</div>}
       <div style={{fontSize:18,fontWeight:900,color:T.t1,lineHeight:1.3,fontFamily:"'Nunito',sans-serif"}}>
         {lang==='en'?'Premium service':'Servicio premium'}
       </div>
@@ -16460,7 +16479,7 @@ function OverlayGenerando({lang}){
   );
 }
 
-function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,descartadas,setDescartadas,showT,sfx,t,setTab,onMealRegistered,vistaInicial,onVistaConsumida,onTutoEvent}){
+function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,descartadas,setDescartadas,showT,sfx,t,setTab,onMealRegistered,vistaInicial,onVistaConsumida,onTutoEvent,onSupl}){
   const isPremium=profile?.plan==='premium';
   const isStandard=profile?.plan==='standard';
   const tieneAcceso=isPremium||isStandard;
@@ -17523,6 +17542,12 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
             <div style={{color:'rgba(255,255,255,0.2)',fontSize:20,flexShrink:0}}>🔒</div>
           </div>
         ))}
+        {/* 💊 Suplementación (6-oct-2026, PEND-2026-353): la puerta pasa de pestaña propia a tarjeta de Plan; la pantalla es la misma */}
+        <button onClick={()=>{ sfx&&sfx("tap"); onSupl&&onSupl(); }} style={{background:'rgba(255,75,110,0.10)',border:'2px solid rgba(255,75,110,0.30)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)',fontFamily:'inherit'}}>
+          <div style={{fontSize:40,flexShrink:0}}>💊</div>
+          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{t("suplTitulo")}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{t("suplIntro")}</div></div>
+          <div style={{color:'#FF4B6E',fontSize:20,flexShrink:0}}>›</div>
+        </button>
         {/* Botón GENERAR (solo estándar que ya configuró su plan).
             ABRE «Configura tu plan», no genera directamente: el selector de
             modalidades (Simple, Vegetariana, Vegana, Sin gluten, Cetogénica,
@@ -17669,6 +17694,12 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
           <div style={{fontSize:40,flexShrink:0}}>📊</div>
           <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Tracking':'Seguimiento'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Calendar and charts of your meal compliance':'Calendario y gráficas de tu cumplimiento'}</div></div>
           <div style={{color:T.pur,fontSize:20,flexShrink:0}}>›</div>
+        </button>
+        {/* 💊 Suplementación (6-oct-2026, PEND-2026-353): la puerta pasa de pestaña propia a tarjeta de Plan; la pantalla es la misma */}
+        <button onClick={()=>{ sfx&&sfx("tap"); onSupl&&onSupl(); }} style={{background:'rgba(255,75,110,0.10)',border:'2px solid rgba(255,75,110,0.30)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)',fontFamily:'inherit'}}>
+          <div style={{fontSize:40,flexShrink:0}}>💊</div>
+          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{t("suplTitulo")}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{t("suplIntro")}</div></div>
+          <div style={{color:'#FF4B6E',fontSize:20,flexShrink:0}}>›</div>
         </button>
         {/* Plan estándar: candado semanal (sin gemas, se desbloquea el lunes) */}
         {isStandard&&planBloqueado&&(
