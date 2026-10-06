@@ -74,7 +74,7 @@ export function BarraPestanas({ tab, setTab, t, lang = "es", T, sfx }) {
       background: "rgba(8,18,8,0.97)", backdropFilter: "blur(30px)", borderTop: `3px solid ${T.bW}`, zIndex: 100 }}>
       <div ref={ref} className="nav-scroll" onScroll={medir}
         style={{ position: "relative", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-        <div style={{ display: "flex", padding: "10px 4px 10px", minWidth: "min-content", width: "100%" }}>
+        <div style={{ display: "flex", padding: "10px 4px 10px", minWidth: "min-content", width: "100%", boxSizing: "border-box" }}>
           {PESTANAS.map(({ id, icon, l, txt }) => {
             const a = tab === id;
             return (
