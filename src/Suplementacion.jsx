@@ -2,7 +2,7 @@
 // Orden de Alejandro (26-sep): la calculadora de cafeína no va como tarjeta en Inicio, sino en una
 // pestaña propia, «Suplementación» con 💊, que tiene un botón por suplemento:
 // - ☕ Cafeína abre la calculadora (src/Cafeina.jsx, sobre el motor src/motorCafeina.js);
-// - 💪 Creatina «(próximamente)» se ve, pero todavía no se puede pulsar: su modelo aún no existe.
+// - 💪 Creatina abre la suya (src/Creatina.jsx, sobre src/motorCreatina.js) desde el 5-oct-2026; antes salía «(próximamente)».
 //
 // Para sumar un suplemento nuevo:
 // 1. Se añade su fila en SUPLEMENTOS con disponible:false, y sale como «(próximamente)».
@@ -19,7 +19,7 @@ import React from "react";
 // cafAbrir, las mismas que usaba su tarjeta de Inicio de la fase 1.
 export const SUPLEMENTOS = [
   { id: "cafeina",  icono: "☕", titulo: "suplCafeina",  sub: "cafSub",          aria: "cafAbrir",         disponible: true },
-  { id: "creatina", icono: "💪", titulo: "suplCreatina", sub: "suplCreatinaSub", aria: "suplNoDisponible", disponible: false },
+  { id: "creatina", icono: "💪", titulo: "suplCreatina", sub: "suplCreatinaSub", aria: "creAbrir",         disponible: true },
 ];
 
 export function Suplementacion({ t, T, sfx, onAbrir }) {

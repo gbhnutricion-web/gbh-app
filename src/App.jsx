@@ -15,6 +15,7 @@ import { TOPE_PUNTOS, clasificarRespuesta, yaEstaEnElServidor, opDePartidaCaduca
 import { racionesDeLaLista, costePorRacion, textosCajaRacion } from "./raciones";   // qué cocinar y cuánto comer (17-sep-2026)
 import { elegirRecetaCambio, permitidasDePlanes, normNombreCambio, claveMemoriaCambio, leerMemoriaCambio, guardarMemoriaCambio, permitidasTodas, puedeComer, recetaDelDiaAlAzar, recetaDelDiaFija } from "./cambioReceta"; // cambio de receta con gemas y receta del día: lista del servidor, sin repetir (28-sep-2026)
 import { Cafeina } from "./Cafeina";                                     // calculadora de cafeína, fase 1 (25-sep-2026)
+import { Creatina } from "./Creatina";                                   // calculadora de creatina, fase 1 (5-oct-2026)
 import { Suplementacion } from "./Suplementacion";                       // pestaña 💊 Suplementación: ☕ Cafeína y 💪 Creatina (próximamente) (26-sep-2026)
 import { BarraPestanas } from "./BarraPestanas";                         // la barra de pestañas de abajo (26-sep-2026)
 import { planificarAvisos, nombresDePlan, PREFS_POR_DEFECTO as AVISOS_PREFS, TOMAS_ORDEN as AVISOS_TOMAS } from "./motorAvisos"; // avisos fuera de la app, fase 1 (28-sep-2026)
@@ -24,6 +25,8 @@ import { usePasosMovil } from "./usePasosMovil";                            // p
 import { FilaPasosMovil } from "./PasosMovil";
 import { DistribucionKcal, AlimentosDescartados, leerDescartes, escribirDescartes, BannerSemanaNueva,
          CabeceraPlan, PillTotal, PatronCocina, Recordatorios, BotonesGuardar, FUENTE_PIXEL } from "./PlanArcade";
+import { PreguntaBo, BoMomento } from "./PreguntaBo";                     // «Pregúntale a Bo», fase 1 sin IA (2-oct-2026, BRIEF_pregunta_a_bo.md): interruptor profiles.bo_activo
+import { boActivo, planBo, filaMomento, textoTema, firmaTema, momentoVisto, marcarMomentoVisto, enPrimeraSemana, contieneIngrediente } from "./boLogica";
 
 // ─── Servidor de generación de programaciones (Railway) ─────────────────────
 // Rellena estos dos valores tras desplegar el servidor (ver GUIA_DESPLIEGUE_RAILWAY.md)
@@ -65,7 +68,10 @@ const TRANS = {
     pinNoNet:"Sin conexión. No se pudo verificar el PIN.",
     pinForgot:"¿Has olvidado tu PIN?",
     pinEnterHint:"Introduce tu PIN para entrar",
-    pinSinPinHint:"Tu cuenta aún no tiene PIN: pulsa «¿Has olvidado tu PIN?» y te llega uno a tu correo.",
+    pinSinPinHint:"Tu cuenta todavía no tiene PIN.",
+    pinSinPinExpl:"Para protegerla, te mandamos uno a tu correo: pulsa el botón, envía el correo que se abre y en unos 5 minutos te llegará tu PIN a {e}.",
+    pinSinPinBtn:"📩 Recibir mi PIN por correo",
+    pinYaLlego:"Ya me ha llegado el PIN",
     pinCreateTitle:"Protege tu cuenta 🔐",
     pinCreateDesc:"Crea un PIN de 4 a 6 dígitos. Te lo pediremos al entrar con tu correo en un dispositivo nuevo, para que nadie más pueda acceder a tus datos.",
     pinNew:"Nuevo PIN", pinRepeat:"Repite el PIN",
@@ -89,7 +95,7 @@ const TRANS = {
     migrateBtn:"Crear mi contraseña 🔐",
     authErrGeneric:"Error al iniciar sesión. Inténtalo de nuevo.",
     // Nav
-    tabHome:"Inicio", tabRecipe:"Receta", tabWeight:"Medidas",
+    tabHome:"Inicio", tabRecipe:"Recetas", tabWeight:"Medidas", tabProgreso:"Progreso", tabTu:"Tú",
     tabRanking:"Ranking", tabAchievements:"Logros", tabCalc:"Objetivo",
     // Tiers / levels
     tiers:["Novato","Aprendiz","Constante","Comprometido","Disciplinado","Atleta","Experto","Élite","Maestro","Leyenda"],
@@ -511,6 +517,114 @@ const TRANS = {
     cafPildHasta:" · efecto hasta las {h}",
     cafPildVer:"ver ↓",
     cafLegal:"Orientativo, para adultos sanos. No sustituye el consejo de tu nutricionista o de tu médico.",
+    // ── Calculadora de creatina (src/Creatina.jsx; fase 1, 5-oct-2026) ──
+    creTitulo:"💪 Tu creatina",
+    creSub:"Tu dosis, cuándo se llena tu músculo y cuánta tiras",
+    creAbrir:"Abrir la calculadora de creatina",
+    creFuentesBtn:"¿De dónde sale?",
+    creCerrar:"Cerrar",
+    creFuentesTit:"De dónde sale",
+    creFuentesIntro:"La dosis sale de las guías de la ISSN. El día en que se llena tu músculo, de un metaanálisis de 10 estudios que miden la creatina del músculo, publicado en gbhnutricion.es.",
+    creDosisCarga:"{g} g al día {d} días ({n} tomas de {x} g), luego {m} g al día",
+    creDosisMant:"{m} g al día",
+    creLlenoYa:"ya estás lleno",
+    creLlenoNo:"no llega a lleno en 12 semanas",
+    creLleno1Dia:"lleno en 1 día{mas}",
+    creLlenoDias:"lleno en unos {n} días{mas}",
+    creLlenoSem:"lleno en unas {n} semanas{mas}",
+    creMas:" más",
+    creFranjaDias:"los estudios van de {a} a {b} días",
+    creFranjaSem:"los estudios van de {a} a {b} semanas",
+    creFranjaDiasMas:"los estudios van de {a} días a más de 12 semanas",
+    creFranjaSemMas:"los estudios van de {a} a más de 12 semanas",
+    creDejar:"si la dejas, deja de notarse en {a}-{b} semanas",
+    creBloqTit:"No te damos una dosis",
+    creBloq:"Por {motivos}, la creatina se decide en consulta.",
+    creBloqX:"Pide cita y lo vemos juntos.",
+    creY:" y ",
+    creMotRinon:"enfermedad del riñón",
+    creMotEmbarazo:"embarazo o lactancia",
+    creMotMenor:"tener menos de 18 años",
+    creMotReaccion:"una mala reacción previa",
+    creMotMedicacion:"tu medicación",
+    creFaltaTit:"Nos falta un dato",
+    creFaltaPeso:"Tu peso: regístralo en la pestaña Medidas.",
+    creFaltaSexo:"Tu sexo: complétalo en tu perfil.",
+    creFaltaAltura:"Tu altura: complétala en tu perfil, o registra tus pliegues.",
+    creFaltaEdad:"Tu edad: escríbela aquí abajo.",
+    creSaludTit:"Antes de nada",
+    creSaludOk:"todo bien",
+    creSaludMal:"revisar",
+    creSi:"Sí",
+    creNo:"No",
+    creCribRinon:"¿Enfermedad del riñón o un solo riñón?",
+    creCribEmbarazo:"¿Embarazo o lactancia?",
+    creCribMenor:"¿Menos de 18 años?",
+    creCribReaccion:"¿Te sentó mal la creatina alguna vez?",
+    creMedTit:"Tu medicación",
+    creMedOk:"Nada de tu plan carga el riñón",
+    creMedVacia:"No hay medicación en tu plan",
+    creMedMal:"{items}: carga el riñón, así que se decide en consulta",
+    creTu:"Tú",
+    creTuSub:"lo que ya sabe la app",
+    crePeso:"Peso",
+    crePesoPesaje:"de tu pesaje del {f}",
+    crePesoAlta:"de tu alta",
+    creGrasa:"% graso",
+    creGrasaPliegues:"de tus pliegues",
+    creGrasaEstimada:"estimado con tu IMC, tu edad y tu sexo",
+    creDieta:"Dieta",
+    creDietaTodo:"de todo",
+    creDietaVeg:"vegetariana",
+    creVegPreg:"¿Eres vegetariano o vegano?",
+    creVegPregX:"Sin carne ni pescado, el músculo parte más bajo y sube más",
+    creEdadPreg:"Tu edad",
+    creEdadGuardar:"Guardar",
+    creYaTomas:"Ya la tomas",
+    creYaTomasG:"{g} g en tu plan",
+    creYaTomasSinG:"en tu plan",
+    creGuardadoTel:"Tus respuestas se guardan solo en este teléfono.",
+    creComo:"¿Cómo empiezas?",
+    creRapido:"Rápido",
+    creRapidoX:"con carga",
+    creSinPrisa:"Sin prisa",
+    creSinPrisaX:"solo la dosis diaria",
+    creYaLaTomo:"Ya la tomo",
+    creYaLaTomoX:"sigue desde donde vas",
+    creDescargaNo:"En Descarga no hay carga: solo la dosis diaria.",
+    creCuanta:"Cuánta",
+    creDesde:"Desde hace",
+    creYa1sem:"1 semana",
+    creYa2sem:"2 semanas",
+    creYa1mes:"1 mes",
+    creYa2mes:"2 meses o más",
+    creDeposito:"Tu depósito",
+    creEstimacion:"estimación",
+    creCacitos:"{c} cacitos al día · mira la etiqueta",
+    creCacito1:"1 cacito al día · mira la etiqueta",
+    creGrafAria:"Tu depósito de creatina por semanas",
+    creEjeLleno:"lleno",
+    creEjeNivel:"tu nivel",
+    creEjeSem:"sem.",
+    creFranjaNota:"La franja sobre «lleno» es lo que cambia de un estudio a otro. A una persona le puede subir más o menos; a quien ya parte alto, apenas.",
+    creProbar:"Prueba otra dosis",
+    creMenos:"Quitar 1 g",
+    creMas1:"Añadir 1 g",
+    creLlega:"¿Llega a lleno?",
+    creNoLlega:"no llega",
+    creSeVa:"Se va sin usar",
+    creSeVaX:"{g} g a la semana",
+    creVolver:"Volver a {g} g",
+    creTomarTit:"Cómo tomarla",
+    creTomarHidratos:"Con una comida que lleve hidratos: se retiene más.",
+    creTomarDiario:"Todos los días, también los de descanso.",
+    creTomarHora:"La hora da igual: antes o después de entrenar.",
+    creTomarAlto:"A quien ya parte alto apenas le sube: es normal.",
+    creAvBascula:"La báscula puede subir 1-3 kg la primera semana de carga: es agua dentro del músculo, no grasa.",
+    creAvAnalitica:"Si te haces una analítica, di que tomas creatina: sube la creatinina en sangre sin que el riñón vaya peor.",
+    creAvDescarga:"Estás en Descarga: sin carga. Solo la dosis diaria, y cuenta con el agua antes del pesaje.",
+    creLegal:"Orientativo, para adultos sanos. No sustituye el consejo de tu nutricionista o de tu médico.",
+    creMeses:["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"],
     // ── Pestaña 💊 Suplementación (src/Suplementacion.jsx; 26-sep-2026). La tarjeta de ☕ usa cafSub y cafAbrir ──
     tabSupl:"Suplementos",                 // en la barra; el título de la pantalla (suplTitulo) dice «Suplementación»
     suplTitulo:"💊 Suplementación",
@@ -552,7 +666,10 @@ const TRANS = {
     pinNoNet:"No connection. Couldn't verify your PIN.",
     pinForgot:"Forgot your PIN?",
     pinEnterHint:"Enter your PIN to continue",
-    pinSinPinHint:"Your account has no PIN yet: tap «Forgot your PIN?» and we'll email you one.",
+    pinSinPinHint:"Your account doesn't have a PIN yet.",
+    pinSinPinExpl:"To protect it, we'll email you one: tap the button, send the email that opens, and your PIN will reach {e} in about 5 minutes.",
+    pinSinPinBtn:"📩 Email me my PIN",
+    pinYaLlego:"I've got my PIN",
     pinCreateTitle:"Protect your account 🔐",
     pinCreateDesc:"Create a 4-6 digit PIN. We'll ask for it when you log in with your email on a new device, so nobody else can access your data.",
     pinNew:"New PIN", pinRepeat:"Repeat PIN",
@@ -576,7 +693,7 @@ const TRANS = {
     migrateBtn:"Create my password 🔐",
     authErrGeneric:"Sign in error. Please try again.",
     // Nav
-    tabHome:"Home", tabRecipe:"Recipe", tabWeight:"Measures",
+    tabHome:"Home", tabRecipe:"Recipes", tabWeight:"Measures", tabProgreso:"Progress", tabTu:"You",
     tabRanking:"Ranking", tabAchievements:"Medals", tabCalc:"Goal",
     // Tiers / levels
     tiers:["Beginner","Apprentice","Consistent","Committed","Disciplined","Athlete","Expert","Elite","Master","Legend"],
@@ -997,6 +1114,114 @@ const TRANS = {
     cafPildHasta:" · works until {h}",
     cafPildVer:"see ↓",
     cafLegal:"For guidance only, for healthy adults. It does not replace advice from your dietitian or your doctor.",
+    // ── Creatine calculator (src/Creatina.jsx; phase 1, 5-oct-2026) ──
+    creTitulo:"💪 Your creatine",
+    creSub:"Your dose, when your muscle fills up and how much you waste",
+    creAbrir:"Open the creatine calculator",
+    creFuentesBtn:"Where does it come from?",
+    creCerrar:"Close",
+    creFuentesTit:"Where it comes from",
+    creFuentesIntro:"The dose comes from the ISSN guidelines. The day your muscle fills up comes from a meta-analysis of 10 studies that measure muscle creatine, published on gbhnutricion.es.",
+    creDosisCarga:"{g} g a day for {d} days ({n} doses of {x} g), then {m} g a day",
+    creDosisMant:"{m} g a day",
+    creLlenoYa:"you are already full",
+    creLlenoNo:"does not fill up within 12 weeks",
+    creLleno1Dia:"full in 1 day{mas}",
+    creLlenoDias:"full in about {n} days{mas}",
+    creLlenoSem:"full in about {n} weeks{mas}",
+    creMas:" more",
+    creFranjaDias:"studies range from {a} to {b} days",
+    creFranjaSem:"studies range from {a} to {b} weeks",
+    creFranjaDiasMas:"studies range from {a} days to over 12 weeks",
+    creFranjaSemMas:"studies range from {a} to over 12 weeks",
+    creDejar:"if you stop, the effect fades in {a}-{b} weeks",
+    creBloqTit:"We will not give you a dose",
+    creBloq:"Because of {motivos}, creatine is decided in a consultation.",
+    creBloqX:"Book an appointment and we will look at it together.",
+    creY:" and ",
+    creMotRinon:"kidney disease",
+    creMotEmbarazo:"pregnancy or breastfeeding",
+    creMotMenor:"being under 18",
+    creMotReaccion:"a previous bad reaction",
+    creMotMedicacion:"your medication",
+    creFaltaTit:"We are missing one detail",
+    creFaltaPeso:"Your weight: log it in the Measurements tab.",
+    creFaltaSexo:"Your sex: add it to your profile.",
+    creFaltaAltura:"Your height: add it to your profile, or log your skinfolds.",
+    creFaltaEdad:"Your age: type it below.",
+    creSaludTit:"Before anything else",
+    creSaludOk:"all good",
+    creSaludMal:"check",
+    creSi:"Yes",
+    creNo:"No",
+    creCribRinon:"Kidney disease, or only one kidney?",
+    creCribEmbarazo:"Pregnant or breastfeeding?",
+    creCribMenor:"Under 18?",
+    creCribReaccion:"Has creatine ever made you feel unwell?",
+    creMedTit:"Your medication",
+    creMedOk:"Nothing in your plan puts load on the kidneys",
+    creMedVacia:"There is no medication in your plan",
+    creMedMal:"{items}: puts load on the kidneys, so it is decided in a consultation",
+    creTu:"You",
+    creTuSub:"what the app already knows",
+    crePeso:"Weight",
+    crePesoPesaje:"from your weigh-in on {f}",
+    crePesoAlta:"from your sign-up",
+    creGrasa:"Body fat %",
+    creGrasaPliegues:"from your skinfolds",
+    creGrasaEstimada:"estimated from your BMI, age and sex",
+    creDieta:"Diet",
+    creDietaTodo:"everything",
+    creDietaVeg:"vegetarian",
+    creVegPreg:"Are you vegetarian or vegan?",
+    creVegPregX:"Without meat or fish, muscle starts lower and rises more",
+    creEdadPreg:"Your age",
+    creEdadGuardar:"Save",
+    creYaTomas:"You already take it",
+    creYaTomasG:"{g} g in your plan",
+    creYaTomasSinG:"in your plan",
+    creGuardadoTel:"Your answers are saved only on this phone.",
+    creComo:"How do you start?",
+    creRapido:"Fast",
+    creRapidoX:"with loading",
+    creSinPrisa:"No rush",
+    creSinPrisaX:"daily dose only",
+    creYaLaTomo:"I take it",
+    creYaLaTomoX:"carry on from where you are",
+    creDescargaNo:"On Weigh-in there is no loading: daily dose only.",
+    creCuanta:"How much",
+    creDesde:"For",
+    creYa1sem:"1 week",
+    creYa2sem:"2 weeks",
+    creYa1mes:"1 month",
+    creYa2mes:"2 months or more",
+    creDeposito:"Your store",
+    creEstimacion:"estimate",
+    creCacitos:"{c} scoops a day · check the label",
+    creCacito1:"1 scoop a day · check the label",
+    creGrafAria:"Your creatine store by week",
+    creEjeLleno:"full",
+    creEjeNivel:"your level",
+    creEjeSem:"wk",
+    creFranjaNota:"The band on «full» is how much it changes from one study to another. A person may rise more or less; someone who already starts high barely rises.",
+    creProbar:"Try another dose",
+    creMenos:"Remove 1 g",
+    creMas1:"Add 1 g",
+    creLlega:"Does it fill up?",
+    creNoLlega:"it does not",
+    creSeVa:"Goes unused",
+    creSeVaX:"{g} g a week",
+    creVolver:"Back to {g} g",
+    creTomarTit:"How to take it",
+    creTomarHidratos:"With a meal that has carbs: you keep more.",
+    creTomarDiario:"Every day, rest days too.",
+    creTomarHora:"The time does not matter: before or after training.",
+    creTomarAlto:"If you already start high, it barely rises: that is normal.",
+    creAvBascula:"The scale may go up 1-3 kg in the first loading week: it is water inside the muscle, not fat.",
+    creAvAnalitica:"If you get a blood test, say you take creatine: blood creatinine rises without your kidneys getting worse.",
+    creAvDescarga:"You are on Weigh-in: no loading. Daily dose only, and expect some water before the weigh-in.",
+    creLegal:"For guidance only, for healthy adults. It does not replace advice from your dietitian or your doctor.",
+    creMeses:["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
     // ── 💊 Supplements tab (src/Suplementacion.jsx; 26-sep-2026). The ☕ card uses cafSub and cafAbrir ──
     tabSupl:"Supplements",
     suplTitulo:"💊 Supplements",
@@ -1325,7 +1550,7 @@ const CAPN = (typeof window !== "undefined" && window.Capacitor) || null;
 const ES_NATIVO = !!(CAPN && CAPN.isNativePlatform && CAPN.isNativePlatform());
 const ES_IOS_NATIVO = ES_NATIVO && CAPN.getPlatform && CAPN.getPlatform() === "ios";
 // Android también es de «solo consumo» (PEND-2026-316, orden de Alejandro del 30-sep:
-// «si a la recomendacion»; MAESTRO-2026-716): la política de Pagos de Google Play no deja
+// «si a la recomendacion»; MAESTRO-2026-717): la política de Pagos de Google Play no deja
 // vender el Estándar con Stripe desde la app. Donde iOS no enseña nada, Android dice SIN
 // enlace dónde se contrata, que Google sí permite. En iOS y en la web no cambia nada.
 const ES_ANDROID_NATIVO = ES_NATIVO && !ES_IOS_NATIVO;
@@ -1476,14 +1701,20 @@ const RACION_FRACCIONES = [[0.25,"¼"],[0.33,"⅓"],[0.5,"½"],[0.67,"⅔"],[0.7
 // ingrediente. 1.468 de 6.815 salidas del recetario se contradecían.
 // Se alinea la app AL GENERADOR, no al revés: así ni los planes ya guardados en
 // weekly_plans ni los PDF ya enviados cambian un solo número.
-// La granularidad de 5 g NO se toca (§7): solo se decide igual el empate.
+// La granularidad de 5 g NO se toca (§7) por ENCIMA de 7,5 g/ml: solo se decide
+// igual el empate. Por DEBAJO, un decimal (PEND-2026-328, 3-oct-2026, por orden de
+// Alejandro): «¼ cucharadita de sal (1,5 g)» salía «(5 g)» y 1 g de aceite «5 g»
+// (174 recetas, 425 casos). Igual que `_fmt_cantidad` del generador.
 const racionRedondeo = (x) => {
   const f=Math.floor(x), d=x-f;
   if(Math.abs(d-0.5)>1e-9) return Math.round(x);
   return (f%2===0)? f : f+1;
 };
 const racionFmtCantidad = (v, esPeso) => {
-  if(esPeso){ return String(Math.max(5, racionRedondeo(v/5)*5)); }
+  if(esPeso){
+    if(v < 7.5) return String(Math.max(0.1, racionRedondeo(v*10)/10));
+    return String(Math.max(5, racionRedondeo(v/5)*5));
+  }
   v = racionRedondeo(v*4)/4; // unidades sueltas: a cuartos (2.1 → 2, 1.3 → 1 ¼)
   const ent = Math.floor(v); const resto = v - ent;
   for(const [f,s] of RACION_FRACCIONES){ if(Math.abs(resto-f)<=0.06) return ent? `${ent} ${s}` : s; }
@@ -1964,6 +2195,82 @@ const sbDirect = async (method, path, body) => {
     try { data = await r.json(); } catch {}
     return { ok: r.ok, status: r.status, data };
   } catch { return { ok: false, status: 0, data: null }; }
+};
+
+// ─── «Pregúntale a Bo»: el registro es SOLO alta ──────────────────────────────
+// sbDirect pide «resolution=merge-duplicates» en todo POST (un upsert), y eso exige
+// permiso y regla de ACTUALIZAR, que bo_registro no da a propósito: la base contestaba
+// 401 a cada escritura (medido el 2-oct-2026 en la cuenta de Alejandro, MAESTRO-2026-753).
+// Sin cola offline: una pregunta que no llega se le dice al paciente y se queda en su caja.
+// 07. App GBH/bo_prueba_vivo.py lee BO_PREFER de aquí y lo prueba contra la base real.
+const BO_PREFER = "return=minimal";
+const boRegistrar = async (fila) => {
+  try{
+    const r = await fetch(`${SB}/rest/v1/bo_registro`, { method:"POST", headers: gbhHeaders({ "Prefer": BO_PREFER }), body: JSON.stringify(fila) });
+    return { ok: r.ok, status: r.status };
+  } catch { return { ok: false, status: 0 }; }
+};
+// «Pregúntale a Bo» pide una consulta (3-oct-2026, BRIEF §18, parte A de Alejandro): la solicitud
+// queda en consulta_solicitudes (solo alta y lectura propias, como bo_registro: BO_PREFER) y
+// Alejandro la ve en la matinal; la hora la elige el paciente en el Calendly.
+const boPedirConsulta = async (pid, preferencia) => {
+  try{
+    const r = await fetch(`${SB}/rest/v1/consulta_solicitudes`, { method:"POST", headers: gbhHeaders({ "Prefer": BO_PREFER }),
+      body: JSON.stringify({ profile_id: pid, preferencia }) });
+    return { ok: r.ok, status: r.status };
+  } catch { return { ok: false, status: 0 }; }
+};
+// «Pregúntale a Bo» cambia la configuración del ESTÁNDAR (3-oct-2026, BRIEF §19, orden de Alejandro):
+// solo lo que el paciente ya cambia en «Configura tu plan» y con sus MISMOS valores (las DIETAS y
+// PATRONES_OPC de PlanConfig, que lee el generador). El upsert de sbDirect solo pisa los campos enviados
+// (como la calculadora, ≈6498). Los alimentos que no quiere van a patient_config.notas con
+// leerDescartes/escribirDescartes, como «Alimentos que no quieres». Se aplica en la próxima programación.
+const BO_DIETAS = ["Simple", "Vegetariana", "Vegana", "Celíaco", "Cetogénica", "Descarga"];
+const BO_PATRONES = { "1": "Todo igual (LMXJVSD)", "3": "3+2+2 (LXV/MJ/SD)", "4": "Estándar (LJ/MS/XV/D)", "4_seguidos": "Alta repetición (LM/XJ/VS/D)" };
+const boGuardarConfig = async (pid, cambio = {}) => {
+  if (!pid) return { ok: false };
+  const fila = { profile_id: pid };
+  if (cambio.tipo_dieta) { if (!BO_DIETAS.includes(cambio.tipo_dieta)) return { ok: false }; fila.tipo_dieta = cambio.tipo_dieta; }
+  if (cambio.menus) { if (!BO_PATRONES[cambio.menus]) return { ok: false }; fila.patron_dias = BO_PATRONES[cambio.menus]; }
+  if (cambio.excluir) {
+    const nombre = String(cambio.excluir).replace(/[.\n]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
+    if (!nombre) return { ok: false };
+    const g = await sbDirect("GET", `patient_config?profile_id=eq.${pid}&select=notas&limit=1`);
+    if (!g.ok) return { ok: false };
+    const notas = (Array.isArray(g.data) && g.data[0] && g.data[0].notas) || "";
+    const { lista } = leerDescartes(notas);
+    if (!lista.some((x) => String(x.nombre).toLowerCase() === nombre.toLowerCase())) lista.push({ nombre, tipo: "gusto" });
+    fila.notas = escribirDescartes(notas, lista);
+  }
+  if (Object.keys(fila).length === 1) return { ok: false };
+  const r = await sbDirect("POST", "patient_config?on_conflict=profile_id", fila);
+  return { ok: !!(r && r.ok), status: r && r.status };
+};
+// «Pregúntale a Bo», fase 2 (2-oct-2026, BRIEF §16): escribir con IA. El servidor (gbh_bo.py en
+// Railway) saca al paciente de su sesión, mira los interruptores (bo_activo, bo_ia_activo), el
+// permiso (bo_ia_ok) y la edad, y CLASIFICA la frase; la IA no redacta nada que vea el paciente.
+// Al servidor solo va la sesión (X-GBH-Sesion), nunca la clave de Supabase.
+const boIA = {
+  estado: async () => {
+    const s = getSesion(); if(!s?.token) return { ia:false, motivo:"sin_sesion" };
+    try{ const r = await fetch(`${GBH_SERVER_URL}/bo/estado`, { method:"POST", headers:{ "X-GBH-Sesion": s.token } });
+         return r.ok ? await r.json() : { ia:false, status:r.status }; }
+    catch { return { ia:false, motivo:"red" }; }
+  },
+  entender: async (cuerpo) => {
+    const s = getSesion(); if(!s?.token) return { ok:false, status:401 };
+    try{ const r = await fetch(`${GBH_SERVER_URL}/bo/entender`, { method:"POST", headers:{ "Content-Type":"application/json", "X-GBH-Sesion": s.token }, body: JSON.stringify(cuerpo) });
+         let data = null; try{ data = await r.json(); }catch{}
+         return { ok:r.ok, status:r.status, data }; }
+    catch { return { ok:false, status:0 }; }
+  },
+};
+// El permiso del paciente (Apple 5.1.2(i), RGPD): cuándo aceptó que su frase vaya a la IA.
+const boIAConsentir = async (pid) => {
+  if(!pid) return false;
+  const r = await sbDirect("PATCH", `profiles?id=eq.${pid}`, { bo_ia_ok: new Date().toISOString() });
+  if(r.ok){ try{ const p = lsGet(`gbh:p:${pid}`, null); if(p) lsSet(`gbh:p:${pid}`, { ...p, bo_ia_ok: new Date().toISOString() }); }catch{} }
+  return !!r.ok;
 };
 
 // Escritura best-effort de weekly_state: si la columna aún no existe (SQL
@@ -5075,10 +5382,13 @@ function getBoEstadoInicio(streak, dietDone, allDone, sleepDone, hora){
 }
 
 // ─── Speech bubble ─────────────────────────────────────────────────────────
-function Bubble({msg}){
+// `onClick` y `pista` solo llegan con Bo encendido (profiles.bo_activo): el bocadillo abre
+// «Pregúntale a Bo». Bo en sí NO se toca: sus 5 toques son la puerta de administración.
+function Bubble({msg,onClick,pista}){
   return(
-    <div style={{background:T.cr,borderRadius:22,padding:"11px 18px",maxWidth:230,position:"relative",boxShadow:"0 6px 20px rgba(0,0,0,0.45)",border:`3px solid ${T.au1}`,animation:"popIn 0.4s cubic-bezier(0.34,1.56,0.64,1)"}}>
+    <div onClick={onClick} role={onClick?"button":undefined} data-bo-bocadillo={onClick?"":undefined} style={{background:T.cr,borderRadius:22,padding:"11px 18px",maxWidth:230,position:"relative",boxShadow:"0 6px 20px rgba(0,0,0,0.45)",border:`3px solid ${T.au1}`,animation:"popIn 0.4s cubic-bezier(0.34,1.56,0.64,1)",cursor:onClick?"pointer":"default"}}>
       <p style={{fontSize:13,fontWeight:800,color:"#2A1800",lineHeight:1.45,textAlign:"center",margin:0,fontFamily:"'Nunito',sans-serif"}}>{msg}</p>
+      {pista&&<p style={{fontSize:11,fontWeight:900,color:"#7A5200",lineHeight:1.3,textAlign:"center",margin:"5px 0 0",fontFamily:"'Nunito',sans-serif"}}>{pista}</p>}
       <div style={{position:"absolute",bottom:-17,left:"50%",transform:"translateX(-50%)",width:0,height:0,borderLeft:"13px solid transparent",borderRight:"13px solid transparent",borderTop:`17px solid ${T.au1}`}}/>
       <div style={{position:"absolute",bottom:-12,left:"50%",transform:"translateX(-50%)",width:0,height:0,borderLeft:"10px solid transparent",borderRight:"10px solid transparent",borderTop:`12px solid ${T.cr}`}}/>
     </div>
@@ -8363,6 +8673,18 @@ function GBHApp(){
     }catch{ return "landing"; }
   });
   const [tab,     setTab]     = useState("home");
+  // 6-oct-2026 (PEND-2026-353): la barra tiene 5 pestañas. Peso, Objetivo y Ranking son vistas de «progreso»;
+  // Consulta vive en «tu». irA() traduce los destinos de siempre (banner de pesaje, tutorial, botones).
+  const [progVista,setProgVista]=useState("peso");
+  const [suplAbierta,setSuplAbierta]=useState(false);   // 💊 Suplementación, encima de Plan
+  const irA=(d)=>{
+    if(d==="peso"||d==="weight"){ setProgVista("peso"); setTab("progreso"); }
+    else if(d==="objetivo"){ setProgVista("objetivo"); setTab("progreso"); }
+    else if(d==="ranking"){ setProgVista("ranking"); setTab("progreso"); }
+    else if(d==="consulta"){ setTab("tu"); }
+    else if(d==="supl"){ setTab("plan"); setSuplAbierta(true); }
+    else setTab(d);
+  };
   const [lang,    setLang]    = useState(()=>lsGet("gbh:lang","es"));
   const [muted,   setMuted]   = useState(()=>lsGet("gbh:mute",false));
   const sfx = (name,...args) => { if(!muted){ SFX[name]?.(...args); if(HAPTIC_DE_SFX[name]) haptic(HAPTIC_DE_SFX[name]); } };
@@ -8508,6 +8830,12 @@ function GBHApp(){
   // Una cuenta sin PIN NO lo crea aquí (bastaría saber su correo para quedarse con
   // ella): lo pide con «¿Has olvidado tu PIN?», que lo manda al correo registrado.
   const aPinPide = SESION_OBLIGATORIA || aPinNeed;
+  // 2-oct-2026 (MAESTRO-2026-754, orden de Alejandro: «es un fallo importante que pida PIN
+  // sin haberlo metido»): una cuenta SIN PIN no ve una caja de PIN que no puede rellenar,
+  // sino una tarjeta con un botón para pedirlo al correo (el mismo camino del reloj).
+  // «Ya me ha llegado el PIN» enseña la caja.
+  const [pinYaLlego, setPinYaLlego] = useState(false);
+  const aSinPin = SESION_OBLIGATORIA && !aPinNeed && !pinYaLlego;
   const [pinPrompt,setPinPrompt]= useState(false);  // modal "crea tu PIN"
   const [pinV1,setPinV1]=useState(""); const [pinV2,setPinV2]=useState("");
   const [pinBusy,setPinBusy]=useState(false); const [pinSetErr,setPinSetErr]=useState("");
@@ -8947,7 +9275,7 @@ function GBHApp(){
     const refrescar=async()=>{
       if(!navigator.onLine||document.hidden) return;
       try{
-        let fresh=await sbReq("GET",`profiles?id=eq.${profile.id}&select=plan,gems,xp,shields,target_kcal,trial_ends_at,plan_until,avisos,avisos_activos,pasos_movil_activo&limit=1`);
+        let fresh=await sbReq("GET",`profiles?id=eq.${profile.id}&select=plan,gems,xp,shields,target_kcal,trial_ends_at,plan_until,avisos,avisos_activos,pasos_movil_activo,bo_activo&limit=1`);
         if(fresh===null){ // columna trial_ends_at aún sin migrar → select clásica
           fresh=await sbReq("GET",`profiles?id=eq.${profile.id}&select=plan,gems,xp,shields,target_kcal&limit=1`);
         }
@@ -8973,12 +9301,15 @@ function GBHApp(){
           // Pasos del móvil (30-sep-2026): solo el interruptor del operador. profiles.pasos_movil
           // lo escribe la app y no se relee (la copia del móvil es la más nueva).
           const pasosActNew = ('pasos_movil_activo' in f) ? (f.pasos_movil_activo===true) : prev.pasos_movil_activo;
+          // «Pregúntale a Bo» (2-oct-2026): el interruptor del operador también en caliente.
+          const boActNew = ('bo_activo' in f) ? (f.bo_activo===true) : prev.bo_activo;
           // Solo actualizar si algo cambió, para no re-renderizar de más
           // (incluidas las fechas, para que el NULL remoto se propague en caliente)
           if(prev.plan===f.plan && prev.gems===f.gems && prev.xp===f.xp
              && prev.trial_ends_at===trialNew && prev.plan_until===untilNew
              && prev.avisos_activos===avisosActNew
              && prev.pasos_movil_activo===pasosActNew
+             && prev.bo_activo===boActNew
              && JSON.stringify(prev.avisos??null)===JSON.stringify(avisosNew??null)) return prev;
           const merged={...prev,
             plan:f.plan??prev.plan, gems:f.gems??prev.gems,
@@ -8988,7 +9319,8 @@ function GBHApp(){
             plan_until:untilNew,
             avisos_activos:avisosActNew,
             avisos:avisosNew,
-            pasos_movil_activo:pasosActNew};
+            pasos_movil_activo:pasosActNew,
+            bo_activo:boActNew};
           lsSet(`gbh:p:${prev.id}`, merged);
           return merged;
         });
@@ -9351,6 +9683,23 @@ function GBHApp(){
   const [boPersonalidad,setBoPersonalidad]=useState("normal");
   const [zonaJuego,setZonaJuego]=useState(false);
   const [cafeinaAbierta,setCafeinaAbierta]=useState(false);   // calculadora de cafeína a pantalla completa
+  const [creatinaAbierta,setCreatinaAbierta]=useState(false);   // calculadora de creatina a pantalla completa (fase 1, 5-oct-2026)
+  const [creatinaDatos,setCreatinaDatos]=useState({tipoDieta:null,sumaPliegues:null});
+  // Al abrirla se leen los dos datos que la pantalla no puede pedir (no tiene sbReq): la última toma COMPLETA de los 7
+  // pliegues y, en estándar, la dieta. Si fallan, la pantalla estima el % graso con el IMC y pregunta la dieta.
+  const abrirCreatina=()=>{
+    setCreatinaAbierta(true);
+    if(!profile?.id) return;
+    const PLI=["pectoral","midaxilar","triceps","subescapular","abdominal","suprailiaco","muslo_pl"];
+    sbReq("GET",`body_measurements?profile_id=eq.${profile.id}&select=fecha,${PLI.join(",")}&order=fecha.desc,created_at.desc&limit=20`)
+      .then(rows=>{ const r=(Array.isArray(rows)?rows:[]).find(x=>PLI.every(k=>x[k]!=null));
+                    setCreatinaDatos(d=>({...d,sumaPliegues:r?PLI.reduce((s,k)=>s+Number(r[k]),0):null})); })
+      .catch(()=>{});
+    if(profile.plan==="standard")
+      sbReq("GET",`patient_config?profile_id=eq.${profile.id}&select=tipo_dieta&limit=1`)
+        .then(rows=>{ const row=Array.isArray(rows)?rows[0]:null; setCreatinaDatos(d=>({...d,tipoDieta:row?.tipo_dieta??null})); })
+        .catch(()=>{});
+  };
   const [panelBo,setPanelBo]=useState(false);
   const [partidasRestantes,setPartidasRestantes]=useState(3);
   const partidaEnCursoRef=useRef(false);  // hay partida pagada sin registrar (anti-exploit de la X)
@@ -9453,8 +9802,8 @@ function GBHApp(){
   // El tour lleva de la mano: cada paso fuerza su pestaña real
   useEffect(()=>{
     if(!tutoPaso) return;
-    const destino={B1:'home',B2:'progreso',B3:'plan',B4:'plan',B5:'weight',B6:'receta',B7:'consulta',B8:'ranking',B9:'home'}[tutoPaso.slice(0,2)];
-    if(destino) setTab(destino);
+    const destino={B1:'home',B2:'objetivo',B3:'plan',B4:'plan',B5:'peso',B6:'receta',B7:'consulta',B8:'ranking',B9:'home'}[tutoPaso.slice(0,2)];
+    if(destino) irA(destino);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[tutoPaso]);
   // Pasos que se completan con la acción real observada en el estado
@@ -10335,7 +10684,7 @@ function GBHApp(){
     setAuthErr("");
     // Sistema SIN contraseñas: solo miramos si el email ya tiene cuenta para
     // recuperarla (modo "returning" = entra directo) o es nuevo (pide datos).
-    if(emailChkLast.current !== em){ setAPin(""); emailChkLast.current = em; }
+    if(emailChkLast.current !== em){ setAPin(""); setPinYaLlego(false); emailChkLast.current = em; }
     const localId = lsGet(`gbh:em:${em}`, null);
     const localP  = localId ? lsGet(`gbh:p:${localId}`, null) : null;
     // Solo confiamos en la copia local si YA sabe si hay PIN (cachés antiguas
@@ -10344,6 +10693,16 @@ function GBHApp(){
       setAName(localP.name || "");
       setAPinNeed(localP.pin_set);
       setAuthMode("returning");
+      // 2-oct-2026 (MAESTRO-2026-754): con la sesión obligatoria, un «false» local se
+      // vuelve a mirar en el servidor (el PIN puede habérsele creado después), pero SIN
+      // pasar por "checking": quitar la tarjeta en el blur se comía el toque de sus botones.
+      if(localP.pin_set || !SESION_OBLIGATORIA) return;
+      const rs = await sbPinRpc("gbh_buscar_cuenta", { p_email: em });
+      if(seq !== emailChkSeq.current) return;
+      if(rs && typeof rs==="object" && rs.id && rs.pin_set===true){
+        setAPinNeed(true);
+        lsSet(`gbh:p:${localP.id}`, {...localP, pin_set:true});
+      }
       return;
     }
     setAuthMode("checking");
@@ -10584,6 +10943,11 @@ function GBHApp(){
           return;
         }
       }
+      // 2-oct-2026 (MAESTRO-2026-754): quien ha entrado con PIN TIENE PIN, aunque la copia
+      // local diga pin_set:false (cuentas a las que se les creó en el servidor). Sin esto,
+      // enterApp abre «Protege tu cuenta», gbh_set_pin contesta 'exists' y el PIN tecleado
+      // ahí se da por guardado sin estarlo.
+      if(aPinPide && perfil?.id && perfil.pin_set!==true){ perfil = {...perfil, pin_set:true}; lsSet(`gbh:p:${perfil.id}`, perfil); }
       await enterApp(perfil);
       return;
     }
@@ -11146,6 +11510,7 @@ function GBHApp(){
   // como mostrado y lo enseña la próxima vez.
   const [espejoDia,setEspejoDia]=useState(null);          // [{id,texto,tono}] | null
   const [planVista,setPlanVista]=useState(null);          // vista inicial que PlanTab debe abrir
+  const [boInicio,setBoInicio]=useState(false);           // «Pregúntale a Bo» abierto desde el bocadillo de Inicio
   // Ref y no deps: los pop-ups no deben reiniciar el temporizador del espejo,
   // solo consultarse en el instante de mostrarlo (mismo criterio que avisoRacha).
   const espejoPopupsRef=useRef(false);
@@ -11362,8 +11727,10 @@ function GBHApp(){
   // Lo que enseña la misión: nunca menos de lo guardado (lo apuntado a mano no se pierde).
   const pasosVista = pasosMovil.estado==="vivo" ? Math.max(steps, pasosMovil.total||0) : steps;
 
-  const saveW=async(isEdit=false)=>{
-    const val=parseFloat(wInput);if(!puedePesarseHoy()||isNaN(val)||val<20||val>300)return;
+  // El pesaje con un valor dado. Lo usan la pestaña Peso (saveW) y «Pregúntale a Bo» (3-oct-2026,
+  // BRIEF §18): la misma regla para los dos, y {ok} para que Bo sepa qué decir.
+  const guardarPeso=async(val,isEdit=false)=>{
+    if(!puedePesarseHoy()||isNaN(val)||val<20||val>300)return {ok:false,motivo:"ventana"};
     // El pesaje es por VENTANA: si ya hay uno en la ventana en curso (p.ej. el sábado y hoy
     // es domingo), editamos esa misma fila —no creamos otra— y conservamos su fecha real.
     // El pesaje del miércoles es otra ventana y otra fila.
@@ -11372,7 +11739,7 @@ function GBHApp(){
     const alreadyLogged=!!existing;
     const nw=weights.filter(w=>w.date!==targetDate);
     nw.push({date:targetDate,weight:val});nw.sort((a,b)=>a.date>b.date?1:-1);
-    setWeights(nw);lsSet(`gbh:weights:${profile.id}`,nw);setWInput("");
+    setWeights(nw);lsSet(`gbh:weights:${profile.id}`,nw);
     // on_conflict → editar sobrescribe la fila (profile_id+log_date) en vez de duplicarla.
     await sbReq("POST","weight_logs?on_conflict=profile_id,log_date",{profile_id:profile.id,log_date:targetDate,weight_kg:val});
     // Solo dar XP/gemas la primera vez, no en ediciones
@@ -11382,6 +11749,12 @@ function GBHApp(){
       if(nw.length>=4){const l4=nw.slice(-4).map(w=>w.weight);const ma=l4.reduce((a,b)=>a+b,0)/4;if(val<ma){setConfetti(true);setTimeout(()=>setConfetti(false),2400);showT({icon:"📉",title:"¡Tendencia bajando!",sub:"La línea va en la dirección correcta 💚"});}}
       await chkBadges(streak,nw,badges);
     }
+    return {ok:true};
+  };
+  const saveW=async(isEdit=false)=>{
+    const val=parseFloat(wInput);if(!puedePesarseHoy()||isNaN(val)||val<20||val>300)return;
+    setWInput("");
+    await guardarPeso(val,isEdit);
     // Tras guardar: ir directamente a la gráfica (modo vista)
     setWeightMode("chart");
   };
@@ -11889,7 +12262,7 @@ function GBHApp(){
   `;
 
   // Cargar ranking cuando se activa la pestaña
-  useEffect(()=>{ if(tab==="ranking") loadRanking(); },[tab]);
+  useEffect(()=>{ if(tab==="progreso"&&progVista==="ranking") loadRanking(); },[tab,progVista]);
   useEffect(()=>{ if(tab==="receta"&&!dailyRecipe&&!recipeLoading) fetchDailyRecipe(); },[tab]);
   useEffect(()=>{ if(tab==="receta"){ setRecipeView("menu"); setCompletoCat(null); setBusqTexto(""); setBusqResults(null); setBusqLoading(false); } },[tab]);
   // Cuenta de recetas por categoría (consulta ligera: solo tipo+categoria, una vez).
@@ -12277,14 +12650,34 @@ function GBHApp(){
             <div>
               <div style={{fontSize:13,fontWeight:900,color:T.g2}}>{t("welcomeBack",{n:aName.split(" ")[0]})}</div>
               <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:2}}>
-                {aPinPide ? t(aPinNeed ? "pinEnterHint" : "pinSinPinHint") : (lang==="en"?"Tap below to enter":"Pulsa abajo para entrar")}
+                {aPinPide ? t(aSinPin ? "pinSinPinHint" : "pinEnterHint") : (lang==="en"?"Tap below to enter":"Pulsa abajo para entrar")}
               </div>
             </div>
           </div>
         )}
 
+        {/* ── Cuenta SIN PIN: botón para pedirlo al correo, sin caja (MAESTRO-2026-754) ── */}
+        {authMode==="returning"&&aSinPin&&(
+          <div style={{marginBottom:6,textAlign:"center"}}>
+            <div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,marginBottom:14}}>
+              {t("pinSinPinExpl",{e:aEmail.trim().toLowerCase()})}
+            </div>
+            <a href={`mailto:${GBH_EMAIL}?subject=${encodeURIComponent("He olvidado mi PIN — GBH Nutrición")}&body=${encodeURIComponent("Hola Alejandro, mi cuenta de la app aún no tiene PIN y necesito uno para entrar. Mi correo es: "+aEmail.trim().toLowerCase())}`}
+              style={{display:"block",boxSizing:"border-box",width:"100%",padding:"17px 20px",borderRadius:18,border:`3px solid ${T.g3}`,
+                background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:T.t1,fontSize:17,fontWeight:900,
+                boxShadow:`0 6px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif",textDecoration:"none",marginBottom:14}}>
+              {t("pinSinPinBtn")}
+            </a>
+            <button onClick={()=>{ setPinYaLlego(true); setAuthErr(""); }}
+              style={{background:"none",border:"none",padding:4,cursor:"pointer",fontSize:12,color:T.t2,
+                fontFamily:"'DM Sans',sans-serif",textDecoration:"underline"}}>
+              {t("pinYaLlego")}
+            </button>
+          </div>
+        )}
+
         {/* ── PIN de acceso: la cuenta lo tiene → pedirlo antes de entrar ── */}
-        {authMode==="returning"&&aPinPide&&(
+        {authMode==="returning"&&aPinPide&&!aSinPin&&(
           <div style={{marginBottom:14}}>
             <div style={{fontSize:10,color:T.au1,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:900,marginBottom:8}}>{t("pinLabel")}</div>
             <input type="password" inputMode="numeric" pattern="[0-9]*" maxLength={6} value={aPin}
@@ -12342,6 +12735,7 @@ function GBHApp(){
           const isReturning = authMode==="returning";
           // El alta nueva vive en la conversación con Bo: aquí solo se entra
           if(!isReturning && authMode!=="migrate") return null;
+          if(isReturning && aSinPin) return null;   // sin PIN: el botón es el del correo
           const dis = loading || authMode==="checking" || !aEmail.trim() || (isReturning && aPinPide && aPin.length<4);
           const label = loading ? t("verifying") : t("recoverAccount");
           return(
@@ -12916,7 +13310,14 @@ function GBHApp(){
           la ✕ vuelve a ella. Vive aquí fuera, y no dentro de la pestaña, porque .tab-in anima con transform
           y un position:fixed dentro de un transform deja de ser pantalla completa.
           Sin sbReq a propósito: 0 llamadas a Supabase. */}
+      {suplAbierta&&(
+        <div data-supl-pantalla style={{position:"fixed",inset:0,zIndex:9000,background:T.bg,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:"14px 18px 40px",boxSizing:"border-box"}}>
+          <button onClick={()=>{ sfx("tap"); setSuplAbierta(false); }} style={{background:"none",border:"none",color:T.au1,fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif",cursor:"pointer",padding:"6px 0",marginBottom:4}}>‹ Plan</button>
+          <Suplementacion t={t} T={T} sfx={sfx} onAbrir={id=>{ if(id==="cafeina") setCafeinaAbierta(true); if(id==="creatina") abrirCreatina(); }}/>
+        </div>
+      )}
       {cafeinaAbierta&&<Cafeina profile={profile} weights={weights} medicacion={suplPlan} lang={lang} t={t} T={T} sfx={sfx} onClose={()=>setCafeinaAbierta(false)}/>}
+      {creatinaAbierta&&<Creatina profile={profile} weights={weights} medicacion={suplPlan} tipoDieta={creatinaDatos.tipoDieta} sumaPliegues={creatinaDatos.sumaPliegues} lang={lang} t={t} T={T} sfx={sfx} onClose={()=>setCreatinaAbierta(false)}/>}
       {zonaJuego&&(
         <div style={{position:"fixed",inset:0,zIndex:9000,background:T.bg,display:"flex",flexDirection:"column"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"calc(14px + env(safe-area-inset-top, 0px)) 16px 8px"}}>
@@ -13278,7 +13679,7 @@ function GBHApp(){
           position:"relative",
         }}>
           {/* Zona clickable */}
-          <div onClick={()=>{setTab("weight");setWeightMode("input");}}
+          <div onClick={()=>{irA("peso");setWeightMode("input");}}
             style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}}>
             <span style={{fontSize:24}}>⚖️</span>
             <div>
@@ -13417,54 +13818,8 @@ function GBHApp(){
           {/* Mascot + bubble con diana y mute a los lados */}
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,paddingTop:4,paddingBottom:18}}>
 
-            {/* Fila: 🎯 | Bocadillo | 🔇 */}
+            {/* Fila: el bocadillo de Bo (6-oct-2026: la diana y el sonido ya no van a los lados) */}
             <div style={{display:"flex",alignItems:"center",width:"100%",gap:8,paddingLeft:4,paddingRight:4}}>
-
-              {/* ── Diana desafíos (izquierda) ── */}
-              {(()=>{
-                const weekChs    = getWeekChallenges();
-                const allClaimed = claimedChallenges.length>=weekChs.length;
-                const anyDone    = weekChs.some(ch=>{
-                  const prog=getChallengeProgress(ch,logs,weights,xp,streak);
-                  return prog>=ch.goal && !claimedChallenges.includes(ch.id);
-                });
-                const claimCount = weekChs.filter(ch=>{
-                  const prog=getChallengeProgress(ch,logs,weights,xp,streak);
-                  return prog>=ch.goal && !claimedChallenges.includes(ch.id);
-                }).length;
-                return(
-                  <div style={{position:"relative",flexShrink:0}}>
-                    <button
-                      onClick={()=>setShowChallenges(true)}
-                      style={{
-                        width:44,height:44,borderRadius:16,
-                        background:anyDone
-                          ?'linear-gradient(135deg,'+T.au1+','+T.au2+')'
-                          :allClaimed
-                            ?alpha(T.g1,0.18)
-                            :"linear-gradient(180deg, rgba(255,208,60,0.38), rgba(150,105,0,0.34))",
-                        border:anyDone?`2px solid ${T.au3}`:allClaimed?`1.5px solid ${T.g3}`:`1.5px solid ${alpha(T.au1,0.55)}`,
-                        boxShadow:anyDone?`0 4px 0 ${T.au3},0 0 14px ${T.au1}60`:allClaimed?`0 3px 0 ${T.g3}`:"0 3px 0 rgba(110,78,0,0.9)",
-                        cursor:"pointer",
-                        display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:1,
-                        animation:anyDone?"pulse 1.5s ease-in-out infinite":"none",
-                        transition:"all 0.3s",
-                      }}>
-                      <span style={{fontSize:20,lineHeight:1}}>{allClaimed?"✓":anyDone?"❕":"🎯"}</span>
-                    </button>
-                    {anyDone&&claimCount>0&&(
-                      <div style={{
-                        position:"absolute",top:-5,right:-5,
-                        width:18,height:18,borderRadius:"50%",
-                        background:"#FF3B30",border:`2px solid ${T.bg}`,
-                        fontSize:10,fontWeight:900,color:T.t1,
-                        display:"flex",alignItems:"center",justifyContent:"center",
-                        fontFamily:"'Nunito',sans-serif",
-                      }}>{claimCount}</div>
-                    )}
-                  </div>
-                );
-              })()}
 
               {/* Bocadillo centrado */}
               <div style={{flex:1,display:"flex",justifyContent:"center"}}>
@@ -13474,25 +13829,14 @@ function GBHApp(){
                   const cs = (pj && pj.coletillas) || [];
                   // Coletilla del carácter de Bo, estable durante el día (sin parpadeos)
                   return cs.length ? base + "  " + cs[new Date().getDate() % cs.length] : base;
-                })()}/>
+                })()}
+                  onClick={boActivo(profile)?()=>{SFX.tap&&SFX.tap();setBoInicio(true);}:undefined}
+                  pista={boActivo(profile)?(enPrimeraSemana(profile)
+                    ?(lang==='en'?'💬 Shall I help you find something? Tap me':'💬 ¿Te ayudo a encontrar algo? Tócame')
+                    :(lang==='en'?'💬 Ask me':'💬 Pregúntame')):null}/>
               </div>
 
-              {/* ── Mute (derecha) ── */}
-              <button
-                onClick={()=>{ const nm=!muted; setMuted(nm); lsSet("gbh:mute",nm); if(!nm) SFX.tap(); }}
-                style={{
-                  flexShrink:0,
-                  width:44,height:44,borderRadius:16,
-                  background:"linear-gradient(180deg, rgba(255,208,60,0.38), rgba(150,105,0,0.34))",
-                  border:`1.5px solid ${alpha(T.au1,0.55)}`,
-                  cursor:"pointer",fontSize:20,
-                  display:"flex",alignItems:"center",justifyContent:"center",
-                  boxShadow:"0 3px 0 rgba(110,78,0,0.9)",
-                  transition:"all 0.2s",
-                }}>
-                {muted?"🔇":"🔊"}
-              </button>
-
+              
             </div>
 
             {/* 🐑 Bo — la mascota personalizable sustituye al avatar genérico */}
@@ -13512,31 +13856,36 @@ function GBHApp(){
            es decisión de la app (clave gbh:reducemotion), no del sistema. */
       `}</style>
             <div style={{position:"relative",width:"100%"}}>
-              {/* 🎮 bajo el botón de la diana (misma columna izquierda) */}
-              <button onClick={()=>{ cargarPartidasHoy(); setZonaJuego(true); }} title="Zona de juego"
-                style={{position:"absolute",left:0,top:2,zIndex:2,width:44,height:44,borderRadius:16,
-                  background:"linear-gradient(180deg, rgba(255,208,60,0.38), rgba(150,105,0,0.34))",
-                  border:`1.5px solid ${alpha(T.au1,0.55)}`,
-                  boxShadow:"0 3px 0 rgba(110,78,0,0.9)",cursor:"pointer",fontFamily:"inherit",padding:0,
-                  display:"flex",alignItems:"center",justifyContent:"center"}}>
-                <span style={{fontSize:20,lineHeight:1}}>🎮</span>
-              </button>
-              <div onClick={tocarBo} className={`sin-sel${boToque && !MOVIMIENTO_REDUCIDO() ? " bo-toque" : ""}`}
+                            <div onClick={tocarBo} className={`sin-sel${boToque && !MOVIMIENTO_REDUCIDO() ? " bo-toque" : ""}`}
                    style={{cursor:"pointer",display:"flex",justifyContent:"center"}}>
                 <Sheep estado={boToque ? "feliz" : boEstado} equipados={boEquipados} color={boColor} size={200}/>
               </div>
-              {/* Nombre de Bo + 🎨 pequeñito al lado */}
-              <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:7,marginTop:2}}>
-                <span style={{fontSize:12.5,fontWeight:900,color:T.t2}}>🐑 {boNombre}</span>
-                <button onClick={()=>setPanelBo(true)} title="Personalizar a tu oveja"
-                  style={{width:26,height:26,borderRadius:9,
-                    background:"linear-gradient(180deg, rgba(255,208,60,0.38), rgba(150,105,0,0.34))",
-                    border:`1.5px solid ${alpha(T.au1,0.55)}`,boxShadow:"0 2px 0 rgba(110,78,0,0.9)",
-                    cursor:"pointer",padding:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  <span style={{fontSize:13,lineHeight:1}}>🎨</span>
-                </button>
-              </div>
-            </div>
+              {/* Nombre de Bo en un chip y, al lado, 🎯 Retos y 🎮 Juegos (6-oct-2026, PEND-2026-353).
+                  Sustituye a los cuatro botones sueltos que rodeaban a Bo; el 🔊 vive ahora en «Tú». */}
+              {(()=>{
+                const weekChs=getWeekChallenges();
+                const allClaimed=claimedChallenges.length>=weekChs.length;
+                const claimCount=weekChs.filter(ch=>getChallengeProgress(ch,logs,weights,xp,streak)>=ch.goal&&!claimedChallenges.includes(ch.id)).length;
+                const anyDone=claimCount>0;
+                const chip=(key,onClick,icono,texto,vivo,aviso)=>(
+                  <button key={key} onClick={onClick} style={{position:"relative",display:"flex",alignItems:"center",gap:6,padding:"8px 13px",borderRadius:999,
+                    background:vivo?`linear-gradient(135deg,${T.au1},${T.au2})`:"linear-gradient(180deg, rgba(255,208,60,0.38), rgba(150,105,0,0.34))",
+                    border:vivo?`2px solid ${T.au3}`:`1.5px solid ${alpha(T.au1,0.55)}`,boxShadow:vivo?`0 3px 0 ${T.au3},0 0 12px ${T.au1}60`:"0 3px 0 rgba(110,78,0,0.9)",
+                    color:vivo?T.bgWood:T.t1,fontWeight:900,fontSize:12,fontFamily:"'Nunito',sans-serif",cursor:"pointer",
+                    animation:vivo?"pulse 1.5s ease-in-out infinite":"none",transition:"all 0.3s"}}>
+                    <span style={{fontSize:16,lineHeight:1}}>{icono}</span>{texto}
+                    {aviso>0&&<span style={{position:"absolute",top:-6,right:-6,width:18,height:18,borderRadius:"50%",background:"#FF3B30",border:`2px solid ${T.bg}`,fontSize:10,fontWeight:900,color:T.t1,display:"flex",alignItems:"center",justifyContent:"center"}}>{aviso}</span>}
+                  </button>
+                );
+                return(
+                  <div style={{display:"flex",justifyContent:"center",gap:8,flexWrap:"wrap",marginTop:6}}>
+                    {chip("retos",()=>setShowChallenges(true),allClaimed?"✓":"🎯",lang==='en'?'Challenges':'Retos',anyDone,claimCount)}
+                    {chip("juegos",()=>{ cargarPartidasHoy(); setZonaJuego(true); },"🎮",lang==='en'?'Games':'Juegos',false,0)}
+                    {chip("bo",()=>setPanelBo(true),"🎨",boNombre,false,0)}
+                  </div>
+                );
+              })()}
+                          </div>
           </div>
 
           <WeeklyXPGoal logs={logs} xp={xp}/>
@@ -13621,7 +13970,8 @@ function GBHApp(){
         </>}
 
         {/* ── WEIGHT ────────────────────────────────────────────────────────── */}
-        {tab==="weight"&&(
+        {tab==="progreso"&&<SelectorProgreso vista={progVista} setVista={v=>{sfx("tap");setProgVista(v);}} lang={lang} T={T}/>}
+        {tab==="progreso"&&progVista==="peso"&&(
           <>
             <SelectorMedidas vista={medidasVista} setVista={v=>{sfx("tap");setMedidasVista(v);}} lang={lang} T={T}/>
             {medidasVista==="cuerpo"
@@ -13743,7 +14093,7 @@ function GBHApp(){
 
         {/* ── ACHIEVEMENTS ──────────────────────────────────────────────────── */}
         {/* ── RANKING ──────────────────────────────────────────────────────── */}
-        {tab==="ranking"&&(()=>{
+        {tab==="progreso"&&progVista==="ranking"&&(()=>{
           const medal=["👑","🥈","🥉"];
           const medalColor=[T.moneda,"#C0C0C0","#CD7F32"];
 
@@ -13822,7 +14172,7 @@ function GBHApp(){
                       : t("rankFueraDesc",{d:DIAS_REGULARIDAD})}
                   </div>
                   {soyIrregular&&(
-                    <button onClick={()=>setTab("weight")} style={{marginTop:10,background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:"none",borderRadius:14,padding:"9px 20px",color:T.t1,fontWeight:900,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif",boxShadow:`0 3px 0 ${T.g3}`}}>
+                    <button onClick={()=>irA("peso")} style={{marginTop:10,background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:"none",borderRadius:14,padding:"9px 20px",color:T.t1,fontWeight:900,fontSize:12,cursor:"pointer",fontFamily:"'Nunito',sans-serif",boxShadow:`0 3px 0 ${T.g3}`}}>
                       {t("rankFueraCta")}
                     </button>
                   )}
@@ -14297,7 +14647,7 @@ function GBHApp(){
         })()}
 
 
-        {tab==="progreso"&&<div data-tuto="objetivo"><CalcTab weights={weights} profile={profile} setProfile={setProfile} lang={lang}/></div>}
+        {tab==="progreso"&&progVista==="objetivo"&&<div data-tuto="objetivo"><CalcTab weights={weights} profile={profile} setProfile={setProfile} lang={lang}/></div>}
         {avisoNuevoPlan&&(
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",zIndex:2500,display:"flex",alignItems:"flex-start",justifyContent:"center",overflowY:"auto",padding:"calc(14px + env(safe-area-inset-top, 0px)) 24px 24px"}}>
             <div style={{width:"100%",maxWidth:360,background:"linear-gradient(180deg,#1d3a14,#142a0e)",
@@ -14544,9 +14894,30 @@ function GBHApp(){
             onVerSeguimiento={espejoAbrirSeguimiento}
             onClose={()=>{sfx("tap");setEspejoDia(null);}}/>
         )}
-        {tab==="plan"&&<div data-tuto="plan-zona"><PlanTab profile={profile} lang={lang} hoyKey={hoyKey} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} descartadas={descartadas} setDescartadas={setDescartadas} showT={showT} sfx={sfx} t={t} setTab={setTab} onMealRegistered={onMealRegistered} vistaInicial={planVista} onVistaConsumida={()=>setPlanVista(null)} onTutoEvent={tutoEvento}/></div>}
-        {tab==="consulta"&&<ConsultaTab profile={profile} lang={lang} sfx={sfx}/>}
-        {tab==="supl"&&<Suplementacion t={t} T={T} sfx={sfx} onAbrir={id=>{ if(id==="cafeina") setCafeinaAbierta(true); }}/>}
+        {tab==="plan"&&<div data-tuto="plan-zona"><PlanTab onSupl={()=>setSuplAbierta(true)} profile={profile} lang={lang} hoyKey={hoyKey} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} descartadas={descartadas} setDescartadas={setDescartadas} showT={showT} sfx={sfx} t={t} setTab={setTab} onMealRegistered={onMealRegistered} vistaInicial={planVista} onVistaConsumida={()=>setPlanVista(null)} onTutoEvent={tutoEvento}/></div>}
+        {/* «Pregúntale a Bo» desde el bocadillo de Inicio (src/PreguntaBo.jsx). Las acciones
+            solo abren pestañas que ya existen; la escritura va a bo_registro sin cola (sbDirect). */}
+        {boInicio&&boActivo(profile)&&<PreguntaBo T={T} Sheep={Sheep} lang={lang} pid={profile?.id}
+          bo={{nombre:boNombre,color:boColor,equipados:boEquipados}}
+          ctx={{contexto:'inicio',plan:planBo(profile),puedePesar:puedePesarseHoy(),pesoVentana:(pesajeEnVentana(weights)||{}).weight??null}}
+          intro={enPrimeraSemana(profile)?(lang==='en'?'Shall I help you find something?':'¿Te ayudo a encontrar algo?'):null}
+          onAccion={async(a,extra)=>{                         // 3-oct-2026 (BRIEF §18): apuntar el peso y pedir consulta
+            if(a==='peso') return await guardarPeso(Number(extra&&extra.valor));
+            if(a==='consulta') return await boPedirConsulta(profile?.id,(extra&&extra.preferencia)||'cualquiera');
+            if(a==='config'&&planBo(profile)==='standard') return await boGuardarConfig(profile?.id,extra||{});   // BRIEF §19
+            return {ok:false}; }}
+          onAbrir={(d)=>{ if(d==='consulta'){ setTab('consulta'); return; }
+            if(d==='peso'){ setTab('weight'); return; }
+            if(d==='objetivo'){ setTab('progreso'); return; }
+            if(d==='calendly'){ window.open(GBH_CALENDLY,'_blank','noopener'); return; }
+            setTab('plan'); setPlanVista((d==='daily'||d==='lista'||d==='config')?d:null); }}
+          ia={{...boIA, consentir:()=>boIAConsentir(profile?.id)}}
+          onIr={(d)=>{ setTab('plan'); setPlanVista({vista:'daily', dia:d.dia, toma:d.toma, bo:d.bo}); }}
+          onRegistrar={boRegistrar}
+          onCerrar={()=>setBoInicio(false)}/>}
+        {tab==="tu"&&<TuTab profile={profile} lang={lang} sfx={sfx} T={T} lv={lv} xp={xp} streak={streak} badges={badges.length} userPhoto={userPhoto}
+          onPerfil={()=>setShowPhotoPicker(true)} avisosOn={avisosOn} onAvisos={()=>setShowAvisos(true)}
+          muted={muted} onMute={()=>{ const nm=!muted; setMuted(nm); lsSet("gbh:mute",nm); if(!nm) SFX.tap(); }} switchLang={switchLang}/>}
       </div>
 
       {/* ── BOTTOM NAV ────────────────────────────────────────────────────── */}
@@ -14860,7 +15231,62 @@ function TarjetaFisioterapia({profile,lang,sfx}){
 
 // ─── ConsultaTab — contacto con el nutricionista (exclusivo premium) ────────
 // ═══════════════════════════════════════════════════════════════════════════
-function ConsultaTab({profile,lang,sfx}){
+// ═══ PROGRESO y TÚ (6-oct-2026, PEND-2026-353 / MAESTRO-2026-857) ═══
+// La barra pasa de 8 pestañas deslizables (Consulta y Ranking quedaban tapadas a 375 px) a 5 fijas:
+// Inicio · Plan · Recetas · Progreso · Tú. Las pantallas son las mismas; cambian las puertas:
+// - Progreso agrupa Peso (la antigua pestaña Medidas), Objetivo (la calculadora) y Ranking con un selector.
+// - Tú lleva la tarjeta de perfil (abre la ficha de siempre), lo que vivía en Consulta (Premium, pareja,
+//   invitar) y los ajustes (avisos, sonidos, idioma, PIN y cuenta). El 🔊 que estaba junto a Bo vive aquí.
+// - Suplementación es una tarjeta de Plan que abre su pantalla encima (ver suplAbierta en App).
+function SelectorProgreso({vista,setVista,lang,T}){
+  const ops=[["peso","⚖️",lang==='en'?'Weight':'Peso'],["objetivo","🎯",lang==='en'?'Goal':'Objetivo'],["ranking","👑","Ranking"]];
+  return(
+    <div data-progreso={vista} style={{display:"flex",background:"rgba(255,255,255,0.07)",borderRadius:14,padding:3,margin:"6px 0 12px"}}>
+      {ops.map(([id,ic,tx])=>{ const a=vista===id; return(
+        <button key={id} data-vista={id} aria-current={a?"page":undefined} onClick={()=>{ if(!a) setVista(id); }}
+          style={{flex:1,padding:"9px 0",borderRadius:11,border:"none",cursor:"pointer",fontFamily:"'Nunito',sans-serif",fontWeight:900,fontSize:12.5,
+            background:a?T.g3:"transparent",color:a?T.t1:T.t2,boxShadow:a?"0 2px 6px rgba(0,0,0,0.4)":"none",transition:"all 0.18s"}}>
+          <span style={{marginRight:5}}>{ic}</span>{tx}
+        </button>); })}
+    </div>
+  );
+}
+function TuTab({profile,lang,sfx,T,lv,xp,streak,badges,userPhoto,onPerfil,avisosOn,onAvisos,muted,onMute,switchLang}){
+  const EN=lang==='en';
+  const fila=(icono,titulo,sub,onClick,derecha)=>(
+    <button onClick={()=>{ sfx&&sfx("tap"); onClick&&onClick(); }} style={{width:"100%",boxSizing:"border-box",display:"flex",alignItems:"center",gap:12,background:T.bgWood,border:`2px solid ${T.bW}`,borderRadius:16,padding:"12px 14px",marginBottom:8,textAlign:"left",cursor:"pointer",boxShadow:"0 3px 0 rgba(0,0,0,0.35)",fontFamily:"inherit"}}>
+      <span style={{fontSize:22,lineHeight:1,flexShrink:0}}>{icono}</span>
+      <span style={{flex:1,minWidth:0}}>
+        <span style={{display:"block",fontSize:14,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif"}}>{titulo}</span>
+        {sub&&<span style={{display:"block",fontSize:11.5,color:T.t2,marginTop:2,fontFamily:"'DM Sans',sans-serif"}}>{sub}</span>}
+      </span>
+      <span style={{color:T.au1,fontSize:18,fontWeight:900,flexShrink:0,fontFamily:"'Nunito',sans-serif"}}>{derecha||"›"}</span>
+    </button>
+  );
+  const seccion=(tx)=><div style={{fontSize:11,fontWeight:900,letterSpacing:"0.08em",textTransform:"uppercase",color:T.t2,margin:"14px 0 8px",fontFamily:"'Nunito',sans-serif"}}>{tx}</div>;
+  return(
+    <div data-tu style={{paddingBottom:24}}>
+      {/* Tarjeta de perfil: abre la ficha completa (foto, datos, idioma, PIN, cuenta), la misma que abre el avatar */}
+      <button onClick={()=>{ sfx&&sfx("tap"); onPerfil(); }} style={{width:"100%",boxSizing:"border-box",display:"flex",alignItems:"center",gap:14,background:T.bgCard,border:`2px solid ${T.bA}`,borderRadius:22,padding:"14px 16px",margin:"6px 0 4px",textAlign:"left",cursor:"pointer",fontFamily:"inherit"}}>
+        <UserAvatar size={60} photoB64={userPhoto} initials={profile?.name||"?"} borderColor={T.au1} frame={Math.floor(Math.min(lv.l,500)/100)||0}/>
+        <span style={{flex:1,minWidth:0}}>
+          <span style={{display:"block",fontSize:17,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{profile?.name||""}</span>
+          <span style={{display:"block",fontSize:12,color:T.t2,marginTop:3,fontFamily:"'DM Sans',sans-serif"}}>{translateLvName(lv.n,lang)} · Lv {lv.l} · {xp} XP · 🔥 {streak} · 🏅 {badges}</span>
+          <span style={{display:"block",fontSize:11,color:T.au1,marginTop:3,fontWeight:800,fontFamily:"'DM Sans',sans-serif"}}>{EN?'Profile, photo, language, PIN and account':'Perfil, foto, idioma, PIN y cuenta'}</span>
+        </span>
+        <span style={{color:T.au1,fontSize:20,fontWeight:900,fontFamily:"'Nunito',sans-serif"}}>›</span>
+      </button>
+      {/* Premium / consulta, pareja e invitar: lo que vivía en la pestaña Consulta, tal cual */}
+      <ConsultaTab profile={profile} lang={lang} sfx={sfx} enTu/>
+      {seccion(EN?'Settings':'Ajustes')}
+      {avisosOn&&fila("🔔",EN?'Notifications':'Avisos',EN?'Meals, water and weigh-in':'Comidas, agua y pesaje',onAvisos)}
+      {fila(muted?"🔇":"🔊",EN?'Sounds':'Sonidos',muted?(EN?'Off · tap to turn on':'Apagados · toca para encender'):(EN?'On · tap to mute':'Encendidos · toca para silenciar'),onMute,muted?"○":"●")}
+      {fila("🌐",EN?'Language':'Idioma',EN?'English · tap for Spanish':'Español · toca para inglés',()=>switchLang(EN?'es':'en'),EN?"EN":"ES")}
+      {fila("🔐",EN?'PIN and account':'PIN y cuenta',EN?'Change PIN, edit your data, delete account':'Cambiar el PIN, editar tus datos, borrar la cuenta',onPerfil)}
+    </div>
+  );
+}
+function ConsultaTab({profile,lang,sfx,enTu=false}){
   // Estado de la tarjeta de pareja, para abrir su plegable si hay invitación
   const [parejaEstado,setParejaEstado]=React.useState(null);
   const isPremium=profile?.plan==='premium';
@@ -14869,10 +15295,17 @@ function ConsultaTab({profile,lang,sfx}){
   const waMsgPremium = encodeURIComponent(lang==='en'
     ? `Hi! I'm ${profile?.name||''} and I'd like to go Premium (weekly follow-up and direct WhatsApp). Do you have a spot? 👑${profile?.referred_by?' I was invited — first month at €17.50 🎟️':''}`
     : `¡Hola! Soy ${profile?.name||''} y quiero pasar a Premium (seguimiento semanal y WhatsApp directo). ¿Tienes plaza? 👑${profile?.referred_by?' Vengo invitado — primer mes a 17,50 € 🎟️':''}`);
+  // Línea base de medición (6-oct-2026, PEND-2026-353): dos GET que solo hace esta pantalla y que el gateway de
+  // Supabase cuenta (`select=plan&id=eq` al mostrar la oferta Premium, una vez por montaje; `select=plan,referred_by`
+  // al tocar «Solicitar pasar a Premium»). Sin tabla nueva ni RPC: la misma lectura del perfil que la app ya hace.
+  React.useEffect(()=>{ try{ if(!isPremium&&profile?.id) sbDirect("GET",`profiles?select=plan&id=eq.${profile.id}&limit=1`).catch(()=>{}); }catch{}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+  const pingPremium=()=>{ try{ if(profile?.id) sbDirect("GET",`profiles?select=plan,referred_by&id=eq.${profile.id}&limit=1`).catch(()=>{}); }catch{} };
 
   if(!isPremium) return(
-    <div style={{padding:'48px 24px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:18}}>
-      <div style={{fontSize:56}}>📩</div>
+    <div style={{padding:enTu?'10px 0 8px':'48px 24px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:18}}>
+      {!enTu&&<div style={{fontSize:56}}>📩</div>}
       <div style={{fontSize:18,fontWeight:900,color:T.t1,lineHeight:1.3,fontFamily:"'Nunito',sans-serif"}}>
         {lang==='en'?'Premium service':'Servicio premium'}
       </div>
@@ -14942,7 +15375,7 @@ function ConsultaTab({profile,lang,sfx}){
       )}
       {/* CTA: solicitar pasar a Premium por WhatsApp (mismo estilo que el del plan) */}
       <a href={`https://wa.me/${GBH_WHATSAPP}?text=${waMsgPremium}`} target="_blank" rel="noopener noreferrer"
-        onClick={()=>sfx&&sfx("tap")}
+        onClick={()=>{ sfx&&sfx("tap"); pingPremium(); }}
         style={{marginTop:2,width:'100%',maxWidth:300,background:'linear-gradient(135deg,#25D366,#1DA851)',
           color:T.t1,fontWeight:900,fontSize:15,borderRadius:18,padding:'16px 20px',
           textDecoration:'none',boxShadow:'0 4px 0 #128C4B',fontFamily:"'Nunito',sans-serif",
@@ -16046,7 +16479,7 @@ function OverlayGenerando({lang}){
   );
 }
 
-function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,descartadas,setDescartadas,showT,sfx,t,setTab,onMealRegistered,vistaInicial,onVistaConsumida,onTutoEvent}){
+function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,descartadas,setDescartadas,showT,sfx,t,setTab,onMealRegistered,vistaInicial,onVistaConsumida,onTutoEvent,onSupl}){
   const isPremium=profile?.plan==='premium';
   const isStandard=profile?.plan==='standard';
   const tieneAcceso=isPremium||isStandard;
@@ -16063,7 +16496,13 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
   // se consume una vez y se limpia en el padre, para que la siguiente entrada
   // manual a Programación arranque en el menú de siempre.
   React.useEffect(()=>{
-    if(vistaInicial){ setView(vistaInicial); onVistaConsumida&&onVistaConsumida(); }
+    // 'config' (desde «Pregúntale a Bo»): la pantalla «Configura tu plan», solo del estándar.
+    // {vista:'daily', dia, toma, bo} (Bo con IA desde Inicio): esa comida, con el cambio ya preparado.
+    if(vistaInicial){
+      if(typeof vistaInicial==='object'){ setView('daily'); setBoNav({dia:vistaInicial.dia, toma:vistaInicial.toma, bo:vistaInicial.bo||null}); }
+      else if(vistaInicial==='config'){ if(isStandard) setConfigView(true); }
+      else setView(vistaInicial);
+      onVistaConsumida&&onVistaConsumida(); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[vistaInicial]);
   // ── Tour guiado: la lista de la compra vista de verdad avanza su paso ──────
@@ -16270,7 +16709,21 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
     if(toma && typeof onMealRegistered==='function') onMealRegistered(dateKey, meals);
   };
   const setEstadoComida = (toma,estado)=>{ if(!puedeRegistrar) return; const seSetea = regDia[selDateKey]?.meals?.[toma]!==estado; persistDia(selDateKey,{toma,estado}); sfx&&sfx('step'); onTutoEvent&&onTutoEvent('comida_marcada');
-    if(seSetea&&estado==='fuera') setHoja({toma,modo:'sustituir'}); else if(seSetea&&estado==='anadida') setHoja({toma,modo:'anadir'}); };   // al marcar: 🔄 pregunta qué comiste en vez de la receta; ➕ qué añadiste (las dos se cierran con «Ahora no»)
+    if(seSetea&&estado==='fuera') setHoja({toma,modo:'sustituir'}); else if(seSetea&&estado==='anadida') setHoja({toma,modo:'anadir'});   // al marcar: 🔄 pregunta qué comiste en vez de la receta; ➕ qué añadiste (las dos se cierran con «Ahora no»)
+    if(seSetea&&boActivo(profile)) avisoBoMomento(estado); };
+  // «Pregúntale a Bo»: al marcar ⏭️ o 🔄, el texto FIRMADO de ese momento, una vez al día (hoyKey,
+  // no el día que se marca), en un bocadillo que no bloquea. Sin fila firmada, no sale nada.
+  const [boMomento,setBoMomento] = React.useState(null);       // {texto, firma, tema} | null
+  const [boHoja,setBoHoja] = React.useState(false);            // «Pregúntale a Bo» desde la ficha de receta
+  const avisoBoMomento = (estado)=>{
+    const ctxB = {plan:planBo(profile)};
+    const f = filaMomento(estado, ctxB); if(!f) return;
+    let alm=null; try{ alm=window.localStorage; }catch(e){ alm=null; }
+    if(momentoVisto(alm, profile?.id, hoyKey)) return;
+    marcarMomentoVisto(alm, profile?.id, hoyKey);
+    setBoMomento({texto:textoTema(f, ctxB, lang), firma:firmaTema(f, ctxB), tema:f.id});
+    boRegistrar({profile_id:profile?.id,tipo:'uso',contexto:f.contexto[0],tema:f.id,resultado:'abierto'});
+  };
   // Kcal reales (fase 2): la hoja «¿Qué comiste?» — 'sustituir' (la cambié / comí fuera) o 'extras' (sobre cualquier estado).
   // Los ítems viajan con sus números dentro; el total se recalcula aquí con sumaItems y se guarda en meals_real[toma].
   const [hoja,setHoja] = React.useState(null);                 // {toma, modo} | null
@@ -16343,7 +16796,10 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
       try{
         resp=await fetch(GBH_SERVER_URL.replace(/\/$/,'')+'/generar',{
           method:'POST',
-          headers:{'Content-Type':'application/json','X-GBH-Token':GBH_GEN_TOKEN},
+          // La identidad es la sesión (MAESTRO-2026-738): el servidor genera para el perfil de
+          // X-GBH-Sesion e ignora el profile_id del cuerpo, que queda solo para servidores antiguos.
+          headers:{'Content-Type':'application/json','X-GBH-Token':GBH_GEN_TOKEN,
+                   ...(getSesion()?.token ? {'X-GBH-Sesion':getSesion().token} : {})},
           body:JSON.stringify({profile_id:profile.id}),
           signal:ctrl.signal,
         });
@@ -16407,6 +16863,18 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
     });
   },[profile?.id]);
   const plan=planes[idx];const planJ=plan?.plan_json;
+  // «Pregúntale a Bo» con IA: ir a una comida concreta (día y toma) y abrir Bo en su ficha con el
+  // cambio ya preparado. Va aquí, detrás de planJ: el efecto lo lee en su lista de dependencias.
+  const [boNav,setBoNav] = React.useState(null);               // {dia, toma, bo} | null
+  const [boPendiente,setBoPendiente] = React.useState(null);   // {accion, ingrediente, tipo_receta} | null
+  React.useEffect(()=>{
+    if(!boNav || !planJ) return;
+    if(view!=='daily'){ setView('daily'); return; }
+    if(selDay!==boNav.dia){ setSelDay(boNav.dia); return; }
+    const nav = boNav; setBoNav(null);
+    (async()=>{ await abrirToma(nav.toma); setBoPendiente(nav.bo||null); setBoHoja(true); })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[boNav, planJ, view, selDay]);
   // ── Plan de la pareja, de LA MISMA SEMANA que se está mirando ──────────────
   // Tiene que ir aquí abajo (después de `plan`): arriba, junto al vínculo, la
   // semana todavía no se conoce. Antes se traía "el último plan" de la pareja
@@ -16747,13 +17215,18 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
   }
 
   // ── Cambiar la receta por otra de composición similar (10 💎) ──────────────
-  async function cambiarRecetaToma(){
-    if(!tomaReceta||!profile) return;
+  // `opc.sinIngrediente` (desde «Pregúntale a Bo», «Me falta un ingrediente»): veta además las recetas
+  // que lo lleven. Desde el botón 🔄 llega el evento del clic, que no lo trae. Devuelve
+  // {ok, nombre} o {ok:false, motivo} para que Bo diga qué pasó; el botón lo ignora.
+  async function cambiarRecetaToma(opc){
+    const sinIng = (opc && typeof opc==='object' && typeof opc.sinIngrediente==='string' && opc.sinIngrediente.trim()) ? opc.sinIngrediente.trim() : null;
+    const tipoR  = (opc && typeof opc==='object' && typeof opc.tipo==='string' && opc.tipo.trim()) ? opc.tipo.trim() : null;   // «algo de pescado» (Bo con IA)
+    if(!tomaReceta||!profile) return {ok:false};
     const costeCambio = enTrial ? 0 : 10;   // gratis mientras dura la prueba
     if(costeCambio>0 && gems < costeCambio){
       sfx&&sfx("error");
       showT&&showT({icon:"💎",title:lang==='en'?'Not enough gems':'Sin gemas suficientes',sub:lang==='en'?'You need 10 💎 to change the recipe':'Necesitas 10 💎 para cambiar la receta'});
-      return;
+      return {ok:false, motivo:'gemas'};
     }
     const mapa = await cargarRecetasCache();
     const recetas = Object.values(mapa);
@@ -16783,7 +17256,8 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
     const res = elegirRecetaCambio({
       recetas, actual:tomaReceta, ancla:mem.ancla, toma:openToma,
       permitidas: permitidasDePlanes(planes, openToma),
-      rechazada:  (r)=>recetaRechazadaJS(r, rechPref),
+      rechazada:  (r)=>recetaRechazadaJS(r, rechPref) || (!!sinIng && contieneIngrediente(r?.ingredientes||'', sinIng))
+                       || (!!tipoR && String(r?.tipo||'')!==tipoR),
       descartadas:new Set((descartadas||[]).map(r=>normNombreCambio(r.nombre||''))),
       favoritas:  new Set((savedRecipes||[]).map(r=>normNombreCambio(r.nombre||r.nombre_receta||''))),
       vistas:mem.vistas, enPlan,
@@ -16792,7 +17266,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
     // gemas: mejor no cambiar que servir un despropósito o un alimento vetado.
     if(!res.receta){
       showT&&showT({icon:"🚫",title:lang==='en'?'No alternative':'Sin alternativa',sub:lang==='en'?'No similar recipe available':'No hay receta similar disponible'});
-      return;
+      return {ok:false, motivo:'sin_alternativa'};
     }
     const elegida = res.receta;
     guardarMemoriaCambio(almacen, memClave, {...mem, actual:tomaReceta, elegida, reinicio:res.reinicio});
@@ -16848,6 +17322,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
           {plan_json:nuevoJson});
       }catch(e){ console.warn("[cambiar-receta] no se pudo persistir:", e); }
     }
+    return {ok:true, nombre: elegida.nombre||elegida.nombre_receta||''};
   }
 
   // ── Guardar la receta en el recetario personal (20 💎) ─────────────────────
@@ -17067,6 +17542,12 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
             <div style={{color:'rgba(255,255,255,0.2)',fontSize:20,flexShrink:0}}>🔒</div>
           </div>
         ))}
+        {/* 💊 Suplementación (6-oct-2026, PEND-2026-353): la puerta pasa de pestaña propia a tarjeta de Plan; la pantalla es la misma */}
+        <button onClick={()=>{ sfx&&sfx("tap"); onSupl&&onSupl(); }} style={{background:'rgba(255,75,110,0.10)',border:'2px solid rgba(255,75,110,0.30)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)',fontFamily:'inherit'}}>
+          <div style={{fontSize:40,flexShrink:0}}>💊</div>
+          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{t("suplTitulo")}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{t("suplIntro")}</div></div>
+          <div style={{color:'#FF4B6E',fontSize:20,flexShrink:0}}>›</div>
+        </button>
         {/* Botón GENERAR (solo estándar que ya configuró su plan).
             ABRE «Configura tu plan», no genera directamente: el selector de
             modalidades (Simple, Vegetariana, Vegana, Sin gluten, Cetogénica,
@@ -17213,6 +17694,12 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
           <div style={{fontSize:40,flexShrink:0}}>📊</div>
           <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Tracking':'Seguimiento'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Calendar and charts of your meal compliance':'Calendario y gráficas de tu cumplimiento'}</div></div>
           <div style={{color:T.pur,fontSize:20,flexShrink:0}}>›</div>
+        </button>
+        {/* 💊 Suplementación (6-oct-2026, PEND-2026-353): la puerta pasa de pestaña propia a tarjeta de Plan; la pantalla es la misma */}
+        <button onClick={()=>{ sfx&&sfx("tap"); onSupl&&onSupl(); }} style={{background:'rgba(255,75,110,0.10)',border:'2px solid rgba(255,75,110,0.30)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)',fontFamily:'inherit'}}>
+          <div style={{fontSize:40,flexShrink:0}}>💊</div>
+          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{t("suplTitulo")}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{t("suplIntro")}</div></div>
+          <div style={{color:'#FF4B6E',fontSize:20,flexShrink:0}}>›</div>
         </button>
         {/* Plan estándar: candado semanal (sin gemas, se desbloquea el lunes) */}
         {isStandard&&planBloqueado&&(
@@ -17539,6 +18026,9 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
                  cargarRecetas={cargarRecetasCache} nutri={_NUTRI_ING}
                  inicial={hoja.modo==='extras'?(realDia[hoja.toma]?.extras||[]):(realDia[hoja.toma]?.items||[])}
                  onGuardar={guardarHoja} onCerrar={()=>setHoja(null)}/>}
+          {boMomento&&!hoja&&<BoMomento T={T} Sheep={Sheep} lang={lang} texto={boMomento.texto} firma={boMomento.firma}
+                 bo={{color:profile?.bo_color||'blanca',equipados:Array.isArray(profile?.bo_equipados)?profile.bo_equipados:[]}}
+                 onCerrar={()=>setBoMomento(null)}/>}
           {puedeRegistrar&&(<>
             <div style={{background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:16,padding:'12px 14px'}}>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
@@ -17802,6 +18292,32 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
               <span style={{fontSize:10,color:T.t3}}>{recetaDescartada?(lang==='en'?'Tap to undo':'Toca para deshacer'):(lang==='en'?'Free':'Gratis')}</span>
             </button>
           </div>
+          {/* «Pregúntale a Bo» sobre esta receta: las acciones son las tres de arriba, por sus
+              mismas funciones (cambiarRecetaToma admite {sinIngrediente}). */}
+          {boActivo(profile)&&(
+            <button data-bo-abrir-receta onClick={()=>{sfx&&sfx('tap');setBoHoja(true);}}
+              style={{width:'100%',marginTop:10,background:'rgba(255,255,255,0.05)',border:`1.5px solid ${alpha(T.au1,0.35)}`,borderRadius:16,
+                      padding:'12px 10px',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+              <span style={{fontSize:18}}>💬</span>
+              <span style={{fontSize:12.5,fontWeight:900,color:T.au1,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Ask Bo about this recipe':'Pregúntale a Bo por esta receta'}</span>
+            </button>)}
+          {boHoja&&boActivo(profile)&&<PreguntaBo T={T} Sheep={Sheep} lang={lang} pid={profile?.id}
+            bo={{nombre:profile?.bo_nombre||'Bo',color:profile?.bo_color||'blanca',equipados:Array.isArray(profile?.bo_equipados)?profile.bo_equipados:[]}}
+            ctx={{contexto:'receta',plan:planBo(profile),enTrial:!!enTrial,raciones:tomaReceta.raciones,puedeCambiar:!tomaMenu,descartada:!!recetaDescartada,
+                  dia:selDay,toma:openToma,receta:tomaReceta.nombre,
+                  cajaRacion:(()=>{ const c=textosCajaRacion({raciones:tomaReceta.raciones,factor:tomaReceta.racion_factor,racionTexto:tomaReceta.racion_texto,lang}); return c?`${c.titulo}. ${c.detalle}`:''; })()}}
+            receta={{nombre:tomaReceta.nombre,ingList}}
+            onAccion={async(a,extra)=>{
+              if(a==='cambiar'||a==='cambiar_sin') return await cambiarRecetaToma(extra||{});
+              if(a==='descartar'){ if(recetaDescartada) return {ok:true}; await descartarRecetaToma(); return {ok:true}; }
+              return {ok:false}; }}
+            onAbrir={(d)=>{ if(d==='consulta'&&setTab) setTab('consulta'); if(d==='peso'&&setTab) setTab('weight');
+              if(d==='objetivo'&&setTab) setTab('progreso'); if(d==='config'&&isStandard){ setOpenToma(null); setConfigView(true); } }}
+            ia={{...boIA, consentir:()=>boIAConsentir(profile?.id)}}
+            pendiente={boPendiente}
+            onIr={(d)=>{ setBoHoja(false); setBoPendiente(null); setBoNav(d); }}
+            onRegistrar={boRegistrar}
+            onCerrar={()=>{ setBoHoja(false); setBoPendiente(null); }}/>}
         </>)}
       </div>)}
     </div>);

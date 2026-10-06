@@ -18,15 +18,16 @@ export const ANCHO_PESTANA = 60;   // px, todas iguales
 const FUNDIDO = 28;                // px del difuminado; también el margen con el que se deja a la vista la activa
 
 // l: clave de TRANS; o bien txt fijo por idioma, como estaban «Plan» y «Consulta».
+// 6-oct-2026 (PEND-2026-353 / MAESTRO-2026-857): de 8 pestañas deslizables a 5 FIJAS, sin deslizar en ningún móvil
+// (la regla de Apple y la de las apps más usadas). Objetivo, Medidas y Ranking son vistas de «progreso»; Consulta y los
+// ajustes viven en «tu»; Suplementación es una tarjeta de Plan. El deslizamiento y el difuminado quedan por si algún
+// día vuelve a haber más pestañas de las que caben, pero con 5 no se activan.
 export const PESTANAS = [
   { id: "home",     icon: "🏠", l: "tabHome" },
-  { id: "progreso", icon: "🚀", l: "tabCalc" },
   { id: "plan",     icon: "📆", txt: { es: "Plan", en: "Plan" } },
-  { id: "supl",     icon: "💊", l: "tabSupl" },
-  { id: "weight",   icon: "📏", l: "tabWeight" },
   { id: "receta",   icon: "🍰", l: "tabRecipe" },
-  { id: "consulta", icon: "📩", txt: { es: "Consulta", en: "Consult" } },
-  { id: "ranking",  icon: "👑", l: "tabRanking" },
+  { id: "progreso", icon: "📈", l: "tabProgreso" },
+  { id: "tu",       icon: "👤", l: "tabTu" },
 ];
 
 const suave = () => { try { return !window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return true; } };
@@ -73,13 +74,13 @@ export function BarraPestanas({ tab, setTab, t, lang = "es", T, sfx }) {
       background: "rgba(8,18,8,0.97)", backdropFilter: "blur(30px)", borderTop: `3px solid ${T.bW}`, zIndex: 100 }}>
       <div ref={ref} className="nav-scroll" onScroll={medir}
         style={{ position: "relative", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-        <div style={{ display: "flex", padding: "10px 4px 10px", minWidth: "min-content", width: "100%" }}>
+        <div style={{ display: "flex", padding: "10px 4px 10px", minWidth: "min-content", width: "100%", boxSizing: "border-box" }}>
           {PESTANAS.map(({ id, icon, l, txt }) => {
             const a = tab === id;
             return (
               <button key={id} data-pestana={id} aria-current={a ? "page" : undefined}
                 onClick={() => { sfx && sfx("tap"); setTab(id); }}
-                style={{ flex: `1 0 ${ANCHO_PESTANA}px`, minWidth: ANCHO_PESTANA, padding: "8px 0", background: "none", border: "none",
+                style={{ flex: `1 1 ${ANCHO_PESTANA}px`, minWidth: ANCHO_PESTANA, padding: "8px 0", background: "none", border: "none",
                   color: a ? T.au1 : T.t2, fontWeight: a ? 900 : 700, cursor: "pointer", display: "flex", flexDirection: "column",
                   alignItems: "center", gap: 3, transition: "all 0.18s", fontFamily: "'Nunito',sans-serif" }}>
                 <span style={{ fontSize: 24, filter: a ? "none" : "grayscale(0.6)", transition: "all 0.2s" }}>{icon}</span>
