@@ -15276,6 +15276,13 @@ function ConsultaTab({profile,lang,sfx}){
   const waMsgPremium = encodeURIComponent(lang==='en'
     ? `Hi! I'm ${profile?.name||''} and I'd like to go Premium (weekly follow-up and direct WhatsApp). Do you have a spot? 👑${profile?.referred_by?' I was invited — first month at €17.50 🎟️':''}`
     : `¡Hola! Soy ${profile?.name||''} y quiero pasar a Premium (seguimiento semanal y WhatsApp directo). ¿Tienes plaza? 👑${profile?.referred_by?' Vengo invitado — primer mes a 17,50 € 🎟️':''}`);
+  // Línea base de medición (6-oct-2026, PEND-2026-353): dos GET que solo hace esta pantalla y que el gateway de
+  // Supabase cuenta (`select=plan&id=eq` al mostrar la oferta Premium, una vez por montaje; `select=plan,referred_by`
+  // al tocar «Solicitar pasar a Premium»). Sin tabla nueva ni RPC: la misma lectura del perfil que la app ya hace.
+  React.useEffect(()=>{ try{ if(!isPremium&&profile?.id) sbDirect("GET",`profiles?select=plan&id=eq.${profile.id}&limit=1`).catch(()=>{}); }catch{}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+  const pingPremium=()=>{ try{ if(profile?.id) sbDirect("GET",`profiles?select=plan,referred_by&id=eq.${profile.id}&limit=1`).catch(()=>{}); }catch{} };
 
   if(!isPremium) return(
     <div style={{padding:'48px 24px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:18}}>
@@ -15349,7 +15356,7 @@ function ConsultaTab({profile,lang,sfx}){
       )}
       {/* CTA: solicitar pasar a Premium por WhatsApp (mismo estilo que el del plan) */}
       <a href={`https://wa.me/${GBH_WHATSAPP}?text=${waMsgPremium}`} target="_blank" rel="noopener noreferrer"
-        onClick={()=>sfx&&sfx("tap")}
+        onClick={()=>{ sfx&&sfx("tap"); pingPremium(); }}
         style={{marginTop:2,width:'100%',maxWidth:300,background:'linear-gradient(135deg,#25D366,#1DA851)',
           color:T.t1,fontWeight:900,fontSize:15,borderRadius:18,padding:'16px 20px',
           textDecoration:'none',boxShadow:'0 4px 0 #128C4B',fontFamily:"'Nunito',sans-serif",
