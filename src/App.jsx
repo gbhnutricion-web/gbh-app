@@ -11410,7 +11410,7 @@ function GBHApp(){
     if(!ES_NATIVO) return;
     return alTocarAviso((extra)=>{
       const d=extra?.destino;
-      setTab(d==='plan'?'plan':d==='medidas'?'weight':'home');
+      irA(d==='plan'?'plan':d==='medidas'?'peso':'home');
       const toque={ultimoToque:new Date().toISOString(), ultimoToqueTipo:extra?.tipo||null};
       lsSet('gbh:avisosToque',toque);
       if(guardarAvisosRef.current) guardarAvisosRef.current(toque);
@@ -13247,7 +13247,7 @@ function GBHApp(){
           B1_pasos:{sel:'pasos',tx:EN?'Now your steps: add them as you move those legs.':'Ahora tus pasos: súmalos cuando muevas las patas.'},
           B1_sueno:{sel:'sueno',tx:EN?'And sleep: tick it if you slept well.':'Y el sueño: márcalo si has dormido bien.'},
           B1_cierre:{sel:null,next:true,tx:EN?'You don’t need to complete everything today — what matters is starting. Tomorrow this fills itself in with your real day.':'Hoy no hace falta completarlo todo — lo importante es empezar. Mañana esto se rellena solo con tu día real.'},
-          B2_objetivo:{sel:'objetivo',tx:EN?'This is where your goal lives. Let’s set it: fill in your details and hit calculate — I’ll handle the maths.':'Aquí vive tu objetivo. Vamos a ponerlo: rellena tus datos y pulsa calcular — de las cuentas me encargo yo.'},
+          B2_objetivo:{sel:'objetivo',tx:EN?'Here, inside Progress, lives your goal. Let’s set it: fill in your details and hit calculate — I’ll handle the maths.':'Aquí, dentro de Progreso, vive tu objetivo. Vamos a ponerlo: rellena tus datos y pulsa calcular — de las cuentas me encargo yo.'},
           B2_racha:{sel:'objetivo',racha:true,tx:(kcalObj?(EN?`${kcalObj} kcal a day to get there in about 3 months. `:`${kcalObj} kcal al día para llegar en unos 3 meses. `):'')+(EN?'Will you commit to logging a few days in a row? Pick your goal — and if you miss a day, nothing happens: that’s what pauses are for.':'¿Te comprometes a registrar unos días seguidos? Elige tu meta — y si fallas un día no pasa nada, para eso están las pausas.')},
           B3_dieta:{sel:'plan-zona',next:true,tx:EN?'And now the big one: your first week of meals. First, how you eat: tap the card up top and pick one of the six programmes — normal, vegetarian, vegan, gluten-free, keto or weigh-in. You can change it whenever you like.':'Y ahora lo gordo: tu primera semana de comidas. Lo primero es cómo comes: toca la ficha de arriba y elige una de las seis programaciones — normal, vegetariano, vegano, sin gluten, cetogénica o descarga. Puedes cambiarla cuando quieras.'},
           B3_alergias:{sel:'plan-zona',next:true,tx:EN?'Now scroll down to «Foods you don’t want» and add anything you dislike or are allergic to. Whatever you put there never shows up in your plan — neither the food nor any recipe that uses it.':'Ahora baja hasta «Alimentos que no quieres» y añade lo que no te guste o te dé alergia. Lo que pongas ahí no aparece nunca en tu programación: ni el alimento ni las recetas que lo llevan.'},
@@ -13257,10 +13257,10 @@ function GBHApp(){
           B4_info:{sel:'plan-zona',next:true,tx:EN?'The amounts already come adjusted to YOUR portion. From here you can swap it for free during the trial, save it to favourites or discard it.':'Las cantidades ya vienen ajustadas a TU ración. Desde aquí puedes cambiarla gratis durante la prueba, guardarla en favoritas o quitarla.'},
           B4_lista:{sel:'plan-zona',tx:EN?'Last thing here: open the 🛒 Shopping List. It builds itself from your week — tick off ingredients as you shop.':'Y lo último de tu plan: entra en la 🛒 Lista de la compra. Se hace sola con tu semana — marca los ingredientes mientras compras.'},
           B4_comida:{sel:'plan-zona',tx:EN?'Go back to 🍽️ Daily Meals and log today’s meal with one of the 5 states (followed · less · added · swapped · skipped). It doesn’t need to be perfect. Log what you actually did: what counts is logging, not complying. An average day, logged, is worth more than a perfect day unlogged. At the bottom, «Your day» shows the calories you have logged against your plan.':'Vuelve atrás a 🍽️ Platos diarios y marca tu comida de hoy con uno de los 5 estados (seguida · menos · añadí · la cambié · me la salté). No hace falta que salga perfecto. Marca lo que has hecho de verdad: lo que cuenta es registrar, no cumplir. Un día regular, registrado, vale más que un día perfecto sin registrar. Abajo del todo, «Tu día» te enseña las kcal que llevas frente a tu programación.'},
-          B5_peso:{sel:null,next:true,tx:(EN?`I already have today’s weight from sign-up${pesoUlt?` (${pesoUlt} kg)`:''}. Here you’ll see the trend. The scale opens on Wednesdays and at the weekend. A tip: weigh yourself always at the same time, fasted — and look at the line over several weeks, never a single day.`:`Tu peso de hoy ya lo tengo del registro${pesoUlt?` (${pesoUlt} kg)`:''}. Aquí verás la evolución. La báscula se abre los miércoles y el fin de semana. Un consejo: pésate siempre a la misma hora, en ayunas — y mira la línea de varias semanas, nunca un solo día.`)},
+          B5_peso:{sel:null,next:true,tx:(EN?`I already have today’s weight from sign-up${pesoUlt?` (${pesoUlt} kg)`:''}. Here you’ll see the trend; up top you switch between Weight, Goal and Ranking. The scale opens on Wednesdays and at the weekend. A tip: weigh yourself always at the same time, fasted — and look at the line over several weeks, never a single day.`:`Tu peso de hoy ya lo tengo del registro${pesoUlt?` (${pesoUlt} kg)`:''}. Aquí verás la evolución; arriba cambias entre Peso, Objetivo y Ranking. La báscula se abre los miércoles y el fin de semana. Un consejo: pésate siempre a la misma hora, en ayunas — y mira la línea de varias semanas, nunca un solo día.`)},
           B6_recetas:{sel:null,next:true,tx:EN?'The whole GBH recipe book. Search, open, and save the ones you like with the star — yours live in Favourites.':'Todo el recetario GBH. Busca, abre, y guarda las que te gusten con la estrella — las tuyas quedan en Favoritas.'},
-          B7_consulta:{sel:null,next:true,tx:EN?'This tab is the direct line to Alejandro — it’s the Premium side of the plan: in-person consultation, weekly follow-up and his WhatsApp. If the trial wins you over, this is where you level up. And below you’ve got your code to invite a friend.':'Esta pestaña es la línea directa con Alejandro — es la parte del plan Premium: consulta presencial, seguimiento semanal y su WhatsApp. Si la prueba te convence, aquí es donde se sube de nivel. Y debajo tienes tu código para invitar a un amigo.'},
-          B8_ranking:{sel:null,next:true,tx:EN?`And here’s the whole flock. Your ${bn} competes with its XP. No pressure — the ranking is the least of it; your week is what matters.`:`Y aquí el rebaño entero. Tu ${bn} compite con su XP. Sin presión — el ranking es lo de menos; tu semana es lo de más.`},
+          B7_consulta:{sel:null,next:true,tx:EN?'This tab is you: your profile up top and, right below, the direct line to Alejandro — the Premium side of the plan: in-person consultation, weekly follow-up and his WhatsApp. If the trial wins you over, this is where you level up. Further down, your code to invite a friend and your settings: reminders, sounds, language and PIN.':'Esta pestaña eres tú: arriba tu perfil y, justo debajo, la línea directa con Alejandro — la parte del plan Premium: consulta presencial, seguimiento semanal y su WhatsApp. Si la prueba te convence, aquí es donde se sube de nivel. Más abajo tienes tu código para invitar a un amigo y tus ajustes: avisos, sonidos, idioma y PIN.'},
+          B8_ranking:{sel:null,next:true,tx:EN?`And here, inside Progress, is the whole flock. Your ${bn} competes with its XP. No pressure — the ranking is the least of it; your week is what matters.`:`Y aquí, dentro de Progreso, el rebaño entero. Tu ${bn} compite con su XP. Sin presión — el ranking es lo de menos; tu semana es lo de más.`},
         };
         const TD=D[tutoPaso]; if(!TD) return null;
         return(
@@ -14894,7 +14894,7 @@ function GBHApp(){
             onVerSeguimiento={espejoAbrirSeguimiento}
             onClose={()=>{sfx("tap");setEspejoDia(null);}}/>
         )}
-        {tab==="plan"&&<div data-tuto="plan-zona"><PlanTab onSupl={()=>setSuplAbierta(true)} profile={profile} lang={lang} hoyKey={hoyKey} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} descartadas={descartadas} setDescartadas={setDescartadas} showT={showT} sfx={sfx} t={t} setTab={setTab} onMealRegistered={onMealRegistered} vistaInicial={planVista} onVistaConsumida={()=>setPlanVista(null)} onTutoEvent={tutoEvento}/></div>}
+        {tab==="plan"&&<div data-tuto="plan-zona"><PlanTab onSupl={()=>setSuplAbierta(true)} profile={profile} lang={lang} hoyKey={hoyKey} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} descartadas={descartadas} setDescartadas={setDescartadas} showT={showT} sfx={sfx} t={t} setTab={irA} onMealRegistered={onMealRegistered} vistaInicial={planVista} onVistaConsumida={()=>setPlanVista(null)} onTutoEvent={tutoEvento}/></div>}
         {/* «Pregúntale a Bo» desde el bocadillo de Inicio (src/PreguntaBo.jsx). Las acciones
             solo abren pestañas que ya existen; la escritura va a bo_registro sin cola (sbDirect). */}
         {boInicio&&boActivo(profile)&&<PreguntaBo T={T} Sheep={Sheep} lang={lang} pid={profile?.id}
@@ -14906,9 +14906,9 @@ function GBHApp(){
             if(a==='consulta') return await boPedirConsulta(profile?.id,(extra&&extra.preferencia)||'cualquiera');
             if(a==='config'&&planBo(profile)==='standard') return await boGuardarConfig(profile?.id,extra||{});   // BRIEF §19
             return {ok:false}; }}
-          onAbrir={(d)=>{ if(d==='consulta'){ setTab('consulta'); return; }
-            if(d==='peso'){ setTab('weight'); return; }
-            if(d==='objetivo'){ setTab('progreso'); return; }
+          onAbrir={(d)=>{ if(d==='consulta'){ irA('consulta'); return; }
+            if(d==='peso'){ irA('peso'); return; }
+            if(d==='objetivo'){ irA('objetivo'); return; }
             if(d==='calendly'){ window.open(GBH_CALENDLY,'_blank','noopener'); return; }
             setTab('plan'); setPlanVista((d==='daily'||d==='lista'||d==='config')?d:null); }}
           ia={{...boIA, consentir:()=>boIAConsentir(profile?.id)}}
@@ -14923,7 +14923,7 @@ function GBHApp(){
       {/* ── BOTTOM NAV ────────────────────────────────────────────────────── */}
       {/* src/BarraPestanas.jsx (26-sep-2026): las 8 pestañas iguales, etiquetas en minúscula a 10 px,
           difuminado en el borde por el que quedan pestañas y la activa siempre entera a la vista. */}
-      <BarraPestanas tab={tab} setTab={setTab} t={t} lang={lang} T={T} sfx={sfx}/>
+      <BarraPestanas tab={tab} setTab={irA} t={t} lang={lang} T={T} sfx={sfx}/>
     </div>
     </LangCtx.Provider>
   );
@@ -16761,7 +16761,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
     if(isStandard && !tieneObjetivo){
       showT&&showT({icon:"🎯",title:lang==='en'?'Set your goal first':'Define tu objetivo primero',
         sub:lang==='en'?'Go to the Goal tab to calculate your daily calories.':'Ve a la pestaña Objetivo para calcular tus calorías diarias.'});
-      setTab&&setTab('progreso');   // la pestaña Objetivo tiene id 'progreso'
+      setTab&&setTab('objetivo');   // Objetivo es una vista de Progreso (6-oct-2026); setTab aquí es irA()
       return;
     }
 
@@ -17490,7 +17490,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
             ? 'Set your goal first and I\'ll cook up your plan 👨‍🍳'
             : 'Primero ponte un objetivo y te preparo el plan 👨‍🍳'}
         </div>
-        <button onClick={()=>setTab&&setTab('progreso')}
+        <button onClick={()=>setTab&&setTab('objetivo')}
           style={{background:'linear-gradient(135deg,'+T.g1+','+T.g2+')',color:T.t1,fontWeight:900,fontSize:16,
             borderRadius:18,padding:'16px 34px',border:'none',cursor:'pointer',boxShadow:'0 5px 0 '+T.g3,
             fontFamily:"'Nunito',sans-serif",display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
@@ -18311,8 +18311,8 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
               if(a==='cambiar'||a==='cambiar_sin') return await cambiarRecetaToma(extra||{});
               if(a==='descartar'){ if(recetaDescartada) return {ok:true}; await descartarRecetaToma(); return {ok:true}; }
               return {ok:false}; }}
-            onAbrir={(d)=>{ if(d==='consulta'&&setTab) setTab('consulta'); if(d==='peso'&&setTab) setTab('weight');
-              if(d==='objetivo'&&setTab) setTab('progreso'); if(d==='config'&&isStandard){ setOpenToma(null); setConfigView(true); } }}
+            onAbrir={(d)=>{ if(d==='consulta'&&setTab) setTab('consulta'); if(d==='peso'&&setTab) setTab('peso');
+              if(d==='objetivo'&&setTab) setTab('objetivo'); if(d==='config'&&isStandard){ setOpenToma(null); setConfigView(true); } }}
             ia={{...boIA, consentir:()=>boIAConsentir(profile?.id)}}
             pendiente={boPendiente}
             onIr={(d)=>{ setBoHoja(false); setBoPendiente(null); setBoNav(d); }}
