@@ -10142,8 +10142,14 @@ function GBHApp(){
     try {
       const d = new Date();
       const dayOfYear = Math.floor((d - new Date(d.getFullYear(),0,0)) / 86400000);
-      const offset = (dayOfYear * 7 + d.getFullYear()) % 472;
-      const r = await sbReq("GET", `recipes?select=*&order=id_receta.asc&limit=1&offset=${offset}`);
+      // Rota entre TODAS las de las dos categorías generales (12-oct-2026, PEND-2026-376): era «% 472»,
+      // el tamaño del recetario en mayo, y las añadidas después nunca salían. Intra-entreno y
+      // Recuperación quedan fuera a propósito: son de una sola paciente y solo las recibe quien las
+      // tiene fijadas (MAESTRO-2026-716). El total lo da Content-Range; sin él, el 472 de antes.
+      const GENERALES = "categoria=in." + encodeURIComponent('("Comida/Cena","Desayuno/Almuerzo/Merienda")');
+      const cuenta = await sbPagina(`recipes?${GENERALES}&select=id_receta&limit=1`);
+      const offset = (dayOfYear * 7 + d.getFullYear()) % (cuenta?.total > 0 ? cuenta.total : 472);
+      const r = await sbReq("GET", `recipes?${GENERALES}&select=*&order=id_receta.asc&limit=1&offset=${offset}`);
       let base = r?.length ? normalizeRecipe(r[0]) : null;
       // La del día, salvo que este paciente no pueda comerla: entonces otra, fija
       // para todo el día, entre las que sí puede. Sin restricciones legibles
