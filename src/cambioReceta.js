@@ -38,7 +38,7 @@ export const franjaCambio = (toma) =>
 // La lista del plan MÁS RECIENTE (por fecha_gen) que la traiga: las restricciones
 // son del paciente, no de la semana. null si ningún plan la trae (planes de antes
 // del 28-sep): entonces solo filtra la App.
-export function permitidasDePlanes(planes, toma) {
+function cambioReciente(planes) {
   let mejor = null, tMejor = -Infinity;
   for (const p of planes || []) {
     const c = p && p.plan_json && p.plan_json.cambio_receta;
@@ -46,8 +46,13 @@ export function permitidasDePlanes(planes, toma) {
     const t = Date.parse(p.fecha_gen || '') || 0;
     if (!mejor || t > tMejor) { mejor = c; tMejor = t; }
   }
-  const lista = mejor && mejor[franjaCambio(toma)];
-  return Array.isArray(lista) ? new Set(lista.map(String)) : null;
+  return mejor;
+}
+const comoSet = (lista) => (Array.isArray(lista) ? new Set(lista.map(String)) : null);
+
+export function permitidasDePlanes(planes, toma) {
+  const mejor = cambioReciente(planes);
+  return comoSet(mejor && mejor[franjaCambio(toma)]);
 }
 
 const catBucket = (r) => {
@@ -130,6 +135,96 @@ export function elegirRecetaCambio({ recetas, actual, ancla = null, toma, permit
     if (Math.abs(factor - 1) < 0.05) factor = 1;
   }
   return { receta: elegida.r, factor, pool: pool.map((x) => x.r), nivel: elegida.nivel, reinicio };
+}
+
+// ── Menú desglosado (1º y 2º, o plato y postre): cambio plato a plato (12-oct-2026) ──
+// Aritz, en su primera semana con dos platos en comida y cena, no podía cambiar
+// ninguno: la App escondía «Cambiar» en los menús porque cambiar un plato
+// descuadraba los totales guardados de la toma. Ahora cada plato se cambia por
+// separado, con los roles con que lo eligió la programación
+// (elegir_menu_desglosado de gbh_automatizacion.py):
+//  · 1º → solo lo que vale de entrante: la lista 'entrante' del servidor
+//    (_mascara_entrante: sopa/crema, ensalada o vegetariano de corte hidrato).
+//    Si el plan no la trae (generado antes del 12-oct), solo sopa/crema o
+//    ensalada: menos variedad, pero nunca un plato proteico de primero.
+//  · 2º → de 'principal', nunca de tipo entrante y, si hay alguno, con al menos
+//    el 20 % de las kcal en proteína (la preferencia de rol='segundo').
+//  · Plato (menú con postre) → como una comida normal; Postre → de 'ligera' y
+//    de tipo Postre.
+//  · Nunca el mismo plato que el otro del menú. Las kcal son las que puso la
+//    programación al plato, y la celda se recompone como _componer_menu.
+export const TIPOS_ENTRANTE = new Set(['Sopa/Crema', 'Ensalada']);   // = TIPOS_ENTRANTE del generador
+export const PROTEINA_SEGUNDO = 0.20;                                 // = el 20 % de rol='segundo'
+
+export function rolPlatoMenu(etiquetas, i) {
+  const et = String((Array.isArray(etiquetas) && etiquetas[i]) || '');
+  if (et === '1º') return 'entrante';
+  if (et === '2º') return 'segundo';
+  if (et === 'Postre') return 'postre';
+  if (et === 'Plato') return 'principal';
+  return i === 0 ? 'entrante' : 'segundo';      // sin etiquetas: el menú clásico
+}
+
+// Las listas del servidor de cada rol: el postre sale de la franja ligera; el
+// resto, de la principal, y el 1º además de 'entrante' (null si no viene).
+export function listasPlatoMenu(planes, rol) {
+  const c = cambioReciente(planes);
+  if (rol === 'postre') return { permitidas: comoSet(c && c.ligera), entrantes: null };
+  return { permitidas: comoSet(c && c.principal), entrantes: rol === 'entrante' ? comoSet(c && c.entrante) : null };
+}
+
+const idReceta = (r) => String(r.id_receta == null ? '' : r.id_receta);
+const esProteica = (r) => (parseFloat(r.proteinas_g) || 0) * 4 >= kcalDe(r) * PROTEINA_SEGUNDO;
+
+/**
+ * Elige el plato nuevo de un menú. Mismos parámetros que elegirRecetaCambio
+ * (actual = el plato que se ve, con su kcal_objetivo), salvo `toma`, que la pone
+ * el rol, más:
+ *  rol        'entrante' | 'segundo' | 'principal' | 'postre' (rolPlatoMenu)
+ *  entrantes  Set de id_receta de la lista 'entrante' del servidor, o null
+ *  otro       nombre del otro plato del menú: nunca sale
+ */
+export function elegirPlatoMenu({ rol, entrantes = null, otro = null, rechazada = () => false, ...resto }) {
+  const tipo = (r) => String(r.tipo || '');
+  const encaja = rol === 'entrante' ? (entrantes ? (r) => entrantes.has(idReceta(r)) : (r) => TIPOS_ENTRANTE.has(tipo(r)))
+    : rol === 'segundo' ? (r) => !TIPOS_ENTRANTE.has(tipo(r))
+    : rol === 'postre' ? (r) => tipo(r) === 'Postre'
+    : () => true;
+  const nomOtro = normNombreCambio(otro);
+  const veta = (r) => rechazada(r) || !encaja(r)
+    || (!!nomOtro && normNombreCambio(r.nombre || r.nombre_receta) === nomOtro);
+  const toma = rol === 'postre' ? 'Merienda' : 'Comida';
+  if (rol === 'segundo') {
+    const proteica = elegirRecetaCambio({ ...resto, toma, rechazada: (r) => veta(r) || !esProteica(r) });
+    if (proteica.receta) return proteica;
+  }
+  return elegirRecetaCambio({ ...resto, toma, rechazada: veta });
+}
+
+// La celda de un menú con el plato i cambiado, como la compone el servidor
+// (_componer_menu): nombre «1º A · 2º B», tipo (el del 2º; el del plato si va
+// con postre), kcal y macros como suma de los dos platos, ingredientes juntos e
+// instrucciones de cada plato con su rótulo. El resto de claves de la celda
+// (compuesta, etiquetas, raciones…) se conserva; la celda de entrada no se toca.
+const numero = (x) => { const v = parseFloat(x); return Number.isFinite(v) ? v : 0; };
+const decima = (x) => Math.round(x * 10) / 10;
+export function recomponerMenu(celda, i, plato) {
+  const platos = (celda.platos || []).map((p, k) => (k === i ? plato : p));
+  const et = (Array.isArray(celda.etiquetas) && celda.etiquetas.length >= 2) ? celda.etiquetas : ['1º', '2º'];
+  const [a, b] = platos;
+  const na = a.Nombre_Receta || '', nb = b.Nombre_Receta || '';
+  return {
+    ...celda,
+    Nombre_Receta: `${et[0]} ${na} · ${et[1]} ${nb}`,
+    Tipo: (et[1] === 'Postre' ? a.Tipo : b.Tipo) || '',
+    Calorias_Totales: Math.round(numero(a.Calorias_Totales) + numero(b.Calorias_Totales)),
+    Proteinas_g: decima(numero(a.Proteinas_g) + numero(b.Proteinas_g)),
+    Hidratos_g: decima(numero(a.Hidratos_g) + numero(b.Hidratos_g)),
+    Grasas_g: decima(numero(a.Grasas_g) + numero(b.Grasas_g)),
+    Ingredientes: [a.Ingredientes, b.Ingredientes].filter(Boolean).join(', '),
+    Instrucciones: `— ${et[0]}: ${na} —\n${a.Instrucciones || ''}\n\n— ${et[1]}: ${nb} —\n${b.Instrucciones || ''}`,
+    platos,
+  };
 }
 
 // ── Receta del día (pestaña Receta) ───────────────────────────────────────────
