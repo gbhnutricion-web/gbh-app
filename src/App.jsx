@@ -5,6 +5,7 @@ import { SPR, U, sprite, spriteCaja, bloque, suelo as dibujarSuelo, matas } from
 // Medidas corporales (silueta por zonas, perímetros y pliegues): módulo aparte,
 // recibe sbReq/T/Card por props para que este fichero solo cambie en 3 sitios.
 import { SelectorMedidas, MedidasCorporales } from "./MedidasCorporales";
+import { CicloPeso } from "./CicloPeso";                                 // ciclo y báscula: peso esperado con y sin retención, solo mujeres (12-oct-2026)
 import { SelectorPrograma, BotonPrograma } from "./SelectorPrograma";
 import { TuDia } from "./TuDia";                                              // Kcal reales, fase 1
 import { FRACCIONES_MENOS, FRAC_MENOS_DEFECTO, fraccionValida, previstoToma, realToma, sumaItems } from "./kcalDia";
@@ -13999,6 +14000,7 @@ function GBHApp(){
                 </div>
               </Card>
               {chartData.length>0&&<WeightChart chartData={chartData} setWeightMode={setWeightMode} goalWeight={profile?.goal_weight||null} shareName={profile?.name} lang={lang}/>}
+              {profile?.sex==="F"&&chartData.length>0&&<CicloPeso profile={profile} weights={weights} lang={lang} sbReq={sbReq} T={T} Card={Card} sfx={sfx}/>}
               {profile?.plan==='premium'&&<TarjetaMetabolismo seg={segPlan} lang={lang}/>}
             </>
           );
@@ -14076,6 +14078,7 @@ function GBHApp(){
               )}
               {/* Gráfica */}
               {chartData.length>0&&<WeightChart chartData={chartData} setWeightMode={setWeightMode} goalWeight={profile?.goal_weight||null} shareName={profile?.name} lang={lang}/>}
+              {profile?.sex==="F"&&chartData.length>0&&<CicloPeso profile={profile} weights={weights} lang={lang} sbReq={sbReq} T={T} Card={Card} sfx={sfx}/>}
               {profile?.plan==='premium'&&<TarjetaMetabolismo seg={segPlan} lang={lang}/>}
               {/* Empty state */}
               {chartData.length===0&&(
