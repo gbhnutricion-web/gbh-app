@@ -5,6 +5,7 @@ import {
   elegirRecetaCambio, permitidasDePlanes, franjaCambio, normNombreCambio, POOL,
   claveMemoriaCambio, leerMemoriaCambio, guardarMemoriaCambio, podarMemoriaCambio,
   permitidasTodas, puedeComer, recetaDelDiaAlAzar, recetaDelDiaFija,
+  rolPlatoMenu, listasPlatoMenu, elegirPlatoMenu, recomponerMenu,
 } from '../src/cambioReceta.js';
 
 const ok = (c, m) => { if (!c) throw new Error(m || 'no se cumple'); };
@@ -24,6 +25,40 @@ const BASE = [
   R('REC5', 'Lentejas estofadas', 'Vegetariana'), R('REC6', 'Tortitas de avena', 'Postre', { categoria: 'Desayuno/Almuerzo/Merienda' }),
   R('REC7', 'Atún con patatas', 'Pescado'),
 ];
+
+// Menús de juguete (casos del final). Kcal y reparto como los de un menú de ~1.000 kcal.
+const M = (id, nombre, tipo, calorias, p, h, g, extra = {}) => ({ id_receta: id, nombre, tipo, categoria: 'Comida/Cena',
+  calorias, proteinas_g: p, hidratos_g: h, grasas_g: g, ingredientes: nombre.toLowerCase(), ...extra });
+const MENU = [
+  M('E1', 'Crema de calabacín', 'Sopa/Crema', 350, 10, 40, 16),
+  M('E2', 'Ensalada de garbanzos y tomate', 'Ensalada', 350, 14, 45, 12),
+  M('E3', 'Arroz con verduras', 'Vegetariana', 350, 8, 60, 8),
+  M('S5', 'Pollo al curry con arroz', 'Carne', 350, 14, 45, 12),
+  M('E5', 'Ensalada César con pollo', 'Ensalada', 650, 48, 50, 25),
+  M('S1', 'Pollo asado con patatas', 'Carne', 650, 50, 55, 22),
+  M('S2', 'Merluza en salsa verde', 'Pescado', 650, 48, 50, 25),
+  M('S3', 'Lasaña de verduras', 'Vegetariana', 650, 20, 80, 25),
+  M('S4', 'Salmón al horno con cuscús', 'Pescado', 650, 45, 60, 24),
+  M('P1', 'Tarta de queso', 'Postre', 250, 10, 25, 12, { categoria: 'Desayuno/Almuerzo/Merienda' }),
+  M('P2', 'Bizcocho de yogur', 'Postre', 250, 7, 35, 9, { categoria: 'Desayuno/Almuerzo/Merienda' }),
+  M('L1', 'Tostada de pavo', 'Carne', 250, 20, 25, 8, { categoria: 'Desayuno/Almuerzo/Merienda' }),
+];
+const SOPA = { nombre: 'Sopa de quinoa', tipo: 'Sopa/Crema', calorias: 350, proteinas_g: 10, hidratos_g: 45, grasas_g: 12, kcal_objetivo: 350 };
+const POLLO = { nombre: 'Pollo asado con patatas', tipo: 'Carne', calorias: 650, proteinas_g: 50, hidratos_g: 55, grasas_g: 22, kcal_objetivo: 650 };
+const TARTA = { nombre: 'Tarta de queso', tipo: 'Postre', calorias: 250, proteinas_g: 10, hidratos_g: 25, grasas_g: 12, kcal_objetivo: 250 };
+const CELDA = {
+  Nombre_Receta: '1º Sopa de quinoa · 2º Salmón al horno con brócoli y patatas', Tipo: 'Pescado',
+  Calorias_Totales: 1025, Proteinas_g: 46.1, Hidratos_g: 105.3, Grasas_g: 38.2,
+  Ingredientes: 'quinoa 60 g, salmón 150 g, brócoli 200 g',
+  Instrucciones: '— 1º: Sopa de quinoa —\nCocer.\n\n— 2º: Salmón al horno con brócoli y patatas —\nHornear.',
+  raciones: 1, compuesta: true, etiquetas: ['1º', '2º'], otra: 'se conserva',
+  platos: [
+    { Nombre_Receta: 'Sopa de quinoa', Tipo: 'Sopa/Crema', Ingredientes: 'quinoa 60 g', Instrucciones: 'Cocer.',
+      Calorias_Totales: 353, Proteinas_g: 11.1, Hidratos_g: 42.7, Grasas_g: 12.3, raciones: 1, racion_factor: 1.1 },
+    { Nombre_Receta: 'Salmón al horno con brócoli y patatas', Tipo: 'Pescado', Ingredientes: 'salmón 150 g, brócoli 200 g',
+      Instrucciones: 'Hornear.', Calorias_Totales: 672, Proteinas_g: 35, Hidratos_g: 62.6, Grasas_g: 25.9, raciones: 1 },
+  ],
+};
 
 export const CASOS = [
   { que: 'la lista del servidor manda: lo que no está no sale nunca (el salmón de la alérgica)', prueba: () => {
@@ -210,6 +245,92 @@ export const CASOS = [
     igual(elegirRecetaCambio({ recetas, actual: ATUN, toma: 'Comida' }).factor, 1.25);
     const casi = [R('REC2', 'Merluza en salsa', 'Pescado', { calorias: 490 })];
     igual(elegirRecetaCambio({ recetas: casi, actual: ATUN, toma: 'Comida' }).factor, 1);
+  } },
+  // ── Menú desglosado: cada plato se cambia por separado (12-oct-2026) ──
+  { que: 'menú: el rol de cada plato sale de su etiqueta (y sin etiquetas, el menú clásico)', prueba: () => {
+    igual([0, 1].map((i) => rolPlatoMenu(['1º', '2º'], i)), ['entrante', 'segundo']);
+    igual([0, 1].map((i) => rolPlatoMenu(['Plato', 'Postre'], i)), ['principal', 'postre']);
+    igual([0, 1].map((i) => rolPlatoMenu(undefined, i)), ['entrante', 'segundo']);
+  } },
+  { que: 'menú: el 1º sale SOLO de la lista «entrante» del servidor; nunca un proteico ni el 2º', prueba: () => {
+    const entrantes = new Set(['E1', 'E3']);
+    const permitidas = new Set(MENU.map((r) => r.id_receta));
+    const salen = new Set();
+    for (let i = 0; i < 60; i++) {
+      const r = elegirPlatoMenu({ rol: 'entrante', recetas: MENU, actual: SOPA, permitidas, entrantes,
+        otro: 'Arroz con verduras', azar: () => i / 60 });
+      ok(r.receta && r.receta.id_receta === 'E1', `salió ${r.receta && r.receta.id_receta}`);
+      salen.add(r.receta.id_receta);
+    }
+    igual([...salen], ['E1'], 'E3 es el otro plato; E2 no está en la lista; S5 es proteico');
+  } },
+  { que: 'menú: sin lista «entrante» (planes de antes) el 1º es sopa/crema o ensalada', prueba: () => {
+    const salen = new Set();
+    for (let i = 0; i < 60; i++) {
+      const r = elegirPlatoMenu({ rol: 'entrante', recetas: MENU, actual: SOPA, azar: () => i / 60 });
+      salen.add(r.receta.id_receta);
+    }
+    igual([...salen].sort(), ['E1', 'E2'], 'ni el arroz vegetariano ni el pollo al curry');
+  } },
+  { que: 'menú: el 2º nunca es de tipo entrante y prefiere los proteicos', prueba: () => {
+    const salen = new Set();
+    for (let i = 0; i < 60; i++) {
+      const r = elegirPlatoMenu({ rol: 'segundo', recetas: MENU, actual: POLLO, otro: 'Crema de calabacín', azar: () => i / 60 });
+      salen.add(r.receta.id_receta);
+    }
+    igual([...salen].sort(), ['S2', 'S4'], 'ni la ensalada César (entrante) ni la lasaña (12 % de proteína)');
+  } },
+  { que: 'menú: sin proteicos posibles, el 2º cae a los demás segundos (y nunca al otro plato)', prueba: () => {
+    const permitidas = new Set(['S2', 'S3', 'E5']);
+    for (let i = 0; i < 30; i++) {
+      const r = elegirPlatoMenu({ rol: 'segundo', recetas: MENU, actual: POLLO, permitidas, otro: 'Merluza en salsa verde', azar: () => i / 30 });
+      igual(r.receta && r.receta.id_receta, 'S3');
+    }
+    igual(elegirPlatoMenu({ rol: 'segundo', recetas: MENU, actual: POLLO, permitidas: new Set(['E5']) }).motivo, 'sin_alternativa');
+  } },
+  { que: 'menú con postre: el postre sale de la franja ligera y es un postre; el plato, como una comida', prueba: () => {
+    const ligera = new Set(['P1', 'P2', 'L1']);
+    for (let i = 0; i < 30; i++) {
+      igual(elegirPlatoMenu({ rol: 'postre', recetas: MENU, actual: TARTA, permitidas: ligera, azar: () => i / 30 }).receta.id_receta, 'P2');
+      const p = elegirPlatoMenu({ rol: 'principal', recetas: MENU, actual: POLLO, otro: 'Tarta de queso', azar: () => i / 30 }).receta;
+      ok(p.categoria === 'Comida/Cena' && p.id_receta !== 'S1', `salió ${p.id_receta}`);
+    }
+  } },
+  { que: 'menú: cada rol toma su lista del plan más reciente que la trae', prueba: () => {
+    const planes = [
+      { fecha_gen: '2026-10-10T10:00:00Z', plan_json: { cambio_receta: { v: 1, desayuno: ['D'], ligera: ['P1', 'L1'], principal: ['E1', 'S1'], entrante: ['E1'] } } },
+      { fecha_gen: '2026-10-03T10:00:00Z', plan_json: { cambio_receta: { v: 1, desayuno: ['D'], ligera: ['X'], principal: ['Y'] } } },
+    ];
+    const ent = listasPlatoMenu(planes, 'entrante');
+    igual([[...ent.permitidas], [...ent.entrantes]], [['E1', 'S1'], ['E1']]);
+    igual(listasPlatoMenu(planes, 'segundo').entrantes, null);
+    igual([...listasPlatoMenu(planes, 'postre').permitidas], ['P1', 'L1']);
+    igual(listasPlatoMenu([planes[1]], 'entrante').entrantes, null, 'plan de antes del 12-oct: sin lista de entrantes');
+    igual(listasPlatoMenu([], 'entrante'), { permitidas: null, entrantes: null });
+  } },
+  { que: 'menú: la celda se recompone como _componer_menu y la de entrada no se toca', prueba: () => {
+    const celda = JSON.parse(JSON.stringify(CELDA));
+    const nuevo = { Nombre_Receta: 'Crema de calabacín', Tipo: 'Sopa/Crema', Calorias_Totales: 340, Proteinas_g: 9.7,
+      Hidratos_g: 38.9, Grasas_g: 15.6, Ingredientes: 'calabacín 300 g', Instrucciones: 'Triturar.', raciones: 1, kcal_objetivo: 353 };
+    const c = recomponerMenu(celda, 0, nuevo);
+    igual(celda, CELDA, 'la celda de entrada no cambia');
+    igual(c.Nombre_Receta, '1º Crema de calabacín · 2º Salmón al horno con brócoli y patatas');
+    igual([c.Tipo, c.Calorias_Totales, c.Proteinas_g, c.Hidratos_g, c.Grasas_g], ['Pescado', 1012, 44.7, 101.5, 41.5]);
+    igual(c.Ingredientes, 'calabacín 300 g, salmón 150 g, brócoli 200 g');
+    igual(c.Instrucciones, '— 1º: Crema de calabacín —\nTriturar.\n\n— 2º: Salmón al horno con brócoli y patatas —\nHornear.');
+    igual([c.compuesta, c.etiquetas, c.raciones, c.otra], [true, ['1º', '2º'], 1, 'se conserva']);
+    ok(c.platos[0] === nuevo && c.platos[1] === celda.platos[1], 'solo cambia el plato elegido');
+    const mismo = recomponerMenu(CELDA, 1, CELDA.platos[1]);
+    igual([mismo.Nombre_Receta, mismo.Calorias_Totales, mismo.Proteinas_g, mismo.Ingredientes, mismo.Instrucciones],
+      [CELDA.Nombre_Receta, CELDA.Calorias_Totales, CELDA.Proteinas_g, CELDA.Ingredientes, CELDA.Instrucciones], 'recomponer sin cambiar nada');
+  } },
+  { que: 'menú con postre: el tipo de la celda es el del plato; sin etiquetas, «1º» y «2º»', prueba: () => {
+    const conPostre = { ...CELDA, etiquetas: ['Plato', 'Postre'] };
+    const c = recomponerMenu(conPostre, 1, { Nombre_Receta: 'Tarta de queso', Tipo: 'Postre', Calorias_Totales: 250 });
+    igual([c.Nombre_Receta.slice(0, 6), c.Tipo], ['Plato ', 'Sopa/Crema']);
+    const sin = { ...CELDA };
+    delete sin.etiquetas;
+    ok(recomponerMenu(sin, 0, CELDA.platos[0]).Nombre_Receta.startsWith('1º Sopa de quinoa · 2º '));
   } },
 ];
 

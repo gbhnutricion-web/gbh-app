@@ -15,6 +15,7 @@ import { esDiaDeMedicion, ventanaKeys, proximoDiaMedicion } from "./ventanaMedic
 import { TOPE_PUNTOS, clasificarRespuesta, yaEstaEnElServidor, opDePartidaCaducada, esPendienteDeHoy } from "./partidaPendiente"; // la partida es del paciente hasta que el servidor la confirma (26-sep-2026)
 import { racionesDeLaLista, costePorRacion, textosCajaRacion } from "./raciones";   // qué cocinar y cuánto comer (17-sep-2026)
 import { elegirRecetaCambio, permitidasDePlanes, normNombreCambio, claveMemoriaCambio, leerMemoriaCambio, guardarMemoriaCambio, permitidasTodas, puedeComer, recetaDelDiaAlAzar, recetaDelDiaFija } from "./cambioReceta"; // cambio de receta con gemas y receta del día: lista del servidor, sin repetir (28-sep-2026)
+import { rolPlatoMenu, listasPlatoMenu, elegirPlatoMenu, recomponerMenu } from "./cambioReceta"; // menús de 1º y 2º: cada plato se cambia por separado (12-oct-2026)
 import { Cafeina } from "./Cafeina";                                     // calculadora de cafeína, fase 1 (25-sep-2026)
 import { Creatina } from "./Creatina";                                   // calculadora de creatina, fase 1 (5-oct-2026)
 import { Suplementacion } from "./Suplementacion";                       // pestaña 💊 Suplementación: ☕ Cafeína y 💪 Creatina (próximamente) (26-sep-2026)
@@ -16008,6 +16009,12 @@ const MENU_ETQ = {
   en: {'1º':'1st course','2º':'2nd course','Plato':'Main','Postre':'Dessert'},
 };
 const menuEtiqueta = (et, lang) => (MENU_ETQ[lang==='en'?'en':'es'][et]) || et || '';
+// La corta, para el botón «Cambiar 1º» del plato que se ve (12-oct-2026).
+const MENU_ETQ_CORTA = {
+  es: {'1º':'1º','2º':'2º','Plato':'plato','Postre':'postre'},
+  en: {'1º':'1st','2º':'2nd','Plato':'main','Postre':'dessert'},
+};
+const menuEtiquetaCorta = (et, lang) => (MENU_ETQ_CORTA[lang==='en'?'en':'es'][et]) || et || '';
 
 const emojiPlato = (nombre, tipo) => {
   if(tipo==='Postre'||tipo==='Dessert') return '🍰';
@@ -17117,7 +17124,9 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
     racion_texto: pl.racion_texto||'',
     racion_factor:parseFloat(pl.racion_factor)||1,
     raciones:     parseInt(pl.raciones||1)||1,
-    kcal_objetivo:Math.round(parseFloat(pl.Calorias_Totales)||0),
+    // Las kcal que le puso la programación: un plato ya cambiado las guarda en
+    // kcal_objetivo, para que varios cambios seguidos no se vayan desviando.
+    kcal_objetivo:Math.round(parseFloat(pl.kcal_objetivo)||parseFloat(pl.Calorias_Totales)||0),
     slug:null, publica:false,   // los platos del menú no tienen escaparate propio
   });
 
@@ -17231,6 +17240,8 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
       showT&&showT({icon:"💎",title:lang==='en'?'Not enough gems':'Sin gemas suficientes',sub:lang==='en'?'You need 10 💎 to change the recipe':'Necesitas 10 💎 para cambiar la receta'});
       return {ok:false, motivo:'gemas'};
     }
+    // Menú de dos platos: se cambia SOLO el plato que se ve (12-oct-2026).
+    if(tomaMenu) return await cambiarPlatoMenu({sinIng, tipoR, costeCambio});
     const mapa = await cargarRecetasCache();
     const recetas = Object.values(mapa);
     // ── Qué receta sale: src/cambioReceta.js (28-sep-2026) ────────────────────
@@ -17326,6 +17337,101 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
       }catch(e){ console.warn("[cambiar-receta] no se pudo persistir:", e); }
     }
     return {ok:true, nombre: elegida.nombre||elegida.nombre_receta||''};
+  }
+
+  // ── Menú de 1º y 2º (o plato y postre): cambiar UN plato, el que se ve ─────
+  // Hasta el 12-oct el botón no salía en los menús, porque cambiar un plato
+  // descuadraba los totales guardados de la celda (Aritz, su primera semana con
+  // dos platos). Ahora cada plato se cambia por separado, con el rol con que lo
+  // eligió la programación (elegirPlatoMenu: el 1º, entre lo que vale de entrante;
+  // el 2º, nunca un entrante y mejor proteico), con su memoria de lo ya enseñado,
+  // y la celda se recompone (recomponerMenu) para que kcal y macros de la toma,
+  // «Tu día» y el registro sigan cuadrando. Mismo cobro y misma escritura que
+  // el cambio de una receta.
+  async function cambiarPlatoMenu({sinIng, tipoR, costeCambio}){
+    const i = platoSel;
+    const celda = planJ?.[openToma]?.[String(selDay)];
+    const platos = Array.isArray(celda?.platos) ? celda.platos : [];
+    if(!plan || !celda?.compuesta || platos.length<2 || !platos[i]) return {ok:false};
+    const mapa = await cargarRecetasCache();
+    const recetas = Object.values(mapa);
+    const etiqueta = (Array.isArray(celda.etiquetas)&&celda.etiquetas[i]) || (i===0?'1º':'2º');
+    const rol = rolPlatoMenu(celda.etiquetas, i);
+    const actual = platoMenuAReceta(platos[i]);     // kcal_objetivo: las del plato en la programación
+    let almacen = null;
+    try{ almacen = window.localStorage; }catch(e){ almacen = null; }
+    const memClave = claveMemoriaCambio(profile.id, plan?.semana ?? '', `${openToma}:${i+1}`, selDay);
+    const mem = leerMemoriaCambio(almacen, memClave, actual);
+    const enPlan = new Set();   // lo que ya sale en la semana (fuera de este menú): se deja para después
+    for(const tm of PLAN_TOMAS){
+      for(const [d,c] of Object.entries(planJ?.[tm]||{})){
+        if(tm===openToma && String(d)===String(selDay)) continue;
+        if(c?.Nombre_Receta) enPlan.add(normNombreCambio(c.Nombre_Receta));
+        (Array.isArray(c?.platos)?c.platos:[]).forEach(pl=>{ if(pl?.Nombre_Receta) enPlan.add(normNombreCambio(pl.Nombre_Receta)); });
+      }
+    }
+    const rechPref = interpretarRechazados(config?.notas);
+    const listas = listasPlatoMenu(planes, rol);
+    const res = elegirPlatoMenu({
+      rol, recetas, actual, ancla:mem.ancla,
+      permitidas: listas.permitidas, entrantes: listas.entrantes,
+      otro:       platos[1-i]?.Nombre_Receta || '',
+      rechazada:  (r)=>recetaRechazadaJS(r, rechPref) || (!!sinIng && contieneIngrediente(r?.ingredientes||'', sinIng))
+                       || (!!tipoR && String(r?.tipo||'')!==tipoR),
+      descartadas:new Set((descartadas||[]).map(r=>normNombreCambio(r.nombre||''))),
+      favoritas:  new Set((savedRecipes||[]).map(r=>normNombreCambio(r.nombre||r.nombre_receta||''))),
+      vistas:mem.vistas, enPlan,
+    });
+    // Sin nada que ofrecer: se avisa y NO se cobran gemas (como en una receta).
+    if(!res.receta){
+      showT&&showT({icon:"🚫",title:lang==='en'?'No alternative':'Sin alternativa',sub:lang==='en'?'No similar dish available':'No hay plato similar disponible'});
+      return {ok:false, motivo:'sin_alternativa'};
+    }
+    const elegida = res.receta;
+    guardarMemoriaCambio(almacen, memClave, {...mem, actual, elegida, reinicio:res.reinicio});
+    if(costeCambio>0){
+      const newGems = gems - costeCambio;
+      const updP = {...profile, gems:newGems};
+      setProfile(updP); lsSet(`gbh:p:${profile.id}`, updP);
+      sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:newGems});
+    }
+    sfx&&sfx("recipe");
+    // El plato nuevo, con la forma de los platos del servidor (_celda_json) y su
+    // ración (0,70-1,40 en pasos de 0,05) contra las kcal del plato de la programación.
+    const f = res.factor;
+    const kcalBase = parseFloat(elegida.calorias||elegida.calorias_totales)||0;
+    const decima = (x)=>Math.round(x*10)/10;
+    const nuevo = {
+      Nombre_Receta:    elegida.nombre||elegida.nombre_receta||'',
+      Tipo:             elegida.tipo||platos[i].Tipo||'',
+      Ingredientes:     escalarIngredientesJS(elegida.ingredientes||'', f),
+      Instrucciones:    elegida.instrucciones||'',
+      Calorias_Totales: Math.round(kcalBase*f),
+      Proteinas_g:      decima((parseFloat(elegida.proteinas_g)||0)*f),
+      Hidratos_g:       decima((parseFloat(elegida.hidratos_g)||0)*f),
+      Grasas_g:         decima((parseFloat(elegida.grasas_g)||0)*f),
+      raciones:         parseInt(elegida.raciones||1)||1,
+      ...(f!==1?{racion_factor:f, racion_texto:racionTextoJS(f,lang), calorias_base:Math.round(kcalBase)}:{}),
+      kcal_objetivo:    actual.kcal_objetivo,
+    };
+    const celdaNueva = recomponerMenu(celda, i, nuevo);
+    setTomaMenu(m=>m?{...m, platos:celdaNueva.platos, kcalTotal:Math.round(parseFloat(celdaNueva.Calorias_Totales)||0)}:m);
+    setTomaReceta(platoMenuAReceta(nuevo));
+    setCocinarDos(false); setCocinarDeMas(1);
+    showT&&showT({icon:"🍽️",title:lang==='en'?'New dish!':'¡Nuevo plato!',
+      sub:`${menuEtiqueta(etiqueta,lang)} · ${costeCambio>0?'-10 💎':(lang==='en'?'free':'gratis')}`});
+    // Persistir en weekly_plans, como el cambio de una receta: sin esto se
+    // pierde al cerrar la app.
+    try{
+      const nuevoJson = JSON.parse(JSON.stringify(planJ||{}));
+      if(!nuevoJson[openToma]) nuevoJson[openToma]={};
+      nuevoJson[openToma][String(selDay)] = celdaNueva;
+      setPlanes(ps=>ps.map((p,k)=>k===idx?{...p,plan_json:nuevoJson}:p));
+      sbReq("PATCH",
+        `weekly_plans?profile_id=eq.${profile.id}&semana=eq.${plan.semana}`,
+        {plan_json:nuevoJson});
+    }catch(e){ console.warn("[cambiar-plato] no se pudo persistir:", e); }
+    return {ok:true, nombre: nuevo.Nombre_Receta};
   }
 
   // ── Guardar la receta en el recetario personal (20 💎) ─────────────────────
@@ -18064,9 +18170,10 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
           </div>
           {/* ── MENÚ DESGLOSADO: pestañas de platos ─────────────────────────
               Cada pestaña carga su plato en tomaReceta y TODO lo de abajo
-              (macros, ración, ingredientes, preparación, guardar/descartar)
-              se reutiliza tal cual. El check de cumplimiento es de la TOMA:
-              un solo registro engloba los dos platos. */}
+              (macros, ración, ingredientes, preparación, cambiar, guardar y
+              descartar) se reutiliza tal cual; «Cambiar» cambia solo ese
+              plato. El check de cumplimiento es de la TOMA: un solo registro
+              engloba los dos platos. */}
           {tomaMenu&&(<>
             <div style={{display:'flex',gap:8,marginBottom:10}}>
               {tomaMenu.platos.map((pl,i)=>{const on=i===platoSel;return(
@@ -18256,22 +18363,22 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
 
           {/* Botones: cambiar receta (10💎), guardar (20💎) y descartar (gratis) */}
           <div style={{display:'flex',gap:10,marginTop:12}}>
-            {/* Cambiar receta: oculto en MENÚS DESGLOSADOS — cambiar un solo
-                plato desincronizaría los totales guardados del plan (kcal y
-                macros de la celda). Posible v2: cambio plato a plato con
-                recomposición del menú. Guardar/descartar SÍ operan sobre el
-                plato visible (son recetas reales del recetario). */}
-            {!tomaMenu&&<button onClick={cambiarRecetaToma}
+            {/* Cambiar receta. En un MENÚ DESGLOSADO cambia solo el plato que
+                se ve («Cambiar 1º», «Cambiar 2º») y la celda se recompone con
+                los totales nuevos (cambiarPlatoMenu, 12-oct-2026); hasta ese
+                día el botón no salía en los menús. Guardar/descartar operan
+                también sobre el plato visible (son recetas del recetario). */}
+            <button onClick={cambiarRecetaToma}
               style={{flex:1,background:(!enTrial&&gems<10)?'rgba(255,255,255,0.05)':'rgba(100,181,246,0.15)',
                       border:(!enTrial&&gems<10)?'1.5px solid rgba(255,255,255,0.08)':'1.5px solid rgba(100,181,246,0.4)',
                       borderRadius:16,padding:'14px 10px',cursor:(!enTrial&&gems<10)?'default':'pointer',
                       display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
               <span style={{fontSize:20}}>🔄</span>
               <span style={{fontSize:12,fontWeight:900,color:(!enTrial&&gems<10)?T.t3:T.platos,fontFamily:"'Nunito',sans-serif"}}>
-                {lang==='en'?'Change':'Cambiar'}
+                {lang==='en'?'Change':'Cambiar'}{tomaMenu?' '+menuEtiquetaCorta(tomaMenu.etiquetas[platoSel],lang):''}
               </span>
               <span style={{fontSize:10,color:enTrial?T.g1:T.t3,fontWeight:enTrial?900:400}}>{enTrial?(lang==='en'?'Free · trial':'Gratis · prueba'):'10 💎'}</span>
-            </button>}
+            </button>
             <button onClick={recetaYaGuardada?undefined:guardarRecetaToma}
               style={{flex:1,background:recetaYaGuardada?alpha(T.g1,0.15):(gems<20?'rgba(255,255,255,0.05)':alpha(T.au1,0.12)),
                       border:recetaYaGuardada?'1.5px solid '+T.bG:(gems<20?'1.5px solid rgba(255,255,255,0.08)':`1.5px solid ${alpha(T.au1,0.35)}`),
@@ -18306,7 +18413,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
             </button>)}
           {boHoja&&boActivo(profile)&&<PreguntaBo T={T} Sheep={Sheep} lang={lang} pid={profile?.id}
             bo={{nombre:profile?.bo_nombre||'Bo',color:profile?.bo_color||'blanca',equipados:Array.isArray(profile?.bo_equipados)?profile.bo_equipados:[]}}
-            ctx={{contexto:'receta',plan:planBo(profile),enTrial:!!enTrial,raciones:tomaReceta.raciones,puedeCambiar:!tomaMenu,descartada:!!recetaDescartada,
+            ctx={{contexto:'receta',plan:planBo(profile),enTrial:!!enTrial,raciones:tomaReceta.raciones,puedeCambiar:true,descartada:!!recetaDescartada,
                   dia:selDay,toma:openToma,receta:tomaReceta.nombre,
                   cajaRacion:(()=>{ const c=textosCajaRacion({raciones:tomaReceta.raciones,factor:tomaReceta.racion_factor,racionTexto:tomaReceta.racion_texto,lang}); return c?`${c.titulo}. ${c.detalle}`:''; })()}}
             receta={{nombre:tomaReceta.nombre,ingList}}
