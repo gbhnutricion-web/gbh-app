@@ -240,17 +240,47 @@ export function permitidasTodas(planes) {
   return new Set(partes.flatMap((p) => [...p]));
 }
 
-export function puedeComer(r, { permitidas = null, rechazada = () => false, descartadas = new Set() } = {}) {
+// ── Fruta de temporada (13-oct-2026, MAESTRO-2026-909) ───────────────────────
+// `recipes.temporadas` la escribe 04. Recetario/sincronizar_temporadas.py con la regla del
+// generador (temporadas_receta, base GBH_Frutas_Temporada.csv): las estaciones en que la
+// receta es de temporada, o null si lo es todo el año. Estaciones en fechas fijas, como
+// `estacion_de` del servidor: primavera desde el 21-mar, verano desde el 21-jun, otoño
+// desde el 23-sep, invierno desde el 21-dic.
+export const ESTACIONES = ['Primavera', 'Verano', 'Otoño', 'Invierno'];
+export const CATEGORIAS_GENERALES = ['Comida/Cena', 'Desayuno/Almuerzo/Merienda'];
+
+export function estacionDe(fecha = new Date()) {
+  const md = (fecha.getMonth() + 1) * 100 + fecha.getDate();
+  if (md >= 321 && md < 621) return 'Primavera';
+  if (md >= 621 && md < 923) return 'Verano';
+  if (md >= 923 && md < 1221) return 'Otoño';
+  return 'Invierno';
+}
+
+// Sin estación pedida, o sin dato (null = todo el año; columna aún no leída), vale.
+export function deTemporada(r, estacion) {
+  if (!estacion || !r || r.temporadas == null) return true;
+  const t = Array.isArray(r.temporadas) ? r.temporadas
+    : String(r.temporadas).replace(/[{}"]/g, '').split(',').map((s) => s.trim()).filter(Boolean);
+  return t.includes(estacion);
+}
+
+export function puedeComer(r, { permitidas = null, rechazada = () => false, descartadas = new Set(),
+  estacion = null, categorias = null } = {}) {
   if (!r) return false;
   if (permitidas && !permitidas.has(String(r.id_receta == null ? '' : r.id_receta))) return false;
+  // Receta del día (13-oct-2026, MAESTRO-2026-909): solo las dos categorías generales —las
+  // propias, como Post-entreno, son de quien las tiene en su pauta— y solo de temporada.
+  if (categorias && !categorias.has(r.categoria)) return false;
+  if (!deTemporada(r, estacion)) return false;
   return !descartadas.has(normNombreCambio(r.nombre || r.nombre_receta || '')) && !rechazada(r);
 }
 
 // Cambio con gemas: al azar entre las que puede comer, sin repetir lo enseñado hoy
 // (enseñado todo, vuelve a empezar). null si no puede comer ninguna.
 export function recetaDelDiaAlAzar({ recetas, permitidas = null, rechazada = () => false,
-  descartadas = new Set(), excluir = new Set(), azar = Math.random }) {
-  const ok = (recetas || []).filter((r) => puedeComer(r, { permitidas, rechazada, descartadas }));
+  descartadas = new Set(), excluir = new Set(), azar = Math.random, estacion = null, categorias = null }) {
+  const ok = (recetas || []).filter((r) => puedeComer(r, { permitidas, rechazada, descartadas, estacion, categorias }));
   if (!ok.length) return null;
   const nuevas = ok.filter((r) => !excluir.has(String(r.id_receta)));
   const pool = nuevas.length ? nuevas : ok;
@@ -258,8 +288,9 @@ export function recetaDelDiaAlAzar({ recetas, permitidas = null, rechazada = () 
 }
 
 // La gratuita: fija para todo el día (misma clave, misma receta) entre las que puede comer.
-export function recetaDelDiaFija({ recetas, clave, permitidas = null, rechazada = () => false, descartadas = new Set() }) {
-  const ok = (recetas || []).filter((r) => puedeComer(r, { permitidas, rechazada, descartadas }))
+export function recetaDelDiaFija({ recetas, clave, permitidas = null, rechazada = () => false, descartadas = new Set(),
+  estacion = null, categorias = null }) {
+  const ok = (recetas || []).filter((r) => puedeComer(r, { permitidas, rechazada, descartadas, estacion, categorias }))
     .sort((a, b) => (String(a.id_receta) < String(b.id_receta) ? -1 : String(a.id_receta) > String(b.id_receta) ? 1 : 0));
   if (!ok.length) return null;
   let h = 0;

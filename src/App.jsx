@@ -14,8 +14,9 @@ import { _NUTRI_ING } from "./nutriIng";                                     // 
 import { esDiaDeMedicion, ventanaKeys, proximoDiaMedicion } from "./ventanaMedicion"; // peso y medidas: miércoles + fin de semana (15-sep-2026)
 import { TOPE_PUNTOS, clasificarRespuesta, yaEstaEnElServidor, opDePartidaCaducada, esPendienteDeHoy } from "./partidaPendiente"; // la partida es del paciente hasta que el servidor la confirma (26-sep-2026)
 import { racionesDeLaLista, costePorRacion, textosCajaRacion } from "./raciones";   // qué cocinar y cuánto comer (17-sep-2026)
-import { elegirRecetaCambio, permitidasDePlanes, normNombreCambio, claveMemoriaCambio, leerMemoriaCambio, guardarMemoriaCambio, permitidasTodas, puedeComer, recetaDelDiaAlAzar, recetaDelDiaFija } from "./cambioReceta"; // cambio de receta con gemas y receta del día: lista del servidor, sin repetir (28-sep-2026)
+import { elegirRecetaCambio, permitidasDePlanes, normNombreCambio, claveMemoriaCambio, leerMemoriaCambio, guardarMemoriaCambio, permitidasTodas, puedeComer, recetaDelDiaAlAzar, recetaDelDiaFija, estacionDe, CATEGORIAS_GENERALES } from "./cambioReceta"; // cambio de receta con gemas y receta del día: lista del servidor, sin repetir (28-sep-2026)
 import { rolPlatoMenu, listasPlatoMenu, elegirPlatoMenu, recomponerMenu } from "./cambioReceta"; // menús de 1º y 2º: cada plato se cambia por separado (12-oct-2026)
+import { leerTodo } from "./leerTodo";                                   // recetas en bloques: PostgREST corta en 1.000 filas sin avisar (12-oct-2026)
 import { Cafeina } from "./Cafeina";                                     // calculadora de cafeína, fase 1 (25-sep-2026)
 import { Creatina } from "./Creatina";                                   // calculadora de creatina, fase 1 (5-oct-2026)
 import { Suplementacion } from "./Suplementacion";                       // pestaña 💊 Suplementación: ☕ Cafeína y 💪 Creatina (próximamente) (26-sep-2026)
@@ -2319,6 +2320,24 @@ const sbReq = async(method, path, body=null) => {
     return null;
   }
 };
+
+// ─── sbLeerTodo: una consulta ENTERA, en bloques (12-oct-2026, MAESTRO-2026-906) ─
+// PostgREST corta cada respuesta en 1.000 filas (max_rows del proyecto) aunque se
+// pida más, y sin error: recipes iba por 927 el 12-oct y crece a rachas. leerTodo
+// pide bloques hasta tener el total que dice Content-Range (el CORS de Supabase lo
+// expone; medido) o hasta una página vacía. La ruta lleva un order que acaba en
+// id_receta (único): sin él, dos bloques pueden repetir o saltarse recetas.
+// GET sin cola, como sbReq: null si algo falla, nunca un recetario a medias.
+const sbPagina = async (path) => {
+  try{
+    const r = await fetch(`${SB}/rest/v1/${path}`, { headers: gbhHeaders({ "Prefer": "count=exact" }) });
+    if(!r.ok) return null;
+    const filas = await r.json();
+    const total = parseInt(String(r.headers.get("Content-Range")||"").split("/")[1], 10);
+    return { filas, total: Number.isFinite(total) ? total : null };
+  }catch{ return null; }
+};
+const sbLeerTodo = (path) => leerTodo(sbPagina, path);
 
 // RPC directo para el PIN: SIN cola offline (verificar/crear PIN exige red;
 // encolar un check de PIN para "más tarde" no tiene sentido y ensuciaría la cola).
@@ -10090,7 +10109,9 @@ function GBHApp(){
   // (src/cambioReceta.js): la lista del servidor (plan_json.cambio_receta), los
   // rechazados de patient_config.notas y las descartadas 🗑️.
   const restriccionesReceta = async () => {
-    if(!profile?.id) return { permitidas:null, rechazada:()=>false, descartadas:new Set() };
+    // De temporada y de las categorías generales (13-oct-2026, MAESTRO-2026-909).
+    const temporada = { estacion: estacionDe(new Date()), categorias: new Set(CATEGORIAS_GENERALES) };
+    if(!profile?.id) return { permitidas:null, rechazada:()=>false, descartadas:new Set(), ...temporada };
     const [pl, cf] = await Promise.all([
       sbReq("GET", `weekly_plans?profile_id=eq.${profile.id}&select=fecha_gen,cambio_receta:plan_json->cambio_receta&order=fecha_gen.desc.nullslast&limit=12`),
       sbReq("GET", `patient_config?profile_id=eq.${profile.id}&select=notas&limit=1`),
@@ -10101,6 +10122,7 @@ function GBHApp(){
       permitidas: permitidasTodas(planesR),
       rechazada:  (r)=>recetaRechazadaJS(r, pref),
       descartadas:new Set((descartadas||[]).map(x=>normNombreCambio(x.nombre||''))),
+      ...temporada,
     };
   };
   // Carga inicial del día — gratis
@@ -10123,8 +10145,19 @@ function GBHApp(){
     try {
       const d = new Date();
       const dayOfYear = Math.floor((d - new Date(d.getFullYear(),0,0)) / 86400000);
-      const offset = (dayOfYear * 7 + d.getFullYear()) % 472;
-      const r = await sbReq("GET", `recipes?select=*&order=id_receta.asc&limit=1&offset=${offset}`);
+      // Rota entre TODAS las de las dos categorías generales (12-oct-2026, PEND-2026-376): era «% 472»,
+      // el tamaño del recetario en mayo, y las añadidas después nunca salían. Las categorías propias
+      // (Intra-entreno, Post-entreno) quedan fuera a propósito: solo las recibe quien las tiene en su
+      // pauta (MAESTRO-2026-716 y -908). El total lo da Content-Range; sin él, el 472 de antes.
+      // Y solo las de TEMPORADA (13-oct-2026, MAESTRO-2026-909): `temporadas` nula (todo el año) o con
+      // la estación de hoy. Si esa cuenta falla (sin la columna, o sin red), la de antes, sin estación.
+      const GENERALES = "categoria=in." + encodeURIComponent('("Comida/Cena","Desayuno/Almuerzo/Merienda")');
+      const TEMPORADA = "&or=" + encodeURIComponent(`(temporadas.is.null,temporadas.cs.{${estacionDe(d)}})`);
+      let filtro = GENERALES + TEMPORADA;
+      let cuenta = await sbPagina(`recipes?${filtro}&select=id_receta&limit=1`);
+      if(!cuenta){ filtro = GENERALES; cuenta = await sbPagina(`recipes?${filtro}&select=id_receta&limit=1`); }
+      const offset = (dayOfYear * 7 + d.getFullYear()) % (cuenta?.total > 0 ? cuenta.total : 472);
+      const r = await sbReq("GET", `recipes?${filtro}&select=*&order=id_receta.asc&limit=1&offset=${offset}`);
       let base = r?.length ? normalizeRecipe(r[0]) : null;
       // La del día, salvo que este paciente no pueda comerla: entonces otra, fija
       // para todo el día, entre las que sí puede. Sin restricciones legibles
@@ -10175,7 +10208,7 @@ function GBHApp(){
     if(completoCacheRef.current[cat.id]){ setCompletoRecipes(completoCacheRef.current[cat.id]); return; }
     setCompletoLoading(true); setCompletoRecipes([]);
     try{
-      const data = await sbReq("GET", `recipes?${cat.filtro}&select=*&order=calorias.asc&limit=300`);
+      const data = await sbLeerTodo(`recipes?${cat.filtro}&select=*&order=calorias.asc,id_receta.asc`);  // entera: con limit=300, Desayunos (359 el 12-oct) escondía 59
       const norm = (data||[]).map(normalizeRecipe);
       completoCacheRef.current[cat.id] = norm;
       setCompletoRecipes(norm);
@@ -10197,7 +10230,7 @@ function GBHApp(){
     if(todasRecetasPromiseRef.current) return todasRecetasPromiseRef.current;
     todasRecetasPromiseRef.current = (async ()=>{
       try{
-        const data = await sbReq("GET","recipes?select=*&order=calorias.asc&limit=1000");
+        const data = await sbLeerTodo("recipes?select=*&order=calorias.asc,id_receta.asc");
         const norm = (Array.isArray(data)?data:[]).map(normalizeRecipe);
         todasRecetasRef.current = norm;
         return norm;
@@ -12275,7 +12308,7 @@ function GBHApp(){
     recCountsRef.current = true;
     (async()=>{
       try{
-        const data = await sbReq("GET","recipes?select=tipo,categoria&limit=1000");
+        const data = await sbLeerTodo("recipes?select=tipo,categoria&order=id_receta.asc");
         const rows = Array.isArray(data)?data:[];
         const byId = {};
         for(const cat of CATS_COMPLETO) byId[cat.id] = rows.filter(cat.match).length;
@@ -17096,7 +17129,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
         return cached.mapa;
       }
     }catch{}
-    const todas = await sbReq('GET','recipes?select=*&limit=1000');
+    const todas = await sbLeerTodo('recipes?select=*&order=id_receta.asc');   // en bloques: con limit=1000, desde la receta 1.001 el cambio no la vería
     const mapa = {};
     (todas||[]).forEach(r=>{
       const nom = r.nombre||r.nombre_receta||r.Nombre_Receta||'';
@@ -18825,7 +18858,7 @@ function RecetasPublicas(){
     return m?m[1]:null;
   });
   useEffect(()=>{
-    sbReq("GET","recipes?publica=eq.true&select=id_receta,nombre,tipo,categoria,calorias,proteinas_g,hidratos_g,grasas_g,ingredientes,instrucciones,raciones,slug&order=nombre.asc")
+    sbLeerTodo("recipes?publica=eq.true&select=id_receta,nombre,tipo,categoria,calorias,proteinas_g,hidratos_g,grasas_g,ingredientes,instrucciones,raciones,slug&order=nombre.asc,id_receta.asc")
       .then(rows=>setRecetas(Array.isArray(rows)?rows:[]))
       .catch(()=>setRecetas([]));
     const onPop=()=>{
