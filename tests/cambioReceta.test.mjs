@@ -5,6 +5,7 @@ import {
   elegirRecetaCambio, permitidasDePlanes, franjaCambio, normNombreCambio, POOL,
   claveMemoriaCambio, leerMemoriaCambio, guardarMemoriaCambio, podarMemoriaCambio,
   permitidasTodas, puedeComer, recetaDelDiaAlAzar, recetaDelDiaFija,
+  estacionDe, deTemporada, CATEGORIAS_GENERALES,
   rolPlatoMenu, listasPlatoMenu, elegirPlatoMenu, recomponerMenu,
 } from '../src/cambioReceta.js';
 
@@ -331,6 +332,40 @@ export const CASOS = [
     const sin = { ...CELDA };
     delete sin.etiquetas;
     ok(recomponerMenu(sin, 0, CELDA.platos[0]).Nombre_Receta.startsWith('1º Sopa de quinoa · 2º '));
+  } },
+  { que: 'temporada: estaciones en fechas fijas, como el servidor', prueba: () => {
+    const e = (m, d) => estacionDe(new Date(2026, m - 1, d, 12));
+    igual([e(3, 20), e(3, 21), e(6, 20), e(6, 21), e(9, 22), e(9, 23), e(12, 20), e(12, 21), e(1, 1)],
+      ['Invierno', 'Primavera', 'Primavera', 'Verano', 'Verano', 'Otoño', 'Otoño', 'Invierno', 'Invierno']);
+  } },
+  { que: 'temporada: null es todo el año; una lista solo vale en sus estaciones; [] nunca', prueba: () => {
+    igual([deTemporada({ temporadas: null }, 'Otoño'), deTemporada({}, 'Otoño'), deTemporada({ temporadas: ['Verano'] }, 'Otoño'),
+      deTemporada({ temporadas: ['Otoño', 'Invierno'] }, 'Otoño'), deTemporada({ temporadas: [] }, 'Otoño'),
+      deTemporada({ temporadas: ['Verano'] }, null), deTemporada({ temporadas: '{Primavera,Verano}' }, 'Verano')],
+      [true, true, false, true, false, true, true]);
+  } },
+  { que: 'receta del día: puedeComer mira la estación y las categorías generales', prueba: () => {
+    const verano = R('T1', 'Macedonia de sandía', 'Postre', { categoria: 'Desayuno/Almuerzo/Merienda', temporadas: ['Verano'] });
+    const batido = R('T2', 'Batido de recuperación de soja', 'Vegana', { categoria: 'Post-entreno' });
+    const cats = new Set(CATEGORIAS_GENERALES);
+    igual([puedeComer(verano, { estacion: 'Otoño' }), puedeComer(verano, { estacion: 'Verano' }),
+      puedeComer(batido, { categorias: cats }), puedeComer(BASE[0], { estacion: 'Otoño', categorias: cats }),
+      puedeComer(verano)], [false, true, false, true, true]);
+  } },
+  { que: 'receta del día: la fija y la de gemas no sacan fruta de otra estación ni categorías propias', prueba: () => {
+    const verano = R('T1', 'Macedonia de sandía', 'Postre', { categoria: 'Desayuno/Almuerzo/Merienda', temporadas: ['Verano'] });
+    const batido = R('T2', 'Batido de recuperación de soja', 'Vegana', { categoria: 'Post-entreno' });
+    const todas = [...BASE, verano, batido];
+    const cats = new Set(CATEGORIAS_GENERALES);
+    for (let k = 0; k < 40; k++) {
+      const f = recetaDelDiaFija({ recetas: todas, clave: `2026-10-${k}`, estacion: 'Otoño', categorias: cats });
+      ok(f && !['T1', 'T2'].includes(f.id_receta), `fija ${k}: ${f && f.id_receta}`);
+      const a = recetaDelDiaAlAzar({ recetas: todas, estacion: 'Otoño', categorias: cats, azar: () => k / 40 });
+      ok(a && !['T1', 'T2'].includes(a.id_receta), `azar ${k}: ${a && a.id_receta}`);
+    }
+    const vistos = new Set();   // control negativo: sin estación ni categorías, como antes, sí salen
+    for (let k = 0; k < 90; k++) vistos.add(recetaDelDiaAlAzar({ recetas: todas, azar: () => k / 90 }).id_receta);
+    ok(vistos.has('T1') && vistos.has('T2'), 'sin filtros salen las dos');
   } },
 ];
 

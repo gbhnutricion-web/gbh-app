@@ -14,7 +14,7 @@ import { _NUTRI_ING } from "./nutriIng";                                     // 
 import { esDiaDeMedicion, ventanaKeys, proximoDiaMedicion } from "./ventanaMedicion"; // peso y medidas: miércoles + fin de semana (15-sep-2026)
 import { TOPE_PUNTOS, clasificarRespuesta, yaEstaEnElServidor, opDePartidaCaducada, esPendienteDeHoy } from "./partidaPendiente"; // la partida es del paciente hasta que el servidor la confirma (26-sep-2026)
 import { racionesDeLaLista, costePorRacion, textosCajaRacion } from "./raciones";   // qué cocinar y cuánto comer (17-sep-2026)
-import { elegirRecetaCambio, permitidasDePlanes, normNombreCambio, claveMemoriaCambio, leerMemoriaCambio, guardarMemoriaCambio, permitidasTodas, puedeComer, recetaDelDiaAlAzar, recetaDelDiaFija } from "./cambioReceta"; // cambio de receta con gemas y receta del día: lista del servidor, sin repetir (28-sep-2026)
+import { elegirRecetaCambio, permitidasDePlanes, normNombreCambio, claveMemoriaCambio, leerMemoriaCambio, guardarMemoriaCambio, permitidasTodas, puedeComer, recetaDelDiaAlAzar, recetaDelDiaFija, estacionDe, CATEGORIAS_GENERALES } from "./cambioReceta"; // cambio de receta con gemas y receta del día: lista del servidor, sin repetir (28-sep-2026)
 import { rolPlatoMenu, listasPlatoMenu, elegirPlatoMenu, recomponerMenu } from "./cambioReceta"; // menús de 1º y 2º: cada plato se cambia por separado (12-oct-2026)
 import { leerTodo } from "./leerTodo";                                   // recetas en bloques: PostgREST corta en 1.000 filas sin avisar (12-oct-2026)
 import { Cafeina } from "./Cafeina";                                     // calculadora de cafeína, fase 1 (25-sep-2026)
@@ -10109,7 +10109,9 @@ function GBHApp(){
   // (src/cambioReceta.js): la lista del servidor (plan_json.cambio_receta), los
   // rechazados de patient_config.notas y las descartadas 🗑️.
   const restriccionesReceta = async () => {
-    if(!profile?.id) return { permitidas:null, rechazada:()=>false, descartadas:new Set() };
+    // De temporada y de las categorías generales (13-oct-2026, MAESTRO-2026-909).
+    const temporada = { estacion: estacionDe(new Date()), categorias: new Set(CATEGORIAS_GENERALES) };
+    if(!profile?.id) return { permitidas:null, rechazada:()=>false, descartadas:new Set(), ...temporada };
     const [pl, cf] = await Promise.all([
       sbReq("GET", `weekly_plans?profile_id=eq.${profile.id}&select=fecha_gen,cambio_receta:plan_json->cambio_receta&order=fecha_gen.desc.nullslast&limit=12`),
       sbReq("GET", `patient_config?profile_id=eq.${profile.id}&select=notas&limit=1`),
@@ -10120,6 +10122,7 @@ function GBHApp(){
       permitidas: permitidasTodas(planesR),
       rechazada:  (r)=>recetaRechazadaJS(r, pref),
       descartadas:new Set((descartadas||[]).map(x=>normNombreCambio(x.nombre||''))),
+      ...temporada,
     };
   };
   // Carga inicial del día — gratis
@@ -10143,13 +10146,18 @@ function GBHApp(){
       const d = new Date();
       const dayOfYear = Math.floor((d - new Date(d.getFullYear(),0,0)) / 86400000);
       // Rota entre TODAS las de las dos categorías generales (12-oct-2026, PEND-2026-376): era «% 472»,
-      // el tamaño del recetario en mayo, y las añadidas después nunca salían. Intra-entreno y
-      // Recuperación quedan fuera a propósito: son de una sola paciente y solo las recibe quien las
-      // tiene fijadas (MAESTRO-2026-716). El total lo da Content-Range; sin él, el 472 de antes.
+      // el tamaño del recetario en mayo, y las añadidas después nunca salían. Las categorías propias
+      // (Intra-entreno, Post-entreno) quedan fuera a propósito: solo las recibe quien las tiene en su
+      // pauta (MAESTRO-2026-716 y -908). El total lo da Content-Range; sin él, el 472 de antes.
+      // Y solo las de TEMPORADA (13-oct-2026, MAESTRO-2026-909): `temporadas` nula (todo el año) o con
+      // la estación de hoy. Si esa cuenta falla (sin la columna, o sin red), la de antes, sin estación.
       const GENERALES = "categoria=in." + encodeURIComponent('("Comida/Cena","Desayuno/Almuerzo/Merienda")');
-      const cuenta = await sbPagina(`recipes?${GENERALES}&select=id_receta&limit=1`);
+      const TEMPORADA = "&or=" + encodeURIComponent(`(temporadas.is.null,temporadas.cs.{${estacionDe(d)}})`);
+      let filtro = GENERALES + TEMPORADA;
+      let cuenta = await sbPagina(`recipes?${filtro}&select=id_receta&limit=1`);
+      if(!cuenta){ filtro = GENERALES; cuenta = await sbPagina(`recipes?${filtro}&select=id_receta&limit=1`); }
       const offset = (dayOfYear * 7 + d.getFullYear()) % (cuenta?.total > 0 ? cuenta.total : 472);
-      const r = await sbReq("GET", `recipes?${GENERALES}&select=*&order=id_receta.asc&limit=1&offset=${offset}`);
+      const r = await sbReq("GET", `recipes?${filtro}&select=*&order=id_receta.asc&limit=1&offset=${offset}`);
       let base = r?.length ? normalizeRecipe(r[0]) : null;
       // La del día, salvo que este paciente no pueda comerla: entonces otra, fija
       // para todo el día, entre las que sí puede. Sin restricciones legibles
