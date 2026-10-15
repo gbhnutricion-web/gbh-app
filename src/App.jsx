@@ -17,6 +17,7 @@ import { racionesDeLaLista, costePorRacion, textosCajaRacion } from "./raciones"
 import { elegirRecetaCambio, permitidasDePlanes, normNombreCambio, claveMemoriaCambio, leerMemoriaCambio, guardarMemoriaCambio, permitidasTodas, puedeComer, recetaDelDiaAlAzar, recetaDelDiaFija, estacionDe, CATEGORIAS_GENERALES } from "./cambioReceta"; // cambio de receta con gemas y receta del día: lista del servidor, sin repetir (28-sep-2026)
 import { rolPlatoMenu, listasPlatoMenu, elegirPlatoMenu, recomponerMenu } from "./cambioReceta"; // menús de 1º y 2º: cada plato se cambia por separado (12-oct-2026)
 import { leerTodo } from "./leerTodo";                                   // recetas en bloques: PostgREST corta en 1.000 filas sin avisar (12-oct-2026)
+import { persistirCelda, fusionarPlanes } from "./celdaPlan";            // el plan se escribe por CELDAS: ya no pisa lo cambiado en otro dispositivo (15-oct-2026)
 import { Cafeina } from "./Cafeina";                                     // calculadora de cafeína, fase 1 (25-sep-2026)
 import { Creatina } from "./Creatina";                                   // calculadora de creatina, fase 1 (5-oct-2026)
 import { Suplementacion } from "./Suplementacion";                       // pestaña 💊 Suplementación: ☕ Cafeína y 💪 Creatina (próximamente) (26-sep-2026)
@@ -16905,6 +16906,44 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
       setLoading(false);
     });
   },[profile?.id]);
+  // ── El plan se escribe por CELDAS (15-oct-2026, PEND-2026-387 · MAESTRO-2026-923) ──────────────
+  // Cambiar una receta o un plato mandaba el plan_json ENTERO que la app tenía en memoria: si el
+  // paciente había cambiado algo en otro dispositivo o pestaña, lo borraba (Aritz, 15-oct: su app
+  // borró 4 cambios hechos en Safari). Ahora se escribe SOLO la celda (src/celdaPlan.js → función
+  // cambiar_celda_plan de la base, atómica) y la app se queda con el plan que devuelve la base, que
+  // trae también lo cambiado en el otro lado. Con un error HTTP, el PATCH de siempre; sin red, la
+  // celda va a la cola. `escrituraPlan` impide que una respuesta o una relectura más vieja pise en
+  // pantalla un cambio más nuevo. 07. App GBH/arnes_celda_plan.py lo prueba con este mismo texto.
+  const escrituraPlan = React.useRef({ n: 0, enVuelo: 0 });
+  const escribirCelda = (semana, toma, dia, celda, planEntero) => {
+    const e = escrituraPlan.current; const n = ++e.n; e.enVuelo++;
+    persistirCelda({ sbDirect, sbReq, enqueue, profileId: profile.id, semana, toma, dia, celda, planEntero })
+      .then(res => {
+        if(res.via === 'rpc' && res.plan && e.n === n)
+          setPlanes(ps => ps.map(p => p.semana === semana ? { ...p, plan_json: res.plan } : p));
+      })
+      .catch(err => console.warn("[celda-plan] no se pudo persistir:", err))
+      .finally(() => { e.enVuelo--; });
+  };
+  // Al volver a primer plano se relee el plan: lo cambiado en el otro dispositivo aparece sin cerrar
+  // la app, y un PATCH de reserva sale de un plan fresco. Sin red (sbReq da null) o con una escritura
+  // en marcha, se queda lo que hay: nunca se vacía la lista ni se mueve la semana que se mira.
+  const releerPlan = () => {
+    if(!profile?.id) return;
+    const e = escrituraPlan.current;
+    if(e.enVuelo > 0) return;
+    const n = e.n;
+    sbReq('GET', `weekly_plans?profile_id=eq.${profile.id}&select=semana,plan_json,fecha_gen,pdf_url&order=semana.desc&limit=12`)
+      .then(wp => { if(Array.isArray(wp) && e.n === n && e.enVuelo === 0) setPlanes(ps => fusionarPlanes(ps, wp)); });
+  };
+  // fin de los ayudantes del plan por celdas
+  React.useEffect(()=>{
+    if(!profile?.id || !tieneAcceso) return;
+    const alVolver = ()=>{ if(document.visibilityState === 'visible') releerPlan(); };
+    document.addEventListener('visibilitychange', alVolver);
+    return ()=>document.removeEventListener('visibilitychange', alVolver);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.id, tieneAcceso]);
   const plan=planes[idx];const planJ=plan?.plan_json;
   // «Pregúntale a Bo» con IA: ir a una comida concreta (día y toma) y abrir Bo en su ficha con el
   // cambio ya preparado. Va aquí, detrás de planJ: el efecto lo lee en su lista de dependencias.
@@ -17346,7 +17385,8 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
     showT&&showT({icon:"🍽️",title:lang==='en'?'New recipe!':'¡Nueva receta!',sub:'-10 💎'});
 
     // ── Persistir el cambio en weekly_plans: sin esto, el cambio de 10 💎
-    //    se pierde al cerrar la app (solo vivía en el estado de React) ──
+    //    se pierde al cerrar la app (solo vivía en el estado de React). Se
+    //    escribe SOLO esta celda (escribirCelda, 15-oct-2026) ──
     if(plan && openToma && selDay){
       try{
         const nuevoJson = JSON.parse(JSON.stringify(planJ||{}));
@@ -17364,9 +17404,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
           ...(f!==1?{racion_factor:f, racion_texto:racionTextoJS(f,lang)}:{}),
         };
         setPlanes(ps=>ps.map((p,i)=>i===idx?{...p,plan_json:nuevoJson}:p));
-        sbReq("PATCH",
-          `weekly_plans?profile_id=eq.${profile.id}&semana=eq.${plan.semana}`,
-          {plan_json:nuevoJson});
+        escribirCelda(plan.semana, openToma, selDay, nuevoJson[openToma][String(selDay)], nuevoJson);
       }catch(e){ console.warn("[cambiar-receta] no se pudo persistir:", e); }
     }
     return {ok:true, nombre: elegida.nombre||elegida.nombre_receta||''};
@@ -17454,15 +17492,13 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
     showT&&showT({icon:"🍽️",title:lang==='en'?'New dish!':'¡Nuevo plato!',
       sub:`${menuEtiqueta(etiqueta,lang)} · ${costeCambio>0?'-10 💎':(lang==='en'?'free':'gratis')}`});
     // Persistir en weekly_plans, como el cambio de una receta: sin esto se
-    // pierde al cerrar la app.
+    // pierde al cerrar la app. Solo esta celda (escribirCelda).
     try{
       const nuevoJson = JSON.parse(JSON.stringify(planJ||{}));
       if(!nuevoJson[openToma]) nuevoJson[openToma]={};
       nuevoJson[openToma][String(selDay)] = celdaNueva;
       setPlanes(ps=>ps.map((p,k)=>k===idx?{...p,plan_json:nuevoJson}:p));
-      sbReq("PATCH",
-        `weekly_plans?profile_id=eq.${profile.id}&semana=eq.${plan.semana}`,
-        {plan_json:nuevoJson});
+      escribirCelda(plan.semana, openToma, selDay, celdaNueva, nuevoJson);
     }catch(e){ console.warn("[cambiar-plato] no se pudo persistir:", e); }
     return {ok:true, nombre: nuevo.Nombre_Receta};
   }
