@@ -8,7 +8,7 @@
 //  inicialización del SDK en App.jsx. Este worker ya solo hace caché/PWA.
 //  No reintroducir sin decisión expresa.
 
-const CACHE_VERSION = "gbh-v2026-10-13a";  // La receta del día solo de temporada y de las dos categorías generales, también en su cambio con gemas (Alejandro, 12-oct: «aplica recomendaciones…»; MAESTRO-2026-909)
+const CACHE_VERSION = "gbh-v2026-10-15a";  // La app escribe el plan por CELDAS: cambiar una receta o un plato ya no pisa lo cambiado en otro dispositivo (PEND-2026-387; MAESTRO-2026-923)
 const APP_SHELL = ["/", "/index.html", "/manifest.json"];
 
 // ── Install: precachea el app shell y activa la versión nueva de inmediato ─────
