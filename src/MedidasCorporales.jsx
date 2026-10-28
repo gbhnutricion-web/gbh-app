@@ -7,8 +7,10 @@
 // Jackson-Pollock → suma, % graso estimado, kg de grasa).
 //
 // Datos: tabla `body_measurements`, una fila por (perfil, fecha, origen).
-//   origen = 'casa'     → la registra el paciente aquí (pliegues con DOBLE toma:
-//                         cada pliegue dos veces; si difieren > 1 mm se repite).
+//   origen = 'casa'     → la registra el paciente aquí (UNA medida por pliegue,
+//                         en mm enteros; desde el 27-oct-2026 por orden de
+//                         Alejandro: antes se pedía doble toma a ±1 mm y la
+//                         media, y en 7 semanas solo hubo 4 tomas en casa).
 //   origen = 'consulta' → la sube el nutricionista tras la consulta
 //                         (hacer_evaluacion_consulta.py --subir).
 //
@@ -21,7 +23,6 @@ import { esDiaDeMedicion, proximoDiaMedicion } from "./ventanaMedicion";   // mi
 
 const PER = ["cintura", "cadera", "brazo", "muslo"];
 const PLI = ["pectoral", "midaxilar", "triceps", "subescapular", "abdominal", "suprailiaco", "muslo_pl"];
-const TOL_MM = 1;   // dos tomas del mismo pliegue deben coincidir a ±1 mm
 
 const TXT = {
   es: {
@@ -46,10 +47,8 @@ const TXT = {
     tomas: "Tomas registradas", consulta: "En consulta", casa: "En casa",
     regPer: "📏 Registrar perímetros de hoy", regPli: "📏 Registrar pliegues de hoy",
     ayudaPer: "Cinta métrica, sin apretar. Se comparan con tu toma anterior.",
-    ayudaPli: "Mide cada pliegue dos veces, soltando el plicómetro entre una y otra.",
-    ayudaPliOk: "Las dos tomas coinciden en todos los pliegues: se guarda la media.",
-    ayudaPliMal: "Algún pliegue no coincide. Repítelo; si no lo consigues, se queda sin registrar y lo mide el nutricionista en consulta.",
-    dosTomas: "dos tomas", difieren: "difieren", repite: "repite",
+    ayudaPli: "Un valor por pliegue, en mm. Suelta el plicómetro entre un pliegue y el siguiente; los que no midas se quedan en blanco.",
+    sinValor: "sin medir",
     cancelar: "Cancelar", guardar: "✅ Guardar toma", guardado: "Toma guardada", errorGuardar: "No se pudo guardar. Comprueba la conexión.",
     consejo: "Si te mides en casa, hazlo siempre igual: misma hora, mismo lado, la misma persona midiendo.",
     hoy: "hoy",
@@ -78,10 +77,8 @@ const TXT = {
     tomas: "Recorded takes", consulta: "At the clinic", casa: "At home",
     regPer: "📏 Record today's girths", regPli: "📏 Record today's skinfolds",
     ayudaPer: "Tape measure, no squeezing. Compared with your previous take.",
-    ayudaPli: "Measure each fold twice, releasing the caliper in between.",
-    ayudaPliOk: "Both takes match on every fold: the average is saved.",
-    ayudaPliMal: "A fold doesn't match. Repeat it; if it won't match, it stays unrecorded and your nutritionist measures it at the clinic.",
-    dosTomas: "two takes", difieren: "differ by", repite: "repeat",
+    ayudaPli: "One value per fold, in mm. Release the caliper between folds; leave blank any fold you don't measure.",
+    sinValor: "not measured",
     cancelar: "Cancel", guardar: "✅ Save take", guardado: "Take saved", errorGuardar: "Couldn't save. Check your connection.",
     consejo: "If you measure at home, always do it the same way: same time, same side, same person measuring.",
     hoy: "today",
@@ -265,32 +262,27 @@ export function MedidasCorporales({ profile, weights, lang, sfx, sbReq, T, Card 
     sfx && sfx("tap");
     const f = {};
     if (tab === "per") PER.forEach(k => { f[k] = ""; });
-    else PLI.forEach(k => { f[k + "_1"] = ""; f[k + "_2"] = ""; });
+    else PLI.forEach(k => { f[k] = ""; });
     setForm(f); setAviso(""); setReg(true);
   };
+  // Un valor por pliegue (mm enteros, como las tomas de consulta). Un pliegue
+  // en blanco no se guarda; con uno solo medido ya se puede guardar la toma.
+  const valorPli = (k) => { const v = parseFloat(String(form[k] ?? "").replace(",", ".")); return (!isNaN(v) && v > 0) ? Math.round(v) : null; };
   const validarPli = () => {
-    let ok = true, alguna = false; const out = {};
-    PLI.forEach(k => {
-      const a = parseFloat(form[k + "_1"]), b = parseFloat(form[k + "_2"]);
-      if (isNaN(a) && isNaN(b)) return;
-      alguna = true;
-      if (isNaN(a) || isNaN(b) || Math.abs(a - b) > TOL_MM) ok = false;
-      else out[k] = Math.round((a + b) / 2);
-    });
-    return { ok: ok && alguna, out, alguna };
+    const out = {};
+    PLI.forEach(k => { const v = valorPli(k); if (v != null) out[k] = v; });
+    const alguna = Object.keys(out).length > 0;
+    return { ok: alguna, out, alguna };
   };
   const filaPli = (k) => {
-    const a = parseFloat(form[k + "_1"]), b = parseFloat(form[k + "_2"]);
-    let msg = L.dosTomas, col = T.t3;
-    if (!isNaN(a) && !isNaN(b)) { if (Math.abs(a - b) <= TOL_MM) { msg = "✓ " + fmt((a + b) / 2, 1) + " mm"; col = OK; } else { msg = `✗ ${L.difieren} ${fmt(Math.abs(a - b), 0)} mm · ${L.repite}`; col = BAD; } }
-    const inp = (suf, ph) => (
-      <input type="number" inputMode="numeric" step="1" placeholder={ph} value={form[k + suf] ?? ""} aria-label={`${L[k]} ${ph}`}
-        onChange={e => setForm({ ...form, [k + suf]: e.target.value })}
-        style={{ width: "100%", font: "700 14px 'Nunito',sans-serif", color: T.t1, background: "rgba(255,255,255,0.06)", border: "2px solid rgba(255,255,255,0.10)", borderRadius: 10, padding: "7px 6px", textAlign: "center" }} />
-    );
+    const v = valorPli(k);
+    const msg = v != null ? "✓ " + fmt(v, 0) + " mm" : L.sinValor, col = v != null ? OK : T.t3;
     return (
-      <div key={k} style={{ display: "grid", gridTemplateColumns: "1fr 54px 54px 92px", gap: 6, alignItems: "center", fontFamily: "'DM Sans',sans-serif", fontSize: 12 }}>
-        <span style={{ color: T.t2 }}>{L[k]}</span>{inp("_1", "1ª")}{inp("_2", "2ª")}
+      <div key={k} style={{ display: "grid", gridTemplateColumns: "1fr 72px 92px", gap: 6, alignItems: "center", fontFamily: "'DM Sans',sans-serif", fontSize: 12 }}>
+        <span style={{ color: T.t2 }}>{L[k]}</span>
+        <input type="number" inputMode="numeric" step="1" placeholder={act && act[k] != null ? String(act[k]) : "mm"} value={form[k] ?? ""} aria-label={`${L[k]} (mm)`}
+          onChange={e => setForm({ ...form, [k]: e.target.value })}
+          style={{ width: "100%", font: "700 14px 'Nunito',sans-serif", color: T.t1, background: "rgba(255,255,255,0.06)", border: "2px solid rgba(255,255,255,0.10)", borderRadius: 10, padding: "7px 6px", textAlign: "center" }} />
         <span style={{ fontSize: 11, textAlign: "right", whiteSpace: "nowrap", color: col }}>{msg}</span>
       </div>
     );
@@ -392,7 +384,7 @@ export function MedidasCorporales({ profile, weights, lang, sfx, sbReq, T, Card 
         {reg && (
           <div style={{ background: "rgba(0,0,0,0.22)", borderRadius: 16, padding: "12px 12px 14px" }}>
             <div style={{ fontSize: 12, color: T.t2, fontFamily: "'DM Sans',sans-serif", marginBottom: 10 }}>
-              {tab === "per" ? L.ayudaPer : (validarPli().ok ? L.ayudaPliOk : (validarPli().alguna ? L.ayudaPliMal : L.ayudaPli))}
+              {tab === "per" ? L.ayudaPer : L.ayudaPli}
             </div>
             {tab === "per" ? (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
