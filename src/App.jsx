@@ -10745,7 +10745,7 @@ function GBHApp(){
     // Fase 2b: gbh_buscar_cuenta (id, name, pin_set) en vez de leer profiles con
     // la clave pública; si la RPC no existiera (null) se usa el camino antiguo.
     let r = await sbPinRpc("gbh_buscar_cuenta", { p_email: em });
-    r = (r && typeof r==="object" && r.id) ? [r] : (r===null ? await sbReq("GET", `profiles?email=eq.${em}&select=id,name,pin_set`) : []);
+    r = (r && typeof r==="object" && r.id) ? [r] : (r===null ? await sbReq("GET", `profiles?email=eq.${encodeURIComponent(em)}&select=id,name,pin_set`) : []);
     if(seq !== emailChkSeq.current) return;  // el email cambió mientras tanto
     if(r?.length){
       setAName(r[0].name || "");
@@ -10967,7 +10967,9 @@ function GBHApp(){
         let byEmail = null;
         for(let intento=0; intento<3 && !byEmail?.[0]?.id; intento++){
           if(intento) await new Promise(r=>setTimeout(r,1200));
-          byEmail = await conTimeout(sbReq("GET", `profiles?email=eq.${email}&select=*`), 9000).catch(()=>null);
+          // 28-oct-2026 (Apple 2.1(a)): el correo va CODIFICADO; un «+» sin codificar es un espacio en la URL
+          // y la cuenta demo de App Review (gbh.nutricion+demo@…) no cargaba su perfil tras el PIN.
+          byEmail = await conTimeout(sbReq("GET", `profiles?email=eq.${encodeURIComponent(email)}&select=*`), 9000).catch(()=>null);
         }
         if(byEmail?.[0]?.id){
           perfil = byEmail[0];   // fila real del servidor: válida aunque xp sea 0/null

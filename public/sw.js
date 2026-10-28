@@ -8,7 +8,7 @@
 //  inicialización del SDK en App.jsx. Este worker ya solo hace caché/PWA.
 //  No reintroducir sin decisión expresa.
 
-const CACHE_VERSION = "gbh-v2026-10-27a";  // Pliegues en casa: una medida por pliegue, sin doble toma (MAESTRO-2026-1020, por orden de Alejandro) · 10-18d: Bo: la fila «consulta» cita el tutorial B7 de hoy y _BO_SENSIBLE es el SENSIBLE_RE de la 330 (PEND-2026-330). Antes 10-18c: «fruta» en _RECH_EXP (PEND-2026-363)
+const CACHE_VERSION = "gbh-v2026-10-28a";  // El perfil se busca con el correo codificado: un «+» ya no rompe la entrada (Apple 2.1(a), cuenta demo) · 10-27a: Pliegues en casa: una medida por pliegue, sin doble toma (MAESTRO-2026-1020, por orden de Alejandro) · 10-18d: Bo: la fila «consulta» cita el tutorial B7 de hoy y _BO_SENSIBLE es el SENSIBLE_RE de la 330 (PEND-2026-330). Antes 10-18c: «fruta» en _RECH_EXP (PEND-2026-363)
 const APP_SHELL = ["/", "/index.html", "/manifest.json"];
 
 // ── Install: precachea el app shell y activa la versión nueva de inmediato ─────
