@@ -38,8 +38,12 @@ workflows:
     # linux_x2 no entra en el plan gratuito; el Mac M2 si (500 min/mes)
     instance_type: mac_mini_m2
     environment:
-      # gbh_play (GCLOUD_SERVICE_ACCOUNT_CREDENTIALS) se anadira cuando
-      # exista la cuenta de Play y su service account (CHECKLIST B3).
+      # gbh_play: el grupo de variables de Codemagic con GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+      # (el JSON de la cuenta de servicio de Google Play). Lo crea Alejandro en Play Console +
+      # Codemagic (PEND-2026-444, 1-nov-2026); hasta entonces esta rama NO se fusiona en
+      # `tiendas`: un grupo que no existe tumba la build al arrancar.
+      groups:
+        - gbh_play
       android_signing:
         - gbh_keystore        # el almacén de firma, subido en Codemagic
       node: 22
@@ -130,8 +134,14 @@ workflows:
       email:
         recipients: [gbh.nutricion@gmail.com]
         notify: { success: true, failure: true }
-      # google_play: se reactivara cuando exista la cuenta de Play;
-      # la PRIMERA subida del AAB es manual de todos modos.
+      # Google Play (1-nov-2026, PEND-2026-438 §6): el AAB sube SOLO a la pista interna, como
+      # BORRADOR (submit_as_draft): nada llega a los pacientes sin que Alejandro lo promocione
+      # en Play Console. La primera subida de la app a Play fue manual (lo exige Google) y la
+      # cuenta de servicio necesita permiso sobre la app (PEND-2026-444).
+      google_play:
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        track: internal
+        submit_as_draft: true
 
   # ══ iOS ════════════════════════════════════════════════════════════════════
   ios:
