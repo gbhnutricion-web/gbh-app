@@ -7,6 +7,7 @@ import { SPR, U, sprite, spriteCaja, bloque, suelo as dibujarSuelo, matas } from
 import { SelectorMedidas, MedidasCorporales } from "./MedidasCorporales";
 import { CicloPeso } from "./CicloPeso";                                 // ciclo y báscula: peso esperado con y sin retención, solo mujeres (12-oct-2026)
 import { SelectorPrograma, BotonPrograma } from "./SelectorPrograma";
+import { SemaforoDensidad, BotonDensidad, leerDensidad, escribirDensidad } from "./SemaforoDensidad"; // densidad calórica con Bo de policía (1-nov-2026)
 import { TuDia } from "./TuDia";                                              // Kcal reales, fase 1
 import { FRACCIONES_MENOS, FRAC_MENOS_DEFECTO, fraccionValida, previstoToma, realToma, sumaItems } from "./kcalDia";
 import { QueComiste } from "./QueComiste";                                    // Kcal reales, fase 2: la hoja «¿Qué comiste?»
@@ -18547,6 +18548,10 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
   // líneas «Alimentos rechazados: …» y «Alergias: …», que el generador ya lee
   // (interpretar_notas). Las demás líneas de notas se conservan (PlanArcade.jsx).
   const [descartes,setDescartes]=React.useState(()=>leerDescartes(config?.notas).lista);
+  // Densidad calórica de las recetas (1-nov-2026): una línea de notas que el generador
+  // ya lee (interpretar_notas → pref densidad). Se elige en el semáforo de Bo policía.
+  const [densidad,setDensidad]=React.useState(()=>leerDensidad(config?.notas));
+  const [semaforoAbierto,setSemaforoAbierto]=React.useState(false);
   const [patron,setPatron]=React.useState(
     PATRONES_OPC.some(p=>p.v===config?.patron_dias) ? config.patron_dias : 'Estándar (LJ/MS/XV/D)');
   const [dist,setDist]=React.useState({
@@ -18596,7 +18601,7 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
       patron_dias: patron,
       ...dist,
       suplementacion: recsLimpios,   // [] borra los recordatorios si los quitó todos
-      notas: escribirDescartes(config?.notas, descartes),   // alimentos descartados (líneas que lee el generador)
+      notas: escribirDensidad(escribirDescartes(config?.notas, descartes), densidad),   // alimentos descartados y densidad (líneas que lee el generador)
       config_completa: true,
       auto_generado: true,
     };
@@ -18685,12 +18690,32 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
         )}
       </div>
 
+      {/* ── Densidad calórica de las recetas (SemaforoDensidad.jsx, 1-nov-2026): botón-ficha
+            que abre a Bo de policía junto a un semáforo; verde = baja-media, ámbar = todas,
+            rojo = media-alta (los colores del semáforo del PDF). ── */}
+      <div style={{padding:'12px 16px'}}>
+        <div style={{fontFamily:FUENTE_PIXEL,fontSize:8,color:T.au1,textTransform:'uppercase',letterSpacing:'0.04em',textShadow:'1px 1px 0 #000',lineHeight:1.6,marginBottom:4}}>
+          {lang==='en'?'2 · Calorie density':'2 · Densidad calórica'}
+        </div>
+        <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginBottom:10,lineHeight:1.4}}>
+          {lang==='en'
+            ?'More volume or more energy per bite: your calories stay the same.'
+            :'Más volumen o más energía por bocado: tus calorías no cambian.'}
+        </div>
+        <BotonDensidad lang={lang} T={T} valor={densidad} onAbrir={()=>{sfx&&sfx("tap");setSemaforoAbierto(true);}} />
+        {semaforoAbierto && (
+          <SemaforoDensidad lang={lang} T={T} Sheep={Sheep} profile={profile} sfx={sfx} valor={densidad}
+            onElegir={(v)=>{setDensidad(v);setSemaforoAbierto(false);}}
+            onClose={()=>setSemaforoAbierto(false)} />
+        )}
+      </div>
+
       {/* ── Distribución calórica — tabla con flechas (sin deslizadores que se
             muevan solos al hacer scroll) ── */}
       <div style={{padding:'12px 16px'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
           <div style={{fontFamily:FUENTE_PIXEL,fontSize:8,color:T.au1,textTransform:'uppercase',letterSpacing:'0.04em',textShadow:'1px 1px 0 #000',lineHeight:1.6}}>
-            {lang==='en'?'2 · Calorie split':'2 · Distribución de calorías'}
+            {lang==='en'?'3 · Calorie split':'3 · Distribución de calorías'}
           </div>
           <PillTotal lang={lang} total={total} />
         </div>
@@ -18703,7 +18728,7 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
       {/* ── Patrón de repetición — ¿cuántos menús distintos a la semana? ── */}
       <div style={{padding:'12px 16px'}}>
         <div style={{fontFamily:FUENTE_PIXEL,fontSize:8,color:T.au1,textTransform:'uppercase',letterSpacing:'0.04em',textShadow:'1px 1px 0 #000',lineHeight:1.6,marginBottom:4}}>
-          {lang==='en'?'3 · How often do you cook?':'3 · ¿Cuántas veces cocinas a la semana?'}
+          {lang==='en'?'4 · How often do you cook?':'4 · ¿Cuántas veces cocinas a la semana?'}
         </div>
         <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginBottom:10,lineHeight:1.4}}>
           {lang==='en'
@@ -18716,7 +18741,7 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
       {/* ── Alimentos que no quiere / alergias (PlanArcade.jsx) ── */}
       <div style={{padding:'12px 16px'}}>
         <div style={{fontFamily:FUENTE_PIXEL,fontSize:8,color:T.au1,textTransform:'uppercase',letterSpacing:'0.04em',textShadow:'1px 1px 0 #000',lineHeight:1.6,marginBottom:4}}>
-          {lang==='en'?"4 · Foods you don't want":'4 · Alimentos que no quieres'}
+          {lang==='en'?"5 · Foods you don't want":'5 · Alimentos que no quieres'}
         </div>
         <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginBottom:10,lineHeight:1.4}}>
           {lang==='en'
@@ -18729,7 +18754,7 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
       {/* ── Recordatorios de suplementación/medicación (opcional, máx. 3) ── */}
       <div style={{padding:'12px 16px'}}>
         <div style={{fontFamily:FUENTE_PIXEL,fontSize:8,color:T.au1,textTransform:'uppercase',letterSpacing:'0.04em',textShadow:'1px 1px 0 #000',lineHeight:1.6,marginBottom:4}}>
-          {lang==='en'?'5 · Supplement/medication reminders':'5 · Recordatorios de suplementación/medicación'}
+          {lang==='en'?'6 · Supplement/medication reminders':'6 · Recordatorios de suplementación/medicación'}
         </div>
         <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginBottom:10,lineHeight:1.4}}>
           {lang==='en'
