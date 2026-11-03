@@ -15728,10 +15728,11 @@ function recetaRechazadaJS(rec, pref){
   const txt=String((rec.nombre||rec.nombre_receta||"")+" "+(rec.ingredientes||""))
     .normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
   for(const r of pref.terms){
-    let raiz=r;
-    if(raiz.endsWith("es")&&raiz.length>4) raiz=raiz.slice(0,-2);
+    let raiz=r, sufijo="(s|es)?";
+    // «guisantes» → raíz «guisant»: el singular «guisante» también veta (MAESTRO-2026-1119)
+    if(raiz.endsWith("es")&&raiz.length>4){ raiz=raiz.slice(0,-2); sufijo="(e|es|s)?"; }
     else if(raiz.endsWith("s")&&raiz.length>3) raiz=raiz.slice(0,-1);
-    if(new RegExp("\\b"+raiz.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"(s|es)?\\b").test(txt)) return true;
+    if(new RegExp("\\b"+raiz.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+sufijo+"\\b").test(txt)) return true;
   }
   return false;
 }
