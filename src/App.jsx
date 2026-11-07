@@ -7,6 +7,7 @@ import { SPR, U, sprite, spriteCaja, bloque, suelo as dibujarSuelo, matas } from
 import { SelectorMedidas, MedidasCorporales } from "./MedidasCorporales";
 import { CicloPeso } from "./CicloPeso";                                 // ciclo y báscula: peso esperado con y sin retención, solo mujeres (12-oct-2026)
 import { SelectorPrograma, BotonPrograma } from "./SelectorPrograma";
+import { SemaforoDensidad, BotonDensidad, leerDensidad, escribirDensidad } from "./SemaforoDensidad"; // densidad calórica con Bo de policía (1-nov-2026)
 import { TuDia } from "./TuDia";                                              // Kcal reales, fase 1
 import { FRACCIONES_MENOS, FRAC_MENOS_DEFECTO, fraccionValida, previstoToma, realToma, sumaItems } from "./kcalDia";
 import { QueComiste } from "./QueComiste";                                    // Kcal reales, fase 2: la hoja «¿Qué comiste?»
@@ -22,6 +23,7 @@ import { Cafeina } from "./Cafeina";                                     // calc
 import { Creatina } from "./Creatina";                                   // calculadora de creatina, fase 1 (5-oct-2026)
 import { Suplementacion } from "./Suplementacion";                       // pestaña 💊 Suplementación: ☕ Cafeína y 💪 Creatina (próximamente) (26-sep-2026)
 import { BarraPestanas } from "./BarraPestanas";                         // la barra de pestañas de abajo (26-sep-2026)
+import { FuentesCientificas, EnlaceFuentes, abrirFuentes } from "./FuentesCientificas"; // fuentes con enlace de cada recomendación (Apple 1.4.1, 7-nov-2026)
 import { planificarAvisos, nombresDePlan, PREFS_POR_DEFECTO as AVISOS_PREFS, TOMAS_ORDEN as AVISOS_TOMAS } from "./motorAvisos"; // avisos fuera de la app, fase 1 (28-sep-2026)
 import { estadoPermiso, pedirPermiso, sincronizarAvisos, cancelarAvisos, alTocarAviso, plataforma as plataformaNativa } from "./avisosNativos";
 import { TarjetaPermisoAvisos, FilaRecordatorios, PanelRecordatorios } from "./PanelAvisos";
@@ -1558,6 +1560,13 @@ const ES_IOS_NATIVO = ES_NATIVO && CAPN.getPlatform && CAPN.getPlatform() === "i
 // vender el Estándar con Stripe desde la app. Donde iOS no enseña nada, Android dice SIN
 // enlace dónde se contrata, que Google sí permite. En iOS y en la web no cambia nada.
 const ES_ANDROID_NATIVO = ES_NATIVO && !ES_IOS_NATIVO;
+// iOS: «solo gratis + Premium 1:1» (7-nov-2026; Apple 3.1.1 del 4-nov; PEND-2026-319, por orden de
+// Alejandro: «la primera, si los pacientes premium pueden seguir recibiendo sus semanas y todas las
+// funcionalidades como hasta ahora»). En la app de iOS el Estándar no existe: quien lo tiene, por Stripe o
+// por la semana de prueba, ve la app gratuita, y en iOS el alta no trae prueba. El Premium, el servicio 1:1
+// con la dietista que se acuerda fuera de la app (3.1.3(d)), sigue entero. Es solo VISTA: nada de esto se
+// escribe en la base, así que la web y Android no cambian, y quien paga por la web lo sigue teniendo allí.
+const vistaTienda = (p) => (ES_IOS_NATIVO && p && p.plan === "standard") ? { ...p, plan: "free" } : p;
 const txtWebAndroid = (lang, que) => que === "gestionar"
   ? (lang === "en" ? "Your subscription is managed on the web: app.gbhnutricion.es" : "Tu suscripción se gestiona en la web: app.gbhnutricion.es")
   : (lang === "en" ? "The Standard plan is available on the web: app.gbhnutricion.es" : "El plan Estándar se contrata en la web: app.gbhnutricion.es");
@@ -4891,7 +4900,11 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
 // formulario antiguo — ninguno nuevo (incluida la política de privacidad).
 function AltaBo({lang, setLang, emailInicial, onVolver, onLogin, onCrear, css}){
   const EN = lang==='en';
-  const PASOS=['nombre','email','altura','peso','sexo','objetivo','codigo','bo','privacidad','cierre'];
+  // En iOS no se pregunta el código de invitación: daba el primer mes de Premium a mitad de precio, y
+  // Apple no deja códigos que abaraten nada fuera de su compra (3.1.1, revisión del 4-nov-2026).
+  const PASOS=ES_IOS_NATIVO
+    ? ['nombre','email','altura','peso','sexo','objetivo','bo','privacidad','cierre']
+    : ['nombre','email','altura','peso','sexo','objetivo','codigo','bo','privacidad','cierre'];
   const [paso,setPaso]=React.useState(0);
   const [msgs,setMsgs]=React.useState([]);   // {de:'bo'|'yo', tx}
   const [dato,setDato]=React.useState({nombre:'',email:(emailInicial||''),altura:170,peso:'',sexo:null,objetivo:'',codigo:'',bo:'',privacidad:false});
@@ -4919,8 +4932,11 @@ function AltaBo({lang, setLang, emailInicial, onVolver, onLogin, onCrear, css}){
                                 :'Una cosa más: yo también necesito nombre. Me llaman Bo… pero tú mandas.';
       case 'privacidad':return EN?'The legal bit, quickly: to create your account I need you to accept GBH\u2019s privacy policy.'
                                 :'Lo legal, rapidito: para crear tu cuenta necesito que aceptes la política de privacidad de GBH.';
-      case 'cierre':   return EN?'That\u2019s it. This week is on the house: 7 days of trial with the full Standard plan. Come on, let me show you the app — it takes two minutes and we\u2019ll leave with your first week set up.'
-                                :'Pues ya está. Esta semana invita la casa: 7 días de prueba con todo el plan Estándar. Ven, que te enseño la app — son dos minutos y salimos con tu primera semana montada.';
+      case 'cierre':   return ES_IOS_NATIVO
+                                ? (EN?'That\u2019s it. Come on, let me show you the app — it takes two minutes.'
+                                     :'Pues ya está. Ven, que te enseño la app — son dos minutos.')
+                                : (EN?'That\u2019s it. This week is on the house: 7 days of trial with the full Standard plan. Come on, let me show you the app — it takes two minutes and we\u2019ll leave with your first week set up.'
+                                :'Pues ya está. Esta semana invita la casa: 7 días de prueba con todo el plan Estándar. Ven, que te enseño la app — son dos minutos y salimos con tu primera semana montada.');
       default: return '';
     }
   };
@@ -5234,10 +5250,13 @@ function TutorialOverlay({targetSel, texto, onSkip, onNext, lang, boNombre, avat
 
 // B9 · Cierre — celebración a pantalla completa con la mascota personalizada y
 // el resumen de lo YA HECHO. Los artefactos creados en el tour permanecen.
-function TutoCierre({nombre, boNombre, boColor, boEquipados, lang, onFin}){
+function TutoCierre({nombre, boNombre, boColor, boEquipados, lang, onFin, sinPlan=false}){
   const EN=lang==='en';
   const n=(nombre||'').split(' ')[0];
-  const hechos=[
+  const hechos=sinPlan ? [
+    EN?'Goal set':'Objetivo puesto',
+    EN?'First daily missions ticked':'Primeras misiones del día marcadas',
+  ] : [
     EN?'Goal set':'Objetivo puesto',
     EN?'Your week of meals created':'Tu semana de comidas creada',
     EN?'First meal logged':'Primera comida registrada',
@@ -6837,6 +6856,7 @@ function CalcTab({weights,profile,setProfile,lang}){
       {/* Nota */}
       <div style={{background:alpha(T.au1,0.07),border:`1.5px solid ${T.au3}`,borderRadius:14,padding:"12px 16px",fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6,marginBottom:16}}>
         {t("calcNote")}
+        <div><EnlaceFuentes tema="energia" lang={lang} T={T} style={{paddingLeft:0}}/></div>
       </div>
 
       {/* Botón editar */}
@@ -8305,7 +8325,7 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
               <div style={{minWidth:0}}>
                 <div style={{fontSize:10,color:T.t2,textTransform:"uppercase",letterSpacing:"0.08em",fontFamily:"'DM Sans',sans-serif",marginBottom:3}}>
-                  {lang==="en"?"Subscription":"Suscripción"}
+                  {ES_IOS_NATIVO?(lang==="en"?"Account":"Cuenta"):(lang==="en"?"Subscription":"Suscripción")}
                 </div>
                 <div style={{fontSize:14,fontWeight:800,color:T.wh,fontFamily:"'DM Sans',sans-serif"}}>
                   {profile?.plan==="premium" ? "💎 Premium"
@@ -8348,6 +8368,22 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
               )}
             </div>
           </div>
+          {/* Fila «Fuentes científicas» (Apple 1.4.1, 7-nov-2026): de dónde sale cada recomendación,
+              con enlace a la fuente. En todas las plataformas. */}
+          <button onClick={()=>abrirFuentes()}
+            style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,width:"100%",
+              padding:"12px 0",background:"none",border:"none",borderBottom:"1px solid rgba(255,255,255,0.07)",
+              cursor:"pointer",textAlign:"left"}}>
+            <div style={{minWidth:0}}>
+              <div style={{fontSize:14,fontWeight:800,color:T.wh,fontFamily:"'DM Sans',sans-serif"}}>
+                📚 {lang==="en"?"Scientific sources":"Fuentes científicas"}
+              </div>
+              <div style={{fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginTop:2}}>
+                {lang==="en"?"Where each recommendation in the app comes from":"De dónde sale cada recomendación de la app"}
+              </div>
+            </div>
+            <span style={{color:T.t2,fontSize:18,flexShrink:0}}>›</span>
+          </button>
           {/* Fila «Recordatorios»: se retiró con las push el 6-ago-2026 porque
               ofrecía algo que no funcionaba, y vuelve el 28-sep con los avisos
               locales. Solo en la app de tienda y con el interruptor del operador
@@ -8710,7 +8746,11 @@ function GBHApp(){
   const [lang,    setLang]    = useState(()=>lsGet("gbh:lang","es"));
   const [muted,   setMuted]   = useState(()=>lsGet("gbh:mute",false));
   const sfx = (name,...args) => { if(!muted){ SFX[name]?.(...args); if(HAPTIC_DE_SFX[name]) haptic(HAPTIC_DE_SFX[name]); } };
-  const [profile, setProfile] = useState(null);
+  // En iOS, la app ve el perfil por vistaTienda (el Estándar como gratis). setProfile sigue escribiendo
+  // el estado de verdad; ningún camino escribe `plan` en la base salvo las degradaciones, que piden
+  // plan === "standard" y por eso en iOS no corren (las hace la web o el panel del operador).
+  const [profileReal, setProfile] = useState(null);
+  const profile = useMemo(() => vistaTienda(profileReal), [profileReal]);
   const [tLog,    setTLog]    = useState({diet:false,steps:false,hydration:false,sleep:false});
   const [steps,   setSteps]   = useState(0);
   // ── Clave del día VIVA (24-ago-2026) ─────────────────────────────────
@@ -9006,6 +9046,7 @@ function GBHApp(){
   useEffect(()=>{ (async()=>{
     try{
       if(!profile?.id) return;
+      if(ES_IOS_NATIVO) return;                // iOS no da semana de prueba (Apple 3.1.1, 7-nov-2026)
       if(profile.trial_ends_at || profile.plan_until) return;
       if(profile.plan && profile.plan!=='free') return;
       const kRep=`gbh:trialrep:${profile.id}`;
@@ -9768,13 +9809,27 @@ function GBHApp(){
   // Los usuarios existentes no tienen la clave y no ven nada de esto.
   const [tutoPaso,setTutoPaso]=useState(null);
   const [tutoReoffer,setTutoReoffer]=useState(null);   // paso al que reanudar | null
+  // Fuentes científicas (Apple 1.4.1, 7-nov-2026): cualquier pantalla lanza abrirFuentes("tema") y aquí se
+  // pinta la lista encima. undefined = cerrada; null = abierta arriba; "tema" = abierta en ese tema.
+  const [fuentesTema,setFuentesTema]=useState(undefined);
+  useEffect(()=>{
+    const h=(e)=>setFuentesTema(e?.detail?.tema ?? null);
+    window.addEventListener("gbh:fuentes",h);
+    return ()=>window.removeEventListener("gbh:fuentes",h);
+  },[]);
   const tutoTapRef=useRef(false);
   const tutoIr=(p)=>{ try{ if(profile?.id) lsSet(`gbh:tuto:${profile.id}`,p); }catch{} setTutoPaso(p); };
   const tutoTerminar=()=>{ try{ if(profile?.id) lsSet(`gbh:tuto:${profile.id}`,'done'); }catch{} setTutoPaso(null); };
+  // En iOS, quien no es Premium no tiene programación (vistaTienda): el tour se salta los pasos del
+  // plan (B3 y B4) en vez de llevarle a una pantalla que no puede usar (7-nov-2026).
+  const tutoSinPlan = ES_IOS_NATIVO && profile?.plan!=='premium';
+  const tutoPasoValido=(p)=> (tutoSinPlan && /^B[34]_/.test(p)) ? 'B5_peso' : p;
   const tutoAvanzar=()=>{
     const i=TUTO_ORDEN.indexOf(tutoPaso);
     if(i<0) return;
-    const sig=TUTO_ORDEN[i+1];
+    let j=i+1;
+    while(tutoSinPlan && TUTO_ORDEN[j] && /^B[34]_/.test(TUTO_ORDEN[j])) j++;
+    const sig=TUTO_ORDEN[j];
     if(!sig){ tutoTerminar(); return; }
     tutoIr(sig);
   };
@@ -9809,13 +9864,13 @@ function GBHApp(){
     try{
       const v=lsGet(`gbh:tuto:${profile.id}`,null);
       if(!v || v==='done') return;
-      if(TUTO_ORDEN.includes(v)){ setTutoPaso(v); return; }
+      if(TUTO_ORDEN.includes(v)){ setTutoPaso(tutoPasoValido(v)); return; }
       if(typeof v==='string' && v.startsWith('skip:')){
         const dia=lsGet(`gbh:tuto:skipday:${profile.id}`,null);
         const ofrecido=lsGet(`gbh:tuto:reofrecido:${profile.id}`,false);
         if(!ofrecido && dia && dia<toKey()){
           lsSet(`gbh:tuto:reofrecido:${profile.id}`,true);
-          setTutoReoffer(TUTO_ORDEN.includes(v.slice(5))?v.slice(5):'B1_agua');
+          setTutoReoffer(TUTO_ORDEN.includes(v.slice(5))?tutoPasoValido(v.slice(5)):'B1_agua');
         }
       }
     }catch{}
@@ -9844,6 +9899,7 @@ function GBHApp(){
   //    Pedir un referido a alguien que lo está pasando mal quema el foso. ──
   const [refCard,setRefCard]=useState(false);
   useEffect(()=>{
+    if(ES_IOS_NATIVO) return;   // iOS sin referidos (Apple 3.1.1, 7-nov-2026)
     if(!profile?.id || !profile?.referral_code || refCard) return;
     try{
       const last=lsGet(`gbh:refcard:${profile.id}`,0);
@@ -10855,9 +10911,10 @@ function GBHApp(){
         initial_weight: w0,
         goal_weight: (d.objetivo && !isNaN(parseFloat(d.objetivo)) && parseFloat(d.objetivo)>20) ? parseFloat(d.objetivo) : null,
         bo_nombre: ((d.bo||'Bo').trim()||'Bo').slice(0,12),
-        // Semana de prueba estándar: 7 días, luego degrada a 'free'
-        plan:'standard',
-        trial_ends_at:new Date(Date.now()+7*24*60*60*1000).toISOString(),
+        // Semana de prueba estándar: 7 días, luego degrada a 'free'. En iOS no hay prueba:
+        // la cuenta nace gratuita (Apple 3.1.1, 7-nov-2026).
+        plan: ES_IOS_NATIVO ? 'free' : 'standard',
+        trial_ends_at: ES_IOS_NATIVO ? null : new Date(Date.now()+7*24*60*60*1000).toISOString(),
       };
       // Cascada NUEVA: completo → sin OPCIONALES (la prueba SE QUEDA) → núcleo
       const {height_cm:_h, sex:_s, goal_weight:_g, bo_nombre:_b, ...npSinOpcionales}=np;
@@ -13296,8 +13353,11 @@ function GBHApp(){
           B4_lista:{sel:'plan-zona',tx:EN?'Last thing here: open the 🛒 Shopping List. It builds itself from your week — tick off ingredients as you shop.':'Y lo último de tu plan: entra en la 🛒 Lista de la compra. Se hace sola con tu semana — marca los ingredientes mientras compras.'},
           B4_comida:{sel:'plan-zona',tx:EN?'Go back to 🍽️ Daily Meals and log today’s meal with one of the 5 states (followed · less · added · swapped · skipped). It doesn’t need to be perfect. Log what you actually did: what counts is logging, not complying. An average day, logged, is worth more than a perfect day unlogged. At the bottom, «Your day» shows the calories you have logged against your plan.':'Vuelve atrás a 🍽️ Platos diarios y marca tu comida de hoy con uno de los 5 estados (seguida · menos · añadí · la cambié · me la salté). No hace falta que salga perfecto. Marca lo que has hecho de verdad: lo que cuenta es registrar, no cumplir. Un día regular, registrado, vale más que un día perfecto sin registrar. Abajo del todo, «Tu día» te enseña las kcal que llevas frente a tu programación.'},
           B5_peso:{sel:null,next:true,tx:(EN?`I already have today’s weight from sign-up${pesoUlt?` (${pesoUlt} kg)`:''}. Here you’ll see the trend; up top you switch between Weight, Goal and Ranking. The scale opens on Wednesdays and at the weekend. A tip: weigh yourself always at the same time, fasted — and look at the line over several weeks, never a single day.`:`Tu peso de hoy ya lo tengo del registro${pesoUlt?` (${pesoUlt} kg)`:''}. Aquí verás la evolución; arriba cambias entre Peso, Objetivo y Ranking. La báscula se abre los miércoles y el fin de semana. Un consejo: pésate siempre a la misma hora, en ayunas — y mira la línea de varias semanas, nunca un solo día.`)},
-          B6_recetas:{sel:null,next:true,tx:EN?'The whole GBH recipe book. Search, open, and save the ones you like with the star — yours live in Favourites.':'Todo el recetario GBH. Busca, abre, y guarda las que te gusten con la estrella — las tuyas quedan en Favoritas.'},
-          B7_consulta:{sel:null,next:true,tx:EN?'This tab is you: your profile up top and, right below, the direct line to Alejandro — the Premium side of the plan: in-person consultation, weekly follow-up and his WhatsApp. If the trial wins you over, this is where you level up. Further down, your code to invite a friend and your settings: reminders, sounds, language and PIN.':'Esta pestaña eres tú: arriba tu perfil y, justo debajo, la línea directa con Alejandro — la parte del plan Premium: consulta presencial, seguimiento semanal y su WhatsApp. Si la prueba te convence, aquí es donde se sube de nivel. Más abajo tienes tu código para invitar a un amigo y tus ajustes: avisos, sonidos, idioma y PIN.'},
+          B6_recetas:{sel:null,next:true,tx:tutoSinPlan?(EN?'Here is the GBH recipe of the day, with its ingredients and how to make it; the ones you save stay in My recipe book.':'Aquí tienes la receta del día de GBH, con sus ingredientes y su preparación; las que guardes se quedan en Mi recetario.'):EN?'The whole GBH recipe book. Search, open, and save the ones you like with the star — yours live in Favourites.':'Todo el recetario GBH. Busca, abre, y guarda las que te gusten con la estrella — las tuyas quedan en Favoritas.'},
+          B7_consulta:{sel:null,next:true,tx:ES_IOS_NATIVO?(profile?.plan==='premium'
+            ?(EN?'This tab is you: your profile up top and, right below, the direct line to Alejandro: your consultation, weekly follow-up and his WhatsApp. Further down, your settings: reminders, sounds, language and PIN.':'Esta pestaña eres tú: arriba tu perfil y, justo debajo, la línea directa con Alejandro: tu consulta, el seguimiento semanal y su WhatsApp. Más abajo tienes tus ajustes: avisos, sonidos, idioma y PIN.')
+            :(EN?'This tab is you: your profile up top and, further down, your settings: reminders, sounds, language and PIN.':'Esta pestaña eres tú: arriba tu perfil y, más abajo, tus ajustes: avisos, sonidos, idioma y PIN.'))
+            :EN?'This tab is you: your profile up top and, right below, the direct line to Alejandro — the Premium side of the plan: in-person consultation, weekly follow-up and his WhatsApp. If the trial wins you over, this is where you level up. Further down, your code to invite a friend and your settings: reminders, sounds, language and PIN.':'Esta pestaña eres tú: arriba tu perfil y, justo debajo, la línea directa con Alejandro — la parte del plan Premium: consulta presencial, seguimiento semanal y su WhatsApp. Si la prueba te convence, aquí es donde se sube de nivel. Más abajo tienes tu código para invitar a un amigo y tus ajustes: avisos, sonidos, idioma y PIN.'},
           B8_ranking:{sel:null,next:true,tx:EN?`And here, inside Progress, is the whole flock. Your ${bn} competes with its XP. No pressure — the ranking is the least of it; your week is what matters.`:`Y aquí, dentro de Progreso, el rebaño entero. Tu ${bn} compite con su XP. Sin presión — el ranking es lo de menos; tu semana es lo de más.`},
         };
         const TD=D[tutoPaso]; if(!TD) return null;
@@ -13318,8 +13378,11 @@ function GBHApp(){
           </TutorialOverlay>
         );
       })()}
+      {fuentesTema!==undefined&&(
+        <FuentesCientificas tema={fuentesTema} lang={lang} T={T} onClose={()=>setFuentesTema(undefined)}/>
+      )}
       {tutoPaso==='B9_cierre'&&(
-        <TutoCierre nombre={profile?.name} boNombre={boNombre} boColor={boColor} boEquipados={boEquipados}
+        <TutoCierre nombre={profile?.name} boNombre={boNombre} boColor={boColor} boEquipados={boEquipados} sinPlan={tutoSinPlan}
           lang={lang} onFin={()=>{ sfx("streakCelebration"); tutoTerminar(); }}/>
       )}
       {/* Reoferta ÚNICA al día siguiente de saltar el tour */}
@@ -13331,7 +13394,9 @@ function GBHApp(){
               {lang==='en'?'Shall we pick the tour back up where you left it?':'¿Retomamos el tour donde lo dejaste?'}
             </div>
             <div style={{fontSize:12.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,marginBottom:14}}>
-              {lang==='en'?'Two minutes and we’ll leave with your week set up.':'Dos minutos y salimos con tu semana montada.'}
+              {tutoSinPlan
+                ? (lang==='en'?'Two minutes and you’ll know your way around the app.':'Dos minutos y te enseño la app.')
+                : (lang==='en'?'Two minutes and we’ll leave with your week set up.':'Dos minutos y salimos con tu semana montada.')}
             </div>
             <button onClick={()=>{ const pr=tutoReoffer; setTutoReoffer(null); tutoIr(pr); }}
               style={{width:"100%",padding:"13px 0",borderRadius:15,border:`2.5px solid ${T.g3}`,background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"#fff",fontSize:15,fontWeight:900,cursor:"pointer",boxShadow:`0 4px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif",marginBottom:8}}>
@@ -13937,6 +14002,7 @@ function GBHApp(){
           {/* Section label */}
           <div style={{textAlign:"center",marginBottom:12}}>
             <span style={{background:T.bgWood,border:`2px solid ${T.bW}`,borderRadius:16,padding:"7px 20px",fontSize:11,fontWeight:900,color:T.au1,textTransform:"uppercase",letterSpacing:"0.08em",boxShadow:"0 4px 0 rgba(0,0,0,0.4)"}}>{t("dailyMissions")}</span>
+            <div style={{marginTop:2}}><EnlaceFuentes tema="habitos" lang={lang} T={T}/></div>
           </div>
 
           {/* Entrada escalonada de las 4 misiones (60 ms por bloque): es lo
@@ -14368,7 +14434,9 @@ function GBHApp(){
                     </div>
                     <div style={{color:T.platos,fontSize:20,flexShrink:0}}>›</div>
                   </button>
-                  {/* Recetario completo (bloqueado para free) */}
+                  {/* Recetario completo (bloqueado para free). En iOS, a quien no lo tiene ni se le
+                      enseña: nada bloqueado a la vista (Apple 3.1.1, 7-nov-2026). */}
+                  {!(ES_IOS_NATIVO&&!tieneAccesoCompleto)&&(
                   <button onClick={()=>setRecipeView("completo")} style={{background:alpha(T.au1,0.10),border:`2px solid ${alpha(T.au1,0.3)}`,borderRadius:20,padding:'20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)',opacity:tieneAccesoCompleto?1:0.9}}>
                     <div style={{fontSize:40,flexShrink:0}}>{tieneAccesoCompleto?"📚":"🔒"}</div>
                     <div style={{flex:1,minWidth:0}}>
@@ -14377,6 +14445,7 @@ function GBHApp(){
                     </div>
                     <div style={{color:T.au1,fontSize:20,flexShrink:0}}>{tieneAccesoCompleto?"›":"🔒"}</div>
                   </button>
+                  )}
                 </div>
               )}
 
@@ -14578,7 +14647,7 @@ function GBHApp(){
                     </div>
                     </>}
                     {ES_ANDROID_NATIVO&&(<div style={{fontSize:12.5,color:T.t2,lineHeight:1.6,maxWidth:300,fontFamily:"'DM Sans',sans-serif"}}>{txtWebAndroid(lang,"estandar")}</div>)}
-                    {!ES_ANDROID_NATIVO&&(
+                    {!ES_NATIVO&&(
                     <a href={`https://wa.me/${GBH_WHATSAPP}?text=${encodeURIComponent(lang==='en'?`Hi! I'm ${profile?.name||''} and I have a question about the GBH subscription 📚`:`¡Hola! Soy ${profile?.name||''} y tengo una duda sobre la suscripción de GBH 📚`)}`}
                       target="_blank" rel="noopener noreferrer" onClick={()=>sfx&&sfx("tap")}
                       style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",textDecoration:'underline'}}>
@@ -15155,6 +15224,7 @@ function TarjetaPareja({profile,sfx,showT,onEstado}){
 }
 
 function TarjetaInvitarAmigo({profile,lang,sfx}){
+  if(ES_IOS_NATIVO) return null;   // iOS sin referidos (Apple 3.1.1, 7-nov-2026)
   const [copiado,setCopiado]=React.useState(false);
   // Fase 5 (recompensa REAL, nada de gemas): el mensaje es EDITABLE — cada uno
   // invita con sus palabras; el texto de abajo es solo el punto de partida.
@@ -15346,6 +15416,18 @@ function ConsultaTab({profile,lang,sfx,enTu=false}){
   if(!isPremium) return(
     <div style={{padding:enTu?'10px 0 8px':'48px 24px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:18}}>
       {!enTu&&<div style={{fontSize:56}}>📩</div>}
+      {/* iOS (7-nov-2026, Apple 3.1.1): ni «solo para Premium», ni tarjeta, ni precio, ni descuento de
+          invitado, ni botón. Solo qué es la consulta: un servicio 1:1 que se acuerda fuera de la app. */}
+      {ES_IOS_NATIVO?(<>
+      <div style={{fontSize:18,fontWeight:900,color:T.t1,lineHeight:1.3,fontFamily:"'Nunito',sans-serif"}}>
+        {lang==='en'?'Your nutritionist':'Tu nutricionista'}
+      </div>
+      <div style={{fontSize:13.5,color:T.t2,lineHeight:1.7,maxWidth:300,fontFamily:"'DM Sans',sans-serif"}}>
+        {lang==='en'
+          ? 'Direct consultation is part of GBH Nutrición’s one-to-one nutrition service, arranged directly with your nutritionist outside the app.'
+          : 'La consulta directa forma parte del servicio de nutrición 1:1 de GBH Nutrición, que se acuerda directamente con tu nutricionista, fuera de la app.'}
+      </div>
+      </>):(<>
       <div style={{fontSize:18,fontWeight:900,color:T.t1,lineHeight:1.3,fontFamily:"'Nunito',sans-serif"}}>
         {lang==='en'?'Premium service':'Servicio premium'}
       </div>
@@ -15354,15 +15436,16 @@ function ConsultaTab({profile,lang,sfx,enTu=false}){
           ? 'Direct consultation with your nutritionist is Premium-only.'
           : 'La consulta directa con tu nutricionista es solo para Premium.'}
       </div>
+      </>)}
       {/* Android (PEND-2026-316): sin la tarjeta del Premium, su precio ni el botón de WhatsApp;
-          dice sin enlace dónde se contrata. En iOS y en la web, como estaba. */}
+          dice sin enlace dónde se contrata. En la web, como estaba; en iOS, el texto de arriba. */}
       {ES_ANDROID_NATIVO&&(
         <div style={{fontSize:12.5,color:T.t2,lineHeight:1.6,maxWidth:300,fontFamily:"'DM Sans',sans-serif"}}>
           {lang==='en'?'Premium is arranged directly with your nutritionist, outside the app (Instagram: @gbhnutricion).'
                       :'El Premium se contrata directamente con tu nutricionista, fuera de la app (Instagram: @gbhnutricion).'}
         </div>
       )}
-      {!ES_ANDROID_NATIVO&&<>
+      {!ES_NATIVO&&<>
       <div style={{marginTop:8,width:'100%',maxWidth:300,boxSizing:'border-box',textAlign:'left',
         background:`linear-gradient(135deg,${alpha(T.au1,0.12)},rgba(255,160,0,0.08))`,
         border:'1.5px solid '+T.au1,borderRadius:18,padding:'18px 20px'}}>
@@ -15441,11 +15524,15 @@ function ConsultaTab({profile,lang,sfx,enTu=false}){
           abiertoForzado={parejaEstado==='recibida'}>
           <TarjetaPareja profile={profile} sfx={sfx} onEstado={setParejaEstado}/>
         </TarjetaDesplegable>
+        {/* En iOS no hay referidos: prometen un mes gratis y medio mes de Premium, y Apple no deja
+            descuentos fuera de su compra (3.1.1, revisión del 4-nov-2026). */}
+        {!ES_IOS_NATIVO&&(
         <TarjetaDesplegable sfx={sfx} icono="🎁"
           titulo={lang==='en'?'Invite a friend':'Invita a un amigo'}
           sub={lang==='en'?'A free month for every friend who stays':'Un mes gratis por cada amigo que se queda'}>
           <TarjetaInvitarAmigo profile={profile} lang={lang} sfx={sfx}/>
         </TarjetaDesplegable>
+        )}
       </div>
     </div>
   );
@@ -15521,11 +15608,15 @@ function ConsultaTab({profile,lang,sfx,enTu=false}){
           abiertoForzado={parejaEstado==='recibida'}>
           <TarjetaPareja profile={profile} sfx={sfx} onEstado={setParejaEstado}/>
         </TarjetaDesplegable>
+        {/* En iOS no hay referidos: prometen un mes gratis y medio mes de Premium, y Apple no deja
+            descuentos fuera de su compra (3.1.1, revisión del 4-nov-2026). */}
+        {!ES_IOS_NATIVO&&(
         <TarjetaDesplegable sfx={sfx} icono="🎁"
           titulo={lang==='en'?'Invite a friend':'Invita a un amigo'}
           sub={lang==='en'?'A free month for every friend who stays':'Un mes gratis por cada amigo que se queda'}>
           <TarjetaInvitarAmigo profile={profile} lang={lang} sfx={sfx}/>
         </TarjetaDesplegable>
+        )}
       </div>
     </div>
   );
@@ -15614,7 +15705,7 @@ const _UNIDADES=[
 // NO editar a mano: regenerar con `py exportar_canon_app.py --escribir` (Drive, 07. App GBH) si cambian
 // CANONICO_INGREDIENTES o FORMATO_COMPRA; `--comprobar` dice si esta línea sigue al día. Sus nombres
 // indexan _PRECIOS_ING: un alimento nuevo pide también `py gbh_precios.py --js` (PEND-2026-303).
-const _CANON=[[["leche"],"Leche","🥛","Huevos y lácteos","liquido_l",null,null],[["yogur","yogures","yogurt","yogurth"],"Yogur","🥛","Huevos y lácteos","pack_yogur",null,null],[["yogur griego"],"Yogur griego","🥛","Huevos y lácteos","pack_yogur",null,null],[["queso fresco batido","queso batido"],"Queso fresco batido","🥛","Huevos y lácteos","tarrina_g",null,null],[["claras de huevo","claras","clara"],"Claras de huevo","🥚","Huevos y lácteos","botella_g",null,null],[["huevo","huevos","yema","yemas"],"Huevos","🥚","Huevos y lácteos","docena",null,null],[["queso","mozzarella","burata","parmesano","feta","requeson"],"Queso","🧀","Huevos y lácteos","peso_queso",null,null],[["mantequilla"],"Mantequilla","🧈","Huevos y lácteos","tarrina",null,null],[["nata","crema de leche"],"Nata","🥛","Huevos y lácteos","brick_nata",null,null],[["pollo","pechuga"],"Pollo","🍗","Carnicería","peso_carne",null,null],[["pavo"],"Pavo","🦃","Carnicería","peso_carne",null,null],[["ternera","vacuno"],"Ternera","🥩","Carnicería","peso_carne",null,null],[["cerdo","lomo de cerdo","cinta de lomo"],"Cerdo","🥩","Carnicería","peso_carne",null,null],[["cordero"],"Cordero","🥩","Carnicería","peso_carne",null,null],[["jamon"],"Jamón","🥓","Carnicería","lonchas",null,null],[["bacon","panceta","guanciale"],"Bacon","🥓","Carnicería","lonchas",null,null],[["salchicha"],"Salchichas","🌭","Carnicería","paquete_ud",null,6],[["morcilla"],"Morcilla","🥩","Carnicería","pieza_emb",null,null],[["chorizo"],"Chorizo","🥩","Carnicería","pieza_emb",null,null],[["carne picada","carne molida"],"Carne picada","🥩","Carnicería","peso_carne",null,null],[["salmon"],"Salmón","🐟","Pescadería","peso_pescado",null,null],[["merluza"],"Merluza","🐟","Pescadería","peso_pescado",null,null],[["bacalao"],"Bacalao","🐟","Pescadería","peso_pescado",null,null],[["atun"],"Atún","🐟","Pescadería","peso_pescado",null,null],[["sardina"],"Sardinas","🐟","Pescadería","peso_pescado",null,null],[["caballa","verdel"],"Caballa","🐟","Pescadería",null,null,null],[["melva"],"Melva","🐟","Pescadería",null,null,null],[["tinta de calamar","tinta de sepia"],"Tinta de calamar","🦑","Pescadería",null,null,null],[["anchoa","boqueron"],"Anchoas","🐟","Pescadería","lata",null,null],[["lubina"],"Lubina","🐟","Pescadería","peso_pescado",null,null],[["dorada"],"Dorada","🐟","Pescadería","peso_pescado",null,null],[["mero"],"Mero","🐟","Pescadería","peso_pescado",null,null],[["trucha"],"Trucha","🐟","Pescadería","peso_pescado",null,null],[["gamba","langostino"],"Gambas","🦐","Pescadería","peso_pescado",null,null],[["almeja"],"Almejas","🦪","Pescadería","peso_pescado",null,null],[["mejillon"],"Mejillones","🦪","Pescadería","malla_marisco",null,null],[["calamar","sepia","chipiron"],"Calamar","🦑","Pescadería","peso_pescado",null,null],[["pulpo"],"Pulpo","🐙","Pescadería","peso_pescado",null,null],[["tomate","cherry","jitomate"],"Tomate","🍅","Frutas y verduras","verdura_ud",120,null],[["puerro"],"Puerro","🥬","Frutas y verduras",null,null,null],[["yuca","mandioca"],"Yuca","🥔","Frutas y verduras",null,null,null],[["haba"],"Habas","🫛","Frutas y verduras",null,null,null],[["aceituna","olivas"],"Aceitunas","🫒","Despensa",null,null,null],[["crema de cacahuete","mantequilla de cacahuete","mantequilla de mani","crema de mani","cacahuete","mani"],"Crema de cacahuete","🥜","Despensa","bote_basico",null,null],[["maicena","almidon de maiz","fecula"],"Maicena","🌽","Despensa",null,null,null],[["curcuma","comino","pimenton","oregano","albahaca","curry","canela","nuez moscada","eneldo","tomillo","romero"],"Especias","🧂","Despensa","especia",null,null],[["albaricoque seco","orejon","ciruela seca","higo seco","datil"],"Fruta desecada","🍑","Despensa",null,null,null],[["vainilla","esencia de vainilla","extracto de vainilla"],"Vainilla","🍶","Despensa",null,null,null],[["melocoton","durazno","nectarina","paraguayo"],"Melocotón","🍑","Frutas y verduras",null,null,null],[["barrita","barritas de cereales"],"Barritas de cereales","🍫","Despensa",null,null,null],[["cebolla","cebolleta","cebollino"],"Cebolla","🧅","Frutas y verduras","verdura_ud",150,null],[["ajo"],"Ajo","🧄","Frutas y verduras","cabeza_ajo",null,null],[["pimiento"],"Pimiento","🫑","Frutas y verduras","verdura_ud",150,null],[["lechuga","escarola","canonigo","rucula"],"Lechuga/hojas verdes","🥬","Frutas y verduras","bolsa_ensalada",null,null],[["espinaca"],"Espinacas","🥬","Frutas y verduras","bolsa_verdura",null,null],[["calabacin"],"Calabacín","🥒","Frutas y verduras","verdura_ud",250,null],[["berenjena"],"Berenjena","🍆","Frutas y verduras","verdura_ud",250,null],[["zanahoria"],"Zanahoria","🥕","Frutas y verduras","malla_kg",null,null],[["patata"],"Patata","🥔","Frutas y verduras","malla_kg",null,null],[["boniato","camote","batata"],"Boniato","🍠","Frutas y verduras","verdura_ud",250,null],[["aguacate","palta"],"Aguacate","🥑","Frutas y verduras","verdura_ud",200,null],[["champinon","seta","hongo"],"Champiñones/setas","🍄","Frutas y verduras","bandeja_verdura",null,null],[["brocoli"],"Brócoli","🥦","Frutas y verduras","verdura_ud",300,null],[["coliflor"],"Coliflor","🥦","Frutas y verduras","verdura_ud",500,null],[["calabaza"],"Calabaza","🎃","Frutas y verduras","peso_verdura",null,null],[["pepino"],"Pepino","🥒","Frutas y verduras","verdura_ud",200,null],[["limon"],"Limón","🍋","Frutas y verduras","malla_citrico",null,null],[["lima"],"Lima","🍋","Frutas y verduras","verdura_ud",70,null],[["naranja","mandarina"],"Naranja/mandarina","🍊","Frutas y verduras","malla_citrico",null,null],[["manzana"],"Manzana","🍎","Frutas y verduras","fruta_ud",180,null],[["platano","banana"],"Plátano","🍌","Frutas y verduras","fruta_ud",120,null],[["mango"],"Mango","🥭","Frutas y verduras","fruta_ud",300,null],[["fresa","freson"],"Fresas","🍓","Frutas y verduras","tarrina_fruta",null,null],[["frambuesa","arandano","mora","frutos rojos","grosella"],"Frutos rojos","🫐","Frutas y verduras","tarrina_fruta",null,null],[["kiwi"],"Kiwi","🥝","Frutas y verduras","fruta_ud",100,null],[["pera"],"Pera","🍐","Frutas y verduras","fruta_ud",180,null],[["melon"],"Melón","🍈","Frutas y verduras","pieza_grande",null,null],[["pina"],"Piña","🍍","Frutas y verduras","pieza_grande",null,null],[["jengibre"],"Jengibre","🫚","Frutas y verduras","trozo_raiz",null,null],[["guisante"],"Guisantes","🟢","Frutas y verduras","bolsa_legumbre",null,null],[["judia verde","judias verdes"],"Judías verdes","🫛","Frutas y verduras","manojo_verdura",null,null],[["esparrago"],"Espárragos","🌱","Frutas y verduras","manojo_verdura",null,null],[["perejil","cilantro","albahaca","romero","tomillo","laurel","oregano","eneldo","menta","hierbabuena"],"Hierbas aromáticas","🌿","Frutas y verduras","manojo_hierba",null,null],[["lenteja"],"Lentejas","🫘","Legumbres y cereales","bote_legumbre",null,null],[["garbanzo"],"Garbanzos","🫘","Legumbres y cereales","bote_legumbre",null,null],[["alubia","judia blanca","frijol","judion"],"Alubias","🫘","Legumbres y cereales","bote_legumbre",null,null],[["arroz"],"Arroz","🍚","Legumbres y cereales","paquete_seco",null,null],[["quinoa"],"Quinoa","🌾","Legumbres y cereales","paquete_seco",null,null],[["avena"],"Avena","🌾","Legumbres y cereales","paquete_seco",null,null],[["cereales de desayuno","copos de maiz","corn flakes","cereales","cereal"],"Cereales de desayuno","🥣","Legumbres y cereales","paquete_basico",null,null],[["tahini","tahin","pasta de sesamo","pasta de ajonjoli","crema de sesamo"],"Pasta de sésamo (tahini)","🥜","Despensa",null,null,null],[["pasta","espagueti","macarron","fideo","tallarin","penne","fusilli","lasana","canelone","noqui","gnocchi"],"Pasta","🍝","Legumbres y cereales","paquete_seco",null,null],[["fideos konjac","fideo konjac","arroz konjac","konjac","shirataki"],"Konjac","🍜","Legumbres y cereales",null,null,null],[["pan","tostada","hojaldre"],"Pan/tostadas","🍞","Legumbres y cereales","barra_pan",null,null],[["harina"],"Harina","🌾","Legumbres y cereales","paquete_seco",null,null],[["cuscus"],"Cuscús","🌾","Legumbres y cereales","paquete_seco",null,null],[["tofu"],"Tofu","🌱","Legumbres y cereales","bloque",null,null],[["heura"],"Heura","🌱","Legumbres y cereales",null,null,null],[["seitan"],"Seitán","🌱","Legumbres y cereales",null,null,null],[["surimi","palitos de surimi","gula"],"Surimi","🐟","Pescadería",null,null,null],[["soja","soya"],"Soja","🌱","Legumbres y cereales","brick_bebida",null,null],[["hummus"],"Hummus","🫘","Legumbres y cereales","tarrina",null,null],[["aceite","aove"],"Aceite de oliva","🫒","Despensa","botella",null,null],[["maiz","choclo","elote"],"Maíz","🌽","Despensa",null,null,null],[["papaya"],"Papaya","🥭","Frutas y verduras",null,null,null],[["sal"],"Sal","🧂","Despensa","paquete_basico",null,null],[["pimienta"],"Pimienta","🧂","Despensa","especia",null,null],[["vinagre"],"Vinagre","🍶","Despensa","botella",null,null],[["azucar"],"Azúcar","🍬","Despensa","paquete_basico",null,null],[["edulcorante","estevia","sacarina"],"Edulcorante","🍬","Despensa","paquete_basico",null,null],[["miel"],"Miel","🍯","Despensa","bote_basico",null,null],[["cacao puro en polvo","cacao puro","cacao en polvo","cacao desgrasado"],"Cacao en polvo","🍫","Despensa","bote_basico",null,null],[["chocolate","cacao","cocoa","nocilla"],"Chocolate/cacao","🍫","Despensa","tableta",null,null],[["ketchup zero","ketchup","catsup"],"Ketchup","🍅","Despensa","bote_basico",null,null],[["nuez","nueces","almendra","pistacho","anacardo","avellana","frutos secos","pasa","uva pasa","ciruela pasa","semillas","pinon","pinones"],"Frutos secos","🥜","Despensa","bolsa_secos",null,null],[["semilla de lino","linaza"],"Lino","🌰","Despensa","paquete_basico",null,null],[["semilla de anis"],"Anís","🌰","Despensa","especia",null,null],[["semilla de cilantro"],"Semilla de cilantro","🌰","Despensa","especia",null,null],[["chia"],"Chía","🌰","Despensa","paquete_basico",null,null],[["sesamo"],"Sésamo","🌰","Despensa","paquete_basico",null,null],[["semilla"],"Semillas","🌰","Despensa","paquete_basico",null,null],[["caldo"],"Caldo","🥣","Despensa","brick_caldo",null,null],[["vino"],"Vino","🍷","Despensa","botella",null,null],[["mermelada"],"Mermelada","🍓","Despensa","bote_basico",null,null],[["mostaza"],"Mostaza","🟡","Despensa","bote_basico",null,null],[["curry","pimenton","comino","azafran","canela","cayena","especias","clavo"],"Especias","🌶️","Despensa","especia",null,null],[["coco"],"Coco","🥥","Despensa","paquete_basico",null,null],[["gelatina"],"Gelatina","🍮","Despensa","paquete_basico",null,null],[["levadura","bicarbonato","polvo de hornear","polvo hornear","polvo para hornear"],"Levadura/bicarbonato","🧁","Despensa","paquete_basico",null,null],[["rape"],"Rape","🐟","Pescadería",null,null,null],[["lenguado"],"Lenguado","🐟","Pescadería",null,null,null],[["marisco"],"Marisco variado","🦐","Pescadería",null,null,null],[["pescado"],"Pescado","🐟","Pescadería",null,null,null],[["conejo"],"Conejo","🍖","Carnicería",null,null,null],[["mortadela"],"Mortadela","🥓","Carnicería",null,null,null],[["apio"],"Apio","🥬","Frutas y verduras",null,null,null],[["acelga"],"Acelgas","🥬","Frutas y verduras",null,null,null],[["alcachofa"],"Alcachofas","🌿","Frutas y verduras",null,null,null],[["berro"],"Berros","🥬","Frutas y verduras",null,null,null],[["endibia","endivia"],"Endibias","🥬","Frutas y verduras",null,null,null],[["hinojo"],"Hinojo","🌿","Frutas y verduras",null,null,null],[["germinado"],"Germinados","🌱","Frutas y verduras",null,null,null],[["guindilla"],"Guindilla","🌶️","Frutas y verduras",null,null,null],[["jalapeno","chile"],"Chile/jalapeño","🌶️","Frutas y verduras",null,null,null],[["col rizada","repollo","berza","lombarda","kale","col"],"Col/repollo","🥬","Frutas y verduras",null,null,null],[["granada"],"Granada","🔴","Frutas y verduras",null,null,null],[["higo"],"Higos","🟣","Frutas y verduras",null,null,null],[["sandia"],"Sandía","🍉","Frutas y verduras",null,null,null],[["menestra"],"Menestra de verduras","🥗","Frutas y verduras",null,null,null],[["chalota"],"Chalotas","🧅","Frutas y verduras",null,null,null],[["ajete"],"Ajetes","🧄","Frutas y verduras",null,null,null],[["ricotta","ricota","mascarpone","cottage"],"Queso fresco (ricotta/cottage)","🧀","Huevos y lácteos",null,null,null],[["cuajada"],"Cuajada","🥛","Huevos y lácteos",null,null,null],[["natillas","natilla"],"Natillas","🍮","Huevos y lácteos",null,null,null],[["bebida vegetal","bebida de avena","leche vegetal","bebida a base de almendra","bebida de almendra"],"Bebida vegetal","🥛","Huevos y lácteos",null,null,null],[["galleta"],"Galletas","🍪","Despensa",null,null,null],[["tortilla de trigo","tortillas de trigo","tortilla de maiz"],"Tortillas/wraps","🌯","Legumbres y cereales",null,null,null],[["oblea"],"Obleas","🥟","Legumbres y cereales",null,null,null],[["focaccia"],"Focaccia","🍞","Legumbres y cereales",null,null,null],[["judias pintas","judia pinta","alubia pinta","frijol pinto"],"Alubias pintas","🫘","Legumbres y cereales",null,null,null],[["proteina en polvo","proteina de suero","proteina aislada","whey","caseina"],"Proteína en polvo","🥤","Despensa",null,null,null],[["bechamel"],"Bechamel","🥫","Despensa",null,null,null],[["mayonesa"],"Mayonesa","🥫","Despensa",null,null,null],[["pesto"],"Pesto","🥫","Despensa",null,null,null],[["vinagreta"],"Vinagreta","🥫","Despensa",null,null,null],[["alcaparra"],"Alcaparras","🫒","Despensa",null,null,null],[["palmito"],"Palmitos","🥫","Despensa",null,null,null],[["miso"],"Miso","🍜","Despensa",null,null,null],[["pipas de girasol","pipa de girasol","semilla de girasol"],"Pipas de girasol","🌻","Despensa",null,null,null],[["pipas de calabaza","pipa de calabaza","semilla de calabaza"],"Pipas de calabaza","🎃","Despensa",null,null,null],[["margarina"],"Margarina","🧈","Despensa",null,null,null],[["pepinillo"],"Pepinillos","🥒","Despensa",null,null,null],[["helado"],"Helado","🍨","Despensa",null,null,null],[["licor"],"Licor","🍸","Despensa",null,null,null],[["pate de higado","pate"],"Paté","🥫","Despensa",null,null,null]];
+const _CANON=[[["leche"],"Leche","🥛","Huevos y lácteos","liquido_l",null,null],[["yogur","yogures","yogurt","yogurth"],"Yogur","🥛","Huevos y lácteos","pack_yogur",null,null],[["yogur griego","yogures griegos","yogurt griego","yogurth griego"],"Yogur griego","🥛","Huevos y lácteos","pack_yogur",null,null],[["queso fresco batido","queso batido"],"Queso fresco batido","🥛","Huevos y lácteos","tarrina_g",null,null],[["claras de huevo","claras","clara"],"Claras de huevo","🥚","Huevos y lácteos","botella_g",null,null],[["huevo","huevos","yema","yemas"],"Huevos","🥚","Huevos y lácteos","docena",null,null],[["queso","mozzarella","burata","parmesano","feta","requeson"],"Queso","🧀","Huevos y lácteos","peso_queso",null,null],[["queso crema","queso de untar","queso para untar","crema de queso","philadelphia"],"Queso crema","🧀","Huevos y lácteos","tarrina",null,null],[["mantequilla"],"Mantequilla","🧈","Huevos y lácteos","tarrina",null,null],[["nata","crema de leche"],"Nata","🥛","Huevos y lácteos","brick_nata",null,null],[["pollo","pechuga"],"Pollo","🍗","Carnicería","peso_carne",null,null],[["pavo"],"Pavo","🦃","Carnicería","peso_carne",null,null],[["pechuga de pavo","pechugas de pavo"],"Pechuga de pavo","🦃","Carnicería","peso_carne",null,null],[["ternera","vacuno"],"Ternera","🥩","Carnicería","peso_carne",null,null],[["cerdo","lomo de cerdo","cinta de lomo"],"Cerdo","🥩","Carnicería","peso_carne",null,null],[["cordero"],"Cordero","🥩","Carnicería","peso_carne",null,null],[["jamon"],"Jamón","🥓","Carnicería","lonchas",null,null],[["bacon","panceta","guanciale"],"Bacon","🥓","Carnicería","lonchas",null,null],[["salchicha"],"Salchichas","🌭","Carnicería","paquete_ud",null,6],[["morcilla"],"Morcilla","🥩","Carnicería","pieza_emb",null,null],[["chorizo"],"Chorizo","🥩","Carnicería","pieza_emb",null,null],[["carne picada","carne molida"],"Carne picada","🥩","Carnicería","peso_carne",null,null],[["salmon"],"Salmón","🐟","Pescadería","peso_pescado",null,null],[["merluza"],"Merluza","🐟","Pescadería","peso_pescado",null,null],[["bacalao"],"Bacalao","🐟","Pescadería","peso_pescado",null,null],[["atun"],"Atún","🐟","Pescadería","peso_pescado",null,null],[["sardina"],"Sardinas","🐟","Pescadería","peso_pescado",null,null],[["caballa","verdel"],"Caballa","🐟","Pescadería",null,null,null],[["melva"],"Melva","🐟","Pescadería",null,null,null],[["tinta de calamar","tinta de sepia"],"Tinta de calamar","🦑","Pescadería",null,null,null],[["anchoa","boqueron"],"Anchoas","🐟","Pescadería","lata",null,null],[["lubina"],"Lubina","🐟","Pescadería","peso_pescado",null,null],[["dorada"],"Dorada","🐟","Pescadería","peso_pescado",null,null],[["mero"],"Mero","🐟","Pescadería","peso_pescado",null,null],[["trucha"],"Trucha","🐟","Pescadería","peso_pescado",null,null],[["gamba","langostino"],"Gambas","🦐","Pescadería","peso_pescado",null,null],[["almeja"],"Almejas","🦪","Pescadería","peso_pescado",null,null],[["mejillon"],"Mejillones","🦪","Pescadería","malla_marisco",null,null],[["calamar","sepia","chipiron"],"Calamar","🦑","Pescadería","peso_pescado",null,null],[["pulpo"],"Pulpo","🐙","Pescadería","peso_pescado",null,null],[["tomate","cherry","jitomate"],"Tomate","🍅","Frutas y verduras","verdura_ud",120,null],[["puerro"],"Puerro","🥬","Frutas y verduras",null,null,null],[["yuca","mandioca"],"Yuca","🥔","Frutas y verduras",null,null,null],[["haba"],"Habas","🫛","Frutas y verduras",null,null,null],[["aceituna","olivas"],"Aceitunas","🫒","Despensa",null,null,null],[["crema de cacahuete","crema cacahuete","mantequilla de cacahuete","mantequilla cacahuete","mantequilla de mani","crema de mani"],"Crema de cacahuete","🥜","Despensa","bote_basico",null,null],[["cacahuete","mani"],"Cacahuetes","🥜","Despensa","bolsa_secos",null,null],[["maicena","almidon de maiz","fecula"],"Maicena","🌽","Despensa",null,null,null],[["curcuma","comino","pimenton","oregano","albahaca","curry","canela","nuez moscada","eneldo","tomillo","romero"],"Especias","🧂","Despensa","especia",null,null],[["albaricoque seco","orejon","ciruela seca","higo seco","datil"],"Fruta desecada","🍑","Despensa",null,null,null],[["vainilla","esencia de vainilla","extracto de vainilla"],"Vainilla","🍶","Despensa",null,null,null],[["melocoton","durazno","nectarina","paraguayo"],"Melocotón","🍑","Frutas y verduras",null,null,null],[["barrita","barritas de cereales"],"Barritas de cereales","🍫","Despensa",null,null,null],[["cebolla","cebolleta","cebollino"],"Cebolla","🧅","Frutas y verduras","verdura_ud",150,null],[["ajo"],"Ajo","🧄","Frutas y verduras","cabeza_ajo",null,null],[["pimiento"],"Pimiento","🫑","Frutas y verduras","verdura_ud",150,null],[["lechuga","escarola","canonigo","rucula"],"Lechuga/hojas verdes","🥬","Frutas y verduras","bolsa_ensalada",null,null],[["espinaca"],"Espinacas","🥬","Frutas y verduras","bolsa_verdura",null,null],[["calabacin"],"Calabacín","🥒","Frutas y verduras","verdura_ud",250,null],[["berenjena"],"Berenjena","🍆","Frutas y verduras","verdura_ud",250,null],[["zanahoria"],"Zanahoria","🥕","Frutas y verduras","malla_kg",null,null],[["patata"],"Patata","🥔","Frutas y verduras","malla_kg",null,null],[["boniato","camote","batata"],"Boniato","🍠","Frutas y verduras","verdura_ud",250,null],[["aguacate","palta"],"Aguacate","🥑","Frutas y verduras","verdura_ud",200,null],[["champinon","seta","hongo"],"Champiñones/setas","🍄","Frutas y verduras","bandeja_verdura",null,null],[["brocoli"],"Brócoli","🥦","Frutas y verduras","verdura_ud",300,null],[["coliflor"],"Coliflor","🥦","Frutas y verduras","verdura_ud",500,null],[["calabaza"],"Calabaza","🎃","Frutas y verduras","peso_verdura",null,null],[["pepino"],"Pepino","🥒","Frutas y verduras","verdura_ud",200,null],[["limon"],"Limón","🍋","Frutas y verduras","malla_citrico",null,null],[["lima"],"Lima","🍋","Frutas y verduras","verdura_ud",70,null],[["naranja","mandarina"],"Naranja/mandarina","🍊","Frutas y verduras","malla_citrico",null,null],[["manzana"],"Manzana","🍎","Frutas y verduras","fruta_ud",180,null],[["platano","banana"],"Plátano","🍌","Frutas y verduras","fruta_ud",120,null],[["mango"],"Mango","🥭","Frutas y verduras","fruta_ud",300,null],[["fresa","freson"],"Fresas","🍓","Frutas y verduras","tarrina_fruta",null,null],[["frambuesa","arandano","mora","frutos rojos","grosella"],"Frutos rojos","🫐","Frutas y verduras","tarrina_fruta",null,null],[["kiwi"],"Kiwi","🥝","Frutas y verduras","fruta_ud",100,null],[["pera"],"Pera","🍐","Frutas y verduras","fruta_ud",180,null],[["melon"],"Melón","🍈","Frutas y verduras","pieza_grande",null,null],[["pina"],"Piña","🍍","Frutas y verduras","pieza_grande",null,null],[["jengibre"],"Jengibre","🫚","Frutas y verduras","trozo_raiz",null,null],[["guisante"],"Guisantes","🟢","Frutas y verduras","bolsa_legumbre",null,null],[["judia verde","judias verdes"],"Judías verdes","🫛","Frutas y verduras","manojo_verdura",null,null],[["esparrago"],"Espárragos","🌱","Frutas y verduras","manojo_verdura",null,null],[["perejil","cilantro","albahaca","romero","tomillo","laurel","oregano","eneldo","menta","hierbabuena"],"Hierbas aromáticas","🌿","Frutas y verduras","manojo_hierba",null,null],[["lenteja"],"Lentejas","🫘","Legumbres y cereales","bote_legumbre",null,null],[["garbanzo"],"Garbanzos","🫘","Legumbres y cereales","bote_legumbre",null,null],[["alubia","judia blanca","frijol","judion"],"Alubias","🫘","Legumbres y cereales","bote_legumbre",null,null],[["arroz"],"Arroz","🍚","Legumbres y cereales","paquete_seco",null,null],[["quinoa"],"Quinoa","🌾","Legumbres y cereales","paquete_seco",null,null],[["avena"],"Avena","🌾","Legumbres y cereales","paquete_seco",null,null],[["cereales de desayuno","copos de maiz","corn flakes","cereales","cereal"],"Cereales de desayuno","🥣","Legumbres y cereales","paquete_basico",null,null],[["tahini","tahin","pasta de sesamo","pasta de ajonjoli","crema de sesamo"],"Pasta de sésamo (tahini)","🥜","Despensa",null,null,null],[["pasta","espagueti","macarron","fideo","tallarin","penne","fusilli","lasana","canelone","noqui","gnocchi"],"Pasta","🍝","Legumbres y cereales","paquete_seco",null,null],[["fideos de arroz","fideo de arroz","tallarines de arroz"],"Fideos de arroz","🍜","Legumbres y cereales","paquete_seco",null,null],[["fideos konjac","fideo konjac","arroz konjac","konjac","shirataki"],"Konjac","🍜","Legumbres y cereales",null,null,null],[["pan","tostada","hojaldre"],"Pan/tostadas","🍞","Legumbres y cereales","barra_pan",null,null],[["harina"],"Harina","🌾","Legumbres y cereales","paquete_seco",null,null],[["harina de almendra","harina de frutos secos","harina frutos secos"],"Harina de almendra","🌾","Legumbres y cereales","paquete_seco",null,null],[["harina de garbanzo"],"Harina de garbanzo","🌾","Legumbres y cereales","paquete_seco",null,null],[["harina de maiz","harina maiz"],"Harina de maíz","🌾","Legumbres y cereales","paquete_seco",null,null],[["harina de avena","harina avena"],"Harina de avena","🌾","Legumbres y cereales","paquete_seco",null,null],[["harina de arroz"],"Harina de arroz","🌾","Legumbres y cereales","paquete_seco",null,null],[["harina de coco"],"Harina de coco","🌾","Legumbres y cereales","paquete_seco",null,null],[["harina de cacahuete"],"Harina de cacahuete","🌾","Legumbres y cereales","paquete_seco",null,null],[["harina de sorgo"],"Harina de sorgo","🌾","Legumbres y cereales","paquete_seco",null,null],[["cuscus"],"Cuscús","🌾","Legumbres y cereales","paquete_seco",null,null],[["tofu"],"Tofu","🌱","Legumbres y cereales","bloque",null,null],[["heura","chorizo vegano"],"Heura","🌱","Legumbres y cereales",null,null,null],[["seitan"],"Seitán","🌱","Legumbres y cereales",null,null,null],[["surimi","palitos de surimi","gula"],"Surimi","🐟","Pescadería",null,null,null],[["soja","soya"],"Soja","🌱","Legumbres y cereales","botella",null,null],[["soja texturizada","soja seca","proteina de soja texturizada"],"Soja texturizada","🌱","Legumbres y cereales","paquete_seco",null,null],[["hummus"],"Hummus","🫘","Legumbres y cereales","tarrina",null,null],[["falafel"],"Falafel","🧆","Legumbres y cereales","paquete_basico",null,null],[["aceite","aove"],"Aceite de oliva","🫒","Despensa","botella",null,null],[["maiz","choclo","elote"],"Maíz","🌽","Despensa",null,null,null],[["papaya"],"Papaya","🥭","Frutas y verduras",null,null,null],[["sal"],"Sal","🧂","Despensa","paquete_basico",null,null],[["pimienta"],"Pimienta","🧂","Despensa","especia",null,null],[["vinagre"],"Vinagre","🍶","Despensa","botella",null,null],[["azucar"],"Azúcar","🍬","Despensa","paquete_basico",null,null],[["edulcorante","estevia","sacarina"],"Edulcorante","🍬","Despensa","paquete_basico",null,null],[["miel"],"Miel","🍯","Despensa","bote_basico",null,null],[["sirope de agave","jarabe de agave","agave"],"Sirope de agave","🍯","Despensa","bote_basico",null,null],[["cacao puro en polvo","cacao puro","cacao en polvo","cacao desgrasado","cacao"],"Cacao en polvo","🍫","Despensa","bote_basico",null,null],[["cacao soluble"],"Cacao soluble","🍫","Despensa","bote_basico",null,null],[["chocolate","cocoa","nocilla","nibs de cacao"],"Chocolate/cacao","🍫","Despensa","tableta",null,null],[["ketchup zero","ketchup","catsup"],"Ketchup","🍅","Despensa","bote_basico",null,null],[["nuez","nueces","almendra","pistacho","anacardo","avellana","frutos secos","pasa","uva pasa","ciruela pasa","semillas","pinon","pinones"],"Frutos secos","🥜","Despensa","bolsa_secos",null,null],[["semilla de lino","linaza"],"Lino","🌰","Despensa","paquete_basico",null,null],[["semilla de anis"],"Anís","🌰","Despensa","especia",null,null],[["semilla de cilantro"],"Semilla de cilantro","🌰","Despensa","especia",null,null],[["chia","semillas de chia","semilla de chia"],"Chía","🌰","Despensa","paquete_basico",null,null],[["sesamo","semillas de sesamo","semilla de sesamo"],"Sésamo","🌰","Despensa","paquete_basico",null,null],[["semilla"],"Semillas","🌰","Despensa","paquete_basico",null,null],[["caldo"],"Caldo","🥣","Despensa","brick_caldo",null,null],[["vino"],"Vino","🍷","Despensa","botella",null,null],[["mermelada"],"Mermelada","🍓","Despensa","bote_basico",null,null],[["mostaza"],"Mostaza","🟡","Despensa","bote_basico",null,null],[["curry","pimenton","comino","azafran","canela","cayena","especias","clavo"],"Especias","🌶️","Despensa","especia",null,null],[["coco"],"Coco","🥥","Despensa","paquete_basico",null,null],[["gelatina"],"Gelatina","🍮","Despensa","paquete_basico",null,null],[["levadura","bicarbonato","polvo de hornear","polvo hornear","polvo para hornear"],"Levadura/bicarbonato","🧁","Despensa","paquete_basico",null,null],[["levadura nutricional","levadura de cerveza"],"Levadura nutricional","🧂","Despensa","paquete_basico",null,null],[["rape"],"Rape","🐟","Pescadería",null,null,null],[["lenguado"],"Lenguado","🐟","Pescadería",null,null,null],[["marisco"],"Marisco variado","🦐","Pescadería",null,null,null],[["pescado"],"Pescado","🐟","Pescadería",null,null,null],[["conejo"],"Conejo","🍖","Carnicería",null,null,null],[["mortadela"],"Mortadela","🥓","Carnicería",null,null,null],[["apio"],"Apio","🥬","Frutas y verduras",null,null,null],[["acelga"],"Acelgas","🥬","Frutas y verduras",null,null,null],[["alcachofa"],"Alcachofas","🌿","Frutas y verduras",null,null,null],[["berro"],"Berros","🥬","Frutas y verduras",null,null,null],[["endibia","endivia"],"Endibias","🥬","Frutas y verduras",null,null,null],[["hinojo"],"Hinojo","🌿","Frutas y verduras",null,null,null],[["germinado","soja germinada","brotes de soja"],"Germinados","🌱","Frutas y verduras",null,null,null],[["guindilla"],"Guindilla","🌶️","Frutas y verduras",null,null,null],[["jalapeno","chile"],"Chile/jalapeño","🌶️","Frutas y verduras",null,null,null],[["col rizada","repollo","berza","lombarda","kale","col"],"Col/repollo","🥬","Frutas y verduras",null,null,null],[["granada"],"Granada","🔴","Frutas y verduras",null,null,null],[["higo"],"Higos","🟣","Frutas y verduras",null,null,null],[["sandia"],"Sandía","🍉","Frutas y verduras",null,null,null],[["menestra"],"Menestra de verduras","🥗","Frutas y verduras",null,null,null],[["chalota"],"Chalotas","🧅","Frutas y verduras",null,null,null],[["ajete"],"Ajetes","🧄","Frutas y verduras",null,null,null],[["ricotta","ricota","mascarpone","cottage"],"Queso fresco (ricotta/cottage)","🧀","Huevos y lácteos",null,null,null],[["cuajada"],"Cuajada","🥛","Huevos y lácteos",null,null,null],[["natillas","natilla"],"Natillas","🍮","Huevos y lácteos",null,null,null],[["bebida vegetal","bebida de avena","leche vegetal","bebida a base de almendra","bebida de almendra","bebida de soja","bebida soja","leche de soja","leche de almendra","leche de avena","preparado de soja","bebida de coco","bebida de arroz"],"Bebida vegetal","🥛","Huevos y lácteos","liquido_l",null,null],[["leche de coco"],"Leche de coco","🥥","Despensa","liquido_l",null,null],[["galleta"],"Galletas","🍪","Despensa",null,null,null],[["tortilla de trigo","tortillas de trigo","tortilla de maiz","tostada de maiz","tostadas de maiz"],"Tortillas/wraps","🌯","Legumbres y cereales",null,null,null],[["oblea"],"Obleas","🥟","Legumbres y cereales",null,null,null],[["focaccia"],"Focaccia","🍞","Legumbres y cereales",null,null,null],[["judias pintas","judia pinta","alubia pinta","frijol pinto"],"Alubias pintas","🫘","Legumbres y cereales",null,null,null],[["proteina en polvo","proteina de suero","proteina aislada","whey","caseina"],"Proteína en polvo","🥤","Despensa",null,null,null],[["bechamel"],"Bechamel","🥫","Despensa",null,null,null],[["mayonesa"],"Mayonesa","🥫","Despensa",null,null,null],[["pesto"],"Pesto","🥫","Despensa",null,null,null],[["vinagreta"],"Vinagreta","🥫","Despensa",null,null,null],[["alcaparra"],"Alcaparras","🫒","Despensa",null,null,null],[["palmito"],"Palmitos","🥫","Despensa",null,null,null],[["miso"],"Miso","🍜","Despensa",null,null,null],[["pipas de girasol","pipa de girasol","semilla de girasol"],"Pipas de girasol","🌻","Despensa",null,null,null],[["pipas de calabaza","pipa de calabaza","semilla de calabaza"],"Pipas de calabaza","🎃","Despensa",null,null,null],[["margarina"],"Margarina","🧈","Despensa",null,null,null],[["pepinillo"],"Pepinillos","🥒","Despensa",null,null,null],[["helado"],"Helado","🍨","Despensa",null,null,null],[["licor"],"Licor","🍸","Despensa",null,null,null],[["pate de higado","pate"],"Paté","🥫","Despensa",null,null,null]];
 
 // Matching idéntico al script: gana la coincidencia más a la IZQUIERDA del texto
 // y, a igual posición, la clave más LARGA. Tolera plurales (almendra→almendras).
@@ -15727,10 +15818,11 @@ function recetaRechazadaJS(rec, pref){
   const txt=String((rec.nombre||rec.nombre_receta||"")+" "+(rec.ingredientes||""))
     .normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
   for(const r of pref.terms){
-    let raiz=r;
-    if(raiz.endsWith("es")&&raiz.length>4) raiz=raiz.slice(0,-2);
+    let raiz=r, sufijo="(s|es)?";
+    // «guisantes» → raíz «guisant»: el singular «guisante» también veta (MAESTRO-2026-1119)
+    if(raiz.endsWith("es")&&raiz.length>4){ raiz=raiz.slice(0,-2); sufijo="(e|es|s)?"; }
     else if(raiz.endsWith("s")&&raiz.length>3) raiz=raiz.slice(0,-1);
-    if(new RegExp("\\b"+raiz.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"(s|es)?\\b").test(txt)) return true;
+    if(new RegExp("\\b"+raiz.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+sufijo+"\\b").test(txt)) return true;
   }
   return false;
 }
@@ -15864,7 +15956,7 @@ function agregarListaCompra(planJ, planB){
 // ─── Precios de ingredientes (GENERADO desde GBH_Precios_Ingredientes.xlsx) ───
 // NO editar a mano: regenerar con `py gbh_precios.py --js` si cambia el Excel.
 // Formato: nombre canónico → [€/kg, g por unidad, g si «al gusto»].
-const _PRECIOS_ING={"Aceite de oliva":[6,10,10],"Aceitunas":[5,10,12],"Acelgas":[2.2,150,0],"Aguacate":[5.5,150,65],"Ajetes":[8,15,0],"Ajo":[4.5,5,5],"Alcachofas":[3.5,120,0],"Alcaparras":[12,5,0],"Almejas":[9,10,0],"Alubias":[2.5,120,0],"Alubias pintas":[2.5,120,0],"Anchoas":[25,10,0],"Anís":[25,10,3],"Apio":[2,50,50],"Arroz":[1.6,80,70],"Atún":[12,60,0],"Avena":[2.2,40,0],"Azúcar":[1.1,10,0],"Bacalao":[15,150,0],"Bacon":[8.5,15,0],"Barritas de cereales":[8,25,0],"Bebida vegetal":[1.3,1000,100],"Bechamel":[3,50,0],"Berenjena":[1.3,250,0],"Berros":[12,20,0],"Boniato":[2,250,0],"Brócoli":[2.5,400,150],"Caballa":[12,60,0],"Calabacín":[2,300,150],"Calabaza":[1.5,400,100],"Calamar":[13,150,100],"Caldo":[1.2,250,100],"Carne picada":[8,125,0],"Cebolla":[1.5,150,40],"Cerdo":[7.5,150,0],"Chalotas":[4,30,0],"Champiñones/setas":[3.5,20,120],"Chile/jalapeño":[6,15,2],"Chocolate/cacao":[12,10,16],"Chorizo":[10,30,50],"Chía":[8,10,3],"Cinta de lomo":[6.5,150,0],"Coco":[7,10,23],"Col/repollo":[1.5,800,100],"Coliflor":[2.2,800,0],"Conejo":[8.5,1200,0],"Cordero":[17,150,0],"Crema de cacahuete":[7,15,10],"Crema ácida":[5,10,0],"Cuajada":[3.5,125,0],"Cuscús":[2.5,60,0],"Dorada":[11,180,0],"Edulcorante":[15,2,1],"Endibias":[4,80,0],"Especias":[25,3,1],"Espinacas":[4.5,150,50],"Espárragos":[5,20,100],"Focaccia":[6,120,120],"Fresas":[4,15,90],"Fruta desecada":[8,10,0],"Frutos rojos":[9,10,40],"Frutos secos":[13,15,20],"Galletas":[4.5,15,0],"Gambas":[15,15,0],"Garbanzos":[2.5,120,80],"Gelatina":[15,10,0],"Germinados":[15,10,5],"Granada":[3,250,0],"Guindilla":[6,3,1],"Guisantes":[2.5,100,60],"Habas":[3,100,0],"Harina":[0.9,15,50],"Helado":[5,60,0],"Heura":[12,90,0],"Hierbas aromáticas":[25,5,2],"Higos":[6,40,0],"Hinojo":[3,250,0],"Huevos":[5,60,55],"Hummus":[6.5,60,0],"Jamón":[12,15,40],"Jengibre":[6,10,2],"Judías verdes":[4.85,100,90],"Kiwi":[3.5,75,0],"Konjac":[9,200,0],"Leche":[1.05,1000,113],"Lechuga/hojas verdes":[4,300,60],"Lenguado":[13,150,0],"Lentejas":[2.5,120,0],"Levadura/bicarbonato":[8,8,16],"Licor":[15,15,0],"Lima":[3,70,0],"Limón":[2,100,10],"Lino":[8,10,3],"Lubina":[12,180,0],"Mahonesa":[4,15,0],"Maicena":[2.5,10,10],"Mango":[3.5,300,0],"Mantequilla":[10,10,18],"Manzana":[2.2,180,0],"Margarina":[4,10,0],"Marisco variado":[14,75,0],"Mayonesa":[4,15,16],"Maíz":[3.5,70,0],"Mejillones":[4,15,0],"Melocotón":[2.5,150,0],"Melva":[14,60,0],"Melón":[1.5,2000,0],"Menestra de verduras":[2.5,100,0],"Merluza":[12,150,0],"Mermelada":[4.5,20,0],"Mero":[18,150,0],"Miel":[8,15,9],"Miso":[20,15,0],"Morcilla":[7,60,0],"Mortadela":[6,20,0],"Mostaza":[4,10,20],"Naranja/mandarina":[1.8,180,150],"Nata":[3,200,50],"Natillas":[2.5,125,0],"Obleas":[8,15,0],"Palmitos":[8,30,0],"Pan/tostadas":[3.8,30,60],"Papaya":[4.5,800,0],"Pasta":[1.6,80,72],"Pasta de sésamo (tahini)":[10,15,0],"Patata":[1.4,180,165],"Paté":[10,20,0],"Pavo":[8.5,150,50],"Pepinillos":[4,15,0],"Pepino":[1.1,300,0],"Pera":[2.2,160,0],"Pescado":[12,150,0],"Pesto":[8,15,0],"Pimienta":[30,2,0.5],"Pimiento":[2.3,150,75],"Pipas de calabaza":[12,20,0],"Pipas de girasol":[5,20,0],"Piña":[2,1500,50],"Plátano":[2.5,120,0],"Pollo":[7.3,150,170],"Proteína en polvo":[25,30,0],"Puerro":[2.2,150,0],"Pulpo":[24,150,0],"Queso":[11,20,30],"Queso fresco (ricotta/cottage)":[7,250,0],"Quinoa":[5,60,0],"Rape":[18,150,0],"Sal":[0.6,2,1],"Salchichas":[5.5,50,0],"Salmón":[22,180,0],"Salsa de soja":[4,15,5],"Sandía":[1.2,2500,0],"Sardinas":[7,60,0],"Seitán":[9,125,0],"Semilla de cilantro":[25,10,3],"Semillas":[8,10,3],"Sirope de agave":[8,7,0],"Soja":[4,15,5],"Surimi":[6,17,0],"Sésamo":[8,10,3],"Ternera":[13.5,150,175],"Tinta de calamar":[60,4,0],"Tofu":[7,125,0],"Tomate":[2.2,150,75],"Tortillas/wraps":[6,45,75],"Trucha":[9,200,0],"Vainilla":[40,4,1],"Vinagre":[1.5,10,5],"Vinagreta":[5,15,10],"Vino":[3,150,50],"Yogur":[2.5,125,0],"Yuca":[2.5,300,0],"Zanahoria":[1.2,100,70]};
+const _PRECIOS_ING={"Aceite de oliva":[6,10,10],"Aceitunas":[5,10,12],"Acelgas":[2.2,150,0],"Aguacate":[5.5,150,65],"Ajetes":[8,15,0],"Ajo":[4.5,5,5],"Alcachofas":[3.5,120,0],"Alcaparras":[12,5,0],"Almejas":[9,10,0],"Alubias":[2.5,120,0],"Alubias pintas":[2.5,120,0],"Anchoas":[25,10,0],"Anís":[25,10,3],"Apio":[2,50,50],"Arroz":[1.6,80,70],"Atún":[12,60,0],"Avena":[2.2,40,0],"Azúcar":[1.1,10,0],"Bacalao":[15,150,0],"Bacon":[8.5,15,0],"Barritas de cereales":[8,25,0],"Bebida vegetal":[1.3,1000,100],"Bechamel":[3,50,0],"Berenjena":[1.3,250,0],"Berros":[12,20,0],"Boniato":[2,250,0],"Brócoli":[2.5,400,150],"Caballa":[12,60,0],"Cacahuetes":[7,15,10],"Cacao en polvo":[12,10,16],"Cacao soluble":[12,10,16],"Calabacín":[2,300,150],"Calabaza":[1.5,400,100],"Calamar":[13,150,100],"Caldo":[1.2,250,100],"Carne picada":[8,125,0],"Cebolla":[1.5,150,40],"Cerdo":[7.5,150,0],"Chalotas":[4,30,0],"Champiñones/setas":[3.5,20,120],"Chile/jalapeño":[6,15,2],"Chocolate/cacao":[12,10,16],"Chorizo":[10,30,50],"Chía":[8,10,3],"Cinta de lomo":[6.5,150,0],"Coco":[7,10,23],"Col/repollo":[1.5,800,100],"Coliflor":[2.2,800,0],"Conejo":[8.5,1200,0],"Cordero":[17,150,0],"Crema de cacahuete":[7,15,10],"Crema ácida":[5,10,0],"Cuajada":[3.5,125,0],"Cuscús":[2.5,60,0],"Dorada":[11,180,0],"Edulcorante":[15,2,1],"Endibias":[4,80,0],"Especias":[25,3,1],"Espinacas":[4.5,150,50],"Espárragos":[5,20,100],"Falafel":[6.5,60,0],"Fideos de arroz":[1.6,80,72],"Focaccia":[6,120,120],"Fresas":[4,15,90],"Fruta desecada":[8,10,0],"Frutos rojos":[9,10,40],"Frutos secos":[13,15,20],"Galletas":[4.5,15,0],"Gambas":[15,15,0],"Garbanzos":[2.5,120,80],"Gelatina":[15,10,0],"Germinados":[15,10,5],"Granada":[3,250,0],"Guindilla":[6,3,1],"Guisantes":[2.5,100,60],"Habas":[3,100,0],"Harina":[0.9,15,50],"Harina de almendra":[0.9,15,50],"Harina de arroz":[0.9,15,50],"Harina de avena":[0.9,15,50],"Harina de cacahuete":[0.9,15,50],"Harina de coco":[0.9,15,50],"Harina de garbanzo":[0.9,15,50],"Harina de maíz":[0.9,15,50],"Harina de sorgo":[0.9,15,50],"Helado":[5,60,0],"Heura":[12,90,0],"Hierbas aromáticas":[25,5,2],"Higos":[6,40,0],"Hinojo":[3,250,0],"Huevos":[5,60,55],"Hummus":[6.5,60,0],"Jamón":[12,15,40],"Jengibre":[6,10,2],"Judías verdes":[4.85,100,90],"Kiwi":[3.5,75,0],"Konjac":[9,200,0],"Leche":[1.05,1000,113],"Leche de coco":[1.05,1000,113],"Lechuga/hojas verdes":[4,300,60],"Lenguado":[13,150,0],"Lentejas":[2.5,120,0],"Levadura nutricional":[8,8,16],"Levadura/bicarbonato":[8,8,16],"Licor":[15,15,0],"Lima":[3,70,0],"Limón":[2,100,10],"Lino":[8,10,3],"Lubina":[12,180,0],"Mahonesa":[4,15,0],"Maicena":[2.5,10,10],"Mango":[3.5,300,0],"Mantequilla":[10,10,18],"Manzana":[2.2,180,0],"Margarina":[4,10,0],"Marisco variado":[14,75,0],"Mayonesa":[4,15,16],"Maíz":[3.5,70,0],"Mejillones":[4,15,0],"Melocotón":[2.5,150,0],"Melva":[14,60,0],"Melón":[1.5,2000,0],"Menestra de verduras":[2.5,100,0],"Merluza":[12,150,0],"Mermelada":[4.5,20,0],"Mero":[18,150,0],"Miel":[8,15,9],"Miso":[20,15,0],"Morcilla":[7,60,0],"Mortadela":[6,20,0],"Mostaza":[4,10,20],"Naranja/mandarina":[1.8,180,150],"Nata":[3,200,50],"Natillas":[2.5,125,0],"Obleas":[8,15,0],"Palmitos":[8,30,0],"Pan/tostadas":[3.8,30,60],"Papaya":[4.5,800,0],"Pasta":[1.6,80,72],"Pasta de sésamo (tahini)":[10,15,0],"Patata":[1.4,180,165],"Paté":[10,20,0],"Pavo":[8.5,150,50],"Pechuga de pavo":[8.5,150,50],"Pepinillos":[4,15,0],"Pepino":[1.1,300,0],"Pera":[2.2,160,0],"Pescado":[12,150,0],"Pesto":[8,15,0],"Pimienta":[30,2,0.5],"Pimiento":[2.3,150,75],"Pipas de calabaza":[12,20,0],"Pipas de girasol":[5,20,0],"Piña":[2,1500,50],"Plátano":[2.5,120,0],"Pollo":[7.3,150,170],"Proteína en polvo":[25,30,0],"Puerro":[2.2,150,0],"Pulpo":[24,150,0],"Queso":[11,20,30],"Queso crema":[11,20,30],"Queso fresco (ricotta/cottage)":[7,250,0],"Quinoa":[5,60,0],"Rape":[18,150,0],"Sal":[0.6,2,1],"Salchichas":[5.5,50,0],"Salmón":[22,180,0],"Salsa de soja":[4,15,5],"Sandía":[1.2,2500,0],"Sardinas":[7,60,0],"Seitán":[9,125,0],"Semilla de cilantro":[25,10,3],"Semillas":[8,10,3],"Sirope de agave":[8,7,0],"Soja":[4,15,5],"Soja texturizada":[4,15,5],"Surimi":[6,17,0],"Sésamo":[8,10,3],"Ternera":[13.5,150,175],"Tinta de calamar":[60,4,0],"Tofu":[7,125,0],"Tomate":[2.2,150,75],"Tortillas/wraps":[6,45,75],"Trucha":[9,200,0],"Vainilla":[40,4,1],"Vinagre":[1.5,10,5],"Vinagreta":[5,15,10],"Vino":[3,150,50],"Yogur":[2.5,125,0],"Yogur griego":[2.5,125,0],"Yuca":[2.5,300,0],"Zanahoria":[1.2,100,70]};
 
 // Coste estimado de la lista: la MISMA base de precios que el PDF (el Excel
 // GBH_Precios_Ingredientes.xlsx es la única fuente; esto es su export --js).
@@ -17590,9 +17682,13 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
         {lang==='en'?'Your weekly meal plan':'Tu programación semanal'}
       </div>
       <div style={{fontSize:13.5,color:T.t2,lineHeight:1.65,maxWidth:300,fontFamily:"'DM Sans',sans-serif"}}>
-        {lang==='en'
+        {ES_IOS_NATIVO
+          ? (lang==='en'
+            ?'Your weekly meal plan is prepared by your nutritionist as part of GBH Nutrición’s one-to-one nutrition service.'
+            :'Tu programación semanal la prepara tu nutricionista dentro del servicio de nutrición 1:1 de GBH Nutrición.')
+          : (lang==='en'
           ?'The weekly plan is exclusive to Standard and Premium accounts. Upgrade and get your personalized meal plan, recipes and shopping list.'
-          :'La planificación es exclusiva de las cuentas Estándar y Premium. Mejora tu plan y tendrás tu programación personalizada con recetas y lista de la compra.'}
+          :'La planificación es exclusiva de las cuentas Estándar y Premium. Mejora tu plan y tendrás tu programación personalizada con recetas y lista de la compra.')}
       </div>
 
       {/* Tarifas: Estándar → pago directo Stripe · Premium → WhatsApp.
@@ -17643,13 +17739,14 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
         {lang==='en'?'We reply the same day · @gbhnutricion':'Te respondemos en el día · @gbhnutricion'}
       </div>
       </>:(
+      ES_ANDROID_NATIVO ? (
       <div style={{fontSize:12.5,color:T.t2,lineHeight:1.6,maxWidth:300,fontFamily:"'DM Sans',sans-serif",marginTop:6}}>
         {lang==='en'
           ?'The weekly plan is not available on your current account.'
           :'La programación semanal no está disponible en tu cuenta actual.'}
-        {ES_ANDROID_NATIVO&&<><br/>{txtWebAndroid(lang,"estandar")}</>}
+        <br/>{txtWebAndroid(lang,"estandar")}
       </div>
-      )}
+      ) : null)}
     </div>
   );}
   if(loading) return <div style={{padding:32,textAlign:'center',fontSize:13,color:T.t2}}>{lang==='en'?'Loading…':'Cargando…'}</div>;
@@ -18547,6 +18644,10 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
   // líneas «Alimentos rechazados: …» y «Alergias: …», que el generador ya lee
   // (interpretar_notas). Las demás líneas de notas se conservan (PlanArcade.jsx).
   const [descartes,setDescartes]=React.useState(()=>leerDescartes(config?.notas).lista);
+  // Densidad calórica de las recetas (1-nov-2026): una línea de notas que el generador
+  // ya lee (interpretar_notas → pref densidad). Se elige en el semáforo de Bo policía.
+  const [densidad,setDensidad]=React.useState(()=>leerDensidad(config?.notas));
+  const [semaforoAbierto,setSemaforoAbierto]=React.useState(false);
   const [patron,setPatron]=React.useState(
     PATRONES_OPC.some(p=>p.v===config?.patron_dias) ? config.patron_dias : 'Estándar (LJ/MS/XV/D)');
   const [dist,setDist]=React.useState({
@@ -18596,7 +18697,7 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
       patron_dias: patron,
       ...dist,
       suplementacion: recsLimpios,   // [] borra los recordatorios si los quitó todos
-      notas: escribirDescartes(config?.notas, descartes),   // alimentos descartados (líneas que lee el generador)
+      notas: escribirDensidad(escribirDescartes(config?.notas, descartes), densidad),   // alimentos descartados y densidad (líneas que lee el generador)
       config_completa: true,
       auto_generado: true,
     };
@@ -18685,12 +18786,32 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
         )}
       </div>
 
+      {/* ── Densidad calórica de las recetas (SemaforoDensidad.jsx, 1-nov-2026): botón-ficha
+            que abre a Bo de policía junto a un semáforo; verde = baja-media, ámbar = todas,
+            rojo = media-alta (los colores del semáforo del PDF). ── */}
+      <div style={{padding:'12px 16px'}}>
+        <div style={{fontFamily:FUENTE_PIXEL,fontSize:8,color:T.au1,textTransform:'uppercase',letterSpacing:'0.04em',textShadow:'1px 1px 0 #000',lineHeight:1.6,marginBottom:4}}>
+          {lang==='en'?'2 · Calorie density':'2 · Densidad calórica'}
+        </div>
+        <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginBottom:10,lineHeight:1.4}}>
+          {lang==='en'
+            ?'More volume or more energy per bite: your calories stay the same.'
+            :'Más volumen o más energía por bocado: tus calorías no cambian.'}
+        </div>
+        <BotonDensidad lang={lang} T={T} valor={densidad} onAbrir={()=>{sfx&&sfx("tap");setSemaforoAbierto(true);}} />
+        {semaforoAbierto && (
+          <SemaforoDensidad lang={lang} T={T} Sheep={Sheep} profile={profile} sfx={sfx} valor={densidad}
+            onElegir={(v)=>{setDensidad(v);setSemaforoAbierto(false);}}
+            onClose={()=>setSemaforoAbierto(false)} />
+        )}
+      </div>
+
       {/* ── Distribución calórica — tabla con flechas (sin deslizadores que se
             muevan solos al hacer scroll) ── */}
       <div style={{padding:'12px 16px'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
           <div style={{fontFamily:FUENTE_PIXEL,fontSize:8,color:T.au1,textTransform:'uppercase',letterSpacing:'0.04em',textShadow:'1px 1px 0 #000',lineHeight:1.6}}>
-            {lang==='en'?'2 · Calorie split':'2 · Distribución de calorías'}
+            {lang==='en'?'3 · Calorie split':'3 · Distribución de calorías'}
           </div>
           <PillTotal lang={lang} total={total} />
         </div>
@@ -18703,7 +18824,7 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
       {/* ── Patrón de repetición — ¿cuántos menús distintos a la semana? ── */}
       <div style={{padding:'12px 16px'}}>
         <div style={{fontFamily:FUENTE_PIXEL,fontSize:8,color:T.au1,textTransform:'uppercase',letterSpacing:'0.04em',textShadow:'1px 1px 0 #000',lineHeight:1.6,marginBottom:4}}>
-          {lang==='en'?'3 · How often do you cook?':'3 · ¿Cuántas veces cocinas a la semana?'}
+          {lang==='en'?'4 · How often do you cook?':'4 · ¿Cuántas veces cocinas a la semana?'}
         </div>
         <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginBottom:10,lineHeight:1.4}}>
           {lang==='en'
@@ -18716,7 +18837,7 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
       {/* ── Alimentos que no quiere / alergias (PlanArcade.jsx) ── */}
       <div style={{padding:'12px 16px'}}>
         <div style={{fontFamily:FUENTE_PIXEL,fontSize:8,color:T.au1,textTransform:'uppercase',letterSpacing:'0.04em',textShadow:'1px 1px 0 #000',lineHeight:1.6,marginBottom:4}}>
-          {lang==='en'?"4 · Foods you don't want":'4 · Alimentos que no quieres'}
+          {lang==='en'?"5 · Foods you don't want":'5 · Alimentos que no quieres'}
         </div>
         <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginBottom:10,lineHeight:1.4}}>
           {lang==='en'
@@ -18729,7 +18850,7 @@ function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,p
       {/* ── Recordatorios de suplementación/medicación (opcional, máx. 3) ── */}
       <div style={{padding:'12px 16px'}}>
         <div style={{fontFamily:FUENTE_PIXEL,fontSize:8,color:T.au1,textTransform:'uppercase',letterSpacing:'0.04em',textShadow:'1px 1px 0 #000',lineHeight:1.6,marginBottom:4}}>
-          {lang==='en'?'5 · Supplement/medication reminders':'5 · Recordatorios de suplementación/medicación'}
+          {lang==='en'?'6 · Supplement/medication reminders':'6 · Recordatorios de suplementación/medicación'}
         </div>
         <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginBottom:10,lineHeight:1.4}}>
           {lang==='en'
