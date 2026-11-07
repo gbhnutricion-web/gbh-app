@@ -23,6 +23,7 @@ import { Cafeina } from "./Cafeina";                                     // calc
 import { Creatina } from "./Creatina";                                   // calculadora de creatina, fase 1 (5-oct-2026)
 import { Suplementacion } from "./Suplementacion";                       // pestaña 💊 Suplementación: ☕ Cafeína y 💪 Creatina (próximamente) (26-sep-2026)
 import { BarraPestanas } from "./BarraPestanas";                         // la barra de pestañas de abajo (26-sep-2026)
+import { FuentesCientificas, EnlaceFuentes, abrirFuentes } from "./FuentesCientificas"; // fuentes con enlace de cada recomendación (Apple 1.4.1, 7-nov-2026)
 import { planificarAvisos, nombresDePlan, PREFS_POR_DEFECTO as AVISOS_PREFS, TOMAS_ORDEN as AVISOS_TOMAS } from "./motorAvisos"; // avisos fuera de la app, fase 1 (28-sep-2026)
 import { estadoPermiso, pedirPermiso, sincronizarAvisos, cancelarAvisos, alTocarAviso, plataforma as plataformaNativa } from "./avisosNativos";
 import { TarjetaPermisoAvisos, FilaRecordatorios, PanelRecordatorios } from "./PanelAvisos";
@@ -1559,6 +1560,13 @@ const ES_IOS_NATIVO = ES_NATIVO && CAPN.getPlatform && CAPN.getPlatform() === "i
 // vender el Estándar con Stripe desde la app. Donde iOS no enseña nada, Android dice SIN
 // enlace dónde se contrata, que Google sí permite. En iOS y en la web no cambia nada.
 const ES_ANDROID_NATIVO = ES_NATIVO && !ES_IOS_NATIVO;
+// iOS: «solo gratis + Premium 1:1» (7-nov-2026; Apple 3.1.1 del 4-nov; PEND-2026-319, por orden de
+// Alejandro: «la primera, si los pacientes premium pueden seguir recibiendo sus semanas y todas las
+// funcionalidades como hasta ahora»). En la app de iOS el Estándar no existe: quien lo tiene, por Stripe o
+// por la semana de prueba, ve la app gratuita, y en iOS el alta no trae prueba. El Premium, el servicio 1:1
+// con la dietista que se acuerda fuera de la app (3.1.3(d)), sigue entero. Es solo VISTA: nada de esto se
+// escribe en la base, así que la web y Android no cambian, y quien paga por la web lo sigue teniendo allí.
+const vistaTienda = (p) => (ES_IOS_NATIVO && p && p.plan === "standard") ? { ...p, plan: "free" } : p;
 const txtWebAndroid = (lang, que) => que === "gestionar"
   ? (lang === "en" ? "Your subscription is managed on the web: app.gbhnutricion.es" : "Tu suscripción se gestiona en la web: app.gbhnutricion.es")
   : (lang === "en" ? "The Standard plan is available on the web: app.gbhnutricion.es" : "El plan Estándar se contrata en la web: app.gbhnutricion.es");
@@ -4892,7 +4900,11 @@ function PersonalizacionBo({ nombre, setNombre, color, setColor, equipados, setE
 // formulario antiguo — ninguno nuevo (incluida la política de privacidad).
 function AltaBo({lang, setLang, emailInicial, onVolver, onLogin, onCrear, css}){
   const EN = lang==='en';
-  const PASOS=['nombre','email','altura','peso','sexo','objetivo','codigo','bo','privacidad','cierre'];
+  // En iOS no se pregunta el código de invitación: daba el primer mes de Premium a mitad de precio, y
+  // Apple no deja códigos que abaraten nada fuera de su compra (3.1.1, revisión del 4-nov-2026).
+  const PASOS=ES_IOS_NATIVO
+    ? ['nombre','email','altura','peso','sexo','objetivo','bo','privacidad','cierre']
+    : ['nombre','email','altura','peso','sexo','objetivo','codigo','bo','privacidad','cierre'];
   const [paso,setPaso]=React.useState(0);
   const [msgs,setMsgs]=React.useState([]);   // {de:'bo'|'yo', tx}
   const [dato,setDato]=React.useState({nombre:'',email:(emailInicial||''),altura:170,peso:'',sexo:null,objetivo:'',codigo:'',bo:'',privacidad:false});
@@ -4920,8 +4932,11 @@ function AltaBo({lang, setLang, emailInicial, onVolver, onLogin, onCrear, css}){
                                 :'Una cosa más: yo también necesito nombre. Me llaman Bo… pero tú mandas.';
       case 'privacidad':return EN?'The legal bit, quickly: to create your account I need you to accept GBH\u2019s privacy policy.'
                                 :'Lo legal, rapidito: para crear tu cuenta necesito que aceptes la política de privacidad de GBH.';
-      case 'cierre':   return EN?'That\u2019s it. This week is on the house: 7 days of trial with the full Standard plan. Come on, let me show you the app — it takes two minutes and we\u2019ll leave with your first week set up.'
-                                :'Pues ya está. Esta semana invita la casa: 7 días de prueba con todo el plan Estándar. Ven, que te enseño la app — son dos minutos y salimos con tu primera semana montada.';
+      case 'cierre':   return ES_IOS_NATIVO
+                                ? (EN?'That\u2019s it. Come on, let me show you the app — it takes two minutes.'
+                                     :'Pues ya está. Ven, que te enseño la app — son dos minutos.')
+                                : (EN?'That\u2019s it. This week is on the house: 7 days of trial with the full Standard plan. Come on, let me show you the app — it takes two minutes and we\u2019ll leave with your first week set up.'
+                                :'Pues ya está. Esta semana invita la casa: 7 días de prueba con todo el plan Estándar. Ven, que te enseño la app — son dos minutos y salimos con tu primera semana montada.');
       default: return '';
     }
   };
@@ -5235,10 +5250,13 @@ function TutorialOverlay({targetSel, texto, onSkip, onNext, lang, boNombre, avat
 
 // B9 · Cierre — celebración a pantalla completa con la mascota personalizada y
 // el resumen de lo YA HECHO. Los artefactos creados en el tour permanecen.
-function TutoCierre({nombre, boNombre, boColor, boEquipados, lang, onFin}){
+function TutoCierre({nombre, boNombre, boColor, boEquipados, lang, onFin, sinPlan=false}){
   const EN=lang==='en';
   const n=(nombre||'').split(' ')[0];
-  const hechos=[
+  const hechos=sinPlan ? [
+    EN?'Goal set':'Objetivo puesto',
+    EN?'First daily missions ticked':'Primeras misiones del día marcadas',
+  ] : [
     EN?'Goal set':'Objetivo puesto',
     EN?'Your week of meals created':'Tu semana de comidas creada',
     EN?'First meal logged':'Primera comida registrada',
@@ -6838,6 +6856,7 @@ function CalcTab({weights,profile,setProfile,lang}){
       {/* Nota */}
       <div style={{background:alpha(T.au1,0.07),border:`1.5px solid ${T.au3}`,borderRadius:14,padding:"12px 16px",fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6,marginBottom:16}}>
         {t("calcNote")}
+        <div><EnlaceFuentes tema="energia" lang={lang} T={T} style={{paddingLeft:0}}/></div>
       </div>
 
       {/* Botón editar */}
@@ -8306,7 +8325,7 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
               <div style={{minWidth:0}}>
                 <div style={{fontSize:10,color:T.t2,textTransform:"uppercase",letterSpacing:"0.08em",fontFamily:"'DM Sans',sans-serif",marginBottom:3}}>
-                  {lang==="en"?"Subscription":"Suscripción"}
+                  {ES_IOS_NATIVO?(lang==="en"?"Account":"Cuenta"):(lang==="en"?"Subscription":"Suscripción")}
                 </div>
                 <div style={{fontSize:14,fontWeight:800,color:T.wh,fontFamily:"'DM Sans',sans-serif"}}>
                   {profile?.plan==="premium" ? "💎 Premium"
@@ -8349,6 +8368,22 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
               )}
             </div>
           </div>
+          {/* Fila «Fuentes científicas» (Apple 1.4.1, 7-nov-2026): de dónde sale cada recomendación,
+              con enlace a la fuente. En todas las plataformas. */}
+          <button onClick={()=>abrirFuentes()}
+            style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,width:"100%",
+              padding:"12px 0",background:"none",border:"none",borderBottom:"1px solid rgba(255,255,255,0.07)",
+              cursor:"pointer",textAlign:"left"}}>
+            <div style={{minWidth:0}}>
+              <div style={{fontSize:14,fontWeight:800,color:T.wh,fontFamily:"'DM Sans',sans-serif"}}>
+                📚 {lang==="en"?"Scientific sources":"Fuentes científicas"}
+              </div>
+              <div style={{fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginTop:2}}>
+                {lang==="en"?"Where each recommendation in the app comes from":"De dónde sale cada recomendación de la app"}
+              </div>
+            </div>
+            <span style={{color:T.t2,fontSize:18,flexShrink:0}}>›</span>
+          </button>
           {/* Fila «Recordatorios»: se retiró con las push el 6-ago-2026 porque
               ofrecía algo que no funcionaba, y vuelve el 28-sep con los avisos
               locales. Solo en la app de tienda y con el interruptor del operador
@@ -8711,7 +8746,11 @@ function GBHApp(){
   const [lang,    setLang]    = useState(()=>lsGet("gbh:lang","es"));
   const [muted,   setMuted]   = useState(()=>lsGet("gbh:mute",false));
   const sfx = (name,...args) => { if(!muted){ SFX[name]?.(...args); if(HAPTIC_DE_SFX[name]) haptic(HAPTIC_DE_SFX[name]); } };
-  const [profile, setProfile] = useState(null);
+  // En iOS, la app ve el perfil por vistaTienda (el Estándar como gratis). setProfile sigue escribiendo
+  // el estado de verdad; ningún camino escribe `plan` en la base salvo las degradaciones, que piden
+  // plan === "standard" y por eso en iOS no corren (las hace la web o el panel del operador).
+  const [profileReal, setProfile] = useState(null);
+  const profile = useMemo(() => vistaTienda(profileReal), [profileReal]);
   const [tLog,    setTLog]    = useState({diet:false,steps:false,hydration:false,sleep:false});
   const [steps,   setSteps]   = useState(0);
   // ── Clave del día VIVA (24-ago-2026) ─────────────────────────────────
@@ -9007,6 +9046,7 @@ function GBHApp(){
   useEffect(()=>{ (async()=>{
     try{
       if(!profile?.id) return;
+      if(ES_IOS_NATIVO) return;                // iOS no da semana de prueba (Apple 3.1.1, 7-nov-2026)
       if(profile.trial_ends_at || profile.plan_until) return;
       if(profile.plan && profile.plan!=='free') return;
       const kRep=`gbh:trialrep:${profile.id}`;
@@ -9769,13 +9809,27 @@ function GBHApp(){
   // Los usuarios existentes no tienen la clave y no ven nada de esto.
   const [tutoPaso,setTutoPaso]=useState(null);
   const [tutoReoffer,setTutoReoffer]=useState(null);   // paso al que reanudar | null
+  // Fuentes científicas (Apple 1.4.1, 7-nov-2026): cualquier pantalla lanza abrirFuentes("tema") y aquí se
+  // pinta la lista encima. undefined = cerrada; null = abierta arriba; "tema" = abierta en ese tema.
+  const [fuentesTema,setFuentesTema]=useState(undefined);
+  useEffect(()=>{
+    const h=(e)=>setFuentesTema(e?.detail?.tema ?? null);
+    window.addEventListener("gbh:fuentes",h);
+    return ()=>window.removeEventListener("gbh:fuentes",h);
+  },[]);
   const tutoTapRef=useRef(false);
   const tutoIr=(p)=>{ try{ if(profile?.id) lsSet(`gbh:tuto:${profile.id}`,p); }catch{} setTutoPaso(p); };
   const tutoTerminar=()=>{ try{ if(profile?.id) lsSet(`gbh:tuto:${profile.id}`,'done'); }catch{} setTutoPaso(null); };
+  // En iOS, quien no es Premium no tiene programación (vistaTienda): el tour se salta los pasos del
+  // plan (B3 y B4) en vez de llevarle a una pantalla que no puede usar (7-nov-2026).
+  const tutoSinPlan = ES_IOS_NATIVO && profile?.plan!=='premium';
+  const tutoPasoValido=(p)=> (tutoSinPlan && /^B[34]_/.test(p)) ? 'B5_peso' : p;
   const tutoAvanzar=()=>{
     const i=TUTO_ORDEN.indexOf(tutoPaso);
     if(i<0) return;
-    const sig=TUTO_ORDEN[i+1];
+    let j=i+1;
+    while(tutoSinPlan && TUTO_ORDEN[j] && /^B[34]_/.test(TUTO_ORDEN[j])) j++;
+    const sig=TUTO_ORDEN[j];
     if(!sig){ tutoTerminar(); return; }
     tutoIr(sig);
   };
@@ -9810,13 +9864,13 @@ function GBHApp(){
     try{
       const v=lsGet(`gbh:tuto:${profile.id}`,null);
       if(!v || v==='done') return;
-      if(TUTO_ORDEN.includes(v)){ setTutoPaso(v); return; }
+      if(TUTO_ORDEN.includes(v)){ setTutoPaso(tutoPasoValido(v)); return; }
       if(typeof v==='string' && v.startsWith('skip:')){
         const dia=lsGet(`gbh:tuto:skipday:${profile.id}`,null);
         const ofrecido=lsGet(`gbh:tuto:reofrecido:${profile.id}`,false);
         if(!ofrecido && dia && dia<toKey()){
           lsSet(`gbh:tuto:reofrecido:${profile.id}`,true);
-          setTutoReoffer(TUTO_ORDEN.includes(v.slice(5))?v.slice(5):'B1_agua');
+          setTutoReoffer(TUTO_ORDEN.includes(v.slice(5))?tutoPasoValido(v.slice(5)):'B1_agua');
         }
       }
     }catch{}
@@ -9845,6 +9899,7 @@ function GBHApp(){
   //    Pedir un referido a alguien que lo está pasando mal quema el foso. ──
   const [refCard,setRefCard]=useState(false);
   useEffect(()=>{
+    if(ES_IOS_NATIVO) return;   // iOS sin referidos (Apple 3.1.1, 7-nov-2026)
     if(!profile?.id || !profile?.referral_code || refCard) return;
     try{
       const last=lsGet(`gbh:refcard:${profile.id}`,0);
@@ -10856,9 +10911,10 @@ function GBHApp(){
         initial_weight: w0,
         goal_weight: (d.objetivo && !isNaN(parseFloat(d.objetivo)) && parseFloat(d.objetivo)>20) ? parseFloat(d.objetivo) : null,
         bo_nombre: ((d.bo||'Bo').trim()||'Bo').slice(0,12),
-        // Semana de prueba estándar: 7 días, luego degrada a 'free'
-        plan:'standard',
-        trial_ends_at:new Date(Date.now()+7*24*60*60*1000).toISOString(),
+        // Semana de prueba estándar: 7 días, luego degrada a 'free'. En iOS no hay prueba:
+        // la cuenta nace gratuita (Apple 3.1.1, 7-nov-2026).
+        plan: ES_IOS_NATIVO ? 'free' : 'standard',
+        trial_ends_at: ES_IOS_NATIVO ? null : new Date(Date.now()+7*24*60*60*1000).toISOString(),
       };
       // Cascada NUEVA: completo → sin OPCIONALES (la prueba SE QUEDA) → núcleo
       const {height_cm:_h, sex:_s, goal_weight:_g, bo_nombre:_b, ...npSinOpcionales}=np;
@@ -13297,8 +13353,11 @@ function GBHApp(){
           B4_lista:{sel:'plan-zona',tx:EN?'Last thing here: open the 🛒 Shopping List. It builds itself from your week — tick off ingredients as you shop.':'Y lo último de tu plan: entra en la 🛒 Lista de la compra. Se hace sola con tu semana — marca los ingredientes mientras compras.'},
           B4_comida:{sel:'plan-zona',tx:EN?'Go back to 🍽️ Daily Meals and log today’s meal with one of the 5 states (followed · less · added · swapped · skipped). It doesn’t need to be perfect. Log what you actually did: what counts is logging, not complying. An average day, logged, is worth more than a perfect day unlogged. At the bottom, «Your day» shows the calories you have logged against your plan.':'Vuelve atrás a 🍽️ Platos diarios y marca tu comida de hoy con uno de los 5 estados (seguida · menos · añadí · la cambié · me la salté). No hace falta que salga perfecto. Marca lo que has hecho de verdad: lo que cuenta es registrar, no cumplir. Un día regular, registrado, vale más que un día perfecto sin registrar. Abajo del todo, «Tu día» te enseña las kcal que llevas frente a tu programación.'},
           B5_peso:{sel:null,next:true,tx:(EN?`I already have today’s weight from sign-up${pesoUlt?` (${pesoUlt} kg)`:''}. Here you’ll see the trend; up top you switch between Weight, Goal and Ranking. The scale opens on Wednesdays and at the weekend. A tip: weigh yourself always at the same time, fasted — and look at the line over several weeks, never a single day.`:`Tu peso de hoy ya lo tengo del registro${pesoUlt?` (${pesoUlt} kg)`:''}. Aquí verás la evolución; arriba cambias entre Peso, Objetivo y Ranking. La báscula se abre los miércoles y el fin de semana. Un consejo: pésate siempre a la misma hora, en ayunas — y mira la línea de varias semanas, nunca un solo día.`)},
-          B6_recetas:{sel:null,next:true,tx:EN?'The whole GBH recipe book. Search, open, and save the ones you like with the star — yours live in Favourites.':'Todo el recetario GBH. Busca, abre, y guarda las que te gusten con la estrella — las tuyas quedan en Favoritas.'},
-          B7_consulta:{sel:null,next:true,tx:EN?'This tab is you: your profile up top and, right below, the direct line to Alejandro — the Premium side of the plan: in-person consultation, weekly follow-up and his WhatsApp. If the trial wins you over, this is where you level up. Further down, your code to invite a friend and your settings: reminders, sounds, language and PIN.':'Esta pestaña eres tú: arriba tu perfil y, justo debajo, la línea directa con Alejandro — la parte del plan Premium: consulta presencial, seguimiento semanal y su WhatsApp. Si la prueba te convence, aquí es donde se sube de nivel. Más abajo tienes tu código para invitar a un amigo y tus ajustes: avisos, sonidos, idioma y PIN.'},
+          B6_recetas:{sel:null,next:true,tx:tutoSinPlan?(EN?'Here is the GBH recipe of the day, with its ingredients and how to make it; the ones you save stay in My recipe book.':'Aquí tienes la receta del día de GBH, con sus ingredientes y su preparación; las que guardes se quedan en Mi recetario.'):EN?'The whole GBH recipe book. Search, open, and save the ones you like with the star — yours live in Favourites.':'Todo el recetario GBH. Busca, abre, y guarda las que te gusten con la estrella — las tuyas quedan en Favoritas.'},
+          B7_consulta:{sel:null,next:true,tx:ES_IOS_NATIVO?(profile?.plan==='premium'
+            ?(EN?'This tab is you: your profile up top and, right below, the direct line to Alejandro: your consultation, weekly follow-up and his WhatsApp. Further down, your settings: reminders, sounds, language and PIN.':'Esta pestaña eres tú: arriba tu perfil y, justo debajo, la línea directa con Alejandro: tu consulta, el seguimiento semanal y su WhatsApp. Más abajo tienes tus ajustes: avisos, sonidos, idioma y PIN.')
+            :(EN?'This tab is you: your profile up top and, further down, your settings: reminders, sounds, language and PIN.':'Esta pestaña eres tú: arriba tu perfil y, más abajo, tus ajustes: avisos, sonidos, idioma y PIN.'))
+            :EN?'This tab is you: your profile up top and, right below, the direct line to Alejandro — the Premium side of the plan: in-person consultation, weekly follow-up and his WhatsApp. If the trial wins you over, this is where you level up. Further down, your code to invite a friend and your settings: reminders, sounds, language and PIN.':'Esta pestaña eres tú: arriba tu perfil y, justo debajo, la línea directa con Alejandro — la parte del plan Premium: consulta presencial, seguimiento semanal y su WhatsApp. Si la prueba te convence, aquí es donde se sube de nivel. Más abajo tienes tu código para invitar a un amigo y tus ajustes: avisos, sonidos, idioma y PIN.'},
           B8_ranking:{sel:null,next:true,tx:EN?`And here, inside Progress, is the whole flock. Your ${bn} competes with its XP. No pressure — the ranking is the least of it; your week is what matters.`:`Y aquí, dentro de Progreso, el rebaño entero. Tu ${bn} compite con su XP. Sin presión — el ranking es lo de menos; tu semana es lo de más.`},
         };
         const TD=D[tutoPaso]; if(!TD) return null;
@@ -13319,8 +13378,11 @@ function GBHApp(){
           </TutorialOverlay>
         );
       })()}
+      {fuentesTema!==undefined&&(
+        <FuentesCientificas tema={fuentesTema} lang={lang} T={T} onClose={()=>setFuentesTema(undefined)}/>
+      )}
       {tutoPaso==='B9_cierre'&&(
-        <TutoCierre nombre={profile?.name} boNombre={boNombre} boColor={boColor} boEquipados={boEquipados}
+        <TutoCierre nombre={profile?.name} boNombre={boNombre} boColor={boColor} boEquipados={boEquipados} sinPlan={tutoSinPlan}
           lang={lang} onFin={()=>{ sfx("streakCelebration"); tutoTerminar(); }}/>
       )}
       {/* Reoferta ÚNICA al día siguiente de saltar el tour */}
@@ -13332,7 +13394,9 @@ function GBHApp(){
               {lang==='en'?'Shall we pick the tour back up where you left it?':'¿Retomamos el tour donde lo dejaste?'}
             </div>
             <div style={{fontSize:12.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,marginBottom:14}}>
-              {lang==='en'?'Two minutes and we’ll leave with your week set up.':'Dos minutos y salimos con tu semana montada.'}
+              {tutoSinPlan
+                ? (lang==='en'?'Two minutes and you’ll know your way around the app.':'Dos minutos y te enseño la app.')
+                : (lang==='en'?'Two minutes and we’ll leave with your week set up.':'Dos minutos y salimos con tu semana montada.')}
             </div>
             <button onClick={()=>{ const pr=tutoReoffer; setTutoReoffer(null); tutoIr(pr); }}
               style={{width:"100%",padding:"13px 0",borderRadius:15,border:`2.5px solid ${T.g3}`,background:`linear-gradient(135deg,${T.g1},${T.g2})`,color:"#fff",fontSize:15,fontWeight:900,cursor:"pointer",boxShadow:`0 4px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif",marginBottom:8}}>
@@ -13938,6 +14002,7 @@ function GBHApp(){
           {/* Section label */}
           <div style={{textAlign:"center",marginBottom:12}}>
             <span style={{background:T.bgWood,border:`2px solid ${T.bW}`,borderRadius:16,padding:"7px 20px",fontSize:11,fontWeight:900,color:T.au1,textTransform:"uppercase",letterSpacing:"0.08em",boxShadow:"0 4px 0 rgba(0,0,0,0.4)"}}>{t("dailyMissions")}</span>
+            <div style={{marginTop:2}}><EnlaceFuentes tema="habitos" lang={lang} T={T}/></div>
           </div>
 
           {/* Entrada escalonada de las 4 misiones (60 ms por bloque): es lo
@@ -14369,7 +14434,9 @@ function GBHApp(){
                     </div>
                     <div style={{color:T.platos,fontSize:20,flexShrink:0}}>›</div>
                   </button>
-                  {/* Recetario completo (bloqueado para free) */}
+                  {/* Recetario completo (bloqueado para free). En iOS, a quien no lo tiene ni se le
+                      enseña: nada bloqueado a la vista (Apple 3.1.1, 7-nov-2026). */}
+                  {!(ES_IOS_NATIVO&&!tieneAccesoCompleto)&&(
                   <button onClick={()=>setRecipeView("completo")} style={{background:alpha(T.au1,0.10),border:`2px solid ${alpha(T.au1,0.3)}`,borderRadius:20,padding:'20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)',opacity:tieneAccesoCompleto?1:0.9}}>
                     <div style={{fontSize:40,flexShrink:0}}>{tieneAccesoCompleto?"📚":"🔒"}</div>
                     <div style={{flex:1,minWidth:0}}>
@@ -14378,6 +14445,7 @@ function GBHApp(){
                     </div>
                     <div style={{color:T.au1,fontSize:20,flexShrink:0}}>{tieneAccesoCompleto?"›":"🔒"}</div>
                   </button>
+                  )}
                 </div>
               )}
 
@@ -14579,7 +14647,7 @@ function GBHApp(){
                     </div>
                     </>}
                     {ES_ANDROID_NATIVO&&(<div style={{fontSize:12.5,color:T.t2,lineHeight:1.6,maxWidth:300,fontFamily:"'DM Sans',sans-serif"}}>{txtWebAndroid(lang,"estandar")}</div>)}
-                    {!ES_ANDROID_NATIVO&&(
+                    {!ES_NATIVO&&(
                     <a href={`https://wa.me/${GBH_WHATSAPP}?text=${encodeURIComponent(lang==='en'?`Hi! I'm ${profile?.name||''} and I have a question about the GBH subscription 📚`:`¡Hola! Soy ${profile?.name||''} y tengo una duda sobre la suscripción de GBH 📚`)}`}
                       target="_blank" rel="noopener noreferrer" onClick={()=>sfx&&sfx("tap")}
                       style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",textDecoration:'underline'}}>
@@ -15156,6 +15224,7 @@ function TarjetaPareja({profile,sfx,showT,onEstado}){
 }
 
 function TarjetaInvitarAmigo({profile,lang,sfx}){
+  if(ES_IOS_NATIVO) return null;   // iOS sin referidos (Apple 3.1.1, 7-nov-2026)
   const [copiado,setCopiado]=React.useState(false);
   // Fase 5 (recompensa REAL, nada de gemas): el mensaje es EDITABLE — cada uno
   // invita con sus palabras; el texto de abajo es solo el punto de partida.
@@ -15347,6 +15416,18 @@ function ConsultaTab({profile,lang,sfx,enTu=false}){
   if(!isPremium) return(
     <div style={{padding:enTu?'10px 0 8px':'48px 24px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:18}}>
       {!enTu&&<div style={{fontSize:56}}>📩</div>}
+      {/* iOS (7-nov-2026, Apple 3.1.1): ni «solo para Premium», ni tarjeta, ni precio, ni descuento de
+          invitado, ni botón. Solo qué es la consulta: un servicio 1:1 que se acuerda fuera de la app. */}
+      {ES_IOS_NATIVO?(<>
+      <div style={{fontSize:18,fontWeight:900,color:T.t1,lineHeight:1.3,fontFamily:"'Nunito',sans-serif"}}>
+        {lang==='en'?'Your nutritionist':'Tu nutricionista'}
+      </div>
+      <div style={{fontSize:13.5,color:T.t2,lineHeight:1.7,maxWidth:300,fontFamily:"'DM Sans',sans-serif"}}>
+        {lang==='en'
+          ? 'Direct consultation is part of GBH Nutrición’s one-to-one nutrition service, arranged directly with your nutritionist outside the app.'
+          : 'La consulta directa forma parte del servicio de nutrición 1:1 de GBH Nutrición, que se acuerda directamente con tu nutricionista, fuera de la app.'}
+      </div>
+      </>):(<>
       <div style={{fontSize:18,fontWeight:900,color:T.t1,lineHeight:1.3,fontFamily:"'Nunito',sans-serif"}}>
         {lang==='en'?'Premium service':'Servicio premium'}
       </div>
@@ -15355,15 +15436,16 @@ function ConsultaTab({profile,lang,sfx,enTu=false}){
           ? 'Direct consultation with your nutritionist is Premium-only.'
           : 'La consulta directa con tu nutricionista es solo para Premium.'}
       </div>
+      </>)}
       {/* Android (PEND-2026-316): sin la tarjeta del Premium, su precio ni el botón de WhatsApp;
-          dice sin enlace dónde se contrata. En iOS y en la web, como estaba. */}
+          dice sin enlace dónde se contrata. En la web, como estaba; en iOS, el texto de arriba. */}
       {ES_ANDROID_NATIVO&&(
         <div style={{fontSize:12.5,color:T.t2,lineHeight:1.6,maxWidth:300,fontFamily:"'DM Sans',sans-serif"}}>
           {lang==='en'?'Premium is arranged directly with your nutritionist, outside the app (Instagram: @gbhnutricion).'
                       :'El Premium se contrata directamente con tu nutricionista, fuera de la app (Instagram: @gbhnutricion).'}
         </div>
       )}
-      {!ES_ANDROID_NATIVO&&<>
+      {!ES_NATIVO&&<>
       <div style={{marginTop:8,width:'100%',maxWidth:300,boxSizing:'border-box',textAlign:'left',
         background:`linear-gradient(135deg,${alpha(T.au1,0.12)},rgba(255,160,0,0.08))`,
         border:'1.5px solid '+T.au1,borderRadius:18,padding:'18px 20px'}}>
@@ -15442,11 +15524,15 @@ function ConsultaTab({profile,lang,sfx,enTu=false}){
           abiertoForzado={parejaEstado==='recibida'}>
           <TarjetaPareja profile={profile} sfx={sfx} onEstado={setParejaEstado}/>
         </TarjetaDesplegable>
+        {/* En iOS no hay referidos: prometen un mes gratis y medio mes de Premium, y Apple no deja
+            descuentos fuera de su compra (3.1.1, revisión del 4-nov-2026). */}
+        {!ES_IOS_NATIVO&&(
         <TarjetaDesplegable sfx={sfx} icono="🎁"
           titulo={lang==='en'?'Invite a friend':'Invita a un amigo'}
           sub={lang==='en'?'A free month for every friend who stays':'Un mes gratis por cada amigo que se queda'}>
           <TarjetaInvitarAmigo profile={profile} lang={lang} sfx={sfx}/>
         </TarjetaDesplegable>
+        )}
       </div>
     </div>
   );
@@ -15522,11 +15608,15 @@ function ConsultaTab({profile,lang,sfx,enTu=false}){
           abiertoForzado={parejaEstado==='recibida'}>
           <TarjetaPareja profile={profile} sfx={sfx} onEstado={setParejaEstado}/>
         </TarjetaDesplegable>
+        {/* En iOS no hay referidos: prometen un mes gratis y medio mes de Premium, y Apple no deja
+            descuentos fuera de su compra (3.1.1, revisión del 4-nov-2026). */}
+        {!ES_IOS_NATIVO&&(
         <TarjetaDesplegable sfx={sfx} icono="🎁"
           titulo={lang==='en'?'Invite a friend':'Invita a un amigo'}
           sub={lang==='en'?'A free month for every friend who stays':'Un mes gratis por cada amigo que se queda'}>
           <TarjetaInvitarAmigo profile={profile} lang={lang} sfx={sfx}/>
         </TarjetaDesplegable>
+        )}
       </div>
     </div>
   );
@@ -17592,9 +17682,13 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
         {lang==='en'?'Your weekly meal plan':'Tu programación semanal'}
       </div>
       <div style={{fontSize:13.5,color:T.t2,lineHeight:1.65,maxWidth:300,fontFamily:"'DM Sans',sans-serif"}}>
-        {lang==='en'
+        {ES_IOS_NATIVO
+          ? (lang==='en'
+            ?'Your weekly meal plan is prepared by your nutritionist as part of GBH Nutrición’s one-to-one nutrition service.'
+            :'Tu programación semanal la prepara tu nutricionista dentro del servicio de nutrición 1:1 de GBH Nutrición.')
+          : (lang==='en'
           ?'The weekly plan is exclusive to Standard and Premium accounts. Upgrade and get your personalized meal plan, recipes and shopping list.'
-          :'La planificación es exclusiva de las cuentas Estándar y Premium. Mejora tu plan y tendrás tu programación personalizada con recetas y lista de la compra.'}
+          :'La planificación es exclusiva de las cuentas Estándar y Premium. Mejora tu plan y tendrás tu programación personalizada con recetas y lista de la compra.')}
       </div>
 
       {/* Tarifas: Estándar → pago directo Stripe · Premium → WhatsApp.
@@ -17645,13 +17739,14 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
         {lang==='en'?'We reply the same day · @gbhnutricion':'Te respondemos en el día · @gbhnutricion'}
       </div>
       </>:(
+      ES_ANDROID_NATIVO ? (
       <div style={{fontSize:12.5,color:T.t2,lineHeight:1.6,maxWidth:300,fontFamily:"'DM Sans',sans-serif",marginTop:6}}>
         {lang==='en'
           ?'The weekly plan is not available on your current account.'
           :'La programación semanal no está disponible en tu cuenta actual.'}
-        {ES_ANDROID_NATIVO&&<><br/>{txtWebAndroid(lang,"estandar")}</>}
+        <br/>{txtWebAndroid(lang,"estandar")}
       </div>
-      )}
+      ) : null)}
     </div>
   );}
   if(loading) return <div style={{padding:32,textAlign:'center',fontSize:13,color:T.t2}}>{lang==='en'?'Loading…':'Cargando…'}</div>;

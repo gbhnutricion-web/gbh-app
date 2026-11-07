@@ -10,6 +10,7 @@
 // aquí solo se dibuja. Como MedidasCorporales, todo lo de App.jsx llega por
 // props (sbReq, T, Card, sfx) y App.jsx solo cambia en tres líneas.
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { EnlaceFuentes } from "./FuentesCientificas";   // fuentes con enlace (Apple 1.4.1, 7-nov-2026)
 import { ComposedChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import { parametros, esperado, ventana, guardarEleccion, fechaMas, RETENCION_DEFECTO, RETENCION_MAX } from "./motorCiclo";
 
@@ -128,6 +129,7 @@ export function CicloPeso({ profile, weights, lang, sbReq, T, Card, sfx }) {
   const cabecera = (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
       <div style={{ fontSize: 11, color: T.au1, textTransform: "uppercase", letterSpacing: "0.1em", fontWeight: 900 }}>🌸 {L.titulo}</div>
+      <EnlaceFuentes tema="ciclo" lang={lang} T={T} style={{ marginLeft: "auto" }}/>
       {p.origen === "consulta" && <div style={{ fontSize: 10, color: T.g2, fontWeight: 800, background: "rgba(77,201,122,0.12)", border: "1px solid rgba(77,201,122,0.35)", borderRadius: 10, padding: "3px 8px", whiteSpace: "nowrap" }}>🩺 {L.consulta}</div>}
     </div>
   );

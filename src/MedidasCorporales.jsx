@@ -19,6 +19,7 @@
 // entero de una vez. Maqueta aprobada por Alejandro el 5-sep-2026
 // (07. App GBH/MAQUETA_medidas_corporales_2026-09-05.html).
 import React, { useState, useEffect, useMemo } from "react";
+import { EnlaceFuentes } from "./FuentesCientificas";   // fuentes con enlace (Apple 1.4.1, 7-nov-2026)
 import { esDiaDeMedicion, proximoDiaMedicion } from "./ventanaMedicion";   // miércoles + fin de semana, como el peso (15-sep-2026)
 
 const PER = ["cintura", "cadera", "brazo", "muslo"];
@@ -358,7 +359,8 @@ export function MedidasCorporales({ profile, weights, lang, sfx, sbReq, T, Card 
         </div>
       </Card>
 
-      {kpis.length > 0 && <div style={{ display: "grid", gridTemplateColumns: kpis.length === 1 ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 14 }}>{kpis}</div>}
+      {kpis.length > 0 && <div style={{ display: "grid", gridTemplateColumns: kpis.length === 1 ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 4 }}>{kpis}</div>}
+      {kpis.length > 0 && <div style={{ marginBottom: 10 }}><EnlaceFuentes tema="grasa" lang={lang} T={T}/></div>}
 
       <Card>
         <div style={{ fontSize: 11, color: T.au1, textTransform: "uppercase", letterSpacing: ".1em", fontWeight: 900 }}>{L.tomas}</div>

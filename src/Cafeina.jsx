@@ -18,6 +18,7 @@
 // y llegan por la función t(). Pendiente de FASE 2 (PEND-2026-279, pregunta 2): la casilla
 // «anticonceptivo hormonal» en el alta o el perfil; hasta entonces se leen de la medicación.
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { EnlaceFuentes } from "./FuentesCientificas";   // fuentes con enlace (Apple 1.4.1, 7-nov-2026)
 import { FORMAS, FUENTES, perfilDesdeApp, pesoParaCalculo, cribado, recomendar, comparaNormal, bandas,
          concentracion, curva, equivalencias } from "./motorCafeina";
 
@@ -473,6 +474,7 @@ export function Cafeina({ profile, weights, medicacion, lang = "es", t, T, sfx, 
             <div className="caf-tit">{t("cafFuentesTit")}</div>
             <div style={{ font: "500 11.5px 'DM Sans',sans-serif", color: T.t2 }}>{t("cafFuentesIntro")}</div>
             <ol className="caf-fuentes">{FUENTES.filter((f) => f.app).map((f) => <li key={f.id}><b>{corto(f)}</b>: {t("cafFu_" + f.id)}</li>)}</ol>
+            <EnlaceFuentes tema="cafeina" lang={lang} T={T}/>
           </section>
         )}
         {pintarSalud()}

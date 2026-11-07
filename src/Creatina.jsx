@@ -15,6 +15,7 @@
 // lleno del modelo con su franja entre estudios (metaanálisis de 10 estudios, validación cruzada 16/19) y, al dejarla,
 // el plazo de las guías, porque el modelo no quedó validado para el lavado.
 import React, { useState, useMemo } from "react";
+import { EnlaceFuentes } from "./FuentesCientificas";   // fuentes con enlace (Apple 1.4.1, 7-nov-2026)
 import { FUENTES, TOPES, perfilDesdeApp, cribado, recomendar, probarDosis, equivalencias } from "./motorCreatina";
 
 const CRIB = [["rinon", "creCribRinon"], ["embarazo", "creCribEmbarazo"], ["menor", "creCribMenor"], ["reaccion", "creCribReaccion"]];
@@ -318,6 +319,7 @@ export function Creatina({ profile, weights, medicacion, tipoDieta = null, sumaP
             <div className="cre-tit">{t("creFuentesTit")}</div>
             <div style={{ font: "500 11.5px 'DM Sans',sans-serif", color: T.t2 }}>{t("creFuentesIntro")}</div>
             <ol className="cre-fuentes">{FUENTES.map((f) => <li key={f.id}>{f.texto}{f.pmid ? " · PMID " + f.pmid : ""}</li>)}</ol>
+            <EnlaceFuentes tema="creatina" lang={lang} T={T}/>
           </section>
         )}
         {resumen()}
