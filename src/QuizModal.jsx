@@ -1,5 +1,5 @@
 // ─── Quiz diario ─────────────────────────────────────────────────────────────
-// Sacado de App.jsx el 10-nov-2026 TAL CUAL (MAESTRO-2026-1235): los dos bancos de preguntas
+// Sacado de App.jsx el 10-nov-2026 TAL CUAL (MAESTRO-2026-1238): los dos bancos de preguntas
 // (QUIZ_BANK y QUIZ_RECETARIO, ~45 KB) y el modal se cargan al abrir el quiz, no con la app.
 // El orden del banco combinado no cambia: la pregunta de cada día es la misma.
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";

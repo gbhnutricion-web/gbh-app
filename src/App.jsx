@@ -13,7 +13,7 @@ const GraficaPeso = React.lazy(() => import("./GraficaPeso.jsx"));
 const JuegoOveja = React.lazy(() => import("./JuegoOveja.jsx"));
 const PlanTab = React.lazy(() => import("./PlanTab.jsx"));
 const QuizModal = React.lazy(() => import("./QuizModal.jsx"));
-// Inglés bajo demanda (MAESTRO-2026-1235): TRANS.en llega de transEn.js; mientras, t() usa el español.
+// Inglés bajo demanda (MAESTRO-2026-1238): TRANS.en llega de transEn.js; mientras, t() usa el español.
 let _inglesPromesa = null;
 export const cargarIngles = () => {
   if (TRANS.en) return Promise.resolve(true);
@@ -665,7 +665,7 @@ const TRANS = {
     suplProximamente:"(próximamente)",
     suplNoDisponible:"Creatina: próximamente, todavía no está disponible",
   },
-  // en: en src/transEn.js, se carga solo en inglés (cargarIngles, MAESTRO-2026-1235)
+  // en: en src/transEn.js, se carga solo en inglés (cargarIngles, MAESTRO-2026-1238)
 };
 
 // Hook de traducción — usar en cualquier componente funcional
@@ -4815,7 +4815,7 @@ function WeeklyXPGoal({logs,xp}){
 
 
 // ─── Banco de preguntas de nutrición (30 preguntas) ──────────────────────────
-// Los bancos del quiz y QuizModal viven en src/QuizModal.jsx desde el 10-nov (MAESTRO-2026-1235).
+// Los bancos del quiz y QuizModal viven en src/QuizModal.jsx desde el 10-nov (MAESTRO-2026-1238).
 
 
 // ─── Ruleta diaria ────────────────────────────────────────────────────────────
@@ -6155,7 +6155,7 @@ const normNombreG = (s)=>(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
 // MiniListaCompra al guardar el gasto real). Lo asigna el componente ra\u00edz en
 // cada render; null hasta que hay sesi\u00f3n \u2014 con null, el guardado no env\u00eda.
 let _perfilActualId = null;
-export const setPerfilActualId = (v) => { _perfilActualId = v; };   // PlanTab.jsx (MAESTRO-2026-1235)
+export const setPerfilActualId = (v) => { _perfilActualId = v; };   // PlanTab.jsx (MAESTRO-2026-1238)
 
 function SavedRecipeCard({rec, t, T, removeFromBook, lang, gems, isSaved, isDiscarded, onSave, onDiscard}){
   const [expanded, setExpanded] = React.useState(false);
@@ -14150,7 +14150,7 @@ export function OverlayGenerando({lang}){
   );
 }
 
-// La pestaña Plan vive en src/PlanTab.jsx desde el 10-nov (MAESTRO-2026-1235): se carga aparte.
+// La pestaña Plan vive en src/PlanTab.jsx desde el 10-nov (MAESTRO-2026-1238): se carga aparte.
 
 
 // ─── PlanConfig — el paciente estándar configura su plan (dieta + distribución) ──

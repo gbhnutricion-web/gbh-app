@@ -1,5 +1,5 @@
 // ─── Pestaña Plan ────────────────────────────────────────────────────────────
-// Sacada de App.jsx el 10-nov-2026 TAL CUAL (MAESTRO-2026-1235): se carga aparte y se precarga
+// Sacada de App.jsx el 10-nov-2026 TAL CUAL (MAESTRO-2026-1238): se carga aparte y se precarga
 // tras pintar. Única diferencia: _perfilActualId se escribe con setPerfilActualId(), porque una
 // importación es de solo lectura.
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";

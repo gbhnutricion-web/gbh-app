@@ -1,5 +1,5 @@
 // Traducciones al inglés de la app (TRANS.en), sacadas de App.jsx el 10-nov-2026 TAL CUAL
-// (MAESTRO-2026-1235): solo las descarga quien tiene la app en inglés. Hasta que llegan, t() cae
+// (MAESTRO-2026-1238): solo las descarga quien tiene la app en inglés. Hasta que llegan, t() cae
 // en el español, como ya hacía con una clave que faltara.
 export default {
     tagline:"Your healthy habits companion 🌱",
