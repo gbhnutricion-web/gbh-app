@@ -11,6 +11,17 @@ import { SelectorMedidas, MedidasCorporales } from "./MedidasCorporales";
 const CicloPeso = React.lazy(() => import("./CicloPeso.jsx").then(m => ({ default: m.CicloPeso })));
 const GraficaPeso = React.lazy(() => import("./GraficaPeso.jsx"));
 const JuegoOveja = React.lazy(() => import("./JuegoOveja.jsx"));
+const PlanTab = React.lazy(() => import("./PlanTab.jsx"));
+const QuizModal = React.lazy(() => import("./QuizModal.jsx"));
+// Inglés bajo demanda (MAESTRO-2026-1235): TRANS.en llega de transEn.js; mientras, t() usa el español.
+let _inglesPromesa = null;
+export const cargarIngles = () => {
+  if (TRANS.en) return Promise.resolve(true);
+  if (!_inglesPromesa) _inglesPromesa = import("./transEn.js")
+    .then(m => { TRANS.en = m.default; return true; })
+    .catch(() => { _inglesPromesa = null; return false; });
+  return _inglesPromesa;
+};
 import { SelectorPrograma, BotonPrograma } from "./SelectorPrograma";
 import { SemaforoDensidad, BotonDensidad, leerDensidad, escribirDensidad } from "./SemaforoDensidad"; // densidad calórica con Bo de policía (1-nov-2026)
 import { TuDia } from "./TuDia";                                              // Kcal reales, fase 1
@@ -29,7 +40,7 @@ const Creatina = React.lazy(() => import("./Creatina.jsx").then(m => ({ default:
 // Tras pintar, se piden en segundo plano: el service worker los guarda y sin red siguen abriendo.
 if (typeof window !== "undefined") {
   const _precargar = () => setTimeout(() => {
-    [() => import("./GraficaPeso.jsx"), () => import("./JuegoOveja.jsx"), () => import("./CicloPeso.jsx"), () => import("./Cafeina.jsx"), () => import("./Creatina.jsx")]
+    [() => import("./PlanTab.jsx"), () => import("./GraficaPeso.jsx"), () => import("./JuegoOveja.jsx"), () => import("./QuizModal.jsx"), () => import("./CicloPeso.jsx"), () => import("./Cafeina.jsx"), () => import("./Creatina.jsx")]
       .forEach(f => { try { f().catch(() => {}); } catch {} });
   }, 4000);
   if (document.readyState === "complete") _precargar(); else window.addEventListener("load", _precargar, { once: true });
@@ -49,8 +60,8 @@ import { boActivo, planBo, filaMomento, textoTema, firmaTema, momentoVisto, marc
 
 // ─── Servidor de generación de programaciones (Railway) ─────────────────────
 // Rellena estos dos valores tras desplegar el servidor (ver GUIA_DESPLIEGUE_RAILWAY.md)
-const GBH_SERVER_URL = "https://web-production-98efe.up.railway.app";
-const GBH_GEN_TOKEN  = "gbh_nutricion_2026";
+export const GBH_SERVER_URL = "https://web-production-98efe.up.railway.app";
+export const GBH_GEN_TOKEN  = "gbh_nutricion_2026";
 
 // ─── Internacionalización (ES / EN) ─────────────────────────────────────────
 const LangCtx = React.createContext("es");
@@ -654,603 +665,7 @@ const TRANS = {
     suplProximamente:"(próximamente)",
     suplNoDisponible:"Creatina: próximamente, todavía no está disponible",
   },
-  en:{
-    tagline:"Your healthy habits companion 🌱",
-    loading:"Loading GBH…",
-    email:"Email", emailPH:"name@example.com",
-    fullName:"Full name", namePH:"First Last",
-    currentWeight:"Current weight", goalWeight:"Goal weight",
-    weightHint:"💡 This will be your starting point in the progress chart",
-    goalHint:"🎯 Optional — helps you see how far you have to go",
-    checkingAccount:"Checking account...",
-    welcomeBack:"Welcome back, {n}!",
-    accountExists:"Your account exists — enter your password to sign in.",
-    verifying:"Verifying...",
-    recoverAccount:"Sign in 🔓",
-    startAdventure:"Start my adventure! 🚀",
-    noConnRecover:"No connection. Connect to the internet to recover your account.",
-    // Password
-    password:"Password", passwordPH:"At least 6 characters",
-    passwordConfirm:"Confirm password", passwordConfirmPH:"Repeat your password",
-    passwordShow:"Show", passwordHide:"Hide",
-    passwordMismatch:"Passwords don't match.",
-    passwordTooShort:"Password must be at least 6 characters.",
-    passwordWrong:"Wrong password. Please try again.",
-    forgotPassword:"Forgot your password?",
-    forgotPasswordSent:"📧 We've sent you a password reset email.",
-    forgotPasswordErr:"Couldn't send the email. Please try again.",
-    // Access PIN
-    pinLabel:"Access PIN", pinPH:"4–6 digits",
-    pinWrong:"Wrong PIN. Please try again.",
-    pinNoNet:"No connection. Couldn't verify your PIN.",
-    pinForgot:"Forgot your PIN?",
-    pinEnterHint:"Enter your PIN to continue",
-    pinSinPinHint:"Your account doesn't have a PIN yet.",
-    pinSinPinExpl:"To protect it, we'll email you one: tap the button, send the email that opens, and your PIN will reach {e} in about 5 minutes.",
-    pinSinPinBtn:"📩 Email me my PIN",
-    pinYaLlego:"I've got my PIN",
-    pinCreateTitle:"Protect your account 🔐",
-    pinCreateDesc:"Create a 4-6 digit PIN. We'll ask for it when you log in with your email on a new device, so nobody else can access your data.",
-    pinNew:"New PIN", pinRepeat:"Repeat PIN",
-    pinMismatch:"PINs don't match.",
-    pinFormat:"The PIN must be 4 to 6 digits.",
-    pinSaveBtn:"Save my PIN 🔐", pinLater:"Not now",
-    pinCreateReq:"From now on it's required to keep using the app: it protects your data.",
-    pinBloqueado:"Too many attempts. Wait 15 minutes and try again.",
-    sesionRenovar:"We've strengthened security: please log in with your PIN once.",
-    pinLaterOffline:"No connection — continue without a PIN for now",
-    pinSaved:"PIN saved", pinSavedSub:"Your account is now protected",
-    pinSaveErr:"Couldn't save the PIN. Please try again.",
-    // Change the PIN from the profile (30-sep-2026, MAESTRO-2026-715)
-    pinChangeBtn:"Change", pinCurrent:"Current PIN",
-    pinChangeDesc:"Enter your current PIN and choose a new one you'll remember.",
-    pinChangeSave:"Save the new PIN", pinCancel:"Cancel",
-    pinChanged:"PIN changed. Use the new one next time you log in.",
-    // Migration for existing users without password
-    migrateTitle:"Protect your account! 🔐",
-    migrateDesc:"For added security, create a password for your account. Your data, streak and progress won't be touched.",
-    migrateBtn:"Create my password 🔐",
-    authErrGeneric:"Sign in error. Please try again.",
-    // Nav
-    tabHome:"Home", tabRecipe:"Recipes", tabWeight:"Measures", tabProgreso:"Progress", tabTu:"You",
-    tabRanking:"Ranking", tabAchievements:"Medals", tabCalc:"Goal",
-    // Tiers / levels
-    tiers:["Beginner","Apprentice","Consistent","Committed","Disciplined","Athlete","Expert","Elite","Master","Legend"],
-    champion:"GBH Champion",
-    // Days (Mon→Sun)
-    dayLabels:["M","T","W","T","F","S","S"],
-    // Home
-    dailyMissions:"🩺 Daily Missions",
-    dietBtn:"Log Daily Diet",
-    sleepLabel:"Sleep at least 7 hours",
-    dietDone:"Today's diet logged! +15 XP",
-    completedBadge:"Completed!",
-    quiz:"Quiz", quizDone:"Quiz ✓", earnXP:"Earn XP & 💎",
-    roulette:"Wheel", rouletteDone:"Wheel ✓",
-    spinFree:"Free spin", untilTomorrow:"Until tomorrow",
-    streakShield:"🛡️ Streak Shield",
-    shieldDesc:"Protects your streak 1 day · {n} available",
-    streakLabel:"Streak", gemsLabel:"Gems", progressLabel:"Progress",
-    // WeekPath
-    weeklyProgress:"📅 Weekly progress",
-    daysUnit:"days", dayUnit:"day",
-    chestUnlocked:"Chest unlocked! Tap to open it 🎉",
-    chestOpenedWeek:"Chest opened this week ✅",
-    chestDaysLeft:"{n} more {d} for the weekly chest",
-    // XP goal
-    weeklyXPGoal:"⚡ Weekly XP goal",
-    weeklyXPDone:"🎉 Weekly goal reached! Bonus: +20 XP",
-    // Calorie Calculator
-    calcTitle:"🔢 Calorie Calculator",
-    calcSubtitle:"Daily calories to reach your goal in 3 months",
-    calcSex:"Sex", calcMan:"♂ Male", calcWoman:"♀ Female",
-    calcHeight:"Height (cm)", calcHeightPH:"e.g. 170",
-    calcAge:"Age range", calcActivity:"Activity level",
-    calcBtn:"Calculate my calories 🔢",
-    calcResultTitle:"Your daily target",
-    calcKcal:"kcal / day", calcBMR:"Basal metabolism (BMR)",
-    calcTDEE:"Total expenditure (TDEE)", calcAdj:"Goal adjustment",
-    calcDeficit:"deficit", calcSurplus:"surplus",
-    calcNote:"📌 Always consult your nutritionist before changing your diet.",
-    calcNoGoal:"⚠️ Add a goal weight in your profile to see the calorie adjustment.",
-    calcNoWeight:"⚠️ Log your current weight first.",
-    calcSaved:"📊 Your saved calculation",
-    calcEditBtn:"✏️ Edit calculation",
-    calcResetBtn:"🔄 Recalculate",
-    backToHome:"← Back to home",
-    calcAgeRanges:["18 – 25 years","26 – 35 years","36 – 45 years","46 – 55 years","56 – 65 years","Over 65 years"],
-    calcActivityLevels:["Sedentary (no exercise)","Light (1-3 days/week)","Moderate (3-5 days/week)","Active (6-7 days/week)","Very active (physical job + exercise)"],
-    // Bubbles
-    b_celebrating:"🎉 Perfect day, {n}! All missions done",
-    b_legend:"👑 {s} days, {n}! Absolute legend",
-    b_excited:"🔥 {s} days in a row! Unstoppable, {n}!",
-    b_happy:"✅ Diet logged! Keep it up, {n}",
-    b_sleeping:"😴 Good rest, {n}. Back at it tomorrow!",
-    b_sad_late:"🥗 {n}, want to tell me what you ate today? There's still time 💚",
-    b_sad:"💚 Hey {n}! Today is the day to start",
-    b_default:"Hey {n}! Ready to mark the day? 🌱",
-    // Weight tab
-    scaleResting:"The scale is resting",
-    scaleRestingDesc:"Weighing every day creates unnecessary anxiety.",
-    scaleRestingBack:"Come back {d}",
-    scaleRestingDesc2:"to see your real progress without daily distortion. The scale opens on Wednesdays and at the weekend.",
-    editWeightTitle:"Edit today's weight",
-    howMuchToday:"How much do you weigh today?",
-    fastingHint:"💡 Fasted, before breakfast",
-    editNote:"✏️ Edit — no gems or XP added",
-    saveChanges:"💾 Save changes",
-    saveWeight:"✅ Save weight",
-    seeChart:"← See chart",
-    registerWeightToday:"⚖️ Log today's weight",
-    weightBannerTitle:"Log your weight this week!",
-    weightBannerCta:"Tap to go to weigh-in →",
-    weekendWeighLabel:"✅ Weekend weigh-in",
-    midweekWeighLabel:"✅ Wednesday weigh-in",
-    firstWeighLine1:"Log your first weigh-in",
-    firstWeighLine2:"to see your progress",
-    // Recipe tab
-    recipeOfDay:"🍰 Recipe of the day",
-    calories:"Calories", protein:"Protein", carbs:"Carbs", fat:"Fat",
-    ingredients:"🛒 Ingredients", preparation:"👨‍🍳 Preparation",
-    buyBtn:"🛒 Buy", buyListSub:"Tick items as you add them to your cart",
-    // "How many is this for?" label (Fase 0)
-    racionTuya:"Your portion (1 person): cook and eat these amounts as they are",
-    racionReparto:"List for {r} servings: cook it all and split it into {r} equal plates; you eat 1",
-    racionBase:"Recipe quantities (1 serving)",
-    racionBaseRinde:"Quantities for {n} servings · the kcal are for 1 serving",
-    // ── Partner / cooking for two (Fase 1) ──
-    parejaTitulo:"Cook for two",
-    parejaIntro:"Link your account with your partner's and cook once, for two, without doing the maths.",
-    parejaConsent:"Once linked, each of you will see the recipes and quantities of the other's plan. Both must accept, and either one can undo it at any time.",
-    parejaTuCodigo:"Your code",
-    parejaPedirCodigo:"Your partner's code",
-    parejaInvitar:"Send invitation",
-    parejaEnviada:"Invitation sent to {n}. They still have to accept it from their account.",
-    parejaRecibida:"{n} wants to cook with you",
-    parejaAceptar:"Accept",
-    parejaRechazar:"Decline",
-    parejaVinculada:"Linked with {n}",
-    parejaDesvincular:"Unlink",
-    parejaCancelar:"Cancel invitation",
-    parejaConfirmar:"Tap again to confirm ↺",
-    parejaNoEncontrado:"I can't find that code. Check the spelling.",
-    parejaEsTuyo:"That's your own code.",
-    parejaSinCodigo:"Your account doesn't have a code yet, so your partner can't invite you. You can still invite them using theirs; if neither of you has one, get in touch.",
-    parejaYaTiene:"One of the two accounts is already linked. Undo the previous link first.",
-    cocinarDosToggle:"Cook for both of us",
-    cocinarDosCantidades:"Quantities for two (your portion + {n}'s)",
-    cocinarDosCantidadesRinde:"Quantities for both: {k} servings for you and {k} for {n}",
-    cocinarDosReparto:"When serving: {a} % for you · {b} % for {n}",
-    cocinarDosNota:"You cook for two but eat one: the kcal and macros above are still YOUR portion.",
-    cocinarDosNotaRinde:"Your share makes {k} servings: split it and eat 1. The kcal and macros above are for 1 serving.",
-    cocinarDosAviso:"{ing}: I couldn't add it up (the two recipes measure it differently), so I'm showing both amounts.",
-    cocinarMasTitulo:"Cook extra",
-    cocinarMasNormal:"Normal",
-    cocinarMasNota:"This is the same list multiplied, for batch cooking or to serve someone else. Your kcal are still for one portion.",
-    cocinarMasPregunta:"How many servings do you want to cook?",
-    cocinarDosOpSolo:"Just me", cocinarDosOpPareja:"For both",
-    listaSoloMia:"Just mine",
-    listaDeDos:"For both",
-    listaDeDosNota:"This list adds up your plan and {n}'s. Whatever you tick is synced between you both, so neither buys what the other already got. It refreshes when you open the list.",
-    listReset:"🔄 Reset list", listConfirm:"Tap again to confirm ↺",
-    loadingRecipe:"Loading recipe...",
-    recipeLoadError:"Could not load the recipe.\nCheck your connection.",
-    retry:"Retry",
-    recipeLocked:"🔒 Locked", recipeNoGems:"💎 No gems",
-    recipeChange:"🔄 Change · 10💎",
-    availableTomorrow:"Available tomorrow",
-    changesLeft:"{n} change{s} left",
-    // Ranking
-    rankingTitle:"Ranking",
-    rankStreak:"Streak", rankXP:"XP", rankWeight:"Weight",
-    rankStreakSub:"Consecutive days", rankXPSub:"Total experience",
-    rankWeightSub:"Progress since start · only those who weighed in this week",
-    rankFueraTit:"You are not on this board",
-    rankFueraDesc:"The weight ranking only counts people who weighed in over the last {d} days. Log your weight and you are back in.",
-    rankFueraCta:"⚖️ Log my weight",
-    rankNadieTit:"Nobody weighed in this week",
-    rankNadieDesc:"This board fills up with weigh-ins from the last {d} days. Be the first.",
-    rankDays:"days", rankLoading:"Loading…",
-    rankEmpty:"No data yet",
-    rankEmptyDesc:"The ranking will fill up as more patients use the app",
-    rankUpdateBtn:"🔄 Refresh",
-    // Achievements
-    achievementsLabel:"achievements", xpTotalLabel:"total XP",
-    gemsStatLabel:"💎 gems",
-    noAchievements:"Complete missions to unlock achievements",
-    // Profile
-    profileFullName:"Full name", profileEmail:"Email",
-    profileInitialWeight:"Initial weight", profileGoalWeight:"Goal weight",
-    profileHeight:"Height",
-    closeBtn:"✕ Close",
-    // Height
-    heightTitle:"How tall are you?",
-    heightHint:"📏 Your height helps us calculate your BMI and personalise your plan",
-    // Update banner
-    updateAvailable:"New version available",
-    updateDesc:"Tap to update the app now",
-    updateBtn:"Update",
-    // Offline
-    offlineBanner:"📵 Offline — data saved locally",
-    // Toasts
-    insufficientGems:"Insufficient gems",
-    needGemsRecipe:"You need 10 💎 to change the recipe",
-    needGemsShield:"You need 200 💎 for a Shield",
-    shieldActivated:"Shield activated!",
-    shieldProtected:"Your streak is protected for 1 day",
-    // Error
-    errorTitle:"App error", retryBtn:"Retry",
-    // Language
-    langLabel:"Language",
-    // Steps widget
-    stepsLabel:"Walk 10,000 steps",
-    stepsXP:"+5 XP · {n} / 10,000 steps",
-    // Hydration
-    hydrationLabel:"Drink 1.5 - 2 L of water",
-    hydrationXP:"+5 XP · {g}/{target} glasses",
-    hydrationDone:"Completed!",
-    hydrationHint:"Tap each glass as you drink it — goal: {target} glasses (≈ 2L)",
-    // Tomorrow card
-    tomorrowTitle:"Day complete, {n}!",
-    tomorrowDesc:"You've completed all missions.",
-    tomorrowStreak:"Your streak is {s} 🔥 days.",
-    tomorrowBack:"🕐 Come back tomorrow",
-    // Weight chart
-    chartTitle:"📈 Weight progress",
-    chartReal:"Actual", chartTrend:"Trend", chartGoalLabel:"Goal",
-    chartTotalChange:"Total change · {n} weigh-ins",
-    chartLost:"lost", chartGained:"gained", chartNoChange:"no change ⚖️",
-    chartInitialWeight:"Initial weight ({d})",
-    chartGoalReached:"🎯 Goal reached!", chartGoalSection:"🎯 Goal",
-    chartGoalTarget:"Target: {n} kg",
-    chartGoalUpdate:"Update your goal!",
-    chartGoalRemaining:"{n} kg to go", chartGoalExcess:"{n} kg over goal",
-    chartTooltipTrend:"Trend:",
-    // Rewards modal
-    rewardsTitle:"Rewards", rewardsByLevel:"By level", rewardsClose:"✕ Close",
-    rewardsAll:"All", rewardsFreeMeal:"🍽️ Free meal",
-    rewardsReports:"📊 Reports", rewardsFrames:"🖼️ Frames",
-    rewardsFreeMealTag:"🍽️ Free meal", rewardsChampion:"🏆 CHAMPION",
-    rewardsShowingLevels:"Showing first 200 levels · {n} levels to maximum",
-    // Challenges banner
-    challengeBanner:"Streak at risk · Weekly weigh-in · Daily diet",
-    // Register weight button
-    registerWeightBtn:"⚖️ Log today's weight",
-    // Recetario personal
-    myRecipeBook:"📖 My recipe book",
-    recipeBookEmpty:"No saved recipes yet",
-    recipeBookEmptyDesc:"Save the daily recipe to build your personal collection.",
-    saveRecipe:"💾 Save · 20 💎",
-    recipeAlreadySaved:"✓ Saved in your book",
-    recipeSavedToast:"Recipe saved! -20 💎",
-    recipeDeleteFromBook:"Remove from book",
-    recipeTabDaily:"Recipe of the day",
-    recipeTabBook:"My book",
-    // Landing page
-    landingHeadline:"Your diet, turned into a game",
-    landingTagline:"Track habits, level up and reach your weight goal.",
-    landingF1:"Log diet, water, steps and sleep",
-    landingF2:"Level up and earn rewards",
-    landingF3:"Compete in the ranking with others",
-    landingF4:"Track your real weight progress",
-    landingCTA:"Start for free 🚀",
-    landingLogin:"I already have an account → Log in",
-    landingFree:"Free · No ads · No subscription",
-    // ── Real activity (admin panel) ──
-    admVistoHoy:"Seen today",
-    admVistoDias:"Seen {d}d ago",
-    admCaida:"Dropping off",
-    admSinActivar:"Never activated",
-    admRiesgo:"At risk",
-    admGratis:"Free",
-    admWspCopiado:"Message copied",
-    admWspCopiadoSub:"Paste it in WhatsApp for {n}",
-    admWspError:"Could not copy the message",
-    admWspMsgCaida:"Hi {n}! 👋 It's Alejandro from GBH Nutrición. I noticed you haven't been in the app for a few days and wanted to check how you're doing. How is the plan going? If something isn't working for you or this phase feels off, tell me and we'll adjust it — that's what I'm here for. Big hug! 💪",
-    admWspMsgSinActivar:"Hi {n}! 👋 It's Alejandro from GBH Nutrición. I wanted to make sure you've been able to get into the app and see your plan. If you have any trouble accessing it or doubts getting started, message me and we'll sort it out in a minute. Big hug! 💪",
-    // ── Caffeine calculator (src/Cafeina.jsx; phase 1, 25-sep-2026). «**x**» = bold ──
-    cafTitulo:"☕ Your caffeine",
-    cafSub:"How much to take, when, and how long it lasts",
-    cafAbrir:"Open the caffeine calculator",
-    cafFuentesBtn:"Where does this come from?",
-    cafCerrar:"Close",
-    cafFuentesTit:"Where it comes from",
-    cafFuentesIntro:"A one-compartment model with oral absorption, the standard for caffeine, with parameters from studies in healthy adults:",
-    cafFu_blanchard1983:"practically all of it is absorbed when taken by mouth",
-    cafFu_tantcheva1999:"how long it takes to clear, and how much smoking and contraceptives change that (786 people)",
-    cafFu_kamimori2002:"a capsule takes longer to kick in than gum",
-    cafFu_abernethy1985:"oestrogen-containing contraceptives slow it down",
-    cafFu_lieberman1987:"32 mg already improve vigilance and reaction time",
-    cafFu_efsa2011:"≥ 75 mg per serving for alertness; 3 mg/kg one hour before for endurance",
-    cafFu_guest2021:"3-6 mg/kg about 60 min before; from ~2 mg/kg; habitual intake does not change the dose",
-    cafFu_bell2002:"in daily users the effect is smaller and shorter: with 5 mg/kg, still there at 3 h and gone at 6 h",
-    cafFu_gardiner2023:"one coffee, ≥ 8.8 h before bed; ~217 mg, ≥ 13.2 h",
-    cafFu_efsa2015:"200 mg per serving and 400 mg a day; 200 mg a day in pregnancy and breastfeeding",
-    cafAntes:"Before we calculate",
-    cafSaludOk:"Nothing stops the calculation ✓",
-    cafSaludMal:"Something stops the calculation",
-    cafEmbarazo:"Pregnancy or breastfeeding",
-    cafMenor:"Under 18",
-    cafCorazon:"Heart or blood pressure",
-    cafCorazonX:"arrhythmias, palpitations, high blood pressure",
-    cafAnsiedad:"Anxiety or panic attacks",
-    cafHigado:"Liver disease",
-    cafReaccion:"It has made you feel bad before",
-    cafReaccionX:"racing heart, tremor, distress",
-    cafNo:"No",
-    cafSi:"Yes",
-    cafMedTit:"Your medication",
-    cafMedMal:"{que} does not mix with caffeine",
-    cafMedOkLista:"checked: nothing that slows it down ({lista})",
-    cafMedVacia:"no medication recorded in your plan",
-    cafInt_fluvoxamina:"fluvoxamine",
-    cafInt_quinolona:"a quinolone antibiotic",
-    cafInt_clozapina:"clozapine",
-    cafInt_litio:"lithium",
-    cafInt_teofilina:"theophylline",
-    cafInt_disulfiram:"disulfiram",
-    cafInt_imao:"an MAOI",
-    cafInt_estimulante:"a stimulant",
-    cafInt_betabloqueante:"a beta blocker",
-    cafInt_tension:"blood pressure medication",
-    cafInt_inhibidor_cyp1a2:"a drug that slows it down",
-    cafTu:"You",
-    cafTuSub:"from your data",
-    cafPeso:"Your weight",
-    cafPesoPesaje:"your last weigh-in, on {f}",
-    cafPesoAlta:"your sign-up weight (no weigh-ins yet)",
-    cafPesoAjustado:" · calculated with {p} kg (BMI {imc})",
-    cafSinPeso:"We don't have your weight yet: log it in Measurements and your dose will show up here.",
-    cafSinPesoCorto:"Your weight is missing",
-    cafMeses:["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
-    cafAntiComb:"Hormonal contraceptive",
-    cafAntiCombX:"{item} · in your medication: you clear it more slowly",
-    cafAntiSolo:"Oestrogen-free contraceptive",
-    cafAntiSoloX:"{item} · does not change how you clear caffeine",
-    cafAntiNo:"Hormonal contraceptives",
-    cafAntiNoX:"none in your medication",
-    cafTolAria:"Your caffeine tolerance",
-    cafTolSensible:"🐣 Sensitive",
-    cafTolSensibleX:"One coffee really wakes you up",
-    cafTolNormal:"🙂 Normal",
-    cafTolNormalX:"You feel it when you have it",
-    cafTolTolerante:"😫 Tolerant",
-    cafTolToleranteX:"You barely notice a coffee",
-    cafFumo:"I smoke",
-    cafFumoX:"smoking clears it faster",
-    cafUnaVez:"Your tolerance, smoking and how you take it are asked once and saved only on this phone.",
-    cafGuardadoTel:"Saved only on this phone. Your health answers are not saved.",
-    cafParaQue:"What for?",
-    cafConc:"Focus",
-    cafConcX:"study, work, driving",
-    cafRend:"Performance",
-    cafRendX:"training or competition",
-    cafComo:"How",
-    cafFormaCafe:"☕ Coffee",
-    cafFormaCapsula:"💊 Capsule",
-    cafFormaChicle:"🍬 Gum",
-    cafFormaEnergetica:"🥤 Energy drink",
-    cafComida:"With food",
-    cafComidaX:"it kicks in more slowly",
-    cafDesde:"I need it from",
-    cafDurante:"For",
-    cafDormir:"I go to bed at",
-    cafLlevo:"Already had today",
-    cafOtras0:"None",
-    cafOtras1:"1 coffee",
-    cafOtras2:"2 coffees",
-    cafOtras3:"3 coffees",
-    cafTuDosis:"Your dose",
-    cafProbando:"Trying another dose",
-    cafPauta:"Your plan: {n} servings",
-    cafParaRendir:"to perform",
-    cafParaConc:"to focus",
-    cafEnTotal:" in total",
-    cafPorKilo:"{v} mg per kilo",
-    cafCafeVaria:"(coffee varies a lot from one machine to another)",
-    cafRecomendada:" · the one recommended for you is **{mg} mg**",
-    cafEqCafeFiltro:"of filter coffee",
-    cafEqEspresso:"of espresso",
-    cafEqEnergetica:"of energy drink (32 mg per 100 mL; check the label)",
-    cafEqCapsula200:["200 mg capsule","200 mg capsules"],
-    cafEqCapsula100:["100 mg capsule","100 mg capsules"],
-    cafEqChicle100:["100 mg gum","100 mg gums"],
-    cafBloq:"🩺 With {motivos}, your dose has to come from your dietitian or your doctor.",
-    cafBloqEmb:"In pregnancy and breastfeeding, EFSA considers it safe not to go over **200 mg a day** from all sources: coffee, tea, cola and chocolate.",
-    cafBloqSano:"The calculator is for healthy adults. With this, the same dose can affect you very differently.",
-    cafMot_embarazo:"pregnancy or breastfeeding",
-    cafMot_lactancia:"breastfeeding",
-    cafMot_menor:"being under 18",
-    cafMot_corazon:"heart or blood pressure problems",
-    cafMot_ansiedad:"anxiety or panic",
-    cafMot_higado:"liver disease",
-    cafMot_reaccion:"a bad reaction before",
-    cafMot_medicacion:"your medication ({items})",
-    cafServidoTxt:"✋ You've already had {mg} mg today. Another serving would take you over the **400 mg a day** that EFSA considers safe.",
-    cafServidoX:"Best to stop here for today.",
-    cafCmpTol:"😫 With the dose for someone of normal tolerance ({mg} mg), {que}",
-    cafCmpNada:"you wouldn't even notice it.",
-    cafCmpSolo:"it would only last you {d}.",
-    cafCmpTolX:"That's why you need more. With yours it lasts {d}.",
-    cafCmpSens:"🐣 With the dose for someone of normal tolerance ({mg} mg), it would last you {d}{nerv}",
-    cafCmpNervios:" and at the peak you'd feel jittery.",
-    cafCmpSensX:"That's why less is enough for you. With yours it lasts {d}.",
-    cafPorqueNervios:"✂️ In a single serving of {mg} mg, the peak would reach {p} mg/L, in your jittery zone. Split up, it stays under {q}.",
-    cafPorqueTope:"✂️ In a single serving, the safety cap ({mg} mg) only covered {pct} % of {obj}. Split up, it covers it{fin}",
-    cafEntero:" fully.",
-    cafMejor:" better.",
-    cafPorqueX:"Each serving comes when your level was about to drop below your effect line, and always at least 1 h after the previous one.",
-    cafProbar:"What if you take a different amount? See how long it would last.",
-    cafMenos10:"10 mg less",
-    cafMas10:"10 mg more",
-    cafVolver:"back to the recommended one ({mg} mg)",
-    cafMinAntes:"{n} min before",
-    cafAntesEmpezar:"before you start",
-    cafDuranteToma:"during",
-    cafTomala:"Take it at **{h}**",
-    cafEfecto:"It works from **{a} to {b}**",
-    cafSinEfecto:"With this dose you don't reach your effect level",
-    cafCubreTodo:"Covers all of {obj} ({a}–{b})",
-    cafCubrePct:"Covers {pct} % of {obj}",
-    cafObjEntreno:"your training",
-    cafObjTiempo:"your time",
-    cafGrafAria:"Your blood caffeine level through the day",
-    cafScrubAria:"Slide to see your level at each hour",
-    cafLineaRend:"performance",
-    cafLineaConc:"focus",
-    cafLineaNervios:"jitters",
-    cafLectura:"At {h} · **{c} mg/L**",
-    cafZonaNada:"no effect",
-    cafZonaEfecto:"effect",
-    cafZonaPleno:"full effect",
-    cafZonaNervios:"jitters, racing heart",
-    cafSuenoOk:"🌙 At {h} you'll have {c} mg/L: it shouldn't keep you awake.",
-    cafSuenoMal:"🌙 At {h} you'll still have {c} mg/L, and that may cost you sleep.",
-    cafSuenoUltima:"Your last serving is at **{h}**. Without it, you'd have {c} mg/L at that time",
-    cafSuenoQuitala:": if the end of the session isn't key, drop it.",
-    cafSuenoAunAsi:". Even so it would be too much: if you can, train earlier.",
-    cafSuenoLimite:"To sleep well with this dose, take it before **{h}**",
-    cafSuenoLimite6:"For this dose not to cost you sleep you'd have to take it before 6:00",
-    cafSuenoMax:". At the time you take it, don't go over **{mg} mg**.",
-    cafSuenoSin:". At the time you take it, better without caffeine.",
-    cafAvTope:"**Safety cap:** it would take {n} mg to cover all of {obj}. We give you {mg} mg, the most for a single serving for you{extra}",
-    cafAvTopeConc:" (200 mg or 3 mg/kg, EFSA).",
-    cafAvSobreEfsa:"**Over 200 mg:** it's the sports-guideline dose for your weight, but it's above the 200 mg per serving that EFSA assessed as risk-free. Try it in training first, never for the first time on competition day.",
-    cafAvNoLineal:"**High dose:** above 300 mg the liver clears it more slowly, so it will last a bit longer than the curve shows.",
-    cafAvNervios:"**It's a lot for you:** at the peak you might feel jittery or have a racing heart.",
-    cafAvTolerante:"**Tolerant:** you need a bit more than the guideline to cover your session, and even so it lasts less than for someone who doesn't have it daily (Bell and McLellan 2002). Having it every day makes you feel it less: save it for key sessions.",
-    cafAvSesionLarga:"**Long session:** for anything past an hour and a half, part of the dose can be taken during exercise (IOC consensus).",
-    cafAvPesoAjustado:"**Calculated with your adjusted weight:** with a BMI over 30, caffeine doesn't spread through all of your weight, and counting all of it would give too much.",
-    cafAvFumador:"**You smoke:** smoking speeds up its clearance and it lasts less. If you quit, the same dose will last you quite a bit longer.",
-    cafAvAnti:"**Oestrogen contraceptive:** you clear it more slowly. It lasts longer and is more likely to cost you sleep.",
-    cafAvChicle:"**Gum:** chew it for about 5-10 min. It kicks in sooner than a capsule, so you take it closer to the moment.",
-    cafPildBloq:"🩺 No dose: your dietitian will set it",
-    cafPildServido:"✋ You've had enough for today",
-    cafPildTomas:"{n} servings · ",
-    cafPildProbando:"trying · ",
-    cafPildLa1:"1st at ",
-    cafPildA:"at ",
-    cafPildHasta:" · works until {h}",
-    cafPildVer:"see ↓",
-    cafLegal:"For guidance only, for healthy adults. It does not replace advice from your dietitian or your doctor.",
-    // ── Creatine calculator (src/Creatina.jsx; phase 1, 5-oct-2026) ──
-    creTitulo:"💪 Your creatine",
-    creSub:"Your dose, when your muscle fills up and how much you waste",
-    creAbrir:"Open the creatine calculator",
-    creFuentesBtn:"Where does it come from?",
-    creCerrar:"Close",
-    creFuentesTit:"Where it comes from",
-    creFuentesIntro:"The dose comes from the ISSN guidelines. The day your muscle fills up comes from a meta-analysis of 10 studies that measure muscle creatine, published on gbhnutricion.es.",
-    creDosisCarga:"{g} g a day for {d} days ({n} doses of {x} g), then {m} g a day",
-    creDosisMant:"{m} g a day",
-    creLlenoYa:"you are already full",
-    creLlenoNo:"does not fill up within 12 weeks",
-    creLleno1Dia:"full in 1 day{mas}",
-    creLlenoDias:"full in about {n} days{mas}",
-    creLlenoSem:"full in about {n} weeks{mas}",
-    creMas:" more",
-    creFranjaDias:"studies range from {a} to {b} days",
-    creFranjaSem:"studies range from {a} to {b} weeks",
-    creFranjaDiasMas:"studies range from {a} days to over 12 weeks",
-    creFranjaSemMas:"studies range from {a} to over 12 weeks",
-    creDejar:"if you stop, the effect fades in {a}-{b} weeks",
-    creBloqTit:"We will not give you a dose",
-    creBloq:"Because of {motivos}, creatine is decided in a consultation.",
-    creBloqX:"Book an appointment and we will look at it together.",
-    creY:" and ",
-    creMotRinon:"kidney disease",
-    creMotEmbarazo:"pregnancy or breastfeeding",
-    creMotMenor:"being under 18",
-    creMotReaccion:"a previous bad reaction",
-    creMotMedicacion:"your medication",
-    creFaltaTit:"We are missing one detail",
-    creFaltaPeso:"Your weight: log it in the Measurements tab.",
-    creFaltaSexo:"Your sex: add it to your profile.",
-    creFaltaAltura:"Your height: add it to your profile, or log your skinfolds.",
-    creFaltaEdad:"Your age: type it below.",
-    creSaludTit:"Before anything else",
-    creSaludOk:"all good",
-    creSaludMal:"check",
-    creSi:"Yes",
-    creNo:"No",
-    creCribRinon:"Kidney disease, or only one kidney?",
-    creCribEmbarazo:"Pregnant or breastfeeding?",
-    creCribMenor:"Under 18?",
-    creCribReaccion:"Has creatine ever made you feel unwell?",
-    creMedTit:"Your medication",
-    creMedOk:"Nothing in your plan puts load on the kidneys",
-    creMedVacia:"There is no medication in your plan",
-    creMedMal:"{items}: puts load on the kidneys, so it is decided in a consultation",
-    creTu:"You",
-    creTuSub:"what the app already knows",
-    crePeso:"Weight",
-    crePesoPesaje:"from your weigh-in on {f}",
-    crePesoAlta:"from your sign-up",
-    creGrasa:"Body fat %",
-    creGrasaPliegues:"from your skinfolds",
-    creGrasaEstimada:"estimated from your BMI, age and sex",
-    creDieta:"Diet",
-    creDietaTodo:"everything",
-    creDietaVeg:"vegetarian",
-    creVegPreg:"Are you vegetarian or vegan?",
-    creVegPregX:"Without meat or fish, muscle starts lower and rises more",
-    creEdadPreg:"Your age",
-    creEdadGuardar:"Save",
-    creYaTomas:"You already take it",
-    creYaTomasG:"{g} g in your plan",
-    creYaTomasSinG:"in your plan",
-    creGuardadoTel:"Your answers are saved only on this phone.",
-    creComo:"How do you start?",
-    creRapido:"Fast",
-    creRapidoX:"with loading",
-    creSinPrisa:"No rush",
-    creSinPrisaX:"daily dose only",
-    creYaLaTomo:"I take it",
-    creYaLaTomoX:"carry on from where you are",
-    creDescargaNo:"On Weigh-in there is no loading: daily dose only.",
-    creCuanta:"How much",
-    creDesde:"For",
-    creYa1sem:"1 week",
-    creYa2sem:"2 weeks",
-    creYa1mes:"1 month",
-    creYa2mes:"2 months or more",
-    creDeposito:"Your store",
-    creEstimacion:"estimate",
-    creCacitos:"{c} scoops a day · check the label",
-    creCacito1:"1 scoop a day · check the label",
-    creGrafAria:"Your creatine store by week",
-    creEjeLleno:"full",
-    creEjeNivel:"your level",
-    creEjeSem:"wk",
-    creFranjaNota:"The band on «full» is how much it changes from one study to another. A person may rise more or less; someone who already starts high barely rises.",
-    creProbar:"Try another dose",
-    creMenos:"Remove 1 g",
-    creMas1:"Add 1 g",
-    creLlega:"Does it fill up?",
-    creNoLlega:"it does not",
-    creSeVa:"Goes unused",
-    creSeVaX:"{g} g a week",
-    creVolver:"Back to {g} g",
-    creTomarTit:"How to take it",
-    creTomarHidratos:"With a meal that has carbs: you keep more.",
-    creTomarDiario:"Every day, rest days too.",
-    creTomarHora:"The time does not matter: before or after training.",
-    creTomarAlto:"If you already start high, it barely rises: that is normal.",
-    creAvBascula:"The scale may go up 1-3 kg in the first loading week: it is water inside the muscle, not fat.",
-    creAvAnalitica:"If you get a blood test, say you take creatine: blood creatinine rises without your kidneys getting worse.",
-    creAvDescarga:"You are on Weigh-in: no loading. Daily dose only, and expect some water before the weigh-in.",
-    creLegal:"For guidance only, for healthy adults. It does not replace advice from your dietitian or your doctor.",
-    creMeses:["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
-    // ── 💊 Supplements tab (src/Suplementacion.jsx; 26-sep-2026). The ☕ card uses cafSub and cafAbrir ──
-    tabSupl:"Supplements",
-    suplTitulo:"💊 Supplements",
-    suplIntro:"How much to take, worked out from your data.",
-    suplCafeina:"Caffeine",
-    suplCreatina:"Creatine",
-    suplCreatinaSub:"How much to take for your weight",
-    suplProximamente:"(coming soon)",
-    suplNoDisponible:"Creatine: coming soon, not available yet",
-  }
+  // en: en src/transEn.js, se carga solo en inglés (cargarIngles, MAESTRO-2026-1235)
 };
 
 // Hook de traducción — usar en cualquier componente funcional
@@ -1275,7 +690,7 @@ function translateLvName(name, lang){
 }
 
 // ─── Datos de contacto GBH — editar aquí ─────────────────────────────────────
-const GBH_WHATSAPP = "34697848500";
+export const GBH_WHATSAPP = "34697848500";
 const GBH_CALENDLY = "https://calendly.com/gbh-nutricion/20min";
 // Fisioterapia — equipo GBH en Pamplona (Nerea Ulzurrun). Número en
 // formato internacional sin "+" ni espacios: lo exige wa.me.
@@ -1292,7 +707,7 @@ const AudioCtx = (() => {
   };
 })();
 
-const SFX = {
+export const SFX = {
   // Tono suave con envelope
   _tone(freq, type="sine", dur=0.18, vol=0.35, delay=0){
     try{
@@ -1470,7 +885,7 @@ const HAPTIC_DE_SFX = { step:"toma", error:"error" };
 // su cuenta y en el móvil desaparecían los pops de registro y los popIn. Solo se
 // reducen si el propio usuario lo pide DENTRO de la app (clave gbh:reducemotion;
 // pendiente exponer el toggle en ajustes).
-const REDUCED_MOTION = ()=>{ try{ return lsGet("gbh:reducemotion", false)===true; }catch{ return false; } };
+export const REDUCED_MOTION = ()=>{ try{ return lsGet("gbh:reducemotion", false)===true; }catch{ return false; } };
 
 // Capa de movimiento (brief 7-ago-2026): entradas, barras que crecen y
 // contadores. ESTA capa sí obedece al ajuste del SISTEMA, porque no lleva
@@ -1487,7 +902,7 @@ const MOVIMIENTO_REDUCIDO = ()=>{
 // inicio y se notaba. A 30 ms acaba a 470 ms: la cascada se sigue leyendo y ya
 // no tiene cola. Constante única: es la palanca de TODO el escalonado de la app.
 const ESCALON_S = 0.03;
-const escalon = (i)=>`${Math.min(i,7)*ESCALON_S}s`;
+export const escalon = (i)=>`${Math.min(i,7)*ESCALON_S}s`;
 
 // Monta a 0 y salta al valor real en el siguiente frame: la barra CRECE en vez
 // de aparecer llena. Devuelve false en el primer render y true después.
@@ -1565,13 +980,13 @@ const STRIPE_API          = "https://gbh-stripe-production.up.railway.app";
 // ES_IOS_NATIVO gobierna el ocultado de TODO el checkout/tarifas dentro de la
 // app de iOS (directriz 3.1.1 de Apple: sin CTAs ni enlaces de compra externa).
 const CAPN = (typeof window !== "undefined" && window.Capacitor) || null;
-const ES_NATIVO = !!(CAPN && CAPN.isNativePlatform && CAPN.isNativePlatform());
-const ES_IOS_NATIVO = ES_NATIVO && CAPN.getPlatform && CAPN.getPlatform() === "ios";
+export const ES_NATIVO = !!(CAPN && CAPN.isNativePlatform && CAPN.isNativePlatform());
+export const ES_IOS_NATIVO = ES_NATIVO && CAPN.getPlatform && CAPN.getPlatform() === "ios";
 // Android también es de «solo consumo» (PEND-2026-316, orden de Alejandro del 30-sep:
 // «si a la recomendacion»; MAESTRO-2026-717): la política de Pagos de Google Play no deja
 // vender el Estándar con Stripe desde la app. Donde iOS no enseña nada, Android dice SIN
 // enlace dónde se contrata, que Google sí permite. En iOS y en la web no cambia nada.
-const ES_ANDROID_NATIVO = ES_NATIVO && !ES_IOS_NATIVO;
+export const ES_ANDROID_NATIVO = ES_NATIVO && !ES_IOS_NATIVO;
 // iOS: «solo gratis + Premium 1:1» (7-nov-2026; Apple 3.1.1 del 4-nov; PEND-2026-319, por orden de
 // Alejandro: «la primera, si los pacientes premium pueden seguir recibiendo sus semanas y todas las
 // funcionalidades como hasta ahora»). En la app de iOS el Estándar no existe: quien lo tiene, por Stripe o
@@ -1579,7 +994,7 @@ const ES_ANDROID_NATIVO = ES_NATIVO && !ES_IOS_NATIVO;
 // con la dietista que se acuerda fuera de la app (3.1.3(d)), sigue entero. Es solo VISTA: nada de esto se
 // escribe en la base, así que la web y Android no cambian, y quien paga por la web lo sigue teniendo allí.
 const vistaTienda = (p) => (ES_IOS_NATIVO && p && p.plan === "standard") ? { ...p, plan: "free" } : p;
-const txtWebAndroid = (lang, que) => que === "gestionar"
+export const txtWebAndroid = (lang, que) => que === "gestionar"
   ? (lang === "en" ? "Your subscription is managed on the web: app.gbhnutricion.es" : "Tu suscripción se gestiona en la web: app.gbhnutricion.es")
   : (lang === "en" ? "The Standard plan is available on the web: app.gbhnutricion.es" : "El plan Estándar se contrata en la web: app.gbhnutricion.es");
 
@@ -1587,7 +1002,7 @@ const txtWebAndroid = (lang, que) => que === "gestionar"
 // el webhook usa ese id para poner plan=standard al completarse el pago.
 // En las apps nativas NUNCA se abre: iOS (App Store 3.1.1) y, desde el 30-sep, Android
 // (Pagos de Google Play, PEND-2026-316). Los botones que lo llaman están además ocultos.
-const abrirCheckoutStripe = (profileId) => {
+export const abrirCheckoutStripe = (profileId) => {
   if(!profileId || ES_NATIVO) return;
   window.open(`${STRIPE_PAYMENT_LINK}?client_reference_id=${profileId}`, "_blank", "noopener");
 };
@@ -1801,7 +1216,7 @@ const racionNormalizarNumeros = (t) => {
     .replace(/(\d+)?(\s*)([½¼¾⅓⅔⅛])/g,(m,e,sp,f)=>(e?"":sp)+String(Math.round(((e?+e:0)+_FR[f])*1000)/1000))
     .replace(/\b(\d+)\s*\/\s*(\d+)\b/g,(m,a,b)=>String(Math.round(a/b*100)/100));
 };
-const escalarIngredientesJS = (texto, factor) => {
+export const escalarIngredientesJS = (texto, factor) => {
   if(!texto || Math.abs(factor-1)<0.02) return texto;
   const NO_ESCALAR = ["pizca","al gusto","opcional","para decorar"];
   // Split por comas RESPETANDO paréntesis: "(132,5 g)" es un decimal español,
@@ -1824,7 +1239,7 @@ const escalarIngredientesJS = (texto, factor) => {
     return t;
   }).join(",");
 };
-const racionTextoJS = (factor, lang) => {
+export const racionTextoJS = (factor, lang) => {
   const es = [[0.5,"media ración"],[0.67,"2/3 de la receta"],[0.75,"3/4 de la receta"],
               [1.25,"ración y cuarto"],[1.5,"ración y media"],[1.75,"casi ración doble"],[2,"ración doble"]];
   const en = [[0.5,"half portion"],[0.67,"2/3 of the recipe"],[0.75,"3/4 of the recipe"],
@@ -1842,7 +1257,7 @@ const racionTextoJS = (factor, lang) => {
 //                «¿Cuántas raciones quieres cocinar?» (1|2|3)
 // El ajuste del generador (x0,90…) NO va aquí desde el 17-sep: pegado a la lista se
 // leía como una resta pendiente. Va en la caja dorada (textosCajaRacion).
-const racionEtiqueta = (t, {raciones=1, x=1, base=false}={}) => {
+export const racionEtiqueta = (t, {raciones=1, x=1, base=false}={}) => {
   const n = parseInt(raciones,10)||1;
   if(base)  return n>1 ? t("racionBaseRinde",{n}) : t("racionBase");
   const r = racionesDeLaLista(n, x);
@@ -1994,7 +1409,7 @@ const MACRO_MAP = {
 const FACT_MAP  = {
   " grasa":" fat"," prot":" protein"," HC":" carbs"
 };
-function getQuizQ(q, lang){
+export function getQuizQ(q, lang){
   if(lang!=="en") return q.q;
   if(q.q_en) return q.q_en;
   // Auto-traducir: "¿Cuál de estos platos del recetario GBH tiene más X?"
@@ -2004,11 +1419,11 @@ function getQuizQ(q, lang){
   Object.entries(MACRO_MAP).forEach(([es,en])=>{ out = out.replace(es,en); });
   return out;
 }
-function getQuizOpts(q, lang){
+export function getQuizOpts(q, lang){
   if(lang!=="en") return q.opts;
   return q.opts_en || q.opts; // dish names stay as-is if no opts_en
 }
-function getQuizFact(q, lang){
+export function getQuizFact(q, lang){
   if(lang!=="en"||!q.fact) return q.fact||"";
   if(q.fact_en) return q.fact_en;
   let out = q.fact;
@@ -2021,7 +1436,7 @@ function getQuizFact(q, lang){
 const puedePesarseHoy=()=>esDiaDeMedicion();
 // Clave de día en hora LOCAL (no UTC) → evita que a partir de medianoche en España
 // el día se adelante. Formato YYYY-MM-DD, idéntico al anterior.
-const toKey=(d=new Date())=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+export const toKey=(d=new Date())=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 // Pesaje ya registrado en la ventana EN CURSO ([miércoles] o [sábado, domingo] de la semana
 // actual, anclada al lunes como weekDates), excluyendo el punto inicial. El del miércoles y
 // el del fin de semana son filas distintas: dos puntos por semana.
@@ -2047,8 +1462,8 @@ const WLABELS=["L","M","X","J","V","S","D"];
 
 
 // ─── localStorage helpers ────────────────────────────────────────────────────
-const lsGet=(k,f)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):f;}catch{return f;}};
-const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
+export const lsGet=(k,f)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):f;}catch{return f;}};
+export const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
 
 // ?lang=es|en en la URL fija el idioma al arrancar (el CV enlaza ?lang=en).
 // Corre a nivel de módulo, ANTES de cualquier lsGet("gbh:lang"): el parámetro
@@ -2082,7 +1497,7 @@ const migrateQueue = (pid) => {
   }catch{}
 };
 
-function enqueue(op){
+export function enqueue(op){
   // op = { id, method, path, body, ts }
   if(!op || !op.path) return;
   const q = lsGet(getQueueKey(), []);
@@ -2124,7 +1539,7 @@ const SESION_KEY = "gbh:sesion";
 // Interruptor del cierre (Parte 2): cuando sea true, arrancar sin sesión manda
 // a la landing a volver a entrar con el PIN. Se pone a true el día del cierre.
 const SESION_OBLIGATORIA = true;   // 13-sep-2026: ENCENDIDO en la rama rls-cierre; se fusiona el día del cierre, junto a la Parte 2 del SQL
-const getSesion = () => lsGet(SESION_KEY, null);            // {token, pid, admin}
+export const getSesion = () => lsGet(SESION_KEY, null);            // {token, pid, admin}
 const setSesion = (s) => lsSet(SESION_KEY, s);
 const gbhHeaders = (extra={}) => {
   const s = getSesion();
@@ -2152,7 +1567,7 @@ const avisarDescarte = (op, status) => {
 // devuelve null y NO se guarda: el siguiente intento vuelve a pedirlo (antes la búsqueda guardaba []
 // para siempre y no reintentaba).
 let _recetarioCompleto = null, _recetarioPromesa = null;
-const leerRecetarioCompleto = async () => {
+export const leerRecetarioCompleto = async () => {
   if(_recetarioCompleto) return _recetarioCompleto;
   if(_recetarioPromesa) return _recetarioPromesa;
   _recetarioPromesa = (async ()=>{
@@ -2243,7 +1658,7 @@ const mergeWeeklyState = (profileId, patch) => {
 // ─── sbDirect: petición directa SIN cola offline ──────────────────────────────
 // Para (a) escrituras opcionales que no deben envenenar la cola si la columna
 // aún no existe en Supabase, y (b) reintentos con payload reducido.
-const sbDirect = async (method, path, body) => {
+export const sbDirect = async (method, path, body) => {
   try{
     const r = await fetch(`${SB}/rest/v1/${path}`, {
       method,
@@ -2263,7 +1678,7 @@ const sbDirect = async (method, path, body) => {
 // Sin cola offline: una pregunta que no llega se le dice al paciente y se queda en su caja.
 // 07. App GBH/bo_prueba_vivo.py lee BO_PREFER de aquí y lo prueba contra la base real.
 const BO_PREFER = "return=minimal";
-const boRegistrar = async (fila) => {
+export const boRegistrar = async (fila) => {
   try{
     const r = await fetch(`${SB}/rest/v1/bo_registro`, { method:"POST", headers: gbhHeaders({ "Prefer": BO_PREFER }), body: JSON.stringify(fila) });
     return { ok: r.ok, status: r.status };
@@ -2309,7 +1724,7 @@ const boGuardarConfig = async (pid, cambio = {}) => {
 // Railway) saca al paciente de su sesión, mira los interruptores (bo_activo, bo_ia_activo), el
 // permiso (bo_ia_ok) y la edad, y CLASIFICA la frase; la IA no redacta nada que vea el paciente.
 // Al servidor solo va la sesión (X-GBH-Sesion), nunca la clave de Supabase.
-const boIA = {
+export const boIA = {
   estado: async () => {
     const s = getSesion(); if(!s?.token) return { ia:false, motivo:"sin_sesion" };
     try{ const r = await fetch(`${GBH_SERVER_URL}/bo/estado`, { method:"POST", headers:{ "X-GBH-Sesion": s.token } });
@@ -2325,7 +1740,7 @@ const boIA = {
   },
 };
 // El permiso del paciente (Apple 5.1.2(i), RGPD): cuándo aceptó que su frase vaya a la IA.
-const boIAConsentir = async (pid) => {
+export const boIAConsentir = async (pid) => {
   if(!pid) return false;
   const r = await sbDirect("PATCH", `profiles?id=eq.${pid}`, { bo_ia_ok: new Date().toISOString() });
   if(r.ok){ try{ const p = lsGet(`gbh:p:${pid}`, null); if(p) lsSet(`gbh:p:${pid}`, { ...p, bo_ia_ok: new Date().toISOString() }); }catch{} }
@@ -2923,7 +2338,7 @@ function useParpadeo(estado, activo) {
   return cerrado ? estado + "_p" : estado;
 }
 
-function Sheep({ estado, equipados, color, size = 200, mini = false }) {
+export function Sheep({ estado, equipados, color, size = 200, mini = false }) {
   const col = COLORES.find(c => c.id === color) || COLORES[0];
   const eq = Array.isArray(equipados) ? equipados : [];
   // `!mini` no basta: los avatares de 44-48 px (tutorial, listas) no pasan mini y
@@ -5400,199 +4815,7 @@ function WeeklyXPGoal({logs,xp}){
 
 
 // ─── Banco de preguntas de nutrición (30 preguntas) ──────────────────────────
-const QUIZ_BANK = [
-  {q:"¿Cuántas calorías tiene aproximadamente 100g de pechuga de pollo a la plancha?",q_en:"How many calories does 100g of grilled chicken breast have?",opts:["85 kcal","165 kcal","240 kcal","310 kcal"],ans:1},
-  {q:"¿Qué macronutriente proporciona más energía por gramo?",q_en:"Which macronutrient provides the most energy per gram?",opts:["Proteína (4 kcal/g)","Hidratos (4 kcal/g)","Grasa (9 kcal/g)","Fibra (2 kcal/g)"],opts_en:["Protein (4 kcal/g)","Carbs (4 kcal/g)","Fat (9 kcal/g)","Fibre (2 kcal/g)"],ans:2},
-  {q:"¿Cuál de estos alimentos tiene más proteína por 100g?",q_en:"Which of these foods has the most protein per 100g?",opts:["Huevo entero","Atún en lata","Leche entera","Yogur natural"],opts_en:["Whole egg","Canned tuna","Whole milk","Natural yogurt"],ans:1},
-  {q:"¿Qué vitamina produce el cuerpo con la exposición al sol?",q_en:"Which vitamin does the body produce with sun exposure?",opts:["Vitamina A","Vitamina B12","Vitamina C","Vitamina D"],opts_en:["Vitamin A","Vitamin B12","Vitamin C","Vitamin D"],ans:3},
-  {q:"¿Cuántos vasos de agua equivalen aproximadamente a 2 litros?",q_en:"How many glasses of water equal approximately 2 litres?",opts:["4 vasos","6 vasos","8 vasos","10 vasos"],opts_en:["4 glasses","6 glasses","8 glasses","10 glasses"],ans:2},
-  {q:"¿Cuál de estos alimentos tiene el índice glucémico más bajo?",q_en:"Which of these foods has the lowest glycaemic index?",opts:["Pan blanco","Arroz blanco","Legumbres","Sandía"],opts_en:["White bread","White rice","Legumes","Watermelon"],ans:2},
-  {q:"¿Qué porcentaje del cuerpo humano es agua aproximadamente?",q_en:"What percentage of the human body is approximately water?",opts:["40%","55-60%","75-80%","90%"],ans:1},
-  {q:"¿Cuántas kcal tiene 1 gramo de alcohol?",q_en:"How many kcal does 1 gram of alcohol have?",opts:["4 kcal","5 kcal","7 kcal","9 kcal"],ans:2},
-  {q:"¿Cuál es la principal función de los hidratos de carbono?",q_en:"What is the main function of carbohydrates?",opts:["Construir músculo","Proporcionar energía rápida","Regular el sistema inmune","Transportar vitaminas"],opts_en:["Build muscle","Provide quick energy","Regulate the immune system","Transport vitamins"],ans:1},
-  {q:"¿Qué alimento es rico en omega-3?",q_en:"Which food is rich in omega-3?",opts:["Aceite de girasol","Salmón","Carne de cerdo","Queso curado"],opts_en:["Sunflower oil","Salmon","Pork","Aged cheese"],ans:1},
-  {q:"¿Cuántas calorías tiene aproximadamente 1 cucharada de aceite de oliva?",q_en:"How many calories does approximately 1 tablespoon of olive oil have?",opts:["50 kcal","90 kcal","120 kcal","150 kcal"],ans:1},
-  {q:"¿Cuál de estos es un ejemplo de proteína completa?",q_en:"Which of these is an example of a complete protein?",opts:["Arroz","Lentejas","Huevo","Pan"],opts_en:["Rice","Lentils","Egg","Bread"],ans:2},
-  {q:"¿Qué mineral es esencial para la salud ósea?",q_en:"Which mineral is essential for bone health?",opts:["Hierro","Zinc","Calcio","Magnesio"],opts_en:["Iron","Zinc","Calcium","Magnesium"],ans:2},
-  {q:"¿Cuántas calorías tiene 100g de aguacate?",q_en:"How many calories does 100g of avocado have?",opts:["80 kcal","160 kcal","250 kcal","320 kcal"],ans:1},
-  {q:"¿Qué es el metabolismo basal?",q_en:"What is basal metabolic rate?",opts:["Calorías quemadas haciendo ejercicio","Calorías mínimas para funciones vitales en reposo","Velocidad de digestión","Absorción de nutrientes"],opts_en:["Calories burned during exercise","Minimum calories for vital functions at rest","Speed of digestion","Nutrient absorption"],ans:1},
-  {q:"¿Cuál de estos cereales tiene más fibra?",q_en:"Which of these cereals has the most fibre?",opts:["Arroz blanco","Maíz","Avena","Trigo refinado"],opts_en:["White rice","Corn","Oats","Refined wheat"],ans:2},
-  {q:"¿En qué alimento hay más hierro por 100g?",q_en:"Which food has the most iron per 100g?",opts:["Lentejas","Espinacas","Hígado de ternera","Almejas"],opts_en:["Lentils","Spinach","Veal liver","Clams"],ans:3},
-  {q:"¿Cuántas calorías tiene 100g de plátano?",q_en:"How many calories does 100g of banana have?",opts:["55 kcal","89 kcal","120 kcal","145 kcal"],ans:1},
-  {q:"¿Qué vitamina es fundamental para la absorción del hierro?",q_en:"Which vitamin is key for iron absorption?",opts:["Vitamina A","Vitamina B6","Vitamina C","Vitamina K"],opts_en:["Vitamin A","Vitamin B6","Vitamin C","Vitamin K"],ans:2},
-  {q:"¿Cuántas horas sin comer se considera ayuno intermitente básico?",q_en:"How many hours without eating is considered basic intermittent fasting?",opts:["8 horas","12 horas","16 horas","24 horas"],opts_en:["8 hours","12 hours","16 hours","24 hours"],ans:2},
-  {q:"¿Cuál de estos NO es un aminoácido esencial?",q_en:"Which of these is NOT an essential amino acid?",opts:["Leucina","Valina","Alanina","Lisina"],opts_en:["Leucine","Valine","Alanine","Lysine"],ans:2},
-  {q:"¿Cuántas calorías tiene 100g de almendras?",q_en:"How many calories does 100g of almonds have?",opts:["350 kcal","460 kcal","580 kcal","700 kcal"],ans:2},
-  {q:"¿Qué hormona regula el azúcar en sangre?",q_en:"Which hormone regulates blood sugar?",opts:["Cortisol","Insulina","Adrenalina","Melatonina"],opts_en:["Cortisol","Insulin","Adrenaline","Melatonin"],ans:1},
-  {q:"¿Cuál es la temperatura interna segura para cocinar pollo?",q_en:"What is the safe internal temperature for cooking chicken?",opts:["60°C","70°C","74°C","85°C"],ans:2},
-  {q:"¿Cuántos gramos de proteína necesita aproximadamente una persona activa por kg de peso?",q_en:"How many grams of protein does an active person need per kg of body weight?",opts:["0.4-0.6g","0.8-1.2g","1.6-2.2g","3-4g"],ans:2},
-  {q:"¿Cuál de estos alimentos tiene más potasio?",q_en:"Which of these foods has the most potassium?",opts:["Plátano","Naranja","Espinacas","Patata cocida"],opts_en:["Banana","Orange","Spinach","Boiled potato"],ans:3},
-  {q:"¿Qué proceso ocurre durante el sueño en relación a los músculos?",q_en:"What process occurs during sleep in relation to muscles?",opts:["Se pierden","Se sintetiza proteína muscular","Se quema grasa muscular","No pasa nada"],opts_en:["They are lost","Muscle protein is synthesised","Muscle fat is burned","Nothing happens"],ans:1},
-  {q:"¿Cuántas calorías tiene 100g de pasta cocida?",q_en:"How many calories does 100g of cooked pasta have?",opts:["80 kcal","131 kcal","200 kcal","260 kcal"],ans:1},
-  {q:"¿Cuál de estos tiene menos azúcar?",q_en:"Which of these has the least sugar?",opts:["Zumo de naranja natural","Naranja entera","Refresco light","Yogur con frutas"],opts_en:["Fresh orange juice","Whole orange","Diet soft drink","Fruit yogurt"],ans:1},
-  {q:"¿Qué significa IMC?",q_en:"What does BMI stand for?",opts:["Índice de Masa Corporal","Ingesta Máxima Calórica","Índice Metabólico Corporal","Ingesta Mínima de Carbohidratos"],opts_en:["Body Mass Index","Maximum Caloric Intake","Metabolic Body Index","Minimum Carbohydrate Intake"],ans:0},
-];
-
-const QUIZ_RECETARIO = [
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Espaguetis a la marinera','Hamburguesa vegana de soja texturizada','Ensalada verde con vinagreta de mostaza y miel','Guiso de patata y bacalao'],ans:3,fact:'Guiso de patata y bacalao · 42g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Arroz con mejillones','Ensalada de pollo y aguacate','Salteado de pollo con verduras al wok','Pastel de patata'],ans:1,fact:'Ensalada de pollo y aguacate · 60g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Pollo con almendras','Ensalada de salmón con frutas','Caldereta de cordero','Crema de zanahorias'],ans:2,fact:'Caldereta de cordero · 28g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Bocadillo de tortilla francesa vegano','Tortilla de patata y calabacín','Sopa de fresas','Merluza con pimientos del piquillo'],ans:0,fact:'Bocadillo de tortilla francesa vegano · 845kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Ensalada de pavo y naranja','Tortilla de berenjenas queso y pimiento','Espuma de frutos congelados','Sorbete de frutas (melocoton)'],ans:0,fact:'Ensalada de pavo y naranja · 24g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Tarta de queso calórica','Quesadilla vegana','Guiso marinero','Sopa de quinoa'],ans:0,fact:'Tarta de queso calórica · 50g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Crema cuajada de leche y queso','Tostada con Huevo y Queso Gratinado','Ensaladilla de pollo y aguacate','Guiso de merluza y gambas'],ans:0,fact:'Crema cuajada de leche y queso · 47g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Ensalada de pollo con arroz y mango','Ensalada de pollo con aguacate','Tortilla de atún','Bowl ensalada vegana taco'],ans:3,fact:'Bowl ensalada vegana taco · 77g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Bol de kiwi, rúcula y avena','Pavo salteado con calabacín','Tostada con Revuelto de Tofu y Aguacate','Ensalada de cogollos y espárragos'],ans:0,fact:'Bol de kiwi, rúcula y avena · 815kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Triángulos de maíz con carne','Huevos revueltos con champiñones','Carbonara vegetariana','Guiso marinero'],ans:0,fact:'Triángulos de maíz con carne · 25g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Pimientos rellenos de bacalao con sticks de zanahoria','Milhoja de merengue','Falsa lasaña de merluza y verduras','Tosta de aguacate con anchoa y tomate'],ans:3,fact:'Tosta de aguacate con anchoa y tomate · 30g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Olla gitana','Pan de manzana','Mousse de mango y coco vegano','Tostada de Pera y Queso Roquefort'],ans:1,fact:'Pan de manzana · 77.7g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Guiso de alubias blancas y verduras','Ensalada crujiente de garbanzos y boniato','Gachas de avena con manzana','Berenjena con relleno vegano de soja o tofu'],ans:1,fact:'Ensalada crujiente de garbanzos y boniato · 91g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Budin de limon y coco','Tostadas con jamón y queso','Merluza al horno con patata','Pastel de patata'],ans:1,fact:'Tostadas con jamón y queso · 690kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Gelatina de naranja','Yogur proteico con plátano y almendras','Ensalada parrillada','Tostada Proteica con Crema de Almendra'],ans:3,fact:'Tostada Proteica con Crema de Almendra · 28g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Pizza de yuca','Falsa lasaña de merluza y verduras','Wrap de vegetales','Garbanzos con almejas'],ans:0,fact:'Pizza de yuca · 501kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Alcachofas con jamón y huevo','Brochetas de rape con tomate y pimiento','Manzana asada','Seitán con salsa de champiñones'],ans:3,fact:'Seitán con salsa de champiñones · 31g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Sopa de quinoa y verduras vegana','Ensalada de aguacate y quinoa','Bacalao con salsa de pimiento y tomate','Tostada con Plátano y Canela'],ans:1,fact:'Ensalada de aguacate y quinoa · 23g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Escalopes de ternera','Merluza a la plancha con ensalada','Ensalada de coliflor','Ensalada de naranjas'],ans:0,fact:'Escalopes de ternera · 30g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Tostada de Pera y Queso Roquefort','Mousse de melon','Garbanzos con marisco','Ensalada de lentejas y aguacate'],ans:3,fact:'Ensalada de lentejas y aguacate · 42g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Sepia con alubias y almejas','Pasta con pollo y verduras','Rollitos de chocolate y almendra','Arroz con pollo'],ans:2,fact:'Rollitos de chocolate y almendra · 700kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Garbanzos con tomate y espinacas','Pudin de pan','Pavo con champiñones y arroz','Panache de verduras'],ans:2,fact:'Pavo con champiñones y arroz · 37g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Copa de yogur con helado y galleta','Batido de mango y proteína','Estofado vegano de soja texturizada','Crêpes con salsa de arándanos'],ans:1,fact:'Batido de mango y proteína · 27g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Guiso de patatas con champiñones','Sorbete de merengue','Lentejas estofadas rápidas','Fabada vegana'],ans:3,fact:'Fabada vegana · 36g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Crema de alubia blanca y sésamo','Gelatina de naranja','Tostadas con jamón y queso','Ensalada mixta'],ans:2,fact:'Tostadas con jamón y queso · 50g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Patatas guisadas con cerdo','Wok de pollo y verduras','Pasta vegana','Pasta amatriciana'],ans:1,fact:'Wok de pollo y verduras · 60.9g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Tostada de Paté de Hígado','Salteado de gambas y verduras','Patatas guisadas con cerdo','Merluza a la plancha con ensalada'],ans:2,fact:'Patatas guisadas con cerdo · 35g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Ensalada de judías verdes con jamón','Mero con cebollitas y zanahoria al microondas','Berenjena con relleno vegano de soja o tofu','Ensalada de pavo y naranja'],ans:1,fact:'Mero con cebollitas y zanahoria al microondas · 38g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Pasta con setas','Pasta integral con pollo y brócoli','Crema de verduras y legumbres','Lentejas estofadas rápidas'],ans:1,fact:'Pasta integral con pollo y brócoli · 718kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Platano y pina gratinados','Bol de papaya y requesón','Ensalada de champiñones','Tortitas de claras y avena'],ans:3,fact:'Tortitas de claras y avena · 36g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Crema de calabacines','Tostada de Dátiles con Miel','Brochetas veganas','Tostada con Ricotta y Pera Caramelizada'],ans:1,fact:'Tostada de Dátiles con Miel · 471kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Pimientos rellenos al horno','Arroz con mejillones','Pizza de yuca','Mousse de melocoton'],ans:1,fact:'Arroz con mejillones · 65g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Ensalada de kale','Sándwich de garbanzos y aguacate','Merluza al horno con gambas','Pad thai vegano'],ans:0,fact:'Ensalada de kale · 33g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Ensalada california','Tostada de Jamón Serrano con Tortilla de Huevo','Gachas de avena con manzana','Pisto con huevo'],ans:2,fact:'Gachas de avena con manzana · 20g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Calamares rellenos de gambas y berenjena','Ensalada de patata','Ensalada de lentejas y mango','Tortitas de plátano y avena'],ans:2,fact:'Ensalada de lentejas y mango · 28g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Gelatina de naranja','Ensalada de brócoli y manzana','Revuelto de gulas y champiñones','Mousse de mango y coco vegano'],ans:0,fact:'Gelatina de naranja · 94.3g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Ensalada de espinacas con salsa miel y mostaza','Wrap de vegetales','Flan de coco','Pasta vegana'],ans:2,fact:'Flan de coco · 34g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Risotto con champiñones y bacon','Ensalada de cogollos y espárragos','Fabada vegana','Ensalada de arroz chino'],ans:0,fact:'Risotto con champiñones y bacon · 896kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Tortilla dulce de frutos rojos','Sopa de quinoa y verduras vegana','Pudin de pan','Gachas de avena con manzana'],ans:3,fact:'Gachas de avena con manzana · 19g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Tortilla dulce de frutos rojos','Albóndigas de pollo con arroz al curry','Sándwich vegetal con jamón y queso','Tostada de Paté de Hígado'],ans:1,fact:'Albóndigas de pollo con arroz al curry · 54.1g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Ensalada de gourmet','Rollitos de pollo con pimiento del piquillo y queso','Sopa crema de calabaza','Crema de yogur'],ans:1,fact:'Rollitos de pollo con pimiento del piquillo y queso · 36g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Ensalada caprese con melocotón','Helado de fresas','Arroz con leche','Hamburguesa vegana de soja texturizada'],ans:0,fact:'Ensalada caprese con melocotón · 16g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Carbonara vegetariana','Espuma de frutos congelados','Minestrone','Merluza al horno con patata'],ans:2,fact:'Minestrone · 627kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Tostada de aguacate y huevo','Helado de frambuesa','Tortitas de avena veganas','Alubias con pulpo'],ans:2,fact:'Tortitas de avena veganas · 70g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Olla gitana','Pimientos rellenos al horno','Pollo con pesto rosso de tomates secos','Guisantes con tomate seco veganos'],ans:2,fact:'Pollo con pesto rosso de tomates secos · 38g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Power bowl vegano con soja texturizada, boniato y guacamole','Flan de verduras','Guiso de pescado y marisco','Tortilla de coliflor'],ans:0,fact:'Power bowl vegano con soja texturizada, boniato y guacamole · 65g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Gazpacho andaluz','Calamares a la riojana','Ensalada verde','Tostada con Revuelto de Tofu y Aguacate'],ans:2,fact:'Ensalada verde · 20g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Ensalada de pollo con mango y aguacate','Lasaña de pollo y acelgas','Mousse de pera y kiwi','Crêpes con jamón y queso'],ans:3,fact:'Crêpes con jamón y queso · 30g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Ensalada de quinoa y atún','Platano y pina gratinados','Solomillo de cerdo con espárragos','Pollo con salsa de frutos rojos y yuca'],ans:0,fact:'Ensalada de quinoa y atún · 26g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Salmón al horno con espárragos','Natillas de mandarina','Ensalada de mango y arroz','Samosas de morcilla y manzana'],ans:0,fact:'Salmón al horno con espárragos · 32g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Ensalada de kale','Burritos con boloñesa vegana','Tartar de atún','Berenjena con relleno vegano de soja o tofu'],ans:1,fact:'Burritos con boloñesa vegana · 56g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Porridge de avena con manzana','Calabacines rellenos de gambas y rape','Yogur griego con tartar de aguacate','Pimientos rellenos al horno'],ans:2,fact:'Yogur griego con tartar de aguacate · 541kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Tortilla de acelgas','Pavo en salsa','Tortilla de calabacín al queso','Hamburguesa completa'],ans:3,fact:'Hamburguesa completa · 45g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Pollo al curry rápido con arroz','Ensalada de coliflor','Wraps de alubias negras y salsa de aguacate','Pan de manzana'],ans:0,fact:'Pollo al curry rápido con arroz · 464kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Rollitos de berenjena tomate y queso','Pechuga de pollo con salsa vegana de champiñones','Pimientos rellenos de bacalao con sticks de zanahoria','Lentejas hindúes'],ans:1,fact:'Pechuga de pollo con salsa vegana de champiñones · 54g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Ajoblanco con sardina ahumada','Rollitos de chocolate y almendra','Buddha bowl de quinoa vegano','Pan con aceite y tomate'],ans:0,fact:'Ajoblanco con sardina ahumada · 88g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Ensalada griega vegana','Pisto con huevo','Merluza con cebolla al microondas','Copa de yogur con helado y galleta'],ans:2,fact:'Merluza con cebolla al microondas · 24g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Calamares encebollados','Guiso de patatas con sepia','Ensalada de pollo con arroz y mango','Guiso de sepia y mejillones'],ans:2,fact:'Ensalada de pollo con arroz y mango · 21g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Mero con salsa de yogur','Rape con calabaza al microondas','Crêpes con jamón y queso','Flan de verduras'],ans:0,fact:'Mero con salsa de yogur · 37g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Ensalada de sandía','Ensalada de lentejas y aguacate','Pasta integral con pollo y brócoli','Guiso de garbanzos y albaricoques'],ans:2,fact:'Pasta integral con pollo y brócoli · 56.4g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Sopa crema de zanahoria y cúrcuma','Ensalada de pavo y naranja','Salmón con verduras al microondas','Bol de plátano y mango'],ans:3,fact:'Bol de plátano y mango · 693kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Albóndigas de ternera en salsa de tomate','Ensalada de col y manzana','Pechuga de pavo rellena','Pollo al curry rápido con arroz'],ans:2,fact:'Pechuga de pavo rellena · 65g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Ensalada de pavo con piña y manzana','Lubina con espinacas y piñones','Calamares en salsa','Tortilla de cebolla'],ans:2,fact:'Calamares en salsa · 35g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Tostada de crema de cacahuete y plátano','Manzana asada','Tostada de Aguacate con Tomate y Huevo','Sopa Thai vegana'],ans:3,fact:'Sopa Thai vegana · 596kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Ensalada de pollo con aguacate','Batido vegetal','Calabacines rellenos de gambas y rape','Guiso de patatas y calamares'],ans:0,fact:'Ensalada de pollo con aguacate · 24g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Ensalada waldorf','Fabada vegana','Bowl de yogur, plátano y nueces','Tortilla francesa con queso'],ans:1,fact:'Fabada vegana · 457kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Milhojas de nata','Natillas de mandarina','Berenjena con relleno vegano de soja o tofu','Patatas rellenas veganas'],ans:3,fact:'Patatas rellenas veganas · 64g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Tartar de atún vegano con vinagreta de mostaza y lima','Guiso de patatas con sepia','Estofado de habichuelas','Lentejas con verduras'],ans:3,fact:'Lentejas con verduras · 22g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Ensalada de pollo con mango y aguacate','Helado de mango','Salmón a la plancha con brócoli','Calamares encebollados'],ans:2,fact:'Salmón a la plancha con brócoli · 34g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Potaje de vigilia','Milhoja de merengue','Tostada de Peanut Butter','Ensalada de garbanzos y lechuga'],ans:0,fact:'Potaje de vigilia · 39.4g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Tostada de Cottage y Arándanos','Quinoa citrica con leche de coco','Espuma de frutos congelados','Tartaleta de arroz y pollo'],ans:3,fact:'Tartaleta de arroz y pollo · 764kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Pollo a la plancha con verduras','Tosta de atún con gambas y tomate','Yogur proteico con avena y fresas','Bizcocho de limon'],ans:3,fact:'Bizcocho de limon · 481kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Pastel de patata','Atún a la plancha con pimientos','Tortilla francesa de queso muzarella','Brochetas de rape con tomate y pimiento'],ans:2,fact:'Tortilla francesa de queso muzarella · 28g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Salteado de tofu con verduras','Potaje de vigilia','Pollo a la plancha con verduras','Helado de vainilla'],ans:0,fact:'Salteado de tofu con verduras · 20g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Huevos a la plancha con tomate y pan','Salmón al horno con brócoli y patatas','Crepes de avena con espinacas y champiñones','Guiso de patatas con champiñones'],ans:1,fact:'Salmón al horno con brócoli y patatas · 50g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Tostada con Plátano y Canela','Sopa postre de chocolate y almendras','Tostada con Revuelto de Tofu y Aguacate','Sopa de pollo'],ans:1,fact:'Sopa postre de chocolate y almendras · 521kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Mousse de chocolate y yogur','Helado de vainilla','Hamburguesa vegana de soja texturizada','Ensalada de pasta'],ans:3,fact:'Ensalada de pasta · 455kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Ensalada de cangrejo','Bowl de yogur con manzana y canela','Alcachofas con jamón y huevo','Ensalada waldorf'],ans:2,fact:'Alcachofas con jamón y huevo · 22g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Carbonara vegetariana','Natillas','Ensalada de cogollos y espárragos','Escalopes de ternera'],ans:3,fact:'Escalopes de ternera · 610kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Guiso de patatas y calamares','Tartar de atún vegano con vinagreta de mostaza y lima','Helado de yogur griego','Merluza al horno con gambas'],ans:3,fact:'Merluza al horno con gambas · 30g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Brownie en microondas','Manzana asada con canela','Yogur proteico con plátano y almendras','Leche frita'],ans:0,fact:'Brownie en microondas · 33g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Ensalada verde','Hamburguesa de pimiento y soya','Rape con verduras','Quinoa con verduras y huevo'],ans:3,fact:'Quinoa con verduras y huevo · 38.9g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Ensalada tibia de vegetales asados','Panache de verduras','Hamburguesa de pimiento y soya','Guiso de pavo'],ans:3,fact:'Guiso de pavo · 32g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Manzana asada','Ensalada de champiñones','Sopa de pollo','Muffin de chocolate'],ans:3,fact:'Muffin de chocolate · 75g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Power bowl vegano con soja texturizada, boniato y guacamole','Guiso de ternera con champiñones','Batido de plátano y avena','Guiso de alubias con hongos'],ans:2,fact:'Batido de plátano y avena · 112.6g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Patatas guisadas con cerdo','Crema de brócoli y queso','Helado de yogur griego','Pavo con champiñones y arroz'],ans:0,fact:'Patatas guisadas con cerdo · 755kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Mousse de pera y kiwi','Ensalada de lentejas y mango','Ensalada de arroz casera','Yogur proteico con plátano y almendras'],ans:1,fact:'Ensalada de lentejas y mango · 561kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Sepia con alubias y almejas','Arroz con leche de chocolate','Arroz de alubias y pimientos','Lubina al microondas con calabacín'],ans:2,fact:'Arroz de alubias y pimientos · 66g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Tostada de Guacamole','Ensalada de manzana y fresas con pipas','Pancakes veganos','Ramen vegano'],ans:3,fact:'Ramen vegano · 39g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Manzana asada con canela','Pasta vegana','Lomo de cerdo a la manzana','Merluza con pimientos del piquillo'],ans:2,fact:'Lomo de cerdo a la manzana · 466kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Alcachofas con jamón y huevo','Tortitas de claras y avena','Sopa crema de calabaza vegana','Batido vegano de plátano y dátiles'],ans:3,fact:'Batido vegano de plátano y dátiles · 363kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Fabada vegana','Crema de patatas y apio','Garbanzos con almejas','Brocheta de frutas'],ans:0,fact:'Fabada vegana · 55g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Vegan poke bowl de tofu','Tostadas con aguacate y huevo','Fideuá al horno','Habas con huevo'],ans:0,fact:'Vegan poke bowl de tofu · 109g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Bizcocho rapido','Ceviche vegano','Tortilla de patata y calabacín','Ensalada campera'],ans:0,fact:'Bizcocho rapido · 680kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Brownie en microondas','Sándwich de bacalao ahumado y aguacate','Brocheta de fruta gratinada','Mero con fideos'],ans:0,fact:'Brownie en microondas · 555kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Ensalada parrillada','Tostas de tomate, queso y mortadela','Natillas','Pizza de pollo'],ans:3,fact:'Pizza de pollo · 45g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Ensalada de alcachofas y atún','Brochetas de rape con tomate y pimiento','Hamburguesa de lentejas','Huevos revueltos con jamón'],ans:3,fact:'Huevos revueltos con jamón · 35g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Copa de yogur con helado y galleta','Rape con calabaza al microondas','Guiso pavo con verduras','Ensalada thai'],ans:2,fact:'Guiso pavo con verduras · 34g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Copa de yogur con helado y galleta','Pad thai vegano','Tostada Proteica con Crema de Almendra','Crema de brócoli y queso'],ans:0,fact:'Copa de yogur con helado y galleta · 70g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Tostada de Aguacate con Tomate y Huevo','Rape con verduras','Salteado de gambas y verduras','Trenza de chocolate'],ans:3,fact:'Trenza de chocolate · 440kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Rollitos de salmón ahumado','Ensalada de cuscús','Ensalada de cangrejo','Ensalada de arroz con vinagreta de miel'],ans:3,fact:'Ensalada de arroz con vinagreta de miel · 56g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Tostadas con aguacate y huevo','Ensalada de langostinos rúcula y papaya','Tortilla de espinacas y queso','Pan con aceite y tomate'],ans:0,fact:'Tostadas con aguacate y huevo · 60g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Tostada de Guacamole','Ensalada de cogollos con mejillones','Tortitas de plátano y avena','Huevos revueltos con espárragos'],ans:2,fact:'Tortitas de plátano y avena · 117.5g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Ensalada de coliflor','Ensalada de berenjena y queso','Ensalada de aguacate y mango','Sándwich de salmón, queso y aguacate'],ans:1,fact:'Ensalada de berenjena y queso · 510kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Guiso de garbanzos y albaricoques','Tortitas de claras y avena','Pasta vegana','Muffin de chocolate'],ans:2,fact:'Pasta vegana · 39g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Tostada con Ricotta y Pera Caramelizada','Ensalada de langostinos rúcula y papaya','Pisto con huevo','Tostada de Peanut Butter'],ans:3,fact:'Tostada de Peanut Butter · 367kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Wraps de alubias negras y salsa de aguacate','Batido vegano','Tostas de tomate, queso y mortadela','Crema con rape y gambas'],ans:2,fact:'Tostas de tomate, queso y mortadela · 35g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Guiso de merluza y gambas','Tortilla de berenjenas queso y pimiento','Estofado vegano de soja texturizada','Manzana asada con canela'],ans:1,fact:'Tortilla de berenjenas queso y pimiento · 22g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Quesadilla vegana','Rollitos de lenguado con salsa de espinacas','Risotto vegano de champiñones','Merluza al horno con patata'],ans:2,fact:'Risotto vegano de champiñones · 88g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Pasta con brócoli y queso','Tortilla de espinacas (variante 2)','Tosta de aguacate con anchoa y tomate','Rollitos de pollo con pimiento del piquillo y queso'],ans:0,fact:'Pasta con brócoli y queso · 45g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Ensalada de atún marinado con salsa de soja','Espuma de frutos congelados','Mousse de mango y coco vegano','Ensalada de arroz yamaní'],ans:3,fact:'Ensalada de arroz yamaní · 34g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Escalopes de ternera','Espaguetis con bechamel vegana','Ensalada de pasta fácil','Hamburguesas de arroz con queso'],ans:1,fact:'Espaguetis con bechamel vegana · 83g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Hamburguesa completa','Salteado de tofu brócoli y zanahoria','Ensalada de alcachofas y atún','Guiso de patatas y calamares'],ans:0,fact:'Hamburguesa completa · 800kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Pasta amatriciana','Tostada Estilo Cheesecake de Arándanos','Ensalada de col y manzana','Porridge vegano de avena'],ans:3,fact:'Porridge vegano de avena · 61g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Mousse de pera y kiwi','Tostada de Pera y Queso Roquefort','Natillas de mandarina','Gachas de avena con manzana'],ans:3,fact:'Gachas de avena con manzana · 505kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Ensalada de pasta','Chocolatinas de frutos secos','Tostada de Cottage y Arándanos','Crepes de avena con espinacas y champiñones'],ans:1,fact:'Chocolatinas de frutos secos · 30g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Filete de ternera con champiñones','Tortilla de patata sencilla','Ensalada de cuscús','Tostada Francesa con Toppings'],ans:1,fact:'Tortilla de patata sencilla · 27g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Pasta con tomate y atún','Calamares encebollados','Crema de verduras y legumbres','Pizza de berenjena'],ans:0,fact:'Pasta con tomate y atún · 55g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Crema de verduras y legumbres','Salteado de pollo con verduras al wok','Porridge de avena con manzana','Ensalada mixta'],ans:1,fact:'Salteado de pollo con verduras al wok · 39g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Espaguetis boloñesa','Salmón al horno con brócoli y patatas','Bol de açai','Ensalada de quinoa y atún'],ans:2,fact:'Bol de açai · 112.7g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Tostada de Peanut Butter','Tortilla de patata y calabacín','Brochetas de tomate, queso y anchoas','Ensalada de langostinos rúcula y papaya'],ans:1,fact:'Tortilla de patata y calabacín · 26g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Muffin de chocolate','Pollo guisado con verduras','Quinoa con verduras y huevo','Tosta de salmón y huevo duro'],ans:1,fact:'Pollo guisado con verduras · 32g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Helado de yogur griego','Ensalada de coliflor','Ensalada de cogollos con mejillones','Salmón al horno'],ans:3,fact:'Salmón al horno · 473kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Bacalao con salsa de pimiento y tomate','Hamburguesa vegana de alubias','Mousse de pera y kiwi','Ensalada de arroz casera'],ans:1,fact:'Hamburguesa vegana de alubias · 19g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Gnocchi con mozzarella y pollo','Bacalao al papillote','Crema cuajada de leche y queso','Trenza de chocolate'],ans:0,fact:'Gnocchi con mozzarella y pollo · 995kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Milhojas de nata','Salmorejo falso','Tortilla de espinacas y queso','Platano y pina gratinados'],ans:0,fact:'Milhojas de nata · 455kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Tartar de atún','Ensalada thai','Calamares en salsa','Potaje de setas y alubias'],ans:3,fact:'Potaje de setas y alubias · 63g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Mousse de melon','Yogur proteico con avena y fresas','Sopa crema de zanahoria y cúrcuma','Tostada con Plátano y Canela'],ans:2,fact:'Sopa crema de zanahoria y cúrcuma · 12g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Veganesa','Garbanzos con marisco','Lomo con pimientos','Tortitas de avena veganas'],ans:2,fact:'Lomo con pimientos · 33g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Merluza a la plancha con ensalada','Lomo con pimientos','Gachas dulces','Sopa crema de calabaza'],ans:2,fact:'Gachas dulces · 178.2g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Wok de pollo y verduras','Tostada Proteica con Crema de Almendra','Gambas al ajillo con arroz','Lentejas estofadas'],ans:0,fact:'Wok de pollo y verduras · 900kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Crema de verduras y legumbres','Wraps de alubias negras y salsa de aguacate','Ensalada griega vegana','Hojaldre con natillas'],ans:3,fact:'Hojaldre con natillas · 19g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Ensalada de coliflor','Tortitas proteicas de avena','Tostada Caprese','Guiso de patatas con sepia'],ans:0,fact:'Ensalada de coliflor · 18g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Boloñesa de lentejas','Estofado de pollo','Revuelto de gulas y champiñones','Pescado a la parrilla con espárragos'],ans:0,fact:'Boloñesa de lentejas · 34g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Ensalada de patata','Calamares encebollados','Tostada de Hummus con Salmón Ahumado','Sopa crema de calabaza'],ans:2,fact:'Tostada de Hummus con Salmón Ahumado · 38g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Garbanzos con almejas','Pimientos rellenos de carne','Natillas de mandarina','Patatas rellenas veganas'],ans:1,fact:'Pimientos rellenos de carne · 32g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Tosta de salmón y huevo duro','Rollitos de lenguado con salsa de espinacas','Ensaladilla de pollo y aguacate','Merluza al horno con gambas'],ans:2,fact:'Ensaladilla de pollo y aguacate · 31g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Tostada de Jamón Serrano con Tortilla de Huevo','Calamares encebollados','Fideuá al horno','Sopa de pollo'],ans:2,fact:'Fideuá al horno · 50.8g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Tortilla de verduras','Salteado de pollo con verduras al wok','Tostada con Queso, Miel y Nueces','Tostada de Guacamole'],ans:0,fact:'Tortilla de verduras · 23g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Ensalada de queso cabra y berenjenas a la plancha','Ensalada tibia de vegetales asados','Pavo salteado con calabacín','Arroz con verduras vegan'],ans:0,fact:'Ensalada de queso cabra y berenjenas a la plancha · 26g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Sopa de puerros','Sopa Thai vegana','Sopa de quinoa y verduras vegana','Pavo con champiñones y arroz'],ans:1,fact:'Sopa Thai vegana · 32g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Pancakes veganos','Ensaladilla de pollo y aguacate','Helado de platano','Ensalada de espinacas'],ans:1,fact:'Ensaladilla de pollo y aguacate · 21g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Milhoja de merengue','Tiramisu','Pizza de pollo','Arroz con mejillones'],ans:1,fact:'Tiramisu · 627kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Chipirones en su tinta','Guisantes con jamón y huevo duro','Risotto con champiñones y bacon','Ensalada de pollo con aguacate'],ans:2,fact:'Risotto con champiñones y bacon · 60.4g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Veganesa','Tortilla francesa de queso muzarella','Brownie en microondas','Yogur proteico con avena y fresas'],ans:2,fact:'Brownie en microondas · 55g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Gazpacho andaluz','Tostada con Yogur Griego, Fresas y Almendras','Crema de calabacín con tejas de queso','Tortitas de plátano y avena'],ans:3,fact:'Tortitas de plátano y avena · 769kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Merluza a la plancha con ensalada','Caldereta de cordero','Crema cuajada de leche y queso','Ensalada de cogollos con mejillones'],ans:2,fact:'Crema cuajada de leche y queso · 42g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Vegetales mixtos salteados','Sándwich de salmón, queso y aguacate','Tostada al Pesto con Queso','Risoto de quinoa vegano'],ans:3,fact:'Risoto de quinoa vegano · 471kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Platano banado en choco','Bol de salmón y col rizada / versión calórica','Gachas de avena con manzana','Tortilla de espinacas y queso'],ans:2,fact:'Gachas de avena con manzana · 62g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Merluza al horno con patata','Tostada con Queso y Miel','Guiso de pescado y marisco','Brocheta de fruta gratinada'],ans:0,fact:'Merluza al horno con patata · 30g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Guiso de patatas y calamares','Ensalada de pasta con pollo','Arroz integral con verduras y pollo','Salteado de verduras con huevo'],ans:2,fact:'Arroz integral con verduras y pollo · 56g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Tostada Proteica con Crema de Almendra','Crema de calabacines','Calabacines rellenos de gambas y rape','Mero con fideos'],ans:0,fact:'Tostada Proteica con Crema de Almendra · 535kcal'}
-];
-
-// Banco combinado: 30 generales + 152 recetario = 182 dias sin repetir.
-// Regenerado 2026-07-21 desde el CSV corregido (GBH_Correccion_Recetario.sql):
-// cada pregunta usa solo recetas cuyo macro consultado esta verificado contra
-// sus propios ingredientes, con margen minimo para que la respuesta sea inequivoca.
-const QUIZ_ALL = [...QUIZ_BANK, ...QUIZ_RECETARIO];
+// Los bancos del quiz y QuizModal viven en src/QuizModal.jsx desde el 10-nov (MAESTRO-2026-1235).
 
 
 // ─── Ruleta diaria ────────────────────────────────────────────────────────────
@@ -5826,121 +5049,6 @@ function RuletaModal({onClose, onCollect, onGoHome}){
   );
 }
 
-// ─── QuizModal ────────────────────────────────────────────────────────────────
-function QuizModal({onClose, onComplete, todayKey, lang, onGoHome}){
-  const dayIdx = (()=>{const d=new Date();return(d.getFullYear()*366+Math.floor((d-new Date(d.getFullYear(),0,0))/(1000*60*60*24)))%QUIZ_ALL.length;})();
-  const q = QUIZ_ALL[dayIdx];
-  const [selected, setSelected] = useState(null);
-  const [revealed, setRevealed] = useState(false);
-  const [phase,    setPhase]    = useState("question"); // question | result
-
-  const choose = (i) => {
-    if(revealed) return;
-    setSelected(i);
-    setRevealed(true);
-    const isOk = i === q.ans;
-    if(isOk) SFX.quizOk(); else SFX.quizFail();
-    setTimeout(()=>setPhase("result"), 900);
-  };
-
-  const correct = selected===q.ans;
-  const xpGain  = correct ? 20 : 5;
-  const gemGain = correct ? 8  : 1;
-
-  return(
-    <div style={{position:"fixed",inset:0,zIndex:11000,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(8px)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={phase==="result"?onClose:undefined}>
-      <div style={{background:`linear-gradient(180deg,#1A3A10,${T.bgWood})`,borderRadius:28,width:"100%",maxWidth:360,border:`2px solid ${T.bW}`,boxShadow:"0 24px 60px rgba(0,0,0,0.8)",animation:"popIn 0.35s cubic-bezier(0.34,1.56,0.64,1)",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
-
-        {phase==="question"&&(
-          <>
-            {/* Header */}
-            <div style={{background:`linear-gradient(135deg,${T.g1},${T.g2})`,padding:"16px 20px",display:"flex",alignItems:"center",gap:12}}>
-              <div style={{fontSize:28}}>🧠</div>
-              <div style={{flex:1}}>
-                <div style={{fontSize:11,fontWeight:900,color:"rgba(255,255,255,0.7)",textTransform:"uppercase",letterSpacing:"0.1em"}}>
-                  {lang==="en"?"Daily quiz":"Quiz del día"}
-                </div>
-                <div style={{fontSize:14,fontWeight:900,color:T.t1}}>
-                  {lang==="en"?"Nutrition":"Nutrición"} · {correct?"":(lang==="en"?"Earn up to":"Gana hasta")} +20 XP +8 💎
-                </div>
-              </div>
-              {/* Botón cerrar */}
-              <button onClick={onClose} style={{
-                background:"rgba(0,0,0,0.2)",border:"2px solid rgba(255,255,255,0.3)",
-                borderRadius:"50%",width:32,height:32,color:T.t1,
-                fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",
-                justifyContent:"center",flexShrink:0,lineHeight:1,
-              }}>✕</button>
-            </div>
-            {/* Pregunta */}
-            <div style={{padding:"22px 20px 16px"}}>
-              <div style={{fontSize:16,fontWeight:800,color:T.wh,lineHeight:1.5,marginBottom:20,fontFamily:"'DM Sans',sans-serif"}}>
-                {getQuizQ(q, lang)}
-              </div>
-              {/* Opciones */}
-              <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                {getQuizOpts(q, lang).map((opt,i)=>{
-                  let bg="rgba(255,255,255,0.07)";
-                  let border=T.bW;
-                  let col=T.t1;
-                  if(revealed){
-                    if(i===q.ans){bg=alpha(T.g1,0.25);border=T.g1;col=T.g2;}
-                    else if(i===selected&&selected!==q.ans){bg="rgba(255,80,80,0.2)";border="rgba(255,80,80,0.6)";col="#FF8080";}
-                  } else if(selected===i){
-                    bg=alpha(T.au1,0.15);border=T.au1;col=T.au1;
-                  }
-                  return(
-                    <button key={i} onClick={()=>choose(i)} style={{
-                      background:bg,border:`2px solid ${border}`,borderRadius:16,
-                      padding:"14px 18px",color:col,fontWeight:800,fontSize:14,
-                      cursor:revealed?"default":"pointer",textAlign:"left",
-                      fontFamily:"'DM Sans',sans-serif",lineHeight:1.3,
-                      transition:"all 0.3s",boxShadow:"0 3px 0 rgba(0,0,0,0.4)",
-                    }}>
-                      <span style={{marginRight:10,opacity:0.5}}>{"ABCD"[i]}.</span>{opt}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </>
-        )}
-
-        {phase==="result"&&(
-          <div role="button" tabIndex={0} style={{padding:"32px 24px",textAlign:"center"}} onClick={()=>{onComplete(xpGain,gemGain);onClose();}}>
-            <div style={{fontSize:64,marginBottom:12,animation:"scaleIn 0.5s cubic-bezier(0.34,1.56,0.64,1)"}}>{correct?"🎉":"💡"}</div>
-            <div style={{fontSize:22,fontWeight:900,color:correct?T.g1:"#FF8080",marginBottom:8}}>
-              {correct?(lang==="en"?"Correct!":"¡Correcto!"):(lang==="en"?"Almost...":"Casi...")}
-            </div>
-            <div style={{fontSize:14,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:20,lineHeight:1.5}}>
-              {correct
-                ? (lang==="en"?"You knew the answer! Your nutritionist would be proud 🐑":"¡Sabías la respuesta! Tu nutricionista estaría orgulloso 🐑")
-                : lang==="en"
-                  ? `The correct answer was: "${getQuizOpts(q,lang)[q.ans]}"${getQuizFact(q,lang)?" · "+getQuizFact(q,lang):""}`
-                  : `La respuesta correcta era: "${q.opts[q.ans]}"${q.fact?" · "+q.fact:""}`}
-            </div>
-            {/* Recompensa */}
-            <div style={{display:"flex",justifyContent:"center",gap:16,marginBottom:24}}>
-              {[{icon:"⚡",val:`+${xpGain} XP`,col:T.xp},{icon:"💎",val:`+${gemGain}`,col:T.au1}].map(({icon,val,col})=>(
-                <div key={val} style={{background:"rgba(255,255,255,0.08)",borderRadius:18,padding:"12px 20px",border:`2px solid rgba(255,255,255,0.12)`}}>
-                  <div style={{fontSize:22}}>{icon}</div>
-                  <div style={{fontSize:16,fontWeight:900,color:col}}>{val}</div>
-                </div>
-              ))}
-            </div>
-            <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:16}}>
-              {lang==="en"?"Tap anywhere to continue":"Toca en cualquier lugar para continuar"}
-            </div>
-            {/* Volver a inicio */}
-            <div role="button" tabIndex={0} onClick={e=>{e.stopPropagation();onComplete(xpGain,gemGain);onGoHome();}} style={{display:"inline-block",padding:"10px 28px",borderRadius:14,border:"1.5px solid rgba(255,255,255,0.15)",color:"rgba(255,255,255,0.45)",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
-              {lang==="en"?"← Home":"← Inicio"}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 // ─── StreakChest — cofre de racha ─────────────────────────────────────────────
 function StreakChest({streak, onOpen, alreadyOpened}){
@@ -6927,7 +6035,7 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
 // marcados se guardan SOLO en el dispositivo (localStorage, clave por receta),
 // deliberadamente sin Supabase: es un dato personal de compra y ahorra carga.
 // Al reabrir la receta recuerda lo tachado; "Regenerar" limpia para recomprar.
-function MiniListaCompra({nombre, ingredientes, idReceta, t, onClose, etiquetaRacion, lang='es'}){
+export function MiniListaCompra({nombre, ingredientes, idReceta, t, onClose, etiquetaRacion, lang='es'}){
   const items=React.useMemo(()=>(ingredientes||"").split(/[,;](?![^(]*\))/).map(s=>s.trim()).filter(Boolean),[ingredientes]);
   const key=`gbh:minilista:${idReceta||nombre}`;
   const [checks,setChecks]=React.useState(()=>lsGet(key,{}));
@@ -7047,6 +6155,7 @@ const normNombreG = (s)=>(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
 // MiniListaCompra al guardar el gasto real). Lo asigna el componente ra\u00edz en
 // cada render; null hasta que hay sesi\u00f3n \u2014 con null, el guardado no env\u00eda.
 let _perfilActualId = null;
+export const setPerfilActualId = (v) => { _perfilActualId = v; };   // PlanTab.jsx (MAESTRO-2026-1235)
 
 function SavedRecipeCard({rec, t, T, removeFromBook, lang, gems, isSaved, isDiscarded, onSave, onDiscard}){
   const [expanded, setExpanded] = React.useState(false);
@@ -7154,7 +6263,7 @@ function SavedRecipeCard({rec, t, T, removeFromBook, lang, gems, isSaved, isDisc
   );
 }
 
-function GBHApp(){
+export function GBHApp(){
   // Inicialización síncrona: si hay sesión guardada → "loading" (nunca "auth" en frío)
   const [screen,  setScreen]  = useState(()=>{
     try{
@@ -7180,6 +6289,8 @@ function GBHApp(){
     else setTab(d);
   };
   const [lang,    setLang]    = useState(()=>lsGet("gbh:lang","es"));
+  const [, setInglesListo] = useState(0);
+  useEffect(()=>{ if(lang==="en"&&!TRANS.en) cargarIngles().then(ok=>{ if(ok) setInglesListo(x=>x+1); }); },[lang]);
   const [muted,   setMuted]   = useState(()=>lsGet("gbh:mute",false));
   const sfx = (name,...args) => { if(!muted){ SFX[name]?.(...args); if(HAPTIC_DE_SFX[name]) haptic(HAPTIC_DE_SFX[name]); } };
   // En iOS, la app ve el perfil por vistaTienda (el Estándar como gratis). setProfile sigue escribiendo
@@ -11746,7 +10857,7 @@ function GBHApp(){
         );
       })()}
 
-      {showQuiz&&<QuizModal onClose={()=>setShowQuiz(false)} onComplete={onQuizComplete} todayKey={toKey()} lang={lang} onGoHome={()=>{setShowQuiz(false);setTab("home");}}/>}
+      {showQuiz&&<React.Suspense fallback={null}><QuizModal onClose={()=>setShowQuiz(false)} onComplete={onQuizComplete} todayKey={toKey()} lang={lang} onGoHome={()=>{setShowQuiz(false);setTab("home");}}/></React.Suspense>}
       {showChest&&<ChestOpenModal streak={streak} onClose={()=>setShowChest(false)} onCollect={onChestCollect} onGoHome={()=>{setShowChest(false);setTab("home");}}/>}
       {/* ── 🐑 Zona de juego + Personalización de Bo ── */}
       {/* ── Tour guiado con Bo (Fase B): spotlight sobre acciones reales ── */}
@@ -13424,7 +12535,7 @@ function GBHApp(){
             onVerSeguimiento={espejoAbrirSeguimiento}
             onClose={()=>{sfx("tap");setEspejoDia(null);}}/>
         )}
-        {tab==="plan"&&<div data-tuto="plan-zona"><PlanTab onSupl={()=>setSuplAbierta(true)} profile={profile} lang={lang} hoyKey={hoyKey} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} descartadas={descartadas} setDescartadas={setDescartadas} showT={showT} sfx={sfx} t={t} setTab={irA} onMealRegistered={onMealRegistered} vistaInicial={planVista} onVistaConsumida={()=>setPlanVista(null)} onTutoEvent={tutoEvento}/></div>}
+        {tab==="plan"&&<div data-tuto="plan-zona"><React.Suspense fallback={<div style={{minHeight:240}}/>}><PlanTab onSupl={()=>setSuplAbierta(true)} profile={profile} lang={lang} hoyKey={hoyKey} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} descartadas={descartadas} setDescartadas={setDescartadas} showT={showT} sfx={sfx} t={t} setTab={irA} onMealRegistered={onMealRegistered} vistaInicial={planVista} onVistaConsumida={()=>setPlanVista(null)} onTutoEvent={tutoEvento}/></React.Suspense></div>}
         {/* «Pregúntale a Bo» desde el bocadillo de Inicio (src/PreguntaBo.jsx). Las acciones
             solo abren pestañas que ya existen; la escritura va a bo_registro sin cola (sbDirect). */}
         {boInicio&&boActivo(profile)&&<PreguntaBo T={T} Sheep={Sheep} lang={lang} pid={profile?.id}
@@ -14045,18 +13156,18 @@ function ConsultaTab({profile,lang,sfx,enTu=false}){
 }
 
 // ─── PlanTab — programación semanal del paciente ────────────────────────────
-const PLAN_DIAS    = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
-const PLAN_DIAS_F  = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
-const PLAN_TOMAS   = ['Desayuno','Almuerzo','Comida','Merienda','Cena'];
-const PLAN_TOMA_IC = {Desayuno:'☀️',Almuerzo:'🍎',Comida:'🍽️',Merienda:'🥤',Cena:'🌙'};
+export const PLAN_DIAS    = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+export const PLAN_DIAS_F  = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+export const PLAN_TOMAS   = ['Desayuno','Almuerzo','Comida','Merienda','Cena'];
+export const PLAN_TOMA_IC = {Desayuno:'☀️',Almuerzo:'🍎',Comida:'🍽️',Merienda:'🥤',Cena:'🌙'};
 
 // ── Medicación y suplementación (plan_json.suplementacion) ──────────────────
 // El bloque viene del Excel de pautas vía la automatización. El parser es
 // tolerante con la clave y la capitalización de los campos para no depender
 // de la versión exacta del generador. hora en formato 'HH:MM'.
 const SUPL_HORAS_TOMA = {Desayuno:'08:00',Almuerzo:'11:00',Comida:'14:00',Merienda:'17:30',Cena:'21:00'};
-const SUPL_IC = {'Medicación':'💊','Medicacion':'💊','Suplemento':'💪'};
-const normSupl = (pj)=>{
+export const SUPL_IC = {'Medicación':'💊','Medicacion':'💊','Suplemento':'💪'};
+export const normSupl = (pj)=>{
   const raw = pj?.suplementacion ?? pj?.Suplementacion ?? pj?.medicacion ?? pj?.suplementos ?? null;
   if(!Array.isArray(raw)) return null;
   const out = raw.map(it=>({
@@ -14069,12 +13180,12 @@ const normSupl = (pj)=>{
   return out.length?out:null;
 };
 // Toma tras la que se coloca el botón según la hora ('' = antes del desayuno)
-const suplTrasToma = (hora)=>{
+export const suplTrasToma = (hora)=>{
   let tras='';
   for(const tm of PLAN_TOMAS){ if((SUPL_HORAS_TOMA[tm]||'99:99') <= hora) tras=tm; }
   return tras;
 };
-const suplHechosKey = (id,date)=>`gbh:suplhecho:${id}:${date}`;   // {nombre:true}
+export const suplHechosKey = (id,date)=>`gbh:suplhecho:${id}:${date}`;   // {nombre:true}
 // Hora local del móvil a la que "empieza" la franja de cada toma. Guía a la
 // oveja 🐑 de los mini-botones de Inicio: señala hasta qué comida debería haber
 // registrado ya el paciente. Editable si cambian los horarios habituales.
@@ -14145,7 +13256,7 @@ const _canonMatch=(txt)=>{
   return mejor;
 };
 // Porte fiel de formato_compra_realista (badges cortos: el nombre ya va a la izquierda)
-function _fmtCompra(e, c){
+export function _fmtCompra(e, c){
   const tipo=e[4], pud=e[5], paq=e[6]||6;
   const g=(c.g||0)+((pud&&c.ud)?c.ud*pud:0), ml=c.ml||0, ud=c.ud||0, cda=c.cda||0, cdta=c.cdta||0;
   const rk=(gr,paso)=>{const kg=Math.max(paso,Math.ceil(gr/paso)*paso);return kg>=1000?`${Math.round(kg/100)/10} kg`.replace(".",","):`${kg} g`;};
@@ -14205,7 +13316,7 @@ function _fmtCompra(e, c){
 // si cambia _RECHAZO_EXPANSION; `--rech --comprobar` dice si esta línea sigue al día (PEND-2026-306).
 const _RECH_EXP={"pescado":["abadejo","anchoa","anguila","atun","bacalao","besugo","bonito","boqueron","caballa","dorada","emperador","gulas","huevas","jurel","lenguado","lubina","merluza","mero","mojama","palitos de cangrejo","palitos de mar","palometa","panga","perca","pescadilla","pescado","pez espada","rape","rodaballo","salmon","salmonete","sardina","surimi","tilapia","trucha","ventresca"],"pescados":["abadejo","anchoa","anguila","atun","bacalao","besugo","bonito","boqueron","caballa","dorada","emperador","gulas","huevas","jurel","lenguado","lubina","merluza","mero","mojama","palitos de cangrejo","palitos de mar","palometa","panga","perca","pescadilla","pescado","pez espada","rape","rodaballo","salmon","salmonete","sardina","surimi","tilapia","trucha","ventresca"],"marisco":["almeja","berberecho","bogavante","calamar","cangrejo","carabinero","centollo","chipiron","chirla","cigala","coquina","gamba","langosta","langostino","marisco","mejillon","navaja","necora","ostra","percebe","pulpo","quisquilla","sepia","vieira","zamburina"],"mariscos":["almeja","berberecho","bogavante","calamar","cangrejo","carabinero","centollo","chipiron","chirla","cigala","coquina","gamba","langosta","langostino","marisco","mejillon","navaja","necora","ostra","percebe","pulpo","quisquilla","sepia","vieira","zamburina"],"carne":["albondiga","bacon","beicon","buey","butifarra","carne","carrillada","cerdo","chorizo","chuleta","codillo","conejo","contramuslo","cordero","costilla","embutido","entrecot","fiambre","hamburguesa","jamon","lomo","longaniza","morcilla","mortadela","muslo","panceta","pato","pavo","pechuga","pollo","presa","rabo","salami","salchicha","salchichon","solomillo","ternera","tocino","vaca","vacuno"],"carnes":["albondiga","bacon","beicon","buey","butifarra","carne","carrillada","cerdo","chorizo","chuleta","codillo","conejo","contramuslo","cordero","costilla","embutido","entrecot","fiambre","hamburguesa","jamon","lomo","longaniza","morcilla","mortadela","muslo","panceta","pato","pavo","pechuga","pollo","presa","rabo","salami","salchicha","salchichon","solomillo","ternera","tocino","vaca","vacuno"],"huevo":["clara","flan","frittata","huevo","mayonesa","merengue","quiche","revuelto","tortilla espanola","tortilla francesa","yema"],"huevos":["clara","flan","frittata","huevo","mayonesa","merengue","quiche","revuelto","tortilla espanola","tortilla francesa","yema"],"lacteo":["bechamel","burgos","cheddar","cottage","cuajada","emmental","feta","gouda","helado","kefir","lacteo","leche","mantequilla","mascarpone","mozzarella","nata","natillas","parmesano","queso","queso crema","queso fresco","requeson","ricotta","yogur","yogurt"],"lacteos":["bechamel","burgos","cheddar","cottage","cuajada","emmental","feta","gouda","helado","kefir","lacteo","leche","mantequilla","mascarpone","mozzarella","nata","natillas","parmesano","queso","queso crema","queso fresco","requeson","ricotta","yogur","yogurt"],"lactosa":["bechamel","burgos","cheddar","cottage","cuajada","emmental","feta","gouda","helado","kefir","lacteo","leche","mantequilla","mascarpone","mozzarella","nata","natillas","parmesano","queso","queso crema","queso fresco","requeson","ricotta","yogur","yogurt"],"gluten":["baguette","biscote","bizcocho","bocadillo","canelon","cebada","centeno","colines","cous cous","crepe","croqueta","cuscus","empanada","empanadilla","espagueti","fideo","focaccia","galleta","gluten","gnocchi","gofre","harina","hojaldre","lasana","macarron","magdalena","masa","noodles","noquis","pan","pan rallado","pasta","picos","pizza","raviolis","rebozado","seitan","tallarin","tostada","trigo","wrap"],"trigo":["baguette","biscote","bizcocho","bocadillo","canelon","cebada","centeno","colines","cous cous","crepe","croqueta","cuscus","empanada","empanadilla","espagueti","fideo","focaccia","galleta","gluten","gnocchi","gofre","harina","hojaldre","lasana","macarron","magdalena","masa","noodles","noquis","pan","pan rallado","pasta","picos","pizza","raviolis","rebozado","seitan","tallarin","tostada","trigo","wrap"],"fruto seco":["almendra","anacardo","avellana","cacahuete","castana","fruto seco","frutos secos","macadamia","mani","nueces","nuez","pecana","pinon","pistacho"],"frutos secos":["almendra","anacardo","avellana","cacahuete","castana","fruto seco","frutos secos","macadamia","mani","nueces","nuez","pecana","pinon","pistacho"],"frutoseco":["almendra","anacardo","avellana","cacahuete","castana","fruto seco","frutos secos","macadamia","mani","nueces","nuez","pecana","pinon","pistacho"],"soja":["edamame","miso","soja","soja texturizada","tempeh","tofu"],"legumbre":["alubia","frijol","garbanzo","haba","hummus","humus","judia blanca","judion","legumbre","lenteja"],"legumbres":["alubia","frijol","garbanzo","haba","hummus","humus","judia blanca","judion","legumbre","lenteja"],"garbanzo":["garbanzo","hummus","humus"],"garbanzos":["garbanzo","hummus","humus"],"fruta":["albaricoque","arandano","cereza","ciruela","frambuesa","fresa","fruta","granada","higo","kiwi","macedonia","mandarina","mango","manzana","melocoton","melon","naranja","papaya","pera","pina","platano","sandia","uva"],"frutas":["albaricoque","arandano","cereza","ciruela","frambuesa","fresa","fruta","granada","higo","kiwi","macedonia","mandarina","mango","manzana","melocoton","melon","naranja","papaya","pera","pina","platano","sandia","uva"],"casqueria":["callos","casqueria","higado","molleja","rinon","sesos"],"conserva":["conserva","lata"],"conservas":["conserva","lata"],"baina":["judia verde","vaina"],"bainas":["judia verde","vaina"],"vinagrillo":["encurtido","pepinillo","vinagre"],"vinagrillos":["encurtido","pepinillo","vinagre"],"col":["berza","col","coliflor","kale","lombarda","repollo"],"coles":["berza","col","coliflor","kale","lombarda","repollo"]};
 const _RECH_STOP=new Set(["los","las","que","con","por","del","una","uno","este","esta","como","muy","para","the","and","alimentos","alimento","comida","comidas","ningun","ninguna","nada","tipo","tipos"]);
-function interpretarRechazados(notas){
+export function interpretarRechazados(notas){
   const pref={terms:new Set(), tipos:new Set()};
   const t=String(notas||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
   if(!t) return pref;
@@ -14234,7 +13345,7 @@ function interpretarRechazados(notas){
   }
   return pref;
 }
-function recetaRechazadaJS(rec, pref){
+export function recetaRechazadaJS(rec, pref){
   if(!pref||(!pref.terms.size&&!pref.tipos.size)) return false;
   if(pref.tipos.has(String(rec.tipo||rec.Tipo||""))) return true;
   const txt=String((rec.nombre||rec.nombre_receta||"")+" "+(rec.ingredientes||""))
@@ -14311,7 +13422,7 @@ function parsearIngredienteJS(seg){
 // Acepta UNO o DOS planes semanales. Con dos, la fusión por claveIngredienteJS
 // + `partes` ya hace el trabajo: no hay lógica nueva, solo se le dan dos planes
 // en vez de uno. Es literalmente el mismo carrito con el doble de recetas.
-function agregarListaCompra(planJ, planB){
+export function agregarListaCompra(planJ, planB){
   const planes=[planJ,planB].filter(Boolean);
   if(!planes.length) return [];
   const nrm=_nrmIng;
@@ -14384,7 +13495,7 @@ const _PRECIOS_ING={"Aceite de oliva":[6,10,10],"Aceitunas":[5,10,12],"Acelgas":
 // GBH_Precios_Ingredientes.xlsx es la única fuente; esto es su export --js).
 // Se calcula sobre los items YA agregados de la instantánea. Lo que no tiene
 // precio se cuenta aparte y no se inventa.
-function costeListaItems(items){
+export function costeListaItems(items){
   let total=0, sinPrecio=0;
   for(const it of (items||[])){
     const nombre=(it.entry?it.entry[1]:it.nombre)||"";
@@ -14422,11 +13533,11 @@ function costeListaItems(items){
   const FACTOR_COMPRA = 1.07;
   return {total:Math.round(total*FACTOR_COMPRA*100)/100, sinPrecio};
 }
-const eurES=(v)=>(Math.round(v*100)/100).toFixed(2).replace(".",",");
+export const eurES=(v)=>(Math.round(v*100)/100).toFixed(2).replace(".",",");
 
 // Coste estimado de UNA receta (el texto de ingredientes tal y como lo ve el
 // paciente: su ración ya escalada). Mismo diccionario que la lista y el PDF.
-function costeRecetaJS(texto){
+export function costeRecetaJS(texto){
   let total=0, sin=0;
   for(const seg of segmentarIngredientesJS(texto||"")){
     const P=parsearIngredienteJS(seg);
@@ -14483,7 +13594,7 @@ function _sumarSegmentos(segA, segB){
 
 // Devuelve {texto, avisos}. `avisos` lista los ingredientes que NO se han
 // podido sumar: se muestran los dos y se dice por qué, en vez de inventar.
-function fusionarIngredientesJS(textoA, textoB){
+export function fusionarIngredientesJS(textoA, textoB){
   if(!textoA) return {texto:textoB||"", avisos:[]};
   if(!textoB) return {texto:textoA, avisos:[]};
   const B=segmentarIngredientesJS(textoB).map(seg=>({seg, nombre:parsearIngredienteJS(seg).nombre}));
@@ -14514,7 +13625,7 @@ function fusionarIngredientesJS(textoA, textoB){
 // (suma sobre lo previsto); 🔄 «La cambié» = otra cosa en vez de la receta (fuera o en casa).
 // 'cambiada' queda como clave HISTÓRICA (hasta el 14-sep valía «la cambié»): no se ofrece como
 // botón (oculto) y se agrega junto a 'fuera'. 'fuera' conserva su clave por los scripts que la leen.
-const PLAN_CUMPL = [
+export const PLAN_CUMPL = [
   {k:'seguida',  es:'Seguida',     en:'Followed', ic:'✅', c:T.g1},
   {k:'menos',    es:'Menos',       en:'Less',     ic:'➖', c:T.au1},
   {k:'anadida',  es:'Añadí',       en:'Added',    ic:'➕', c:T.blue},   // la receta y, además, otros platos o ingredientes
@@ -14558,22 +13669,22 @@ const MENU_ETQ = {
   es: {'1º':'1er plato','2º':'2º plato','Plato':'Plato','Postre':'Postre'},
   en: {'1º':'1st course','2º':'2nd course','Plato':'Main','Postre':'Dessert'},
 };
-const menuEtiqueta = (et, lang) => (MENU_ETQ[lang==='en'?'en':'es'][et]) || et || '';
+export const menuEtiqueta = (et, lang) => (MENU_ETQ[lang==='en'?'en':'es'][et]) || et || '';
 // La corta, para el botón «Cambiar 1º» del plato que se ve (12-oct-2026).
 const MENU_ETQ_CORTA = {
   es: {'1º':'1º','2º':'2º','Plato':'plato','Postre':'postre'},
   en: {'1º':'1st','2º':'2nd','Plato':'main','Postre':'dessert'},
 };
-const menuEtiquetaCorta = (et, lang) => (MENU_ETQ_CORTA[lang==='en'?'en':'es'][et]) || et || '';
+export const menuEtiquetaCorta = (et, lang) => (MENU_ETQ_CORTA[lang==='en'?'en':'es'][et]) || et || '';
 
-const emojiPlato = (nombre, tipo) => {
+export const emojiPlato = (nombre, tipo) => {
   if(tipo==='Postre'||tipo==='Dessert') return '🍰';
   const n = String(nombre||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
   for(const [re,em] of REGLAS_EMOJI_PLATO) if(re.test(n)) return em;
   return PLAN_TIPO_IC[tipo] || '🍴';
 };
-const PLAN_TIPO_BG = {Carne:'rgba(192,57,43,0.22)',Pescado:'rgba(41,128,185,0.22)',Vegetariana:'rgba(39,174,96,0.18)',Vegana:'rgba(22,160,133,0.18)',Ensalada:'rgba(139,195,74,0.18)','Sopa/Crema':'rgba(230,126,34,0.22)',Postre:'rgba(214,70,158,0.22)',Directo:'rgba(212,175,55,0.22)'};
-const PLAN_TIPO_COLOR={Carne:'#E57373',Pescado:T.platos,Vegetariana:'#81C784',Vegana:'#A5D6A7',Postre:'#F06292',Ensalada:'#AED581','Sopa/Crema':'#FFB74D'};
+export const PLAN_TIPO_BG = {Carne:'rgba(192,57,43,0.22)',Pescado:'rgba(41,128,185,0.22)',Vegetariana:'rgba(39,174,96,0.18)',Vegana:'rgba(22,160,133,0.18)',Ensalada:'rgba(139,195,74,0.18)','Sopa/Crema':'rgba(230,126,34,0.22)',Postre:'rgba(214,70,158,0.22)',Directo:'rgba(212,175,55,0.22)'};
+export const PLAN_TIPO_COLOR={Carne:'#E57373',Pescado:T.platos,Vegetariana:'#81C784',Vegana:'#A5D6A7',Postre:'#F06292',Ensalada:'#AED581','Sopa/Crema':'#FFB74D'};
 
 // ── Exportación CSV del seguimiento de un paciente (para el nutricionista) ────
 async function exportarSeguimientoCSV(profileId, nombre){
@@ -14829,7 +13940,7 @@ function EspejoSemanaCard({profile, logs, lang, onVerSeguimiento}){
 // Se alimenta de los registros que el paciente marca en la Programación diaria
 // (daily_logs.meals_log). El paciente ve su cumplimiento; el nutricionista lo
 // ve en su panel y puede exportarlo a CSV.
-function SeguimientoView({profile, lang}){
+export function SeguimientoView({profile, lang}){
   const EN = lang==='en';
   const MESES = EN
     ? ['January','February','March','April','May','June','July','August','September','October','November','December']
@@ -15013,7 +14124,7 @@ function SeguimientoView({profile, lang}){
 // cierre hasta que su programación esté volcada (evita estados a medias).
 const GEN_MSGS_ES=["🧮 Calculando tus calorías objetivo…","🥗 Eligiendo tus recetas…","📅 Cuadrando la semana…","🛒 Preparando tu lista de la compra…","✨ Últimos retoques…"];
 const GEN_MSGS_EN=["🧮 Calculating your target calories…","🥗 Picking your recipes…","📅 Balancing your week…","🛒 Building your shopping list…","✨ Final touches…"];
-function OverlayGenerando({lang}){
+export function OverlayGenerando({lang}){
   const msgs=lang==='en'?GEN_MSGS_EN:GEN_MSGS_ES;
   const [i,setI]=React.useState(0);
   React.useEffect(()=>{ const id=setInterval(()=>setI(x=>(x+1)%msgs.length),2600); return ()=>clearInterval(id); },[msgs.length]);
@@ -15039,1995 +14150,11 @@ function OverlayGenerando({lang}){
   );
 }
 
-function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,descartadas,setDescartadas,showT,sfx,t,setTab,onMealRegistered,vistaInicial,onVistaConsumida,onTutoEvent,onSupl}){
-  const isPremium=profile?.plan==='premium';
-  const isStandard=profile?.plan==='standard';
-  const tieneAcceso=isPremium||isStandard;
-  const gems=profile?.gems??0;
-  // ── Semana de prueba: regenerar y cambiar recetas es GRATIS (tutorial §B3:
-  //    «invita la casa»). Al acabar el trial vuelven el candado semanal y las
-  //    gemas de siempre. ──
-  const enTrial = isStandard && profile?.trial_ends_at && Date.parse(profile.trial_ends_at)>Date.now();
-  const [planes,setPlanes]=React.useState([]);
-  const [idx,setIdx]=React.useState(0);
-  const [loading,setLoading]=React.useState(true);
-  const [view,setView]=React.useState(null);
-  // "Ver mi seguimiento →" del espejo llega desde Inicio con una vista inicial:
-  // se consume una vez y se limpia en el padre, para que la siguiente entrada
-  // manual a Programación arranque en el menú de siempre.
-  React.useEffect(()=>{
-    // 'config' (desde «Pregúntale a Bo»): la pantalla «Configura tu plan», solo del estándar.
-    // {vista:'daily', dia, toma, bo} (Bo con IA desde Inicio): esa comida, con el cambio ya preparado.
-    if(vistaInicial){
-      if(typeof vistaInicial==='object'){ setView('daily'); setBoNav({dia:vistaInicial.dia, toma:vistaInicial.toma, bo:vistaInicial.bo||null}); }
-      else if(vistaInicial==='config'){ if(isStandard) setConfigView(true); }
-      else setView(vistaInicial);
-      onVistaConsumida&&onVistaConsumida(); }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[vistaInicial]);
-  // ── Tour guiado: la lista de la compra vista de verdad avanza su paso ──────
-  React.useEffect(()=>{ if(view==='lista') onTutoEvent&&onTutoEvent('lista_vista');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[view]);
-  const [config,setConfig]=React.useState(null);       // fila patient_config
-  const [configView,setConfigView]=React.useState(false); // pantalla de edición de plan
-  // ── Candado del plan estándar ──────────────────────────────────────────────
-  // 1 programación por SEMANA DE CALENDARIO. El paciente estándar (7€/mes)
-  // genera su plan y puede REGENERARLO GRATIS a partir del lunes siguiente.
-  // No hay regeneración con gemas: si quiere variar un plato, cambia esa
-  // receta concreta con gemas desde la comida del día.
-  const tienePlan = Array.isArray(planes) && planes.length > 0;   // ¿ya tiene un plan generado?
-  // ¿Ha definido su objetivo nutricional? El plan se ajusta a estas kcal, así
-  // que es OBLIGATORIO calcularlo en la pestaña Objetivo antes de generar.
-  // El objetivo puede estar en el perfil (profile.target_kcal) o, si el perfil
-  // en memoria aún no se ha refrescado, en patient_config.kcal_objetivo (que la
-  // calculadora también guarda). Comprobamos AMBOS para no volver a pedir el
-  // objetivo a quien ya lo tiene fijado.
-  const objKcal = Number(profile?.target_kcal);
-  const cfgKcal = Number(config?.kcal_objetivo);
-  const tieneObjetivo = (Number.isFinite(objKcal) && objKcal > 0) || (Number.isFinite(cfgKcal) && cfgKcal > 0);
-  // Lunes (00:00, hora local) de la semana en que se generó el plan actual.
-  const lunesDe = (ts) => {
-    const d = new Date(ts);
-    const dow = d.getDay();                 // 0=domingo … 6=sábado
-    const offset = dow===0 ? 6 : dow-1;     // días desde el lunes
-    const lunes = new Date(d.getFullYear(), d.getMonth(), d.getDate()-offset);
-    return lunes.getTime();
-  };
-  const ultimaGenMs = (tienePlan && planes[0]?.fecha_gen) ? Date.parse(planes[0].fecha_gen) : null;
-  // El plan está bloqueado mientras siga siendo la MISMA semana natural en que
-  // se generó. Al llegar el lunes siguiente, se desbloquea gratis.
-  const lunesActual = lunesDe(Date.now());
-  const lunesDelPlan = (ultimaGenMs!==null && !isNaN(ultimaGenMs)) ? lunesDe(ultimaGenMs) : null;
-  // Durante el trial NO hay candado: se puede regenerar cuantas veces se quiera
-  const planBloqueado = !enTrial && isStandard && tienePlan && lunesDelPlan!==null && lunesDelPlan >= lunesActual;
-  // Días que faltan hasta el próximo lunes (para el mensaje)
-  const proximoLunes = lunesActual + 7*24*60*60*1000;
-  const diasDesbloqueo = planBloqueado ? Math.max(1, Math.ceil((proximoLunes - Date.now())/(24*60*60*1000))) : 0;
-  const _hoyD=()=>hoyKey?new Date(hoyKey+"T12:00:00"):new Date();
-  const todayJS=_hoyD().getDay();
-  const todayPlan=todayJS===0?7:todayJS;
-  const [selDay,setSelDay]=React.useState(todayPlan);
-  // Al cruzar la medianoche con la pestaña abierta, el día seleccionado salta
-  // al nuevo "hoy". Antes se quedaba clavado en el de ayer que, si la noche era
-  // la del domingo, ya pertenecía a la semana anterior.
-  const _diaRef=React.useRef(hoyKey);
-  React.useEffect(()=>{
-    if(_diaRef.current===hoyKey) return;
-    _diaRef.current=hoyKey;
-    setSelDay(todayPlan);
-  },[hoyKey,todayPlan]);
-  const [openToma,setOpenToma]=React.useState(null);
-  const [tomaReceta,setTomaReceta]=React.useState(null);
-  const [loadingToma,setLoadingToma]=React.useState(false);
-  // ── Pareja vinculada (Fase 1) ──────────────────────────────────────────────
-  // Solo se carga el plan de la pareja si el vínculo está ACEPTADO por los dos.
-  const [pareja,setPareja]=React.useState(null);          // {id,nombre} o null
-  const [parejaPlanJ,setParejaPlanJ]=React.useState(null);
-  const [cocinarDos,setCocinarDos]=React.useState(false);
-  const [cocinarDeMas,setCocinarDeMas]=React.useState(1); // 1 | 2 | 3 (§5.3)
-  // ── MENÚ DESGLOSADO (tomas de objetivo alto: 1º y 2º) ──
-  // {etiquetas:[..], platos:[..], kcalTotal} o null si la toma es de un plato.
-  const [tomaMenu,setTomaMenu]=React.useState(null);
-  const [platoSel,setPlatoSel]=React.useState(0);
-  React.useEffect(()=>{
-    let vivo=true;
-    if(!profile?.id){ setPareja(null); setParejaPlanJ(null); return; }
-    (async()=>{
-      const filas=await sbReq('GET',`couple_links?select=de_id,a_id&estado=eq.aceptado`
-        +`&or=(de_id.eq.${profile.id},a_id.eq.${profile.id})&limit=1`);
-      const l=Array.isArray(filas)?filas[0]:null;
-      if(!vivo) return;
-      if(!l){ setPareja(null); setParejaPlanJ(null); return; }
-      const otroId = l.de_id===profile.id ? l.a_id : l.de_id;
-      const perf=await sbReq('GET',`perfiles_publicos?id=eq.${otroId}&select=id,name&limit=1`);  // Fase 2b: perfil ajeno → vista pública
-      if(!vivo) return;
-      setPareja({id:otroId, nombre:(Array.isArray(perf)&&perf[0]?.name)||''});
-    })();
-    return ()=>{vivo=false;};
-  },[profile?.id]);
-  const [generando,setGenerando]=React.useState(false);
-  // ── Recetas DESCARTADAS (repositorio OCULTO) ───────────────────────────────
-  // El estado ÚNICO vive en GBHApp (props descartadas/setDescartadas), igual
-  // que savedRecipes: así el descarte hecho desde el recetario completo y el
-  // hecho desde la ficha de una toma comparten fuente de verdad y caché
-  // (gbh:discarded:{id}). La carga inicial también la hace GBHApp en el login.
-
-  // ── Registro de cumplimiento por comida (aditivo) ───────────────────────────
-  // El paciente marca, por toma del día, qué hizo (seguida / menos / cambiada /
-  // comí fuera / saltada) y deja una nota libre del día. Se persiste en
-  // daily_logs (columnas meals_log jsonb, day_note text) por la MISMA vía de
-  // upsert que ya usa el resto de la app. No toca diet/steps/sleep ni la lógica
-  // de rachas, XP o calorías: es una capa de información para el nutricionista.
-  // ⚠️ Deps [hoyKey], no []. Congelado al montar, con la app viva pasada la
-  // medianoche del domingo la tira de días y `selDateKey` seguían apuntando a
-  // la semana ANTERIOR: lo que el paciente marcaba hoy se escribía 7 días atrás.
-  const lunesSemana = React.useMemo(()=>{
-    const d=_hoyD(); const dow=d.getDay(); const off=dow===0?6:dow-1;
-    return new Date(d.getFullYear(),d.getMonth(),d.getDate()-off);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[hoyKey]);
-  const fechaDeDia = (n)=>{ const d=new Date(lunesSemana); d.setDate(d.getDate()+(n-1)); return d; };
-  const selDateKey = toKey(fechaDeDia(selDay));
-  const finDeHoy   = (()=>{ const d=new Date(); d.setHours(23,59,59,999); return d; })();
-  const esFuturo   = fechaDeDia(selDay) > finDeHoy;             // no se registran días futuros
-  // ── Semana vigente ──────────────────────────────────────────────────────────
-  // La semana en curso es la MÁS RECIENTE EN FECHA DE PUBLICACIÓN (fecha_gen).
-  // Es lo que el nutricionista espera: al publicar una semana nueva, esa pasa a
-  // ser la actual del paciente. Así el arranque queda coherente con lo que ya
-  // hace la generación (que salta a planes[0], la recién publicada).
-  // Respaldos, por si faltara fecha_gen: (1) patient_config.semana_actual, y
-  // (2) la primera de la lista (planes viene ordenado semana.desc → idx 0 = nº
-  // más alto). Antes se priorizaba semana_actual, y si el generador no la
-  // refrescaba (se quedaba en 6), el paciente veía una semana vieja aunque
-  // hubiera un plan más nuevo publicado.
-  // (Declarado ANTES de puedeRegistrar porque este depende de él.)
-  const idxActual = React.useMemo(()=>{
-    if(!Array.isArray(planes) || !planes.length) return 0;
-    // 1) Prioridad: la de fecha de publicación más reciente.
-    let best=-1, bestT=-Infinity;
-    planes.forEach((p,i)=>{ const t=p.fecha_gen?Date.parse(p.fecha_gen):NaN; if(!isNaN(t)&&t>bestT){bestT=t;best=i;} });
-    if(best>=0) return best;
-    // 2) Respaldo: la que el config marca como actual.
-    const sa = config?.semana_actual;
-    if(sa!=null){
-      const i = planes.findIndex(p=>String(p.semana)===String(sa));
-      if(i>=0) return i;
-    }
-    // 3) Último recurso: la de número más alto (planes va en semana.desc).
-    return 0;
-  },[planes, config?.semana_actual]);
-  // El registro de platos se ancla a la SEMANA VIGENTE (idxActual), no a la de
-  // número más alto (idx===0). Con idx===0, un reinicio de ciclo (S12 → S1) o
-  // una fila huérfana con nº alto dejaban el registro apuntando a un plan viejo:
-  // el paciente monitorizaba los platos de una semana que no era.
-  const puedeRegistrar = (idx===idxActual) && !esFuturo;        // solo la semana en curso
-  const [regDia,setRegDia]   = React.useState({});              // { 'YYYY-MM-DD': {meals:{}, note:''} }
-  const [notaTmp,setNotaTmp] = React.useState('');              // texto en edición de la nota del día
-  const [notaOK,setNotaOK]   = React.useState(false);           // indicador "guardada ✓"
-  const realDia = regDia[selDateKey]?.real || {};                // Kcal reales: detalle por toma (fase 1: fracción de «menos»)
-
-  // Carga inicial: semilla desde caché local + refresco remoto de la semana actual.
-  React.useEffect(()=>{
-    if(!profile?.id) return;
-    const cache = lsGet(`gbh:logs:${profile.id}`, []);
-    const seed={};
-    (Array.isArray(cache)?cache:[]).forEach(l=>{
-      if(l?.date && (l.meals || l.note || l.real)) seed[l.date]={meals:l.meals||{}, note:l.note||'', real:l.real||{}};
-    });
-    setRegDia(seed);
-    const lunesKey=toKey(lunesSemana);
-    sbReq('GET',`daily_logs?profile_id=eq.${profile.id}&log_date=gte.${lunesKey}&select=log_date,meals_log,day_note,meals_real`)
-      .then(rows=>{
-        if(!Array.isArray(rows)) return;
-        setRegDia(prev=>{
-          const next={...prev};
-          rows.forEach(r=>{ const k=r.log_date; if(!k) return;
-            next[k]={meals:r.meals_log||next[k]?.meals||{}, note:(r.day_note??next[k]?.note)||'', real:r.meals_real||next[k]?.real||{}}; });
-          return next;
-        });
-      });
-  },[profile?.id,hoyKey]); // eslint-disable-line react-hooks/exhaustive-deps
-                           // `hoyKey`: al cruzar la medianoche se relee la semana
-                           // (que puede ser otra) en vez de arrastrar la vieja.
-
-  // Al cambiar de día (o llegar datos remotos), refleja la nota de ese día en el textarea.
-  React.useEffect(()=>{ setNotaTmp(regDia[selDateKey]?.note||''); setNotaOK(false); },[selDateKey, regDia[selDateKey]?.note]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Persiste un cambio del día: actualiza estado, caché local y upsert parcial a Supabase.
-  // El merge se basa en la caché local (que escribimos de forma SÍNCRONA) para que
-  // toques rápidos sobre varias comidas se acumulen sin pisarse.
-  const persistDia = (dateKey,{toma,estado,note,real}) => {
-    const key=`gbh:logs:${profile.id}`;
-    const arr=lsGet(key,[]); const i=arr.findIndex(l=>l.date===dateKey);
-    const cur = i>=0 ? arr[i] : {date:dateKey,diet:false,steps:false,hydration:false,sleep:false,sc:0,meals:{},note:''};
-    let meals = {...(cur.meals||{})};
-    if(toma){
-      if(meals[toma]===estado) delete meals[toma];   // volver a tocar el mismo estado lo desmarca
-      else meals[toma]=estado;
-    }
-    const nota = note!==undefined ? note : (cur.note||'');
-    // Kcal reales (fase 1): `real[toma]` guarda lo que el plan NO sabe (hoy, la fracción
-    // de «menos»; en la fase 2, los ítems de «la cambié»/«comí fuera»). Cambiar o desmarcar
-    // el estado de una toma borra su detalle; `real:{toma,detalle}` lo escribe (detalle null lo borra).
-    // Viaja en daily_logs.meals_real, columna aparte: meals_log sigue siendo la cadena de siempre.
-    let realMap={...(cur.real||{})}; let realTocado=false;
-    if(toma){ delete realMap[toma]; realTocado=true; }
-    if(real&&real.toma){ if(real.detalle) realMap[real.toma]=real.detalle; else delete realMap[real.toma]; realTocado=true; }
-    const entry={...cur,meals,note:nota,real:realMap};
-    if(i>=0) arr[i]=entry; else arr.push(entry);
-    try{ lsSet(key,arr); }catch{}
-    setRegDia(prev=>({...prev,[dateKey]:{meals,note:nota,real:realMap}}));
-    // upsert parcial: solo envía las columnas que cambian (no toca diet/steps/sleep/…)
-    const body={profile_id:profile.id,log_date:dateKey};
-    if(toma) body.meals_log=meals;
-    if(note!==undefined) body.day_note=nota;
-    if(realTocado) body.meals_real=realMap;
-    sbReq('POST','daily_logs?on_conflict=profile_id,log_date',body);
-    // Avisar a Inicio: actualiza los mini-botones por toma y, si con este registro
-    // quedan todas las tomas del día registradas, completa la misión de dieta (racha).
-    if(toma && typeof onMealRegistered==='function') onMealRegistered(dateKey, meals);
-  };
-  const setEstadoComida = (toma,estado)=>{ if(!puedeRegistrar) return; const seSetea = regDia[selDateKey]?.meals?.[toma]!==estado; persistDia(selDateKey,{toma,estado}); sfx&&sfx('step'); onTutoEvent&&onTutoEvent('comida_marcada');
-    if(seSetea&&estado==='fuera') setHoja({toma,modo:'sustituir'}); else if(seSetea&&estado==='anadida') setHoja({toma,modo:'anadir'});   // al marcar: 🔄 pregunta qué comiste en vez de la receta; ➕ qué añadiste (las dos se cierran con «Ahora no»)
-    if(seSetea&&boActivo(profile)) avisoBoMomento(estado); };
-  // «Pregúntale a Bo»: al marcar ⏭️ o 🔄, el texto FIRMADO de ese momento, una vez al día (hoyKey,
-  // no el día que se marca), en un bocadillo que no bloquea. Sin fila firmada, no sale nada.
-  const [boMomento,setBoMomento] = React.useState(null);       // {texto, firma, tema} | null
-  const [boHoja,setBoHoja] = React.useState(false);            // «Pregúntale a Bo» desde la ficha de receta
-  const avisoBoMomento = (estado)=>{
-    const ctxB = {plan:planBo(profile)};
-    const f = filaMomento(estado, ctxB); if(!f) return;
-    let alm=null; try{ alm=window.localStorage; }catch(e){ alm=null; }
-    if(momentoVisto(alm, profile?.id, hoyKey)) return;
-    marcarMomentoVisto(alm, profile?.id, hoyKey);
-    setBoMomento({texto:textoTema(f, ctxB, lang), firma:firmaTema(f, ctxB), tema:f.id});
-    boRegistrar({profile_id:profile?.id,tipo:'uso',contexto:f.contexto[0],tema:f.id,resultado:'abierto'});
-  };
-  // Kcal reales (fase 2): la hoja «¿Qué comiste?» — 'sustituir' (la cambié / comí fuera) o 'extras' (sobre cualquier estado).
-  // Los ítems viajan con sus números dentro; el total se recalcula aquí con sumaItems y se guarda en meals_real[toma].
-  const [hoja,setHoja] = React.useState(null);                 // {toma, modo} | null
-  const abrirHoja = (toma,modo)=>{ if(!puedeRegistrar) return; setHoja({toma,modo}); sfx&&sfx('tap'); };
-  const guardarHoja = (items,conocido)=>{
-    if(!hoja) return;
-    const prev = realDia[hoja.toma] || {};
-    let detalle;
-    if(hoja.modo==='extras'){ detalle = {...prev, extras: items}; }
-    else { const s = sumaItems(items); const ok = conocido!==false && items.length>0;
-      detalle = {...prev, items, conocido: ok, kcal: ok? Math.round(s.kcal) : null, p: ok? +s.p.toFixed(1) : 0, h: ok? +s.h.toFixed(1) : 0, g: ok? +s.g.toFixed(1) : 0, conMacros: ok ? s.conMacros : false}; }
-    persistDia(selDateKey,{real:{toma:hoja.toma, detalle}});
-    setHoja(null); sfx&&sfx('step');
-  };
-  // «Menos»: ¿cuánto? (¼ · ½ · ¾). Solo escribe si la toma está en «menos»; no toca el estado ni la racha.
-  const setFraccionMenos = (toma,f)=>{ if(!puedeRegistrar || regDia[selDateKey]?.meals?.[toma]!=='menos') return; persistDia(selDateKey,{real:{toma,detalle:{frac:f}}}); sfx&&sfx('tap'); };
-  const guardarNotaDia  = ()=>{ if(!puedeRegistrar) return; if(notaTmp===(regDia[selDateKey]?.note||'')) return;
-    persistDia(selDateKey,{note:notaTmp.trim()}); setNotaOK(true); setTimeout(()=>setNotaOK(false),1800); };
-
-  // Recarga los planes desde Supabase (tras generar)
-  const recargarPlanes=React.useCallback(()=>{
-    if(!profile) return Promise.resolve();
-    return sbReq('GET',`weekly_plans?profile_id=eq.${profile.id}&select=semana,plan_json,fecha_gen,pdf_url&order=semana.desc&limit=12`)
-      .then(wp=>{setPlanes(wp||[]);return wp;});
-  },[profile?.id]);
-  // Llama al servidor Railway para generar la programación al instante
-  async function generarProgramacion(opts={}){
-    if(generando) return;
-    if(!GBH_SERVER_URL){
-      showT&&showT({icon:"⚙️",title:lang==='en'?'Not configured yet':'Aún no configurado',sub:lang==='en'?'The generation server is not set up.':'El servidor de generación no está configurado todavía.'});
-      onTutoEvent&&onTutoEvent('plan_fallo');   // tour: sin servidor, el paso se salta
-      return;
-    }
-    // ── Sin objetivo nutricional no se genera (el plan se ajusta a esas kcal) ──
-    if(isStandard && !tieneObjetivo){
-      showT&&showT({icon:"🎯",title:lang==='en'?'Set your goal first':'Define tu objetivo primero',
-        sub:lang==='en'?'Go to the Goal tab to calculate your daily calories.':'Ve a la pestaña Objetivo para calcular tus calorías diarias.'});
-      setTab&&setTab('objetivo');   // Objetivo es una vista de Progreso (6-oct-2026); setTab aquí es irA()
-      return;
-    }
-
-    // ── Candado semanal: 1 plan por semana natural. SIN gemas ──
-    // Si está bloqueado (misma semana en que se generó), no se regenera:
-    // el paciente espera al lunes (gratis) o cambia recetas sueltas con gemas.
-    if(planBloqueado && tienePlan){
-      showT&&showT({icon:"🔒",title:lang==='en'?'One plan per week':'Un plan por semana',
-        sub:lang==='en'
-          ? `Your new plan unlocks Monday (${diasDesbloqueo} day${diasDesbloqueo!==1?'s':''}). To vary a meal, swap that recipe with gems.`
-          : `Tu nueva programación se desbloquea el lunes (${diasDesbloqueo} día${diasDesbloqueo!==1?'s':''}). Para variar una comida, cambia esa receta con gemas.`});
-      return;
-    }
-    setGenerando(true);   // el OverlayGenerando bloqueante informa del progreso
-    // Semana de la que partimos: si tras el intento hay una MÁS NUEVA en
-    // Supabase, la generación funcionó aunque el fetch fallara/expirara.
-    // Para detectar éxito tras regenerar: guardamos la fecha_gen previa de la
-    // semana actual. Al regenerar, el servidor REEMPLAZA la misma semana con
-    // una fecha_gen nueva (no crea una semana superior), así que comparar por
-    // número de semana fallaba y reembolsaba un plan que SÍ se había generado.
-    const fechaGenPrevia = (Array.isArray(planes)&&planes[0]?.fecha_gen) ? String(planes[0].fecha_gen) : null;
-    const semanaPrevia   = (Array.isArray(planes)&&planes[0]?.semana!=null) ? planes[0].semana : -1;
-    const planJsonPrevio = (Array.isArray(planes)&&planes[0]?.plan_json) ? JSON.stringify(planes[0].plan_json) : null;
-    let exito=false;
-    try{
-      // Timeout duro: Railway (plan gratuito) puede tardar en "despertar".
-      // Sin esto, si el servidor se cuelga la promesa no resuelve nunca y el
-      // botón se queda en "Generando…" para siempre con las gemas ya cobradas.
-      const ctrl=new AbortController();
-      const tId=setTimeout(()=>ctrl.abort(), 75000); // 75 s
-      let resp=null;
-      try{
-        resp=await fetch(GBH_SERVER_URL.replace(/\/$/,'')+'/generar',{
-          method:'POST',
-          // La identidad es la sesión (MAESTRO-2026-738): el servidor genera para el perfil de
-          // X-GBH-Sesion e ignora el profile_id del cuerpo, que queda solo para servidores antiguos.
-          headers:{'Content-Type':'application/json','X-GBH-Token':GBH_GEN_TOKEN,
-                   ...(getSesion()?.token ? {'X-GBH-Sesion':getSesion().token} : {})},
-          body:JSON.stringify({profile_id:profile.id}),
-          signal:ctrl.signal,
-        });
-      }catch(fetchErr){
-        // Abort o red caída: no lanzamos aún, comprobamos Supabase abajo.
-        console.warn("[generar] fetch falló o expiró:", fetchErr?.name||fetchErr);
-      }finally{ clearTimeout(tId); }
-
-      if(resp && !resp.ok){
-        const err=await resp.json().catch(()=>({}));
-        throw new Error(err.detail||('HTTP '+resp.status));
-      }
-
-      // Dar margen a que Supabase refleje el plan y recargar.
-      await new Promise(r=>setTimeout(r,1500));
-      const recargados = await recargarPlanes();
-      // VERIFICACIÓN REAL: ¿hay una semana nueva? Esto manda sobre el fetch:
-      // si el servidor respondió pero la app perdió la respuesta, igualmente
-      // detectamos el plan y NO cobramos de más ni dejamos colgado el botón.
-      // Éxito si: (a) el servidor respondió OK, o (b) detectamos un plan nuevo
-      // en Supabase — ya sea una semana superior (primera generación) o la
-      // misma semana con una fecha_gen distinta (REGENERACIÓN).
-      const top = Array.isArray(recargados) ? recargados[0] : null;
-      const semanaSuperior = top?.semana!=null && top.semana>semanaPrevia;
-      const fechaDistinta  = top?.fecha_gen!=null && String(top.fecha_gen)!==fechaGenPrevia;
-      const planJsonDistinto = top?.plan_json!=null && JSON.stringify(top.plan_json)!==planJsonPrevio;
-      // Cualquiera de las tres señales = se generó un plan nuevo (regeneración
-      // incluida). El plan_json siempre cambia al regenerar (recetas nuevas).
-      const planNuevo = semanaSuperior || fechaDistinta || planJsonDistinto;
-      if((resp && resp.ok) || planNuevo){
-        exito=true;
-        setIdx(0);
-        onTutoEvent&&onTutoEvent('plan_generado');   // tour: programación creada de verdad
-        sfx&&sfx("recipe");
-        showT&&showT({icon:"🎉",title:lang==='en'?'Plan ready!':'¡Programación lista!',sub:lang==='en'?'Your weekly plan is here':'Tu plan semanal ya está disponible'});
-      }else{
-        throw new Error(lang==='en'?'The server did not respond in time':'El servidor no respondió a tiempo');
-      }
-    }catch(e){
-      // (sin coletilla de gemas: la regeneración ya no cobra gemas — el texto
-      //  «gemas devueltas» era un resto de la era anterior y confundía)
-      showT&&showT({icon:"⚠️",title:lang==='en'?'Could not generate':'No se pudo generar',
-        sub:String(e.message||e).slice(0,90)});
-      onTutoEvent&&onTutoEvent('plan_fallo');   // tour: el paso se salta, no se rompe
-    }finally{
-      setGenerando(false);
-    }
-  }
-  React.useEffect(()=>{setView(null);setOpenToma(null);setTomaReceta(null);setTomaMenu(null);},[idx]);
-  React.useEffect(()=>{setOpenToma(null);setTomaReceta(null);setTomaMenu(null);},[selDay]);
-  React.useEffect(()=>{
-    if(!profile) return;
-    if(!tieneAcceso){setLoading(false);return;}
-    Promise.all([
-      sbReq('GET',`weekly_plans?profile_id=eq.${profile.id}&select=semana,plan_json,fecha_gen,pdf_url&order=semana.desc&limit=12`),
-      sbReq('GET',`patient_config?profile_id=eq.${profile.id}&select=*&limit=1`),
-    ]).then(([wp,pc])=>{
-      setPlanes(wp||[]);
-      setConfig(pc&&pc.length?pc[0]:null);
-      setLoading(false);
-    });
-  },[profile?.id]);
-  // ── El plan se escribe por CELDAS (15-oct-2026, PEND-2026-387 · MAESTRO-2026-923) ──────────────
-  // Cambiar una receta o un plato mandaba el plan_json ENTERO que la app tenía en memoria: si el
-  // paciente había cambiado algo en otro dispositivo o pestaña, lo borraba (Aritz, 15-oct: su app
-  // borró 4 cambios hechos en Safari). Ahora se escribe SOLO la celda (src/celdaPlan.js → función
-  // cambiar_celda_plan de la base, atómica) y la app se queda con el plan que devuelve la base, que
-  // trae también lo cambiado en el otro lado. Con un error HTTP, el PATCH de siempre; sin red, la
-  // celda va a la cola. `escrituraPlan` impide que una respuesta o una relectura más vieja pise en
-  // pantalla un cambio más nuevo. 07. App GBH/arnes_celda_plan.py lo prueba con este mismo texto.
-  const escrituraPlan = React.useRef({ n: 0, enVuelo: 0 });
-  const escribirCelda = (semana, toma, dia, celda, planEntero) => {
-    const e = escrituraPlan.current; const n = ++e.n; e.enVuelo++;
-    persistirCelda({ sbDirect, sbReq, enqueue, profileId: profile.id, semana, toma, dia, celda, planEntero })
-      .then(res => {
-        if(res.via === 'rpc' && res.plan && e.n === n)
-          setPlanes(ps => ps.map(p => p.semana === semana ? { ...p, plan_json: res.plan } : p));
-      })
-      .catch(err => console.warn("[celda-plan] no se pudo persistir:", err))
-      .finally(() => { e.enVuelo--; });
-  };
-  // Al volver a primer plano se relee el plan: lo cambiado en el otro dispositivo aparece sin cerrar
-  // la app, y un PATCH de reserva sale de un plan fresco. Sin red (sbReq da null) o con una escritura
-  // en marcha, se queda lo que hay: nunca se vacía la lista ni se mueve la semana que se mira.
-  const releerPlan = () => {
-    if(!profile?.id) return;
-    const e = escrituraPlan.current;
-    if(e.enVuelo > 0) return;
-    const n = e.n;
-    sbReq('GET', `weekly_plans?profile_id=eq.${profile.id}&select=semana,plan_json,fecha_gen,pdf_url&order=semana.desc&limit=12`)
-      .then(wp => { if(Array.isArray(wp) && e.n === n && e.enVuelo === 0) setPlanes(ps => fusionarPlanes(ps, wp)); });
-  };
-  // fin de los ayudantes del plan por celdas
-  React.useEffect(()=>{
-    if(!profile?.id || !tieneAcceso) return;
-    const alVolver = ()=>{ if(document.visibilityState === 'visible') releerPlan(); };
-    document.addEventListener('visibilitychange', alVolver);
-    return ()=>document.removeEventListener('visibilitychange', alVolver);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[profile?.id, tieneAcceso]);
-  const plan=planes[idx];const planJ=plan?.plan_json;
-  // «Pregúntale a Bo» con IA: ir a una comida concreta (día y toma) y abrir Bo en su ficha con el
-  // cambio ya preparado. Va aquí, detrás de planJ: el efecto lo lee en su lista de dependencias.
-  const [boNav,setBoNav] = React.useState(null);               // {dia, toma, bo} | null
-  const [boPendiente,setBoPendiente] = React.useState(null);   // {accion, ingrediente, tipo_receta} | null
-  React.useEffect(()=>{
-    if(!boNav || !planJ) return;
-    if(view!=='daily'){ setView('daily'); return; }
-    if(selDay!==boNav.dia){ setSelDay(boNav.dia); return; }
-    const nav = boNav; setBoNav(null);
-    (async()=>{ await abrirToma(nav.toma); setBoPendiente(nav.bo||null); setBoHoja(true); })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[boNav, planJ, view, selDay]);
-  // ── Plan de la pareja, de LA MISMA SEMANA que se está mirando ──────────────
-  // Tiene que ir aquí abajo (después de `plan`): arriba, junto al vínculo, la
-  // semana todavía no se conoce. Antes se traía "el último plan" de la pareja
-  // sin mirar la semana: si ella regeneraba y él no, o él navegaba a otra
-  // semana con el WeekNav, se sumaban DOS SEMANAS DISTINTAS en silencio.
-  // Si la pareja no tiene plan de esa semana, no hay fila y no se ofrece nada.
-  React.useEffect(()=>{
-    let vivo=true;
-    if(!pareja?.id || plan?.semana==null){ setParejaPlanJ(null); return; }
-    (async()=>{
-      const pl=await sbReq('GET',`weekly_plans?profile_id=eq.${pareja.id}`
-        +`&semana=eq.${encodeURIComponent(plan.semana)}&select=plan_json&limit=1`);
-      if(!vivo) return;
-      const pj=(Array.isArray(pl)&&pl[0]?.plan_json)||null;
-      // Solo las tomas: dentro de plan_json también viajan `seguimiento`
-      // (pesajes) y `suplementacion`, que no hacen falta para cocinar ni para
-      // la compra. No se guardan en memoria ni en localStorage.
-      if(!pj){ setParejaPlanJ(null); return; }
-      const soloTomas={};
-      for(const tm of PLAN_TOMAS) if(pj[tm]) soloTomas[tm]=pj[tm];
-      setParejaPlanJ(Object.keys(soloTomas).length?soloTomas:null);
-    })();
-    return ()=>{vivo=false;};
-  },[pareja?.id, plan?.semana]);
-  // ── Medicación/suplementación de HOY ─────────────────────────────────────────
-  // Premium: viene del Excel vía plan_json.suplementacion (automatización).
-  // Standard: la define el PROPIO paciente en su configuración de plan
-  // (patient_config.suplementacion, máx. 3 recordatorios → máx. +15 💎/día).
-  // Botones horizontales entre las tomas (colocados por hora). Al completarlos:
-  // +5 gemas y desaparecen el resto del día. Solo seguimiento: no tocan la racha.
-  // ⚠️ Este bloque DEBE ir después de la declaración de planJ y config (TDZ).
-  const suplHoy = React.useMemo(()=>{
-    const delPlan = normSupl(planJ);
-    if(delPlan) return delPlan;
-    if(isStandard){
-      const arr = Array.isArray(config?.suplementacion) ? config.suplementacion.slice(0,3) : null;
-      return normSupl({suplementacion:arr});
-    }
-    return null;
-  },[planJ,config,isStandard]);
-  const [suplHechos,setSuplHechos]=React.useState({});
-  React.useEffect(()=>{
-    if(!profile?.id) return;
-    setSuplHechos(lsGet(suplHechosKey(profile.id,selDateKey),{}));
-  },[profile?.id,selDateKey]);
-  const marcarSupl=(item)=>{
-    if(!profile?.id || suplHechos[item.nombre]) return;
-    const nuevos={...suplHechos,[item.nombre]:true};
-    setSuplHechos(nuevos);
-    lsSet(suplHechosKey(profile.id,selDateKey),nuevos);
-    persistDia(selDateKey,{toma:`supl|${item.nombre}`,estado:'hecho'});   // seguimiento en daily_logs
-    const newGems=(profile.gems||0)+5;
-    const updP={...profile,gems:newGems};
-    setProfile(updP); lsSet(`gbh:p:${profile.id}`,updP);
-    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:newGems});
-    sfx&&sfx("missionDone");
-    showT&&showT({icon:SUPL_IC[item.tipo]||'💊',
-      title:lang==='en'?'Done! +5 💎':'¡Completado! +5 💎',sub:item.nombre});
-  };
-  // ── Media calórica de la semana (mismo método que la automatización: media
-  //    de los totales diarios de kcal, cada día = suma de las kcal ya escaladas
-  //    de sus tomas). Da al paciente la seguridad de que, aunque cada comida
-  //    varíe, el promedio de la semana es preciso. ──────────────────────────
-  const mediaKcalSem = React.useMemo(()=>{
-    if(!planJ) return null;
-    const totales=[];
-    for(let d=1; d<=7; d++){
-      let tot=0, hay=false;
-      for(const tm of PLAN_TOMAS){
-        const m=planJ?.[tm]?.[String(d)];
-        const k=m?(parseFloat(m.Calorias_Totales)||0):0;
-        if(k>0){ tot+=k; hay=true; }
-      }
-      if(hay) totales.push(tot);
-    }
-    if(!totales.length) return null;
-    return Math.round(totales.reduce((a,b)=>a+b,0)/totales.length);
-  },[planJ]);
-  // ── Lista de la compra interactiva (FIJA) ───────────────────────────────────
-  // Es una INSTANTÁNEA de la programación original de la semana, tomada la
-  // primera vez que el plan llega al dispositivo y guardada en localStorage.
-  // Deliberadamente NO se actualiza cuando el paciente cambia recetas con gemas:
-  // probar varias opciones hasta dar con la buena acumularía ingredientes de
-  // recetas descartadas. Para comprar una receta concreta (cambiada o del
-  // recetario) está el botón 🛒 Comprar de cada receta (MiniListaCompra).
-  // ── Modo "lista para los dos" (§6) ─────────────────────────────────────────
-  // ⚠️ La instantánea Y los tachados van SCOPEADOS POR MODO. Si compartieran
-  // clave, al alternar entre "solo la mía" y "para los dos" se pisarían los
-  // tachados y aparecerían como comprados ingredientes que no lo están.
-  const [listaDeDos,setListaDeDos]=React.useState(false);
-  const puedeListaDeDos = !!(pareja && parejaPlanJ);
-  const modoDos = listaDeDos && puedeListaDeDos;
-  const sufijoModo = modoDos ? ":pareja" : "";
-  const listaSnapKey=`gbh:listasnap5:${profile?.id}:${plan?.semana??"x"}${sufijoModo}`;
-  const [listaSnap,setListaSnap]=React.useState(null);
-  React.useEffect(()=>{
-    if(!planJ){ setListaSnap(null); return; }
-    const s=lsGet(listaSnapKey,null);
-    if(Array.isArray(s)&&s.length){ setListaSnap(s); return; }
-    const items=agregarListaCompra(planJ, modoDos?parejaPlanJ:null);
-    if(items.length) lsSet(listaSnapKey,items);
-    setListaSnap(items);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[listaSnapKey, planJ?1:0, modoDos, parejaPlanJ?1:0]);
-  const listaItems = listaSnap||[];
-  // ── 💶 Gasto estimado de la compra (fijo con la instantánea) + gasto real ──
-  // El gasto real que apunta el paciente es el feedback que calibra la base de
-  // precios (tabla lista_compra_gasto; el nutricionista la cruza con el Excel).
-  _perfilActualId = profile?.id || null;   // para MiniListaCompra (gasto real)
-  const gastoEst = React.useMemo(()=>costeListaItems(listaItems),[listaItems]);
-  const gastoRealKey=`gbh:gastoreal:${profile?.id}:${plan?.semana??"x"}${sufijoModo}`;
-  const [gastoReal,setGastoReal]=React.useState("");
-  const [gastoOk,setGastoOk]=React.useState(false);
-  React.useEffect(()=>{ setGastoReal(lsGet(gastoRealKey,"")); setGastoOk(false); },[gastoRealKey]);
-  const guardarGastoReal=()=>{
-    const v=parseFloat(String(gastoReal).replace(",","."));
-    if(!(v>0)||!profile?.id) return;
-    lsSet(gastoRealKey,String(gastoReal));
-    sbReq('POST','lista_compra_gasto?on_conflict=profile_id,semana,modo',
-      {profile_id:profile.id, semana:parseInt(plan?.semana)||0, modo:modoDos?'pareja':'solo',
-       estimado_eur:gastoEst.total||null, real_eur:v, actualizado_en:new Date().toISOString()});
-    setGastoOk(true); sfx&&sfx("missionDone");
-    showT&&showT({icon:"💶",title:lang==='en'?'Saved!':'¡Guardado!',
-      sub:lang==='en'?'Thanks — it helps us fine-tune the estimate':'Gracias — nos ayuda a afinar la estimación'});
-  };
-  // (El gasto real por RECETA vive en MiniListaCompra —la pestaña 🛒 Comprar—
-  //  por orden de Alejandro: es donde el paciente tiene el ticket en la mano.)
-  // Formato del badge: cada fila puede combinar varias expresiones del mismo
-  // ingrediente entre recetas → "120 g + 1 tarrina". Despensa → compra realista.
-  const fmtParte=(p)=>{
-    if(p.tipo==="desp") return p.compra||"";
-    if(p.tipo==="veces") return p.veces>1?`×${p.veces}`:"";
-    if(p.tipo==="cont"){ const n=Math.max(1,Math.ceil(p.cant)); return `${n} ${p.uni}${n>1?"s":""}`; }
-    if(p.tipo==="ud"){ const n=Math.max(1,Math.ceil(p.cant)); return `×${n}`; }
-    if(p.tipo==="med"){ const n=Math.round(p.cant*10)/10; return `${String(n).replace(".",",")} ${p.uni}`; }
-    let c=p.cant, u=p.uni;
-    if(u==="g"&&c>=1000){ c=c/1000; u="kg"; }
-    if(u==="ml"&&c>=1000){ c=c/1000; u="l"; }
-    const num=(Math.round(c*100)/100).toString().replace(".",",");
-    return `${num} ${u}`;
-  };
-  const fmtCant=(it)=>it.entry?_fmtCompra(it.entry,it.c||{}):(it.partes||[]).map(fmtParte).filter(Boolean).join(" + ");
-  const listaLsKey=`gbh:listacompra3:${profile?.id}:${plan?.semana??"x"}${sufijoModo}`;
-  const [listaChecks,setListaChecks]=React.useState({});
-  const [listaConfirm,setListaConfirm]=React.useState(false);   // doble tap en Regenerar
-  const [miniCompra,setMiniCompra]=React.useState(null);        // popup 🛒 por receta (vista diaria)
-  React.useEffect(()=>{ setListaChecks(lsGet(listaLsKey,{})); setListaConfirm(false); },[listaLsKey]);
-  // Clave COMPARTIDA de la lista de dos: el lunes de esta semana lo calculan
-  // igual los dos dispositivos, así que los dos apuntan a la misma fila.
-  const claveDos = (pareja&&profile?.id)
-    ? [profile.id,pareja.id].sort().join("_")+":"+toKey(lunesSemana) : null;
-  // Los tachados de la lista combinada viven en Supabase: si no, uno compra lo
-  // que el otro ya ha comprado, que es justo la fricción que estamos quitando.
-  // Sin realtime: se refresca al abrir la lista y al volver a la app.
-  const traerChecksDos=React.useCallback(async()=>{
-    if(!claveDos) return;
-    const filas=await sbReq('GET',`couple_shopping?select=tachados&clave=eq.${encodeURIComponent(claveDos)}&limit=1`);
-    const t=Array.isArray(filas)&&filas[0]?.tachados;
-    if(t&&typeof t==='object'){ setListaChecks(t); lsSet(listaLsKey,t); }
-  },[claveDos,listaLsKey]);
-  React.useEffect(()=>{
-    if(!modoDos||view!=='lista') return;
-    traerChecksDos();
-    const alVolver=()=>{ if(document.visibilityState==='visible') traerChecksDos(); };
-    document.addEventListener('visibilitychange',alVolver);
-    return ()=>document.removeEventListener('visibilitychange',alVolver);
-  },[modoDos,view,traerChecksDos]);
-  const guardarChecks=(n)=>{
-    lsSet(listaLsKey,n);
-    if(modoDos&&claveDos)
-      sbReq('POST','couple_shopping?on_conflict=clave',
-        {clave:claveDos, tachados:n, actualizado_en:new Date().toISOString()});
-  };
-  const toggleListaCheck=(k)=>{
-    sfx&&sfx("tap");
-    setListaChecks(c=>{ const n={...c}; if(n[k])delete n[k]; else n[k]=true; guardarChecks(n); return n; });
-  };
-  const regenerarLista=()=>{
-    if(!listaConfirm){ setListaConfirm(true); return; }
-    sfx&&sfx("missionDone");
-    setListaChecks({}); guardarChecks({}); setListaConfirm(false);
-    showT&&showT({icon:"🛒",title:lang==='en'?'List reset!':'¡Lista regenerada!',sub:lang==='en'?'Ready for a new shopping trip':'Lista limpia para volver a hacer la compra'});
-  };
-  // ── Distribución de macros del día: desde la fase 1 de «Kcal reales» la calcula
-  //    src/kcalDia.js (misma definición Atwater 4/4/9) y la pinta <TuDia/> al final
-  //    de Platos diarios, junto a las kcal reales frente a las previstas. ─
-  // ── Semana vigente: idxActual está declarado más arriba (antes de
-  // puedeRegistrar, que depende de él). Aquí solo queda el posicionamiento. ──
-  // Al abrir el Plan (o tras (re)generar) posiciona en la semana vigente, no en
-  // la última que estuviera mirando el paciente. No interfiere con la navegación
-  // manual dentro de la sesión: idxActual solo cambia si cambian los planes o la
-  // semana_actual, no al pulsar las flechas.
-  React.useEffect(()=>{ setIdx(idxActual); },[idxActual]);
-  // ¿El paciente estándar ya configuró su plan?
-  const configCompleta = config?.config_completa === true;
-  // Caché de todas las recetas (se carga una vez) para buscar por nombre sin
-  // depender de acentos/codificación en la URL de PostgREST.
-  const recetasCacheRef = React.useRef(null);
-  const normNombre = (s)=>(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
-
-  const RECIPES_CACHE_KEY = 'gbh:recipes_cache_v2';
-  const RECIPES_CACHE_TTL = 24*60*60*1000; // 24 h
-  async function cargarRecetasCache(){
-    if(recetasCacheRef.current) return recetasCacheRef.current;
-    try{
-      const cached = JSON.parse(localStorage.getItem(RECIPES_CACHE_KEY)||'null');
-      if(cached?.ts && Date.now()-cached.ts < RECIPES_CACHE_TTL && cached.mapa && Object.keys(cached.mapa).length){
-        recetasCacheRef.current = cached.mapa;
-        return cached.mapa;
-      }
-    }catch{}
-    const todas = await leerRecetarioCompleto();   // en bloques: con limit=1000, desde la receta 1.001 el cambio no la vería
-    const mapa = {};
-    (todas||[]).forEach(r=>{
-      const nom = r.nombre||r.nombre_receta||r.Nombre_Receta||'';
-      if(nom) mapa[normNombre(nom)] = r;
-    });
-    if(Object.keys(mapa).length){
-      recetasCacheRef.current = mapa;
-      try{ localStorage.setItem(RECIPES_CACHE_KEY, JSON.stringify({ts:Date.now(), mapa})); }catch{}
-    }
-    return mapa;
-  }
-
-  // Normaliza un plato del menú desglosado al formato de tomaReceta.
-  // Los platos vienen del plan YA escalados a la ración del paciente (kcal,
-  // macros e ingredientes), igual que las celdas normales de planes nuevos.
-  const platoMenuAReceta = (pl)=>({
-    nombre:       pl.Nombre_Receta||'',
-    tipo:         pl.Tipo||'',
-    calorias:     Math.round(parseFloat(pl.Calorias_Totales)||0),
-    proteinas_g:  Math.round(parseFloat(pl.Proteinas_g)||0),
-    hidratos_g:   Math.round(parseFloat(pl.Hidratos_g)||0),
-    grasas_g:     Math.round(parseFloat(pl.Grasas_g)||0),
-    ingredientes: pl.Ingredientes||'',
-    instrucciones:pl.Instrucciones||(lang==='en'?'No preparation steps available.':'Sin pasos de preparación disponibles.'),
-    racion_texto: pl.racion_texto||'',
-    racion_factor:parseFloat(pl.racion_factor)||1,
-    raciones:     parseInt(pl.raciones||1)||1,
-    // Las kcal que le puso la programación: un plato ya cambiado las guarda en
-    // kcal_objetivo, para que varios cambios seguidos no se vayan desviando.
-    kcal_objetivo:Math.round(parseFloat(pl.kcal_objetivo)||parseFloat(pl.Calorias_Totales)||0),
-    slug:null, publica:false,   // los platos del menú no tienen escaparate propio
-  });
-
-  async function abrirToma(toma){
-    onTutoEvent&&onTutoEvent('receta_abierta');   // tour: receta del día abierta
-    const meal=planJ?.[toma]?.[String(selDay)];
-    if(!meal?.Nombre_Receta) return;
-    setOpenToma(toma);setTomaReceta(null);setLoadingToma(true);
-    setCocinarDos(false);setCocinarDeMas(1);   // cada plato se decide aparte
-
-    // ── MENÚ DESGLOSADO: la celda trae los TOTALES (un único registro para
-    // toda la toma) y `platos` con cada plato completo. Se muestran como
-    // pestañas — cada plato con SUS ingredientes y SU preparación — y el
-    // cumplimiento sigue siendo UNO para todo el menú (nada que cambiar en
-    // el registro: meals[toma]=estado ya engloba la toma entera).
-    if(meal.compuesta && Array.isArray(meal.platos) && meal.platos.length>=2){
-      setTomaMenu({
-        etiquetas:(Array.isArray(meal.etiquetas)&&meal.etiquetas.length>=2)?meal.etiquetas:['1º','2º'],
-        platos:   meal.platos,
-        kcalTotal:Math.round(parseFloat(meal.Calorias_Totales)||0),
-      });
-      setPlatoSel(0);
-      setTomaReceta(platoMenuAReceta(meal.platos[0]));
-      setLoadingToma(false);
-      return;
-    }
-    setTomaMenu(null);
-
-    // El plan generado YA trae la receta escalada a la ración del paciente:
-    // kcal, macros e ingredientes con las cantidades que le corresponden.
-    // El recetario de Supabase solo se usa como apoyo (instrucciones) o como
-    // fallback para planes antiguos sin datos embebidos.
-    const fRac = parseFloat(meal.racion_factor)||1;
-    const racTxt = meal.racion_texto || (Math.abs(fRac-1)>=0.05 ? racionTextoJS(fRac, lang) : '');
-
-    let r = null;
-    const necesitaRecetario = !meal.Ingredientes || !meal.Instrucciones;
-    if(necesitaRecetario){
-      const mapa = await cargarRecetasCache();
-      const clave = normNombre(meal.Nombre_Receta);
-      r = mapa[clave];
-      if(!r){
-        const frag = normNombre(meal.Nombre_Receta).split(' ').slice(0,3).join(' ');
-        const k = Object.keys(mapa).find(key=>key.includes(frag) || frag.includes(key));
-        if(k) r = mapa[k];
-      }
-    }
-
-    if(meal.Ingredientes){
-      // ── Plan nuevo: todo embebido y ya escalado ──
-      setTomaReceta({
-        nombre:       meal.Nombre_Receta,
-        tipo:         meal.Tipo||'',
-        calorias:     Math.round(parseFloat(meal.Calorias_Totales)||0),
-        proteinas_g:  Math.round(parseFloat(meal.Proteinas_g)||0),
-        hidratos_g:   Math.round(parseFloat(meal.Hidratos_g)||0),
-        grasas_g:     Math.round(parseFloat(meal.Grasas_g)||0),
-        ingredientes: meal.Ingredientes,
-        instrucciones:meal.Instrucciones||r?.instrucciones||(lang==='en'?'No preparation steps available.':'Sin pasos de preparación disponibles.'),
-        racion_texto: racTxt,
-        racion_factor: fRac,
-        raciones:     parseInt(meal.raciones||1)||1,
-        kcal_objetivo:Math.round(parseFloat(meal.Calorias_Totales)||0),
-        slug:         r?.slug||null,  publica: !!(r?.publica),   // escaparate público
-      });
-    } else if(r){
-      // ── Plan antiguo: receta base del recetario, escalada en cliente ──
-      setTomaReceta({
-        nombre:       r.nombre||r.nombre_receta||meal.Nombre_Receta,
-        tipo:         r.tipo||meal.Tipo||'',
-        calorias:     Math.round((parseFloat(r.calorias||r.calorias_totales||meal.Calorias_Totales)||0)*fRac),
-        proteinas_g:  Math.round((parseFloat(r.proteinas_g||meal.Proteinas_g)||0)*fRac),
-        hidratos_g:   Math.round((parseFloat(r.hidratos_g||meal.Hidratos_g)||0)*fRac),
-        grasas_g:     Math.round((parseFloat(r.grasas_g||meal.Grasas_g)||0)*fRac),
-        ingredientes: escalarIngredientesJS(r.ingredientes||'', fRac),
-        instrucciones:r.instrucciones||(lang==='en'?'No preparation steps available.':'Sin pasos de preparación disponibles.'),
-        racion_texto: racTxt,
-        racion_factor: fRac,
-        raciones:     parseInt(r.raciones||1)||1,
-        kcal_objetivo:Math.round((parseFloat(r.calorias||r.calorias_totales||meal.Calorias_Totales)||0)*fRac),
-        slug:         r.slug||null,   publica: !!r.publica,      // escaparate público
-      });
-    } else {
-      // No se encontró en el recetario: mostrar al menos los macros del plan
-      setTomaReceta({
-        nombre:meal.Nombre_Receta,tipo:meal.Tipo||'',
-        calorias:Math.round(parseFloat(meal.Calorias_Totales)||0),
-        proteinas_g:Math.round(parseFloat(meal.Proteinas_g)||0),
-        hidratos_g:Math.round(parseFloat(meal.Hidratos_g)||0),
-        grasas_g:Math.round(parseFloat(meal.Grasas_g)||0),
-        ingredientes:'',
-        instrucciones:lang==='en'?'No recipe details found.':'Detalle de receta no disponible.',
-        racion_texto: racTxt,
-        kcal_objetivo:Math.round(parseFloat(meal.Calorias_Totales)||0),
-      });
-    }
-    setLoadingToma(false);
-  }
-
-  // ── Cambiar la receta por otra de composición similar (10 💎) ──────────────
-  // `opc.sinIngrediente` (desde «Pregúntale a Bo», «Me falta un ingrediente»): veta además las recetas
-  // que lo lleven. Desde el botón 🔄 llega el evento del clic, que no lo trae. Devuelve
-  // {ok, nombre} o {ok:false, motivo} para que Bo diga qué pasó; el botón lo ignora.
-  async function cambiarRecetaToma(opc){
-    const sinIng = (opc && typeof opc==='object' && typeof opc.sinIngrediente==='string' && opc.sinIngrediente.trim()) ? opc.sinIngrediente.trim() : null;
-    const tipoR  = (opc && typeof opc==='object' && typeof opc.tipo==='string' && opc.tipo.trim()) ? opc.tipo.trim() : null;   // «algo de pescado» (Bo con IA)
-    if(!tomaReceta||!profile) return {ok:false};
-    const costeCambio = enTrial ? 0 : 10;   // gratis mientras dura la prueba
-    if(costeCambio>0 && gems < costeCambio){
-      sfx&&sfx("error");
-      showT&&showT({icon:"💎",title:lang==='en'?'Not enough gems':'Sin gemas suficientes',sub:lang==='en'?'You need 10 💎 to change the recipe':'Necesitas 10 💎 para cambiar la receta'});
-      return {ok:false, motivo:'gemas'};
-    }
-    // Menú de dos platos: se cambia SOLO el plato que se ve (12-oct-2026).
-    if(tomaMenu) return await cambiarPlatoMenu({sinIng, tipoR, costeCambio});
-    const mapa = await cargarRecetasCache();
-    const recetas = Object.values(mapa);
-    // ── Qué receta sale: src/cambioReceta.js (28-sep-2026) ────────────────────
-    // DURO: la franja, la lista del servidor (plan_json.cambio_receta: dieta,
-    // sin gluten, sin carne, desayuno realista, rechazados y alergias de su
-    // pauta y «solo sencillas»), los rechazados de patient_config.notas (lo
-    // que el paciente apunta en «Alimentos que no quieres»), las descartadas 🗑️
-    // y que la ración quepa en 0,70-1,40. El tipo y los macros solo ordenan.
-    // Antes las notas se leían de profile.notas, una columna que no existe: el
-    // filtro de alergias no vetaba nada. Cada hueco recuerda lo ya enseñado.
-    const tipoActual = tomaReceta.tipo;
-    const kcalObjetivo = tomaReceta.kcal_objetivo || tomaReceta.calorias || 0;
-    let almacen = null;
-    try{ almacen = window.localStorage; }catch(e){ almacen = null; }
-    const memClave = claveMemoriaCambio(profile.id, plan?.semana ?? '', openToma, selDay);
-    const mem = leerMemoriaCambio(almacen, memClave, tomaReceta);
-    const enPlan = new Set();   // lo que ya sale en la semana (fuera de este hueco): se deja para después
-    for(const tm of PLAN_TOMAS){
-      for(const [d,c] of Object.entries(planJ?.[tm]||{})){
-        if(tm===openToma && String(d)===String(selDay)) continue;
-        if(c?.Nombre_Receta) enPlan.add(normNombreCambio(c.Nombre_Receta));
-        (Array.isArray(c?.platos)?c.platos:[]).forEach(pl=>{ if(pl?.Nombre_Receta) enPlan.add(normNombreCambio(pl.Nombre_Receta)); });
-      }
-    }
-    const rechPref = interpretarRechazados(config?.notas);
-    const res = elegirRecetaCambio({
-      recetas, actual:tomaReceta, ancla:mem.ancla, toma:openToma,
-      permitidas: permitidasDePlanes(planes, openToma),
-      rechazada:  (r)=>recetaRechazadaJS(r, rechPref) || (!!sinIng && contieneIngrediente(r?.ingredientes||'', sinIng))
-                       || (!!tipoR && String(r?.tipo||'')!==tipoR),
-      descartadas:new Set((descartadas||[]).map(r=>normNombreCambio(r.nombre||''))),
-      favoritas:  new Set((savedRecipes||[]).map(r=>normNombreCambio(r.nombre||r.nombre_receta||''))),
-      vistas:mem.vistas, enPlan,
-    });
-    // Si no hay nada que ofrecer se avisa «Sin alternativa» y NO se cobran
-    // gemas: mejor no cambiar que servir un despropósito o un alimento vetado.
-    if(!res.receta){
-      showT&&showT({icon:"🚫",title:lang==='en'?'No alternative':'Sin alternativa',sub:lang==='en'?'No similar recipe available':'No hay receta similar disponible'});
-      return {ok:false, motivo:'sin_alternativa'};
-    }
-    const elegida = res.receta;
-    guardarMemoriaCambio(almacen, memClave, {...mem, actual:tomaReceta, elegida, reinicio:res.reinicio});
-    // Descontar gemas (0 durante la prueba: invita la casa)
-    if(costeCambio>0){
-      const newGems = gems - costeCambio;
-      const updP = {...profile, gems:newGems};
-      setProfile(updP); lsSet(`gbh:p:${profile.id}`, updP);
-      sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:newGems});
-    }
-    sfx&&sfx("recipe");
-    // ── La ración: el factor de elegirRecetaCambio (0,70-1,40 en pasos de
-    //    0,05, el rango RACION_MIN/MAX del generador). ──
-    const kcalObj = kcalObjetivo;
-    const kcalBase = parseFloat(elegida.calorias||elegida.calorias_totales)||0;
-    const f = res.factor;
-    setTomaReceta({
-      nombre:       elegida.nombre||elegida.nombre_receta||'',
-      tipo:         elegida.tipo||tipoActual,
-      calorias:     Math.round(kcalBase*f),
-      proteinas_g:  Math.round((parseFloat(elegida.proteinas_g)||0)*f),
-      hidratos_g:   Math.round((parseFloat(elegida.hidratos_g)||0)*f),
-      grasas_g:     Math.round((parseFloat(elegida.grasas_g)||0)*f),
-      ingredientes: escalarIngredientesJS(elegida.ingredientes||'', f),
-      instrucciones:elegida.instrucciones||(lang==='en'?'No preparation steps available.':'Sin pasos de preparación disponibles.'),
-      racion_texto: f!==1 ? racionTextoJS(f, lang) : '',
-      raciones:     parseInt(elegida.raciones||1)||1,
-      kcal_objetivo:kcalObj,
-    });
-    showT&&showT({icon:"🍽️",title:lang==='en'?'New recipe!':'¡Nueva receta!',sub:'-10 💎'});
-
-    // ── Persistir el cambio en weekly_plans: sin esto, el cambio de 10 💎
-    //    se pierde al cerrar la app (solo vivía en el estado de React). Se
-    //    escribe SOLO esta celda (escribirCelda, 15-oct-2026) ──
-    if(plan && openToma && selDay){
-      try{
-        const nuevoJson = JSON.parse(JSON.stringify(planJ||{}));
-        if(!nuevoJson[openToma]) nuevoJson[openToma]={};
-        nuevoJson[openToma][String(selDay)] = {
-          Nombre_Receta: elegida.nombre||elegida.nombre_receta||'',
-          Tipo:          elegida.tipo||tipoActual,
-          Calorias_Totales: Math.round(kcalBase*f),
-          Proteinas_g:   Math.round((parseFloat(elegida.proteinas_g)||0)*f),
-          Hidratos_g:    Math.round((parseFloat(elegida.hidratos_g)||0)*f),
-          Grasas_g:      Math.round((parseFloat(elegida.grasas_g)||0)*f),
-          Ingredientes:  escalarIngredientesJS(elegida.ingredientes||'', f),
-          Instrucciones: elegida.instrucciones||'',
-          raciones:      parseInt(elegida.raciones||1)||1,
-          ...(f!==1?{racion_factor:f, racion_texto:racionTextoJS(f,lang)}:{}),
-        };
-        setPlanes(ps=>ps.map((p,i)=>i===idx?{...p,plan_json:nuevoJson}:p));
-        escribirCelda(plan.semana, openToma, selDay, nuevoJson[openToma][String(selDay)], nuevoJson);
-      }catch(e){ console.warn("[cambiar-receta] no se pudo persistir:", e); }
-    }
-    return {ok:true, nombre: elegida.nombre||elegida.nombre_receta||''};
-  }
-
-  // ── Menú de 1º y 2º (o plato y postre): cambiar UN plato, el que se ve ─────
-  // Hasta el 12-oct el botón no salía en los menús, porque cambiar un plato
-  // descuadraba los totales guardados de la celda (Aritz, su primera semana con
-  // dos platos). Ahora cada plato se cambia por separado, con el rol con que lo
-  // eligió la programación (elegirPlatoMenu: el 1º, entre lo que vale de entrante;
-  // el 2º, nunca un entrante y mejor proteico), con su memoria de lo ya enseñado,
-  // y la celda se recompone (recomponerMenu) para que kcal y macros de la toma,
-  // «Tu día» y el registro sigan cuadrando. Mismo cobro y misma escritura que
-  // el cambio de una receta.
-  async function cambiarPlatoMenu({sinIng, tipoR, costeCambio}){
-    const i = platoSel;
-    const celda = planJ?.[openToma]?.[String(selDay)];
-    const platos = Array.isArray(celda?.platos) ? celda.platos : [];
-    if(!plan || !celda?.compuesta || platos.length<2 || !platos[i]) return {ok:false};
-    const mapa = await cargarRecetasCache();
-    const recetas = Object.values(mapa);
-    const etiqueta = (Array.isArray(celda.etiquetas)&&celda.etiquetas[i]) || (i===0?'1º':'2º');
-    const rol = rolPlatoMenu(celda.etiquetas, i);
-    const actual = platoMenuAReceta(platos[i]);     // kcal_objetivo: las del plato en la programación
-    let almacen = null;
-    try{ almacen = window.localStorage; }catch(e){ almacen = null; }
-    const memClave = claveMemoriaCambio(profile.id, plan?.semana ?? '', `${openToma}:${i+1}`, selDay);
-    const mem = leerMemoriaCambio(almacen, memClave, actual);
-    const enPlan = new Set();   // lo que ya sale en la semana (fuera de este menú): se deja para después
-    for(const tm of PLAN_TOMAS){
-      for(const [d,c] of Object.entries(planJ?.[tm]||{})){
-        if(tm===openToma && String(d)===String(selDay)) continue;
-        if(c?.Nombre_Receta) enPlan.add(normNombreCambio(c.Nombre_Receta));
-        (Array.isArray(c?.platos)?c.platos:[]).forEach(pl=>{ if(pl?.Nombre_Receta) enPlan.add(normNombreCambio(pl.Nombre_Receta)); });
-      }
-    }
-    const rechPref = interpretarRechazados(config?.notas);
-    const listas = listasPlatoMenu(planes, rol);
-    const res = elegirPlatoMenu({
-      rol, recetas, actual, ancla:mem.ancla,
-      permitidas: listas.permitidas, entrantes: listas.entrantes,
-      otro:       platos[1-i]?.Nombre_Receta || '',
-      rechazada:  (r)=>recetaRechazadaJS(r, rechPref) || (!!sinIng && contieneIngrediente(r?.ingredientes||'', sinIng))
-                       || (!!tipoR && String(r?.tipo||'')!==tipoR),
-      descartadas:new Set((descartadas||[]).map(r=>normNombreCambio(r.nombre||''))),
-      favoritas:  new Set((savedRecipes||[]).map(r=>normNombreCambio(r.nombre||r.nombre_receta||''))),
-      vistas:mem.vistas, enPlan,
-    });
-    // Sin nada que ofrecer: se avisa y NO se cobran gemas (como en una receta).
-    if(!res.receta){
-      showT&&showT({icon:"🚫",title:lang==='en'?'No alternative':'Sin alternativa',sub:lang==='en'?'No similar dish available':'No hay plato similar disponible'});
-      return {ok:false, motivo:'sin_alternativa'};
-    }
-    const elegida = res.receta;
-    guardarMemoriaCambio(almacen, memClave, {...mem, actual, elegida, reinicio:res.reinicio});
-    if(costeCambio>0){
-      const newGems = gems - costeCambio;
-      const updP = {...profile, gems:newGems};
-      setProfile(updP); lsSet(`gbh:p:${profile.id}`, updP);
-      sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:newGems});
-    }
-    sfx&&sfx("recipe");
-    // El plato nuevo, con la forma de los platos del servidor (_celda_json) y su
-    // ración (0,70-1,40 en pasos de 0,05) contra las kcal del plato de la programación.
-    const f = res.factor;
-    const kcalBase = parseFloat(elegida.calorias||elegida.calorias_totales)||0;
-    const decima = (x)=>Math.round(x*10)/10;
-    const nuevo = {
-      Nombre_Receta:    elegida.nombre||elegida.nombre_receta||'',
-      Tipo:             elegida.tipo||platos[i].Tipo||'',
-      Ingredientes:     escalarIngredientesJS(elegida.ingredientes||'', f),
-      Instrucciones:    elegida.instrucciones||'',
-      Calorias_Totales: Math.round(kcalBase*f),
-      Proteinas_g:      decima((parseFloat(elegida.proteinas_g)||0)*f),
-      Hidratos_g:       decima((parseFloat(elegida.hidratos_g)||0)*f),
-      Grasas_g:         decima((parseFloat(elegida.grasas_g)||0)*f),
-      raciones:         parseInt(elegida.raciones||1)||1,
-      ...(f!==1?{racion_factor:f, racion_texto:racionTextoJS(f,lang), calorias_base:Math.round(kcalBase)}:{}),
-      kcal_objetivo:    actual.kcal_objetivo,
-    };
-    const celdaNueva = recomponerMenu(celda, i, nuevo);
-    setTomaMenu(m=>m?{...m, platos:celdaNueva.platos, kcalTotal:Math.round(parseFloat(celdaNueva.Calorias_Totales)||0)}:m);
-    setTomaReceta(platoMenuAReceta(nuevo));
-    setCocinarDos(false); setCocinarDeMas(1);
-    showT&&showT({icon:"🍽️",title:lang==='en'?'New dish!':'¡Nuevo plato!',
-      sub:`${menuEtiqueta(etiqueta,lang)} · ${costeCambio>0?'-10 💎':(lang==='en'?'free':'gratis')}`});
-    // Persistir en weekly_plans, como el cambio de una receta: sin esto se
-    // pierde al cerrar la app. Solo esta celda (escribirCelda).
-    try{
-      const nuevoJson = JSON.parse(JSON.stringify(planJ||{}));
-      if(!nuevoJson[openToma]) nuevoJson[openToma]={};
-      nuevoJson[openToma][String(selDay)] = celdaNueva;
-      setPlanes(ps=>ps.map((p,k)=>k===idx?{...p,plan_json:nuevoJson}:p));
-      escribirCelda(plan.semana, openToma, selDay, celdaNueva, nuevoJson);
-    }catch(e){ console.warn("[cambiar-plato] no se pudo persistir:", e); }
-    return {ok:true, nombre: nuevo.Nombre_Receta};
-  }
-
-  // ── Guardar la receta en el recetario personal (20 💎) ─────────────────────
-  const recetaYaGuardada = tomaReceta && (savedRecipes||[]).some(r=>normNombre(r.nombre)===normNombre(tomaReceta?.nombre));
-  // ── Descartar la receta (🗑️, GRATIS): repositorio oculto ──────────────────
-  // Marca "no me gusta". Toggle: si ya está descartada, volver a pulsar la
-  // restaura (por si fue un toque accidental — el repositorio es invisible y
-  // no hay otra forma de deshacerlo). Regla de conflicto con favoritas: una
-  // receta GUARDADA (pagada con 20 💎) no se puede descartar directamente;
-  // primero hay que quitarla de guardadas — así nunca se borra en silencio
-  // algo que costó gemas.
-  const recetaDescartada = tomaReceta && (descartadas||[]).some(r=>normNombre(r.nombre)===normNombre(tomaReceta?.nombre));
-  async function descartarRecetaToma(){
-    if(!tomaReceta||!profile) return;
-    const nom = tomaReceta.nombre||'';
-    if(recetaDescartada){
-      // Restaurar: quitar del repositorio oculto
-      const resto = (descartadas||[]).filter(r=>normNombre(r.nombre)!==normNombre(nom));
-      setDescartadas(resto); lsSet(`gbh:discarded:${profile.id}`,resto);
-      const quitados = (descartadas||[]).filter(r=>normNombre(r.nombre)===normNombre(nom));
-      quitados.forEach(q=>sbReq("DELETE",`discarded_recipes?profile_id=eq.${profile.id}&recipe_id=eq.${encodeURIComponent(q.recipe_id)}`));
-      sfx&&sfx("step");
-      showT&&showT({icon:"↩️",title:lang==='en'?'Restored':'Restaurada',sub:lang==='en'?'It can appear in your plans again':'Podrá volver a aparecer en tus planes'});
-      return;
-    }
-    if(recetaYaGuardada){
-      sfx&&sfx("error");
-      showT&&showT({icon:"📖",title:lang==='en'?'Saved recipe':'Está en tus guardadas',sub:lang==='en'?'Remove it from your recipe book first':'Quítala antes de tu recetario guardado'});
-      return;
-    }
-    const entry = {
-      profile_id: profile.id,
-      recipe_id:  tomaReceta.id_receta || ('plan_'+normNombre(nom).replace(/\s+/g,'_')),
-      nombre:     nom,
-      discarded_at: new Date().toISOString(),
-    };
-    const nuevos = [entry, ...(descartadas||[])];
-    setDescartadas(nuevos); lsSet(`gbh:discarded:${profile.id}`,nuevos);
-    sbReq("POST","discarded_recipes",entry);
-    sfx&&sfx("step");
-    showT&&showT({icon:"🗑️",title:lang==='en'?'Noted!':'¡Anotada!',sub:lang==='en'?'It won\'t appear in your future plans':'No volverá a aparecer en tus próximos planes'});
-  }
-  async function guardarRecetaToma(){
-    if(!tomaReceta||!profile) return;
-    if(recetaYaGuardada) return;
-    if(gems < 20){
-      sfx&&sfx("error");
-      showT&&showT({icon:"💎",title:lang==='en'?'Not enough gems':'Sin gemas suficientes',sub:lang==='en'?'You need 20 💎 to save a recipe':'Necesitas 20 💎 para guardar una receta'});
-      return;
-    }
-    const newGems = gems - 20;
-    const updP = {...profile, gems:newGems};
-    setProfile(updP); lsSet(`gbh:p:${profile.id}`, updP);
-    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:newGems});
-    const entry = {
-      profile_id: profile.id,
-      recipe_id:  'plan_'+normNombre(tomaReceta.nombre).replace(/\s+/g,'_'),
-      nombre:        tomaReceta.nombre,
-      tipo:          tomaReceta.tipo,
-      calorias:      tomaReceta.calorias,
-      proteinas_g:   tomaReceta.proteinas_g,
-      hidratos_g:    tomaReceta.hidratos_g,
-      grasas_g:      tomaReceta.grasas_g,
-      ingredientes:  tomaReceta.ingredientes,
-      instrucciones: tomaReceta.instrucciones,
-      raciones:      tomaReceta.raciones||1,
-      saved_at: new Date().toISOString(),
-    };
-    const newSaved = [entry, ...(savedRecipes||[])];
-    setSavedRecipes&&setSavedRecipes(newSaved);
-    lsSet(`gbh:saved_recipes:${profile.id}`, newSaved);
-    sbReq("POST","saved_recipes",entry);
-    sfx&&sfx("recipe");
-    showT&&showT({icon:"📖",title:lang==='en'?'Saved to your book!':'¡Guardada en tu recetario!',sub:tomaReceta.nombre});
-  }
-
-  if(!tieneAcceso){
-    const waMsgPlan = encodeURIComponent(lang==='en'
-      ? `Hi! I'm ${profile?.name||''} and I'd like to upgrade my GBH plan to get my weekly meal plan 🥗`
-      : `¡Hola! Soy ${profile?.name||''} y me gustaría mejorar mi plan GBH para tener mi programación semanal 🥗`);
-    return(
-    <div style={{padding:'36px 20px 32px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:14}}>
-      <div style={{fontSize:52}}>🥗</div>
-      <div style={{fontSize:19,fontWeight:900,color:T.t1,lineHeight:1.3,fontFamily:"'Nunito',sans-serif"}}>
-        {lang==='en'?'Your weekly meal plan':'Tu programación semanal'}
-      </div>
-      <div style={{fontSize:13.5,color:T.t2,lineHeight:1.65,maxWidth:300,fontFamily:"'DM Sans',sans-serif"}}>
-        {ES_IOS_NATIVO
-          ? (lang==='en'
-            ?'Your weekly meal plan is prepared by your nutritionist as part of GBH Nutrición’s one-to-one nutrition service.'
-            :'Tu programación semanal la prepara tu nutricionista dentro del servicio de nutrición 1:1 de GBH Nutrición.')
-          : (lang==='en'
-          ?'The weekly plan is exclusive to Standard and Premium accounts. Upgrade and get your personalized meal plan, recipes and shopping list.'
-          :'La planificación es exclusiva de las cuentas Estándar y Premium. Mejora tu plan y tendrás tu programación personalizada con recetas y lista de la compra.')}
-      </div>
-
-      {/* Tarifas: Estándar → pago directo Stripe · Premium → WhatsApp.
-          En las apps nativas se ocultan ambas (App Store 3.1.1; Pagos de Google Play,
-          PEND-2026-316) y se muestra un texto neutro de estado de cuenta; en Android,
-          además, dónde se contrata, sin enlace. */}
-      {!ES_NATIVO?<>
-      <div style={{display:'flex',flexDirection:'column',gap:10,width:'100%',maxWidth:330,marginTop:4}}>
-        <button onClick={()=>{sfx&&sfx("tap");abrirCheckoutStripe(profile?.id);}}
-          style={{background:alpha(T.g1,0.08),border:'2px solid '+T.bG,borderRadius:18,padding:'14px 16px',textAlign:'left',display:'flex',alignItems:'center',gap:12,cursor:'pointer',width:'100%',boxShadow:'0 3px 0 rgba(0,0,0,0.25)'}}>
-          <div style={{fontSize:28,flexShrink:0}}>📅</div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:14,fontWeight:900,color:T.g1,fontFamily:"'Nunito',sans-serif"}}>
-              {lang==='en'?'Standard · 7€/month':'Estándar · 7€/mes'}
-            </div>
-            <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.45,marginTop:2}}>
-              {lang==='en'
-                ?'Weekly plan you configure yourself, full recipe book and app'
-                :'Programación semanal a tu medida, recetario completo y app'}
-            </div>
-            <div style={{fontSize:10.5,fontWeight:800,color:T.g1,fontFamily:"'DM Sans',sans-serif",marginTop:4}}>
-              {lang==='en'?'Subscribe now · instant access →':'Suscríbete ahora · acceso al momento →'}
-            </div>
-          </div>
-          <div style={{color:T.g1,fontSize:20,flexShrink:0}}>›</div>
-        </button>
-        <a href={`https://wa.me/${GBH_WHATSAPP}?text=${waMsgPlan}`} target="_blank" rel="noopener noreferrer" onClick={()=>sfx&&sfx("tap")}
-          style={{background:alpha(T.au1,0.07),border:`2px solid ${alpha(T.au1,0.35)}`,borderRadius:18,padding:'14px 16px',textAlign:'left',display:'flex',alignItems:'center',gap:12,cursor:'pointer',textDecoration:'none',boxShadow:'0 3px 0 rgba(0,0,0,0.25)'}}>
-          <div style={{fontSize:28,flexShrink:0}}>👑</div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:14,fontWeight:900,color:T.au1,fontFamily:"'Nunito',sans-serif"}}>
-              Premium
-            </div>
-            <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.45,marginTop:2}}>
-              {lang==='en'
-                ?'Personal follow-up with your nutritionist, plan made for you and direct contact'
-                :'Seguimiento personal con tu nutricionista, plan hecho para ti y contacto directo'}
-            </div>
-            <div style={{fontSize:10.5,fontWeight:800,color:T.au1,fontFamily:"'DM Sans',sans-serif",marginTop:4}}>
-              {lang==='en'?'Chat with me on WhatsApp 💬':'Habla conmigo por WhatsApp 💬'}
-            </div>
-          </div>
-          <div style={{color:T.au1,fontSize:20,flexShrink:0}}>›</div>
-        </a>
-      </div>
-
-      <div style={{fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginTop:2}}>
-        {lang==='en'?'We reply the same day · @gbhnutricion':'Te respondemos en el día · @gbhnutricion'}
-      </div>
-      </>:(
-      ES_ANDROID_NATIVO ? (
-      <div style={{fontSize:12.5,color:T.t2,lineHeight:1.6,maxWidth:300,fontFamily:"'DM Sans',sans-serif",marginTop:6}}>
-        {lang==='en'
-          ?'The weekly plan is not available on your current account.'
-          :'La programación semanal no está disponible en tu cuenta actual.'}
-        <br/>{txtWebAndroid(lang,"estandar")}
-      </div>
-      ) : null)}
-    </div>
-  );}
-  if(loading) return <div style={{padding:32,textAlign:'center',fontSize:13,color:T.t2}}>{lang==='en'?'Loading…':'Cargando…'}</div>;
-
-  // ── GATE: sin objetivo nutricional no se puede diseñar el plan ──────────────
-  // El plan se ajusta al objetivo calórico (peso inicial, peso meta, actividad,
-  // altura, edad → kcal/día). Si el paciente estándar aún no lo ha calculado en
-  // la pestaña Objetivo, le pedimos hacerlo primero, con un botón que le lleva.
-  if(isStandard && !tieneObjetivo && !tienePlan) {
-    return (
-      <div style={{padding:'52px 24px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center'}}>
-        <div style={{fontSize:60,marginBottom:18}}>🎯</div>
-        <div style={{fontSize:20,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif",marginBottom:10,lineHeight:1.3}}>
-          {lang==='en'?'Hey, hold on! 🐏':'¡Eh, espera! 🐏'}
-        </div>
-        <div style={{fontSize:14.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6,maxWidth:300,marginBottom:28}}>
-          {lang==='en'
-            ? 'Set your goal first and I\'ll cook up your plan 👨‍🍳'
-            : 'Primero ponte un objetivo y te preparo el plan 👨‍🍳'}
-        </div>
-        <button onClick={()=>setTab&&setTab('objetivo')}
-          style={{background:'linear-gradient(135deg,'+T.g1+','+T.g2+')',color:T.t1,fontWeight:900,fontSize:16,
-            borderRadius:18,padding:'16px 34px',border:'none',cursor:'pointer',boxShadow:'0 5px 0 '+T.g3,
-            fontFamily:"'Nunito',sans-serif",display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
-          <span style={{fontSize:20}}>🎯</span>
-          {lang==='en'?'Set my goal':'Ir a mi objetivo'}
-        </button>
-      </div>
-    );
-  }
-
-  // ── Pantalla de configuración del plan (paciente estándar) ──────────────────
-  if(configView || (isStandard && !configCompleta)) {
-    return (<>
-      {generando&&<OverlayGenerando lang={lang}/>}
-      <PlanConfig profile={profile} lang={lang} config={config} setConfig={setConfig}
-             sfx={sfx} showT={showT}
-             onClose={()=>setConfigView(false)}
-             onGenerar={()=>generarProgramacion()}
-             primeraVez={isStandard && !configCompleta}/>
-    </>);
-  }
-
-  if(!planes.length) return(
-    <div style={{paddingBottom:16}}>
-      {generando&&<OverlayGenerando lang={lang}/>}
-      <div style={{padding:'24px 16px 8px',textAlign:'center'}}>
-        <div style={{fontSize:40,marginBottom:10}}>📆</div>
-        <div style={{fontSize:16,fontWeight:900,color:T.t1,marginBottom:8}}>
-          {lang==='en'?'Your plan isn\'t ready yet':'Tu programación todavía no está lista'}
-        </div>
-        <div style={{fontSize:13,color:T.t2,lineHeight:1.7,fontFamily:"'DM Sans',sans-serif",marginBottom:24}}>
-          {lang==='en'?'Check back soon for updates!':'¡Espera para nuevas actualizaciones!'}
-        </div>
-      </div>
-      {/* Botones visibles pero bloqueados */}
-      <div style={{padding:'0 16px',display:'flex',flexDirection:'column',gap:12}}>
-        {[
-          {icon:'📅',label:lang==='en'?'Plan & Recipes':'Plan y recetas',sub:lang==='en'?'Your week at a glance, recipes and progress (PDF)':'Tu semana de un vistazo, recetas y tu progreso (PDF)'},
-          {icon:'🍽️',label:lang==='en'?'Daily Meals':'Platos diarios',sub:lang==='en'?'Today\'s meals with recipe details':'Tus platos de hoy con receta e ingredientes'},
-          {icon:'🛒',label:lang==='en'?'Shopping List':'Lista de la compra',sub:lang==='en'?'Tick off ingredients as you shop':'Marca los ingredientes mientras compras'},
-        ].map(({icon,label,sub})=>(
-          <div key={label} style={{background:'rgba(255,255,255,0.04)',border:'2px solid rgba(255,255,255,0.08)',
-                  borderRadius:20,padding:'20px 20px',display:'flex',alignItems:'center',gap:16,opacity:0.45}}>
-            <div style={{fontSize:40,flexShrink:0}}>{icon}</div>
-            <div style={{flex:1}}>
-              <div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{label}</div>
-              <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{sub}</div>
-            </div>
-            <div style={{color:'rgba(255,255,255,0.2)',fontSize:20,flexShrink:0}}>🔒</div>
-          </div>
-        ))}
-        {/* 💊 Suplementación (6-oct-2026, PEND-2026-353): la puerta pasa de pestaña propia a tarjeta de Plan; la pantalla es la misma */}
-        <button onClick={()=>{ sfx&&sfx("tap"); onSupl&&onSupl(); }} style={{background:'rgba(255,75,110,0.10)',border:'2px solid rgba(255,75,110,0.30)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)',fontFamily:'inherit'}}>
-          <div style={{fontSize:40,flexShrink:0}}>💊</div>
-          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{t("suplTitulo")}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{t("suplIntro")}</div></div>
-          <div style={{color:'#FF4B6E',fontSize:20,flexShrink:0}}>›</div>
-        </button>
-        {/* Botón GENERAR (solo estándar que ya configuró su plan).
-            ABRE «Configura tu plan», no genera directamente: el selector de
-            modalidades (Simple, Vegetariana, Vegana, Sin gluten, Cetogénica,
-            Descarga) tiene que verse ANTES de cada generación, porque el
-            momento de hacerse la semana es justo cuando se decide si se cambia
-            de programación (Alejandro, 7-sep-2026). El plan se lanza desde el
-            «Guardar y generar plan» de esa pantalla.
-            Es la MISMA regla que ya seguía el banner semanal desde el 6-sep
-            (BannerSemanaNueva, `onGenerar={()=>setConfigView(true)}`): este
-            botón era el único camino que se la saltaba, y se notaba justo
-            cuando el paciente se queda sin plan —cuenta nueva o programación
-            reseteada—, que es cuando más falta hace poder elegir. */}
-        {isStandard&&configCompleta&&(
-          <button onClick={()=>setConfigView(true)} disabled={generando}
-            style={{background:generando?'rgba(255,255,255,0.08)':'linear-gradient(135deg,'+T.g1+','+T.g2+')',
-                    color:generando?T.t3:T.t1,fontWeight:900,fontSize:16,borderRadius:20,
-                    padding:'18px 24px',border:'none',cursor:generando?'default':'pointer',
-                    boxShadow:generando?'none':'0 5px 0 '+T.g3,fontFamily:"'Nunito',sans-serif",
-                    display:'flex',alignItems:'center',justifyContent:'center',gap:10,marginTop:4}}>
-            <span style={{fontSize:22}}>{generando?'⏳':'✨'}</span>
-            {generando?(lang==='en'?'Generating…':'Generando…'):(lang==='en'?'Generate my plan':'Generar mi programación')}
-          </button>
-        )}
-        {isStandard&&(
-          <button onClick={()=>setConfigView(true)} style={{background:'rgba(255,255,255,0.04)',border:'1.5px solid rgba(255,255,255,0.1)',borderRadius:16,padding:'14px 16px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:14,marginTop:4}}>
-            <div style={{fontSize:26,flexShrink:0}}>⚙️</div>
-            <div style={{flex:1}}><div style={{fontWeight:800,fontSize:14,color:T.t2,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Edit my plan':'Editar mi plan'}</div><div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>{lang==='en'?'Diet type and calorie distribution':'Tipo de alimentación y distribución calórica'}</div></div>
-            <div style={{color:T.t3,fontSize:16,flexShrink:0}}>›</div>
-          </button>
-        )}
-      </div>
-    </div>
-  );
-  const fechaStr=plan.fecha_gen?new Date(plan.fecha_gen).toLocaleDateString(lang==='en'?'en-GB':'es-ES',{day:'numeric',month:'short'}):'';
-  const WeekNav=()=>(<>{generando&&<OverlayGenerando lang={lang}/>}<div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 16px 10px',gap:8}}>
-    <button onClick={()=>setIdx(i=>Math.min(i+1,planes.length-1))} disabled={idx>=planes.length-1} style={{background:'none',border:idx>=planes.length-1?'1.5px solid rgba(255,255,255,0.1)':'1.5px solid '+T.bG,borderRadius:10,color:idx>=planes.length-1?T.t3:T.g1,fontSize:18,width:36,height:36,cursor:idx>=planes.length-1?'default':'pointer',flexShrink:0}}>‹</button>
-    <div style={{textAlign:'center',flex:1}}>
-      <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:7,flexWrap:'wrap'}}>
-        <span style={{fontWeight:900,fontSize:15,color:T.t1}}>{lang==='en'?'Week':'Semana'} {plan.semana}</span>
-        {idx===idxActual
-          ? <span style={{fontSize:9.5,fontWeight:900,color:T.g1,background:alpha(T.g1,0.15),border:'1px solid '+T.bG,borderRadius:20,padding:'2px 9px',textTransform:'uppercase',letterSpacing:'0.03em',whiteSpace:'nowrap'}}>● {lang==='en'?'Current week':'Semana actual'}</span>
-          : <button onClick={()=>setIdx(idxActual)} style={{fontSize:9.5,fontWeight:800,color:T.au1,background:alpha(T.au1,0.12),border:`1px solid ${alpha(T.au1,0.3)}`,borderRadius:20,padding:'2px 9px',cursor:'pointer',whiteSpace:'nowrap',fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Go to current →':'Ir a la actual →'}</button>}
-      </div>
-      {mediaKcalSem!==null&&(
-        <div style={{display:'inline-flex',alignItems:'center',gap:6,marginTop:6,background:alpha(T.g1,0.12),border:'1px solid '+T.bG,borderRadius:20,padding:'3px 11px'}}>
-          <span style={{fontSize:12,lineHeight:1}}>🔥</span>
-          <span style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>{lang==='en'?'Daily average':'Media diaria'}: <b style={{color:T.g1}}>{mediaKcalSem}</b> kcal</span>
-        </div>
-      )}
-      {fechaStr&&<div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:3}}>{lang==='en'?'Generated':'Generado'} {fechaStr}</div>}
-    </div>
-    <button onClick={()=>setIdx(i=>Math.max(i-1,0))} disabled={idx<=0} style={{background:'none',border:idx<=0?'1.5px solid rgba(255,255,255,0.1)':'1.5px solid '+T.bG,borderRadius:10,color:idx<=0?T.t3:T.g1,fontSize:18,width:36,height:36,cursor:idx<=0?'default':'pointer',flexShrink:0}}>›</button>
-  </div></>);
-  const BtnVolver=({onClick})=>(<button onClick={onClick} style={{background:'none',border:'none',color:T.g1,fontSize:13,fontWeight:700,cursor:'pointer',padding:'0 16px 10px',fontFamily:"'Nunito',sans-serif",display:'flex',alignItems:'center',gap:4}}>← {lang==='en'?'Back':'Volver'}</button>);
-  const DotsNav=()=>planes.length>1?(<div style={{display:'flex',justifyContent:'center',gap:6,padding:'8px 0 4px'}}>{planes.map((_,i)=>(<div role="button" tabIndex={0} key={i} onClick={()=>setIdx(i)} style={{width:i===idx?20:7,height:7,borderRadius:4,background:i===idx?T.g1:'rgba(255,255,255,0.15)',cursor:'pointer',transition:'all 0.3s'}}/>))}</div>):null;
-  // Chip de semana de prueba (solo cuentas estándar con trial activo)
-  const trialMs = profile?.trial_ends_at ? Date.parse(profile.trial_ends_at) - Date.now() : null;
-  const trialDias = (isStandard && trialMs!==null && trialMs>0) ? Math.max(1, Math.ceil(trialMs/(24*60*60*1000))) : null;
-  const TrialChip=()=>trialDias?(
-    <div style={{margin:'10px 16px 0',display:'flex',alignItems:'center',gap:10,
-      background:alpha(T.au1,0.10),border:`1.5px solid ${alpha(T.au1,0.45)}`,
-      borderRadius:14,padding:'10px 14px'}}>
-      <span style={{fontSize:20,lineHeight:1}}>🎁</span>
-      <div style={{flex:1}}>
-        <div style={{fontSize:12.5,fontWeight:900,color:T.au1}}>
-          {lang==='en'
-            ? `Free trial week · ${trialDias} day${trialDias!==1?'s':''} left`
-            : `Semana de prueba gratis · ${trialDias===1?'queda 1 día':`quedan ${trialDias} días`}`}
-        </div>
-        <div style={{fontSize:10.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>
-          {lang==='en'?'Enjoy your full weekly plan. Then 7€/month.':'Disfruta tu programación completa. Después, 7€/mes.'}
-        </div>
-      </div>
-    </div>
-  ):null;
-
-  if(view===null) return(
-    <div style={{paddingBottom:16}}>
-      <TrialChip/>
-      {/* Aviso arriba del todo (PlanArcade.jsx): estándar con el candado semanal abierto.
-          Antes el botón de generar estaba al final de la pestaña y había que bajar
-          hasta él para saber que ya tocaba semana nueva (Alejandro, 6-sep-2026). */}
-      {isStandard&&!planBloqueado&&(
-        <BannerSemanaNueva lang={lang} T={T} tienePlan={tienePlan} sfx={sfx} onGenerar={()=>setConfigView(true)} />
-      )}
-      <WeekNav/>
-      {/* ── Etiqueta de optimización por favoritas (plan_json.fav_resumen) ──
-          Va ENTRE la tabla de calorías generales (media diaria del WeekNav) y
-          el plan de recetas. Muestra cuántas favoritas entraron y el % de la
-          "semana perfecta" (respecto al techo físico alcanzable), con CTA de
-          gemas. Solo si hay favoritas en el plan. */}
-      {planJ?.fav_resumen && (planJ.fav_resumen.mostradas||0)>0 && (()=>{
-        const fr=planJ.fav_resumen;
-        const pct=Math.max(0,Math.min(100,Math.round(fr.pct||0)));
-        const alto=pct>=80;
-        return(
-          <div style={{margin:'4px 16px 0',background:alpha(T.au1,0.10),border:`2px solid ${alpha(T.au1,0.30)}`,borderRadius:18,padding:'14px 16px',boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
-            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
-              <span style={{fontSize:22,lineHeight:1,flexShrink:0}}>⭐</span>
-              <div style={{flex:1,fontWeight:900,fontSize:13,color:T.au1,fontFamily:"'Nunito',sans-serif",lineHeight:1.3}}>
-                {lang==='en'
-                  ? `${fr.mostradas} of your favourite recipes are in this week's plan`
-                  : `${fr.mostradas} de tus recetas favoritas están en tu plan de esta semana`}
-              </div>
-              <span style={{fontWeight:900,fontSize:16,color:T.au1,fontFamily:"'Nunito',sans-serif",flexShrink:0}}>{pct}%</span>
-            </div>
-            <div style={{height:9,borderRadius:6,background:'rgba(255,255,255,0.10)',overflow:'hidden'}}>
-              <div style={{height:'100%',width:pct+'%',borderRadius:6,background:'linear-gradient(90deg,'+T.au2+','+T.au1+')',transition:'width 0.5s'}}/>
-            </div>
-            <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,marginTop:8}}>
-              {lang==='en'
-                ? (alto
-                    ? "You're almost at your perfect week! Unlock new recipes with your gems and save them to keep growing it."
-                    : "Every recipe you save as a favourite fine-tunes your plan. Unlock new ones with your gems and save them to make it even more yours.")
-                : (alto
-                    ? '¡Ya casi tienes tu semana perfecta! Desbloquea recetas nuevas con tus 💎 y guárdalas para seguir ampliándola.'
-                    : 'Cada receta que guardas como favorita afina más tu plan. Desbloquea nuevas con tus 💎 y guárdalas para hacerlo aún más tuyo.')}
-            </div>
-          </div>
-        );
-      })()}
-      <div style={{padding:'12px 16px',display:'flex',flexDirection:'column',gap:12}}>
-        {/* Tarjeta unificada (jul-2026): sustituye a 'Planificación semanal' +
-            'Recetas semanales'. El PDF ya incluye la tabla semanal completa,
-            así que la vista duplicada sobra. Entrada DIRECTA al PDF (sin
-            pantalla intermedia con botón de descarga); si el PDF aún no
-            existe, cae a la vista 'pdf' que muestra el aviso de no disponible. */}
-        <button onClick={()=>{if(plan.pdf_url){window.open(plan.pdf_url,'_blank','noopener');}else{setView('pdf');}}} style={{background:alpha(T.au1,0.10),border:`2px solid ${alpha(T.au1,0.3)}`,borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
-          <div style={{fontSize:40,flexShrink:0}}>📅</div>
-          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Plan & Recipes':'Plan y recetas'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Your week at a glance, recipes and progress (PDF)':'Tu semana de un vistazo, recetas y tu progreso (PDF)'}</div></div>
-          <div style={{color:T.au1,fontSize:20,flexShrink:0}}>›</div>
-        </button>
-        <button onClick={()=>setView('daily')} style={{background:'rgba(100,181,246,0.12)',border:'2px solid rgba(100,181,246,0.3)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
-          <div style={{fontSize:40,flexShrink:0}}>🍽️</div>
-          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Daily Meals':'Platos diarios'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Your meals for today with full recipe details':'Tus platos de hoy con receta e ingredientes'}</div></div>
-          <div style={{color:T.platos,fontSize:20,flexShrink:0}}>›</div>
-        </button>
-        <button onClick={()=>setView('lista')} style={{background:'rgba(255,140,60,0.10)',border:'2px solid rgba(255,140,60,0.32)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
-          <div style={{fontSize:40,flexShrink:0}}>🛒</div>
-          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Shopping List':'Lista de la compra'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Tick off ingredients as you shop':'Marca los ingredientes mientras compras'}</div></div>
-          <div style={{color:T.compra,fontSize:20,flexShrink:0}}>›</div>
-        </button>
-        <button onClick={()=>setView('seguimiento')} style={{background:alpha(T.pur,0.12),border:`2px solid ${alpha(T.pur,0.3)}`,borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
-          <div style={{fontSize:40,flexShrink:0}}>📊</div>
-          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Tracking':'Seguimiento'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Calendar and charts of your meal compliance':'Calendario y gráficas de tu cumplimiento'}</div></div>
-          <div style={{color:T.pur,fontSize:20,flexShrink:0}}>›</div>
-        </button>
-        {/* 💊 Suplementación (6-oct-2026, PEND-2026-353): la puerta pasa de pestaña propia a tarjeta de Plan; la pantalla es la misma */}
-        <button onClick={()=>{ sfx&&sfx("tap"); onSupl&&onSupl(); }} style={{background:'rgba(255,75,110,0.10)',border:'2px solid rgba(255,75,110,0.30)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)',fontFamily:'inherit'}}>
-          <div style={{fontSize:40,flexShrink:0}}>💊</div>
-          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{t("suplTitulo")}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{t("suplIntro")}</div></div>
-          <div style={{color:'#FF4B6E',fontSize:20,flexShrink:0}}>›</div>
-        </button>
-        {/* Plan estándar: candado semanal (sin gemas, se desbloquea el lunes) */}
-        {isStandard&&planBloqueado&&(
-          <div style={{background:'rgba(255,255,255,0.04)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:16,padding:'14px 16px',marginTop:4}}>
-            <div style={{display:'flex',alignItems:'center',gap:12}}>
-              <div style={{fontSize:24,flexShrink:0}}>🔒</div>
-              <div style={{flex:1}}>
-                <div style={{fontWeight:800,fontSize:13.5,color:T.t1,fontFamily:"'Nunito',sans-serif"}}>
-                  {lang==='en'?'One plan per week':'Un plan por semana'}
-                </div>
-                <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4,marginTop:2}}>
-                  {lang==='en'
-                    ?`Your new plan unlocks Monday (${diasDesbloqueo} day${diasDesbloqueo!==1?'s':''}). To vary a meal, swap that recipe with gems.`
-                    :`Tu nueva programación se desbloquea el lunes ${diasDesbloqueo===1?'(en 1 día)':`(en ${diasDesbloqueo} días)`}. Para variar una comida, cambia esa receta con 💎.`}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-        {/* El botón «Generar nueva semana» de aquí subió a la cabecera de la pestaña (BannerSemanaNueva). */}
-      </div>
-      <DotsNav/>
-    </div>
-  );
-  if(view==='seguimiento') return(
-    <div style={{paddingBottom:20}}>
-      <BtnVolver onClick={()=>setView(null)}/>
-      <SeguimientoView profile={profile} lang={lang}/>
-    </div>
-  );
-  // (jul-2026) Vista 'plan' retirada: la tarjeta unificada abre el PDF, que ya
-  // incluye la tabla 'Tu Semana de un Vistazo' generada por la automatización.
-  if(view==='pdf') return(
-    <div style={{padding:'0 0 16px'}}>
-      <WeekNav/><BtnVolver onClick={()=>setView(null)}/>
-      <div style={{padding:'8px 16px'}}>
-        {plan.pdf_url
-          ?<a href={plan.pdf_url} target='_blank' rel='noreferrer' download={`GBH_Recetas_S${plan.semana}.pdf`} style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,background:'linear-gradient(135deg,'+T.au1+','+T.au2+')',color:'#000',fontWeight:900,fontSize:15,borderRadius:18,padding:'16px 24px',textDecoration:'none',boxShadow:'0 5px 0 '+T.au3,marginTop:16}}>
-            <span style={{fontSize:20}}>📥</span>{lang==='en'?'Download PDF':'Descargar PDF'}
-          </a>
-          :<div style={{textAlign:'center',padding:'24px 0'}}>
-            <div style={{fontSize:44,marginBottom:12}}>📭</div>
-            <div style={{fontWeight:900,fontSize:15,color:T.t1,marginBottom:8}}>{lang==='en'?'PDF not available yet':'PDF no disponible aún'}</div>
-            <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.7}}>{lang==='en'?'Your nutritionist will share it soon.':'Tu nutricionista te lo enviará pronto.'}</div>
-          </div>
-        }
-      </div>
-    </div>
-  );
-  if(view==='lista'){
-    const marcados=listaItems.filter(it=>listaChecks[it.key]).length;
-    return(
-    <div style={{padding:'0 0 24px'}}>
-      <WeekNav/><BtnVolver onClick={()=>{setView(null);setListaConfirm(false);}}/>
-      <div style={{padding:'4px 16px'}}>
-        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
-          <span style={{fontSize:26}}>🛒</span>
-          <div style={{fontWeight:900,fontSize:17,color:T.t1,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Shopping list':'Lista de la compra'}</div>
-        </div>
-        {listaItems.length===0 ? (
-          <div style={{textAlign:'center',padding:'30px 10px'}}>
-            <div style={{fontSize:44,marginBottom:12}}>📭</div>
-            <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.7}}>
-              {lang==='en'
-                ?'This plan doesn\'t include ingredient details. Use the recipes PDF for now.'
-                :'Este plan no incluye el detalle de ingredientes. De momento, usa el PDF de recetas y lista del súper.'}
-            </div>
-          </div>
-        ) : (<>
-          {/* Progreso de la compra */}
-          {/* §6 · Lista para los dos. Solo si hay pareja vinculada Y su plan. */}
-          {puedeListaDeDos&&(
-            <div style={{display:'flex',gap:6,marginBottom:10,background:'rgba(255,255,255,0.05)',
-              border:'1.5px solid rgba(255,255,255,0.12)',borderRadius:13,padding:4}}>
-              {[false,true].map(m=>(
-                <button key={String(m)} onClick={()=>{sfx&&sfx('tap');setListaDeDos(m);setListaConfirm(false);}}
-                  style={{flex:1,padding:'8px 6px',borderRadius:10,cursor:'pointer',
-                    background:listaDeDos===m?alpha(T.g1,0.18):'transparent',
-                    border:`1.5px solid ${listaDeDos===m?'${alpha(T.g1,0.5)}':'transparent'}`,
-                    color:listaDeDos===m?T.g2:T.t2,fontSize:12.5,fontWeight:900,
-                    fontFamily:"'Nunito',sans-serif"}}>
-                  {m?t("listaDeDos",{n:pareja?.nombre||''}):t("listaSoloMia")}
-                </button>
-              ))}
-            </div>
-          )}
-          <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:10}}>
-            <b style={{color:marcados===listaItems.length?T.g2:T.t1}}>{marcados}/{listaItems.length}</b> {lang==='en'?'items in the cart':'ingredientes en el carro'} · {lang==='en'?'week':'semana'} {plan?.semana}
-          </div>
-          {modoDos&&(
-            <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,
-              marginBottom:12,background:alpha(T.g1,0.08),border:`1px solid ${alpha(T.g1,0.25)}`,
-              borderRadius:11,padding:'8px 11px'}}>
-              🛒 {t("listaDeDosNota",{n:pareja?.nombre||''})}
-            </div>
-          )}
-          <div style={{height:8,background:'rgba(255,255,255,0.08)',borderRadius:6,marginBottom:14,overflow:'hidden'}}>
-            <div style={{height:'100%',width:`${listaItems.length?Math.round(marcados/listaItems.length*100):0}%`,background:`linear-gradient(90deg,${T.g3},${T.g1})`,borderRadius:6,transition:'width 0.25s'}}/>
-          </div>
-          {/* Listado con casillas */}
-          <div style={{display:'flex',flexDirection:'column',gap:6}}>
-            {listaItems.map(it=>{
-              const on=!!listaChecks[it.key];
-              return(
-                <button key={it.key} onClick={()=>toggleListaCheck(it.key)} style={{
-                  display:'flex',alignItems:'center',gap:12,textAlign:'left',cursor:'pointer',
-                  background:on?alpha(T.g1,0.08):'rgba(255,255,255,0.05)',
-                  border:`1.5px solid ${on?'${alpha(T.g1,0.35)}':'rgba(255,255,255,0.12)'}`,
-                  borderRadius:14,padding:'11px 14px',transition:'all 0.15s'}}>
-                  <span style={{width:22,height:22,flexShrink:0,borderRadius:7,display:'flex',alignItems:'center',justifyContent:'center',
-                    background:on?T.g1:'transparent',border:`2px solid ${on?T.g1:'rgba(255,255,255,0.3)'}`,
-                    color:'#0d2b12',fontSize:14,fontWeight:900,transition:'all 0.15s'}}>{on?'✓':''}</span>
-                  <span style={{flex:1,fontSize:13.5,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4,
-                    color:on?T.t3:T.t1,textDecoration:on?'line-through':'none',textDecorationThickness:'2px',
-                    opacity:on?0.65:1,transition:'all 0.15s'}}>{it.nombre}</span>
-                  {fmtCant(it)&&<span style={{fontSize:12,fontWeight:900,color:on?T.t3:T.au1,fontFamily:"'Nunito',sans-serif",flexShrink:0,opacity:on?0.6:1}}>{fmtCant(it)}</span>}
-                </button>
-              );
-            })}
-          </div>
-          {/* 💶 Gasto estimado + gasto real: el feedback del paciente calibra la estimación */}
-          {gastoEst.total>0&&(
-            <div style={{marginTop:14,background:alpha(T.g1,0.08),border:`1.5px solid ${alpha(T.g1,0.3)}`,borderRadius:16,padding:'12px 14px'}}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
-                <div style={{fontSize:13,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif"}}>
-                  💶 {lang==='en'?'Estimated cost of this list':'Gasto estimado de esta compra'}
-                </div>
-                <div style={{fontSize:17,fontWeight:900,color:T.g2,fontFamily:"'Nunito',sans-serif",flexShrink:0}}>{eurES(gastoEst.total)} €</div>
-              </div>
-              <div style={{display:'flex',alignItems:'center',gap:8,marginTop:10}}>
-                <div style={{flex:1,fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>
-                  ✏️ {lang==='en'?'What did you actually spend?':'¿Cuánto has gastado de verdad?'}
-                </div>
-                <input value={gastoReal} onChange={e=>{setGastoReal(e.target.value);setGastoOk(false);}}
-                  inputMode="decimal" placeholder="0,00"
-                  style={{width:70,padding:'8px 10px',borderRadius:10,border:'1.5px solid rgba(255,255,255,0.2)',
-                    background:'rgba(255,255,255,0.06)',color:T.t1,fontSize:14,fontWeight:900,textAlign:'right',
-                    fontFamily:"'Nunito',sans-serif",outline:'none'}}/>
-                <span style={{fontSize:13,color:T.t2}}>€</span>
-                <button onClick={guardarGastoReal} disabled={gastoOk} style={{padding:'8px 12px',borderRadius:10,cursor:'pointer',
-                  background:gastoOk?alpha(T.g1,0.15):T.g1,border:'none',color:gastoOk?T.g2:'#0d2b12',
-                  fontWeight:900,fontSize:12.5,fontFamily:"'Nunito',sans-serif"}}>
-                  {gastoOk?'✓':(lang==='en'?'Save':'Guardar')}
-                </button>
-              </div>
-              <div style={{fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginTop:8,lineHeight:1.5}}>
-                {lang==='en'
-                  ?'Average Spanish supermarket prices, plus a small margin for whole-package formats. Logging your real spend helps us fine-tune it each week.'
-                  :'Precios medios de supermercado en España, con un pequeño margen por los formatos de compra (paquetes enteros). Apuntar tu gasto real nos ayuda a afinar la estimación cada semana.'}
-              </div>
-            </div>
-          )}
-          {/* Regenerar: desmarca todo para repetir la semana (doble toque de confirmación) */}
-          <button onClick={regenerarLista} style={{
-            width:'100%',marginTop:16,padding:'14px 20px',borderRadius:16,cursor:'pointer',
-            background:listaConfirm?'rgba(255,140,60,0.18)':'rgba(255,255,255,0.06)',
-            border:`2px solid ${listaConfirm?'${T.compra}':'rgba(255,255,255,0.15)'}`,
-            color:listaConfirm?T.compra:T.t2,fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif",
-            boxShadow:'0 4px 0 rgba(0,0,0,0.3)',transition:'all 0.15s'}}>
-            {listaConfirm
-              ?(lang==='en'?'Tap again to confirm ↺':'Toca otra vez para confirmar ↺')
-              :(lang==='en'?'🔄 Reset list':'🔄 Regenerar lista')}
-          </button>
-          <div style={{textAlign:'center',marginTop:8,fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>
-            {lang==='en'
-              ?'Unchecks everything — handy if you repeat this week\'s plan. This list is fixed to your original plan; to buy a swapped recipe, use its 🛒 Buy button.'
-              :'Desmarca todo — útil si repites la semana. Esta lista es fija a tu programación original; para comprar una receta cambiada, usa su botón 🛒 Comprar.'}
-          </div>
-        </>)}
-      </div>
-    </div>
-    );
-  }
-  if(view==='daily'){
-    // ── Cocinar para los dos (§5.2) ──────────────────────────────────────────
-    // El interruptor SOLO aparece si la pareja tiene LA MISMA receta en LA MISMA
-    // toma del MISMO día. Si no, no se enseña: no se inventa una suma.
-    const parejaMeal = (pareja&&parejaPlanJ&&openToma)
-      ? parejaPlanJ[openToma]?.[String(selDay)] : null;
-    const mismaReceta = !!(parejaMeal?.Nombre_Receta && tomaReceta?.nombre &&
-      normNombre(parejaMeal.Nombre_Receta)===normNombre(tomaReceta.nombre) &&
-      parejaMeal.Ingredientes);
-    const fTuyo   = parseFloat(tomaReceta?.racion_factor)||1;
-    const fPareja = parseFloat(parejaMeal?.racion_factor)||1;
-    const repartoTuyo = Math.round(fTuyo/(fTuyo+fPareja)*100);
-    // Sin useMemo a propósito: estamos dentro de `if(view==='daily')`, así que un
-    // hook aquí sería condicional y React rompería al cambiar de vista. Fusionar
-    // una receta es una operación de microsegundos.
-    const fusion = (mismaReceta&&cocinarDos)
-      ? fusionarIngredientesJS(tomaReceta?.ingredientes||'', parejaMeal?.Ingredientes||'')
-      : null;
-    // Texto que se PINTA: la olla (dos raciones), la ración x2/x3, o la tuya.
-    const ingTexto = fusion ? fusion.texto
-      : (cocinarDeMas>1 ? escalarIngredientesJS(tomaReceta?.ingredientes||'', cocinarDeMas)
-                        : (tomaReceta?.ingredientes||''));
-    const ingList=ingTexto?.split(/[,;](?![^(]*\))/).map(s=>s.trim()).filter(Boolean)||[];
-    // Para cuántas raciones es la lista que se PINTA y qué hacer con ella: una sola
-    // cuenta para el rótulo, la chapa «Rinde», los botones y la hoja de Comprar.
-    const racReceta   = Math.max(1, parseInt(tomaReceta?.raciones)||1);
-    const racLista    = racionesDeLaLista(racReceta, cocinarDeMas);
-    const etiquetaLista = fusion
-      ? (racReceta>1 ? t("cocinarDosCantidadesRinde",{k:racReceta,n:pareja?.nombre||''})
-                     : t("cocinarDosCantidades",{n:pareja?.nombre||''}))
-      : racionEtiqueta(t,{raciones:racReceta,x:cocinarDeMas});
-    return(<div style={{paddingBottom:16}}>
-      {miniCompra&&<MiniListaCompra nombre={miniCompra.nombre} ingredientes={miniCompra.ingredientes}
-        idReceta={miniCompra.id} t={t} lang={lang} onClose={()=>setMiniCompra(null)}
-        etiquetaRacion={miniCompra.etiquetaRacion}/>}
-      <WeekNav/>
-      <BtnVolver onClick={()=>{if(openToma){setOpenToma(null);setTomaReceta(null);setTomaMenu(null);}else setView(null);}}/>
-      {!openToma&&(<>
-        <div style={{overflowX:'auto',WebkitOverflowScrolling:'touch',padding:'0 16px 16px'}}>
-          <div style={{display:'flex',gap:8,minWidth:'min-content'}}>
-            {PLAN_DIAS.map((d,i)=>{
-              const dayNum=i+1;const isToday=dayNum===todayPlan;const isSel=dayNum===selDay;
-              return(<button key={d} onClick={()=>setSelDay(dayNum)} style={{flexShrink:0,padding:'10px 14px',borderRadius:14,border:'none',cursor:'pointer',background:isSel?'linear-gradient(135deg,'+T.g1+','+T.g2+')':isToday?alpha(T.g1,0.15):'rgba(255,255,255,0.06)',color:isSel?T.t1:isToday?T.g1:T.t2,fontWeight:isSel||isToday?900:600,fontSize:12,fontFamily:"'Nunito',sans-serif",boxShadow:isSel?'0 3px 0 '+T.g3:isToday?'0 0 0 1.5px '+T.bG:'none',transition:'all 0.2s',display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
-                <span>{d}</span>
-                {isToday&&!isSel&&<div style={{width:5,height:5,borderRadius:'50%',background:T.g1}}/>}
-              </button>);
-            })}
-          </div>
-        </div>
-        <div style={{padding:'0 16px 12px'}}>
-          <div style={{fontSize:13,fontWeight:900,color:T.t2,fontFamily:"'Nunito',sans-serif"}}>{PLAN_DIAS_F[selDay-1]}{selDay===todayPlan?` · ${lang==='en'?'Today':'Hoy'}`:''} · {lang==='en'?'Week':'Semana'} {plan.semana}</div>
-        </div>
-        <div style={{padding:'0 16px',display:'flex',flexDirection:'column',gap:10}}>
-          {(()=>{
-            // Botón de suplemento/medicación: horizontal largo, dorado, con hora.
-            // Solo HOY (semana en curso) y desaparece al completarse ese día.
-            const mostrarSupl = suplHoy && selDay===todayPlan && puedeRegistrar;
-            const SuplBtn = ({it})=>(
-              <button key={`supl-${it.nombre}`} onClick={()=>marcarSupl(it)} style={{
-                width:'100%',boxSizing:'border-box',display:'flex',alignItems:'center',gap:12,
-                background:'linear-gradient(135deg,rgba(201,168,76,0.16),rgba(201,168,76,0.06))',
-                border:`1.5px dashed ${T.au1}`,borderRadius:16,padding:'12px 16px',
-                textAlign:'left',cursor:'pointer',transition:'all 0.2s'}}>
-                <div style={{fontSize:22,width:38,height:38,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:12,background:'rgba(201,168,76,0.15)',flexShrink:0}}>{SUPL_IC[it.tipo]||'💊'}</div>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:10,color:T.au1,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:2,fontFamily:"'DM Sans',sans-serif"}}>
-                    ⏰ {it.hora} · {lang==='en'?(it.tipo==='Medicación'?'Medication':'Supplement'):it.tipo}
-                  </div>
-                  <div style={{fontSize:13.5,fontWeight:800,color:T.t1,fontFamily:"'Nunito',sans-serif",whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
-                    {it.nombre}{it.dosis?` · ${it.dosis}`:''}
-                  </div>
-                </div>
-                <div style={{fontSize:12,fontWeight:900,color:T.au1,flexShrink:0,fontFamily:"'Nunito',sans-serif"}}>+5 💎</div>
-              </button>
-            );
-            const suplEn=(tras)=>!mostrarSupl?null:
-              suplHoy.filter(it=>suplTrasToma(it.hora)===tras && !suplHechos[it.nombre])
-                     .map(it=><SuplBtn key={it.nombre} it={it}/>);
-            return(<>
-          {suplEn('')}
-          {PLAN_TOMAS.map(toma=>{
-            const meal=planJ?.[toma]?.[String(selDay)];
-            const hasMeal=!!meal?.Nombre_Receta;
-            const mostrarChips=hasMeal&&puedeRegistrar;
-            const estado=regDia[selDateKey]?.meals?.[toma];
-            return(<React.Fragment key={toma}><div key={toma}>
-              <button onClick={()=>hasMeal&&abrirToma(toma)} disabled={!hasMeal} style={{width:'100%',boxSizing:'border-box',background:hasMeal?(PLAN_TIPO_BG[meal?.Tipo]||'rgba(255,255,255,0.06)'):'rgba(255,255,255,0.04)',border:hasMeal?'1.5px solid rgba(255,255,255,0.12)':'1.5px solid rgba(255,255,255,0.05)',borderRadius:mostrarChips?'16px 16px 0 0':16,padding:'14px 16px',textAlign:'left',cursor:hasMeal?'pointer':'default',display:'flex',alignItems:'center',gap:12,transition:'all 0.2s'}}>
-                <div style={{fontSize:26,width:44,height:44,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:14,background:'rgba(255,255,255,0.06)',flexShrink:0}}>{PLAN_TOMA_IC[toma]||'🍴'}</div>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:10,color:T.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:3,fontFamily:"'DM Sans',sans-serif"}}>{toma}</div>
-                  {(hasMeal&&meal?.compuesta&&Array.isArray(meal?.platos)&&meal.platos.length>=2)?(
-                    <div style={{display:'flex',flexDirection:'column',gap:2}}>
-                      {meal.platos.map((pl,i)=>(
-                        <div key={i} style={{fontSize:12.5,fontWeight:800,color:T.t1,fontFamily:"'Nunito',sans-serif",whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
-                          <span style={{color:T.au1,fontWeight:900,marginRight:4}}>{menuEtiqueta((Array.isArray(meal.etiquetas)&&meal.etiquetas[i])||(i===0?'1º':'2º'),lang)}</span>
-                          <span style={{marginRight:4}}>{emojiPlato(pl.Nombre_Receta,pl.Tipo)}</span>{pl.Nombre_Receta}
-                        </div>
-                      ))}
-                    </div>
-                  ):(
-                  <div style={{fontSize:14,fontWeight:hasMeal?800:400,color:hasMeal?T.t1:T.t3,fontFamily:"'Nunito',sans-serif",whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
-                    {hasMeal&&<span style={{marginRight:4}}>{emojiPlato(meal.Nombre_Receta, meal.Tipo)}</span>}{hasMeal?meal.Nombre_Receta:'—'}
-                  </div>
-                  )}
-                </div>
-                {hasMeal&&<div style={{color:T.t3,fontSize:18,flexShrink:0}}>›</div>}
-              </button>
-              {mostrarChips&&(
-                <div style={{background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderTop:'none',borderRadius:'0 0 16px 16px',padding:'8px 10px 10px'}}>
-                <div style={{display:'flex',gap:6}}>
-                  {PLAN_CUMPL.filter(c=>!c.oculto).map(c=>{const on=estado===c.k;return(
-                    <button key={c.k} onClick={()=>setEstadoComida(toma,c.k)} title={lang==='en'?c.en:c.es} aria-label={lang==='en'?c.en:c.es} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',padding:'11px 0',borderRadius:12,cursor:'pointer',background:on?c.c+'30':'rgba(255,255,255,0.05)',border:on?('2px solid '+c.c):'1.5px solid rgba(255,255,255,0.06)',fontSize:22,lineHeight:1,transition:'all 0.15s',
-                      // Micro-pop al quedar seleccionado (Tarea B). La animación solo se
-                      // relanza cuando `on` pasa de false→true (la propiedad cambia);
-                      // con reduced-motion, el borde y el fondo ya cuentan la selección.
-                      animation:(on&&!REDUCED_MOTION())?'popIn 0.22s cubic-bezier(0.34,1.56,0.64,1)':'none'}}>
-                      {c.ic}
-                    </button>);})}
-                </div>
-                {/* Kcal reales (fase 1): «menos» pregunta cuánto; sin elegir, la mitad. */}
-                {estado==='menos'&&(
-                  <div style={{display:'flex',alignItems:'center',gap:6,marginTop:8,fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>
-                    <span style={{flex:1}}>{lang==='en'?'How much did you eat?':'¿Cuánto comiste?'}</span>
-                    {FRACCIONES_MENOS.map(([f,s])=>{const on=(fraccionValida(realDia[toma]?.frac)??FRAC_MENOS_DEFECTO)===f;return(
-                      <button key={f} onClick={()=>setFraccionMenos(toma,f)} aria-label={s} style={{fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:12,padding:'5px 11px',borderRadius:9,cursor:'pointer',background:on?alpha(T.au1,0.12):'transparent',border:on?'1.5px solid '+T.au1:'1.5px solid rgba(255,255,255,0.14)',color:on?T.au2:T.t2}}>{s}</button>);})}
-                  </div>
-                )}
-                {/* Kcal reales (fase 2): lo real de la toma, los extras y la hoja «¿Qué comiste?» */}
-                {estado&&(()=>{ const rT=realToma(estado, realDia[toma], previstoToma(planJ,toma,selDay)); const sust=(estado==='fuera'||estado==='cambiada'); const anad=(estado==='anadida');
-                  const lnk={background:'none',border:'none',padding:0,cursor:'pointer',color:T.au2,fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:11};
-                  return(
-                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,marginTop:8,fontSize:11,fontFamily:"'DM Sans',sans-serif"}}>
-                    <span style={{color:T.t2}}>{rT&&rT.conocido?`${Math.round(rT.kcal)} kcal${rT.extras?(lang==='en'?` · ${rT.extras} extra`:` · ${rT.extras} extra`):''}`:(sust?(lang==='en'?'? kcal · not quantified':'? kcal · sin cuantificar'):'')}</span>
-                    <span style={{display:'flex',gap:12}}>
-                      {!anad&&<button onClick={()=>abrirHoja(toma,'extras')} style={lnk}>{lang==='en'?'＋ Add something':'＋ Añadir algo más'}</button>}
-                      {anad&&<button onClick={()=>abrirHoja(toma,'anadir')} style={lnk}>{(realDia[toma]?.items||[]).length?(lang==='en'?'Edit what you added':'Editar lo que añadiste'):(lang==='en'?'What did you add?':'¿Qué añadiste?')}</button>}
-                      {sust&&<button onClick={()=>abrirHoja(toma,'sustituir')} style={lnk}>{rT&&rT.conocido?(lang==='en'?'Edit what you ate':'Editar lo que comiste'):(lang==='en'?'Quantify':'Cuantificar')}</button>}
-                    </span>
-                  </div>);})()}
-                </div>
-              )}
-            </div>{suplEn(toma)}</React.Fragment>);
-          })}
-            </>);
-          })()}
-          {/* ── «Tu día»: kcal reales frente a previstas y macros real/previsto (src/TuDia.jsx) ── */}
-          <TuDia T={T} lang={lang} planJ={planJ} dia={selDay} meals={regDia[selDateKey]?.meals} real={realDia}
-                 tomas={PLAN_TOMAS} activo={puedeRegistrar} kcalVisible={profile?.kcal_visible!==false}
-                 diaNombre={PLAN_DIAS_F[selDay-1]} semana={plan?.semana} onCuantificar={(toma)=>abrirHoja(toma,'sustituir')}/>
-          {hoja&&<QueComiste T={T} lang={lang} toma={hoja.toma} modo={hoja.modo} estado={regDia[selDateKey]?.meals?.[hoja.toma]}
-                 cargarRecetas={cargarRecetasCache} nutri={_NUTRI_ING}
-                 inicial={hoja.modo==='extras'?(realDia[hoja.toma]?.extras||[]):(realDia[hoja.toma]?.items||[])}
-                 onGuardar={guardarHoja} onCerrar={()=>setHoja(null)}/>}
-          {boMomento&&!hoja&&<BoMomento T={T} Sheep={Sheep} lang={lang} texto={boMomento.texto} firma={boMomento.firma}
-                 bo={{color:profile?.bo_color||'blanca',equipados:Array.isArray(profile?.bo_equipados)?profile.bo_equipados:[]}}
-                 onCerrar={()=>setBoMomento(null)}/>}
-          {puedeRegistrar&&(<>
-            <div style={{background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:16,padding:'12px 14px'}}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
-                <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.08em',display:'flex',alignItems:'center',gap:6}}><span>💬</span>{lang==='en'?'Note for your nutritionist':'Nota para tu nutricionista'}</div>
-                {notaOK&&<span style={{fontSize:11,color:T.g1,fontWeight:800}}>✓ {lang==='en'?'Saved':'Guardada'}</span>}
-              </div>
-              <textarea value={notaTmp} onChange={e=>{setNotaTmp(e.target.value);setNotaOK(false);}} onBlur={guardarNotaDia} rows={2} placeholder={lang==='en'?'e.g. I ate out on Saturday, pizza with friends…':'p. ej. el sábado comí fuera, pizza con amigos…'} style={{width:'100%',boxSizing:'border-box',resize:'vertical',background:'rgba(0,0,0,0.20)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:12,padding:'10px 12px',color:T.t1,fontSize:13,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,outline:'none'}}/>
-              <div style={{fontSize:10.5,color:T.t3,marginTop:6,fontFamily:"'DM Sans',sans-serif"}}>{lang==='en'?'Optional · only your nutritionist sees this':'Opcional · solo lo ve tu nutricionista'}</div>
-            </div>
-            <div style={{padding:'4px 4px 0'}}>
-              <div style={{fontSize:10,color:T.t3,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{lang==='en'?'What each button means':'Qué significa cada botón'}</div>
-              <div style={{display:'flex',flexWrap:'wrap',gap:'8px 16px'}}>
-                {PLAN_CUMPL.filter(c=>!c.oculto).map(c=>(
-                  <div key={c.k} style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}><span style={{fontSize:16,lineHeight:1}}>{c.ic}</span>{lang==='en'?c.en:c.es}</div>
-                ))}
-                <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}><span style={{fontSize:16,lineHeight:1}}>＋</span>{lang==='en'?'Add something: an extra on any meal':'Añadir algo más: un extra sobre cualquier comida'}</div>
-                <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}><span style={{fontSize:16,lineHeight:1}}>➕</span>{lang==='en'?'Added: the recipe and, on top, other dishes or foods (they add to your plan)':'Añadí: la receta y, además, otros platos o ingredientes (se suman a lo previsto)'}</div>
-                <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}><span style={{fontSize:16,lineHeight:1}}>🔄</span>{lang==='en'?'Swapped: something else instead of the recipe, out or at home; say what you ate to see your kcal, or it stays as «?»':'La cambié: otra cosa en vez de la receta, fuera o en casa; di qué comiste para ver tus kcal, o queda en «?»'}</div>
-              </div>
-            </div>
-          </>)}
-        </div>
-      </>)}
-      {openToma&&(<div style={{padding:'0 16px 16px'}}>
-        {loadingToma&&<div style={{textAlign:'center',padding:40,fontSize:13,color:T.t2}}>{lang==='en'?'Loading recipe…':'Cargando receta…'}</div>}
-        {!loadingToma&&tomaReceta&&(<>
-          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
-            <span style={{fontSize:22}}>{PLAN_TOMA_IC[openToma]||'🍴'}</span>
-            <div style={{fontSize:11,color:T.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',fontFamily:"'DM Sans',sans-serif"}}>{openToma}</div>
-          </div>
-          {/* ── MENÚ DESGLOSADO: pestañas de platos ─────────────────────────
-              Cada pestaña carga su plato en tomaReceta y TODO lo de abajo
-              (macros, ración, ingredientes, preparación, cambiar, guardar y
-              descartar) se reutiliza tal cual; «Cambiar» cambia solo ese
-              plato. El check de cumplimiento es de la TOMA: un solo registro
-              engloba los dos platos. */}
-          {tomaMenu&&(<>
-            <div style={{display:'flex',gap:8,marginBottom:10}}>
-              {tomaMenu.platos.map((pl,i)=>{const on=i===platoSel;return(
-                <button key={i} onClick={()=>{if(i===platoSel)return;sfx&&sfx('tap');setPlatoSel(i);setTomaReceta(platoMenuAReceta(pl));setCocinarDos(false);setCocinarDeMas(1);}} style={{
-                  flex:1,minWidth:0,padding:'10px 10px',borderRadius:14,cursor:'pointer',textAlign:'left',
-                  background:on?'linear-gradient(135deg,'+T.g1+','+T.g2+')':'rgba(255,255,255,0.05)',
-                  border:on?'2px solid '+T.au2:'1.5px solid rgba(255,255,255,0.12)',
-                  boxShadow:on?'0 3px 0 '+T.g3:'none',transition:'all 0.15s'}}>
-                  <div style={{fontSize:10,fontWeight:900,color:on?T.wh:T.au1,textTransform:'uppercase',letterSpacing:'0.08em',fontFamily:"'DM Sans',sans-serif",marginBottom:2}}>
-                    {menuEtiqueta(tomaMenu.etiquetas[i],lang)} · {Math.round(parseFloat(pl.Calorias_Totales)||0)} kcal
-                  </div>
-                  <div style={{fontSize:12.5,fontWeight:900,color:on?T.wh:T.t1,fontFamily:"'Nunito',sans-serif",whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
-                    {emojiPlato(pl.Nombre_Receta,pl.Tipo)} {pl.Nombre_Receta}
-                  </div>
-                </button>);})}
-            </div>
-            <div style={{display:'flex',alignItems:'center',gap:8,background:'rgba(255,255,255,0.04)',
-              border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:14,padding:'8px 12px',marginBottom:12}}>
-              <span style={{fontSize:15,lineHeight:1}}>🍽️</span>
-              <span style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>
-                {lang==='en'
-                  ?`Full menu: ${tomaMenu.kcalTotal} kcal · both courses are ONE meal — a single check logs them together`
-                  :`Menú completo: ${tomaMenu.kcalTotal} kcal · los dos platos son UNA toma — un solo check registra todo`}
-              </span>
-            </div>
-          </>)}
-          <div style={{background:T.bgCard,borderRadius:20,padding:'20px 18px',marginBottom:12,border:'1px solid rgba(255,255,255,0.07)'}}>
-            <div style={{display:'flex',alignItems:'flex-start',gap:14,marginBottom:16}}>
-              <div style={{fontSize:48,lineHeight:1,flexShrink:0}}>{emojiPlato(tomaReceta.nombre, tomaReceta.tipo)}</div>
-              <div style={{flex:1}}>
-                <div style={{display:'inline-block',background:(PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1)+'22',border:'1.5px solid '+(PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1)+'55',borderRadius:20,padding:'3px 12px',fontSize:10,fontWeight:900,color:PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1,textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:8}}>{tomaReceta.tipo||'—'}</div>
-                <div style={{fontSize:19,fontWeight:900,color:T.wh,lineHeight:1.25}}>{tomaReceta.nombre}</div>
-              </div>
-            </div>
-            {/* Caja dorada: qué cocinar y cuánto comer. Sale si la receta rinde
-                varias raciones (tú comes 1) o si el plan ajustó la ración. */}
-            {(()=>{
-              const caja=textosCajaRacion({raciones:tomaReceta.raciones,factor:tomaReceta.racion_factor,
-                racionTexto:tomaReceta.racion_texto,lang});
-              return caja&&(
-              <div style={{display:'flex',alignItems:'center',gap:8,background:alpha(T.au1,0.10),
-                border:`1.5px solid ${alpha(T.au1,0.45)}`,borderRadius:14,padding:'9px 12px',marginBottom:12}}>
-                <span style={{fontSize:18,lineHeight:1}}>{caja.icono}</span>
-                <div>
-                  <div style={{fontSize:12,fontWeight:900,color:T.au1}}>
-                    {caja.titulo}
-                  </div>
-                  <div style={{fontSize:10.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>
-                    {caja.detalle}
-                  </div>
-                </div>
-              </div>);
-            })()}
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:8}}>
-              {[{l:lang==='en'?'Calories':'Calorías',v:String(tomaReceta.calorias),u:'kcal',c:T.au1},{l:lang==='en'?'Protein':'Proteína',v:String(tomaReceta.proteinas_g),u:'g',c:T.platos},{l:lang==='en'?'Carbs':'Carbos',v:String(tomaReceta.hidratos_g),u:'g',c:T.g1},{l:lang==='en'?'Fat':'Grasas',v:String(tomaReceta.grasas_g),u:'g',c:'#FFB74D'}].map(({l,v,u,c})=>(
-                <div key={l} style={{background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'10px 6px',textAlign:'center',border:'1px solid rgba(255,255,255,0.08)'}}>
-                  <div style={{fontSize:16,fontWeight:900,color:c}}>{v}</div>
-                  <div style={{fontSize:9,color:c,fontWeight:700,opacity:0.8}}>{u}</div>
-                  <div style={{fontSize:9,color:T.t3,marginTop:2,fontFamily:"'DM Sans',sans-serif"}}>{l}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-          {ingList.length>0&&(<div style={{background:T.bgCard,borderRadius:20,padding:'18px 18px',marginBottom:12,border:'1px solid rgba(255,255,255,0.07)'}}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap',marginBottom:12}}>
-              <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em'}}>{lang==='en'?'Ingredients':'Ingredientes'}</div>
-              <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
-                {!fusion&&racLista>1&&(<div style={{fontSize:11,color:PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1,fontWeight:800,background:(PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1)+'22',borderRadius:20,padding:'3px 11px',whiteSpace:'nowrap'}}>🍽️ {lang==='en'?`Makes ${racLista} servings`:`Rinde ${racLista} raciones`}</div>)}
-                <button onClick={()=>setMiniCompra({nombre:tomaReceta.nombre,ingredientes:ingTexto,id:tomaReceta.id_receta,
-                  etiquetaRacion:etiquetaLista})} style={{
-                  background:'rgba(255,140,60,0.12)',border:'1.5px solid rgba(255,140,60,0.4)',borderRadius:20,
-                  padding:'4px 13px',fontSize:11.5,fontWeight:900,color:T.compra,cursor:'pointer',
-                  fontFamily:"'Nunito',sans-serif",whiteSpace:'nowrap'}}>{t("buyBtn")}</button>
-              </div>
-            </div>
-            {/* Fase 0 · para cuántos son estas cantidades (el plan ya viene
-                escalado a la ración del paciente, pero él no lo sabe) */}
-            <div style={{display:'flex',alignItems:'center',gap:6,marginTop:-4,marginBottom:11,
-              fontSize:11.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.35}}>
-              <span style={{fontSize:13,lineHeight:1,flexShrink:0}}>⚖️</span>
-              <span>{etiquetaLista}</span>
-            </div>
-            {/* ── §5.2 · Cocinar para los dos ─────────────────────────────────
-                Solo si la pareja tiene la MISMA receta en la MISMA toma del
-                MISMO día. Si no, ni aparece. */}
-            {mismaReceta&&(
-              <div style={{background:cocinarDos?alpha(T.g1,0.08):'rgba(255,255,255,0.04)',
-                border:`1.5px solid ${cocinarDos?alpha(T.au1,0.5):alpha(T.au1,0.28)}`,
-                borderRadius:14,padding:'12px 13px',marginBottom:12,transition:'all 0.15s'}}>
-                <div style={{fontSize:12.5,fontWeight:900,color:T.au1,fontFamily:"'Nunito',sans-serif",marginBottom:9}}>
-                  🍽️ {t("cocinarMasPregunta")}
-                </div>
-                <div style={{display:'flex',gap:8}}>
-                  {[{v:false,l:t("cocinarDosOpSolo")},{v:true,l:t("cocinarDosOpPareja")}].map(({v,l})=>(
-                    <button key={String(v)} onClick={()=>{sfx&&sfx('tap');setCocinarDos(v);setCocinarDeMas(1);}} style={{
-                      flex:1,padding:'9px 6px',borderRadius:12,cursor:'pointer',transition:'all 0.15s',
-                      background:cocinarDos===v?T.g3:'rgba(255,255,255,0.05)',
-                      border:cocinarDos===v?`2px solid ${T.au2}`:'1.5px solid rgba(255,255,255,0.14)',
-                      color:cocinarDos===v?T.wh:T.t2,fontSize:13,fontWeight:900,
-                      boxShadow:cocinarDos===v?'0 3px 0 rgba(0,0,0,0.35)':'none',
-                      fontFamily:"'Nunito',sans-serif"}}>
-                      {l}
-                    </button>
-                  ))}
-                </div>
-                {cocinarDos&&(<div style={{marginTop:10,paddingTop:9,borderTop:'1px solid rgba(255,255,255,0.10)'}}>
-                  <div style={{fontSize:12,fontWeight:800,color:T.au1,marginBottom:4,fontFamily:"'DM Sans',sans-serif"}}>
-                    🍽️ {t("cocinarDosReparto",{a:repartoTuyo,b:100-repartoTuyo,n:pareja?.nombre||''})}
-                  </div>
-                  <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.45}}>
-                    {racReceta>1 ? t("cocinarDosNotaRinde",{k:racReceta}) : t("cocinarDosNota")}
-                  </div>
-                  {!!fusion?.avisos?.length&&(
-                    <div style={{marginTop:7,fontSize:11,color:'#FFB74D',fontFamily:"'DM Sans',sans-serif",lineHeight:1.45}}>
-                      ⚠️ {t("cocinarDosAviso",{ing:fusion.avisos.join(', ')})}
-                    </div>
-                  )}
-                </div>)}
-              </div>
-            )}
-            {/* ── §5.3 · Raciones a cocinar: aquí SÍ es literalmente el doble
-                de la misma ración (batch cooking o pareja sin cuenta) ──────── */}
-            {!mismaReceta&&!!tomaReceta.ingredientes&&(
-              <div style={{background:'rgba(255,255,255,0.04)',border:`1.5px solid ${alpha(T.au1,0.28)}`,
-                borderRadius:14,padding:'12px 13px',marginBottom:12}}>
-                <div style={{fontSize:12.5,fontWeight:900,color:T.au1,fontFamily:"'Nunito',sans-serif",marginBottom:9}}>
-                  🍲 {t("cocinarMasPregunta")}
-                </div>
-                <div style={{display:'flex',gap:8}}>
-                  {[1,2,3].map(x=>(
-                    <button key={x} onClick={()=>{sfx&&sfx('tap');setCocinarDeMas(x);}} style={{
-                      flex:1,padding:'9px 0',borderRadius:12,cursor:'pointer',transition:'all 0.15s',
-                      background:cocinarDeMas===x?T.g3:'rgba(255,255,255,0.05)',
-                      border:cocinarDeMas===x?`2px solid ${T.au2}`:'1.5px solid rgba(255,255,255,0.14)',
-                      color:cocinarDeMas===x?T.wh:T.t2,fontSize:13,fontWeight:900,
-                      boxShadow:cocinarDeMas===x?'0 3px 0 rgba(0,0,0,0.35)':'none',
-                      fontFamily:"'Nunito',sans-serif"}}>
-                      {/* El botón dice cuántas raciones salen, no «x1»: en una receta
-                          de 3 raciones «x1» junto a «Rinde 3 raciones» parecía 1. */}
-                      {(()=>{const r=racionesDeLaLista(racReceta,x);
-                        return `${r} ${lang==='en'?(r===1?'serving':'servings'):(r===1?'ración':'raciones')}`;})()}
-                    </button>
-                  ))}
-                </div>
-                {cocinarDeMas>1&&(
-                  <div style={{marginTop:9,fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.45}}>
-                    {t("cocinarMasNota")}
-                  </div>
-                )}
-              </div>
-            )}
-            <div style={{display:'flex',flexDirection:'column',gap:7}}>
-              {ingList.map((ing,i)=>(<div key={i} className="stagger-in" style={{animationDelay:escalon(i),display:'flex',alignItems:'flex-start',gap:10}}><div style={{width:6,height:6,borderRadius:'50%',background:PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1,flexShrink:0,marginTop:6}}/><div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>{ing}</div></div>))}
-            </div>
-          </div>)}
-          {/* 💶 Coste estimado de TU ración (informativo; el gasto real se
-              apunta en la pestaña 🛒 Comprar). IIFE sin hooks: rama 'daily'.
-              En una receta de varias raciones la lista es la olla entera: tu
-              ración es la olla entre las raciones (como el recetario y el PDF). */}
-          {(()=>{
-            const _ce=costeRecetaJS(tomaReceta?.ingredientes||'');
-            if(!(_ce.total>0)) return null;
-            const _rac=Math.max(1,parseInt(tomaReceta?.raciones)||1);
-            return(
-            <div style={{background:T.bgCard,borderRadius:20,padding:'14px 18px',border:'1px solid rgba(255,255,255,0.07)',marginBottom:12}}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
-                <div style={{fontSize:12.5,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif"}}>
-                  💶 {lang==='en'?'Estimated cost of your serving':'Coste estimado de tu ración'}
-                </div>
-                <div style={{fontSize:16,fontWeight:900,color:T.g1,fontFamily:"'Nunito',sans-serif",flexShrink:0}}>~{eurES(costePorRacion(_ce.total,_rac))} €</div>
-              </div>
-              {_rac>1&&(
-                <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:4,lineHeight:1.4}}>
-                  {lang==='en'?`The whole list (${_rac} servings): ~${eurES(_ce.total)} €`:`La lista entera (${_rac} raciones): ~${eurES(_ce.total)} €`}
-                </div>
-              )}
-              <div style={{fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginTop:6,lineHeight:1.4}}>
-                {lang==='en'?'Log what it really cost you from the 🛒 Buy button.':'Apunta lo que te cueste de verdad desde el botón 🛒 Comprar.'}
-              </div>
-            </div>);
-          })()}
-          <div style={{background:T.bgCard,borderRadius:20,padding:'18px 18px',border:'1px solid rgba(255,255,255,0.07)'}}>
-            <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:12}}>{lang==='en'?'Preparation':'Preparación'}</div>
-            <div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.7,whiteSpace:'pre-wrap'}}>{tomaReceta.instrucciones}</div>
-          </div>
-          <BotonCompartirReceta rec={tomaReceta} lang={lang} sfx={sfx}/>
-
-          {/* Botones: cambiar receta (10💎), guardar (20💎) y descartar (gratis) */}
-          <div style={{display:'flex',gap:10,marginTop:12}}>
-            {/* Cambiar receta. En un MENÚ DESGLOSADO cambia solo el plato que
-                se ve («Cambiar 1º», «Cambiar 2º») y la celda se recompone con
-                los totales nuevos (cambiarPlatoMenu, 12-oct-2026); hasta ese
-                día el botón no salía en los menús. Guardar/descartar operan
-                también sobre el plato visible (son recetas del recetario). */}
-            <button onClick={cambiarRecetaToma}
-              style={{flex:1,background:(!enTrial&&gems<10)?'rgba(255,255,255,0.05)':'rgba(100,181,246,0.15)',
-                      border:(!enTrial&&gems<10)?'1.5px solid rgba(255,255,255,0.08)':'1.5px solid rgba(100,181,246,0.4)',
-                      borderRadius:16,padding:'14px 10px',cursor:(!enTrial&&gems<10)?'default':'pointer',
-                      display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
-              <span style={{fontSize:20}}>🔄</span>
-              <span style={{fontSize:12,fontWeight:900,color:(!enTrial&&gems<10)?T.t3:T.platos,fontFamily:"'Nunito',sans-serif"}}>
-                {lang==='en'?'Change':'Cambiar'}{tomaMenu?' '+menuEtiquetaCorta(tomaMenu.etiquetas[platoSel],lang):''}
-              </span>
-              <span style={{fontSize:10,color:enTrial?T.g1:T.t3,fontWeight:enTrial?900:400}}>{enTrial?(lang==='en'?'Free · trial':'Gratis · prueba'):'10 💎'}</span>
-            </button>
-            <button onClick={recetaYaGuardada?undefined:guardarRecetaToma}
-              style={{flex:1,background:recetaYaGuardada?alpha(T.g1,0.15):(gems<20?'rgba(255,255,255,0.05)':alpha(T.au1,0.12)),
-                      border:recetaYaGuardada?'1.5px solid '+T.bG:(gems<20?'1.5px solid rgba(255,255,255,0.08)':`1.5px solid ${alpha(T.au1,0.35)}`),
-                      borderRadius:16,padding:'14px 10px',cursor:recetaYaGuardada?'default':(gems<20?'default':'pointer'),
-                      display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
-              <span style={{fontSize:20}}>{recetaYaGuardada?'✅':'📖'}</span>
-              <span style={{fontSize:12,fontWeight:900,color:recetaYaGuardada?T.g1:(gems<20?T.t3:T.au1),fontFamily:"'Nunito',sans-serif"}}>
-                {recetaYaGuardada?(lang==='en'?'Saved':'Guardada'):(lang==='en'?'Save':'Guardar')}
-              </span>
-              <span style={{fontSize:10,color:T.t3}}>{recetaYaGuardada?'✓':'20 💎'}</span>
-            </button>
-            <button onClick={descartarRecetaToma}
-              style={{flex:1,background:recetaDescartada?'rgba(255,90,90,0.18)':'rgba(255,90,90,0.08)',
-                      border:recetaDescartada?'1.5px solid rgba(255,90,90,0.55)':'1.5px solid rgba(255,90,90,0.25)',
-                      borderRadius:16,padding:'14px 10px',cursor:'pointer',
-                      display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
-              <span style={{fontSize:20}}>{recetaDescartada?'🚫':'🗑️'}</span>
-              <span style={{fontSize:12,fontWeight:900,color:'#FF6B6B',fontFamily:"'Nunito',sans-serif"}}>
-                {recetaDescartada?(lang==='en'?'Discarded':'Descartada'):(lang==='en'?'Dislike':'No me gusta')}
-              </span>
-              <span style={{fontSize:10,color:T.t3}}>{recetaDescartada?(lang==='en'?'Tap to undo':'Toca para deshacer'):(lang==='en'?'Free':'Gratis')}</span>
-            </button>
-          </div>
-          {/* «Pregúntale a Bo» sobre esta receta: las acciones son las tres de arriba, por sus
-              mismas funciones (cambiarRecetaToma admite {sinIngrediente}). */}
-          {boActivo(profile)&&(
-            <button data-bo-abrir-receta onClick={()=>{sfx&&sfx('tap');setBoHoja(true);}}
-              style={{width:'100%',marginTop:10,background:'rgba(255,255,255,0.05)',border:`1.5px solid ${alpha(T.au1,0.35)}`,borderRadius:16,
-                      padding:'12px 10px',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
-              <span style={{fontSize:18}}>💬</span>
-              <span style={{fontSize:12.5,fontWeight:900,color:T.au1,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Ask Bo about this recipe':'Pregúntale a Bo por esta receta'}</span>
-            </button>)}
-          {boHoja&&boActivo(profile)&&<PreguntaBo T={T} Sheep={Sheep} lang={lang} pid={profile?.id}
-            bo={{nombre:profile?.bo_nombre||'Bo',color:profile?.bo_color||'blanca',equipados:Array.isArray(profile?.bo_equipados)?profile.bo_equipados:[]}}
-            ctx={{contexto:'receta',plan:planBo(profile),enTrial:!!enTrial,raciones:tomaReceta.raciones,puedeCambiar:true,descartada:!!recetaDescartada,
-                  dia:selDay,toma:openToma,receta:tomaReceta.nombre,
-                  cajaRacion:(()=>{ const c=textosCajaRacion({raciones:tomaReceta.raciones,factor:tomaReceta.racion_factor,racionTexto:tomaReceta.racion_texto,lang}); return c?`${c.titulo}. ${c.detalle}`:''; })()}}
-            receta={{nombre:tomaReceta.nombre,ingList}}
-            onAccion={async(a,extra)=>{
-              if(a==='cambiar'||a==='cambiar_sin') return await cambiarRecetaToma(extra||{});
-              if(a==='descartar'){ if(recetaDescartada) return {ok:true}; await descartarRecetaToma(); return {ok:true}; }
-              return {ok:false}; }}
-            onAbrir={(d)=>{ if(d==='consulta'&&setTab) setTab('consulta'); if(d==='peso'&&setTab) setTab('peso');
-              if(d==='objetivo'&&setTab) setTab('objetivo'); if(d==='config'&&isStandard){ setOpenToma(null); setConfigView(true); } }}
-            ia={{...boIA, consentir:()=>boIAConsentir(profile?.id)}}
-            pendiente={boPendiente}
-            onIr={(d)=>{ setBoHoja(false); setBoPendiente(null); setBoNav(d); }}
-            onRegistrar={boRegistrar}
-            onCerrar={()=>{ setBoHoja(false); setBoPendiente(null); }}/>}
-        </>)}
-      </div>)}
-    </div>);
-  }
-  return null;
-}
+// La pestaña Plan vive en src/PlanTab.jsx desde el 10-nov (MAESTRO-2026-1235): se carga aparte.
 
 
 // ─── PlanConfig — el paciente estándar configura su plan (dieta + distribución) ──
-function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,primeraVez}){
+export function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,primeraVez}){
   const TOMAS=[
     {k:'dist_desayuno',label:lang==='en'?'Breakfast':'Desayuno',ic:'☀️'},
     {k:'dist_almuerzo',label:lang==='en'?'Snack AM':'Almuerzo',ic:'🍎'},
@@ -17426,7 +14553,7 @@ class ErrorBoundary extends React.Component {
 // Aparece en la ficha del recetario y en el visor de la toma del plan cuando la
 // receta tiene slug público. Comparte la URL /recetas/<slug>: cada paciente que
 // comparte su cena es un anuncio del escaparate con la marca GBH.
-function BotonCompartirReceta({rec,lang,sfx,style}){
+export function BotonCompartirReceta({rec,lang,sfx,style}){
   const [copiado,setCopiado]=useState(false);
   if(!rec?.slug||!rec?.publica) return null;
   const compartir=async()=>{
