@@ -5,7 +5,11 @@ import { SPR, U, sprite, spriteCaja, bloque, suelo as dibujarSuelo, matas } from
 // Medidas corporales (silueta por zonas, perímetros y pliegues): módulo aparte,
 // recibe sbReq/T/Card por props para que este fichero solo cambie en 3 sitios.
 import { SelectorMedidas, MedidasCorporales } from "./MedidasCorporales";
-import { CicloPeso } from "./CicloPeso";                                 // ciclo y báscula: peso esperado con y sin retención, solo mujeres (12-oct-2026)
+// Carga diferida (MAESTRO-2026-1234): la gráfica de peso, el ciclo, la cafeína y la creatina
+// van en trozos aparte; recharts (540 KB) ya no se descarga al abrir Inicio. Extensión explícita:
+// en Mac/Windows «./Cafeina» encontraba cafeina.js (comprobar_mayusculas.py).
+const CicloPeso = React.lazy(() => import("./CicloPeso.jsx").then(m => ({ default: m.CicloPeso })));
+const GraficaPeso = React.lazy(() => import("./GraficaPeso.jsx"));
 import { SelectorPrograma, BotonPrograma } from "./SelectorPrograma";
 import { SemaforoDensidad, BotonDensidad, leerDensidad, escribirDensidad } from "./SemaforoDensidad"; // densidad calórica con Bo de policía (1-nov-2026)
 import { TuDia } from "./TuDia";                                              // Kcal reales, fase 1
@@ -19,8 +23,16 @@ import { elegirRecetaCambio, permitidasDePlanes, normNombreCambio, claveMemoriaC
 import { rolPlatoMenu, listasPlatoMenu, elegirPlatoMenu, recomponerMenu } from "./cambioReceta"; // menús de 1º y 2º: cada plato se cambia por separado (12-oct-2026)
 import { leerTodo } from "./leerTodo";                                   // recetas en bloques: PostgREST corta en 1.000 filas sin avisar (12-oct-2026)
 import { persistirCelda, fusionarPlanes } from "./celdaPlan";            // el plan se escribe por CELDAS: ya no pisa lo cambiado en otro dispositivo (15-oct-2026)
-import { Cafeina } from "./Cafeina";                                     // calculadora de cafeína, fase 1 (25-sep-2026)
-import { Creatina } from "./Creatina";                                   // calculadora de creatina, fase 1 (5-oct-2026)
+const Cafeina = React.lazy(() => import("./Cafeina.jsx").then(m => ({ default: m.Cafeina })));
+const Creatina = React.lazy(() => import("./Creatina.jsx").then(m => ({ default: m.Creatina })));
+// Tras pintar, se piden en segundo plano: el service worker los guarda y sin red siguen abriendo.
+if (typeof window !== "undefined") {
+  const _precargar = () => setTimeout(() => {
+    [() => import("./GraficaPeso.jsx"), () => import("./CicloPeso.jsx"), () => import("./Cafeina.jsx"), () => import("./Creatina.jsx")]
+      .forEach(f => { try { f().catch(() => {}); } catch {} });
+  }, 4000);
+  if (document.readyState === "complete") _precargar(); else window.addEventListener("load", _precargar, { once: true });
+}
 import { Suplementacion } from "./Suplementacion";                       // pestaña 💊 Suplementación: ☕ Cafeína y 💪 Creatina (próximamente) (26-sep-2026)
 import { BarraPestanas } from "./BarraPestanas";                         // la barra de pestañas de abajo (26-sep-2026)
 import { FuentesCientificas, EnlaceFuentes, abrirFuentes } from "./FuentesCientificas"; // fuentes con enlace de cada recomendación (Apple 1.4.1, 7-nov-2026)
@@ -1537,7 +1549,6 @@ const GBH_EMAIL    = "gbh.nutricion@gmail.com";
 const GBH_NOMBRE   = "GBH Nutrición";
 const GBH_PRIVACY_URL = "https://app.gbhnutricion.es/legal/";
 // ─────────────────────────────────────────────────────────────────────────────
-import { ComposedChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 // ─── Supabase ────────────────────────────────────────────────────────────────
 const SB  = "https://kszytoufvqogcitzbzqs.supabase.co";
@@ -2123,6 +2134,40 @@ const gbhHeaders = (extra={}) => {
   };
 };
 
+// Descartes de la cola (MAESTRO-2026-1234): antes solo quedaba un console.warn y el paciente no se
+// enteraba de que un cambio no se había guardado. Se guardan los 20 últimos y se avisa en pantalla.
+const DESCARTES_KEY = "gbh:cola_descartes";
+const avisarDescarte = (op, status) => {
+  try{
+    const l = lsGet(DESCARTES_KEY, []);
+    l.push({ ts: Date.now(), method: op.method, path: String(op.path||"").split("?")[0], status });
+    lsSet(DESCARTES_KEY, l.slice(-20));
+    window.dispatchEvent(new CustomEvent("gbh:cola-descarte", { detail: { status } }));
+  }catch{}
+};
+
+// Recetario completo, UNA descarga por sesión (MAESTRO-2026-1234): la búsqueda por ingrediente y el
+// cambio de receta lo bajaban cada uno por su lado (1.112 recetas, select=*). Si la lectura falla
+// devuelve null y NO se guarda: el siguiente intento vuelve a pedirlo (antes la búsqueda guardaba []
+// para siempre y no reintentaba).
+let _recetarioCompleto = null, _recetarioPromesa = null;
+const leerRecetarioCompleto = async () => {
+  if(_recetarioCompleto) return _recetarioCompleto;
+  if(_recetarioPromesa) return _recetarioPromesa;
+  _recetarioPromesa = (async ()=>{
+    try{
+      const d = await sbLeerTodo("recipes?select=*&order=id_receta.asc");
+      if(Array.isArray(d)) _recetarioCompleto = d;
+      return Array.isArray(d) ? d : null;
+    } finally { _recetarioPromesa = null; }
+  })();
+  return _recetarioPromesa;
+};
+// El mismo orden que pedía la búsqueda a la base (calorias.asc, id_receta.asc; los NULL al final).
+const ordenPorKcal = (lista) => (lista||[]).slice().sort((a,b)=>
+  ((a.calorias==null)-(b.calorias==null)) || ((a.calorias??0)-(b.calorias??0)) ||
+  (a.id_receta<b.id_receta?-1:a.id_receta>b.id_receta?1:0));
+
 async function flushQueue(){
   const q = lsGet(getQueueKey(), []);
   if(!q.length) return;
@@ -2143,7 +2188,7 @@ async function flushQueue(){
         op.tries = (op.tries || 0) + 1;
         // 4xx persistente (columna/índice inexistente…): descartar tras 10 intentos
         if(op.tries < 10 || r.status >= 500) failed.push(op);
-        else console.warn("[cola] operación descartada tras 10 fallos:", op.method, op.path, r.status);
+        else { console.warn("[cola] operación descartada tras 10 fallos:", op.method, op.path, r.status); avisarDescarte(op, r.status); }
       }
     } catch {
       failed.push(op); // sin red, volver a encolar
@@ -2295,6 +2340,14 @@ const patchWeeklyState = (profileId, merged) => {
 // ─── sbReq: offline-first ────────────────────────────────────────────────────
 // GET → siempre intenta red, sin encolar si falla
 // POST/PATCH → intenta red; si falla, encola para después
+// Tope de las lecturas (MAESTRO-2026-1234): con mala cobertura un GET podía quedarse esperando sin fin.
+const LECTURA_TOPE_MS = 20000;
+const senalConTope = (ms) => {
+  try{
+    if(typeof AbortSignal!=="undefined" && typeof AbortSignal.timeout==="function") return AbortSignal.timeout(ms);
+    const c = new AbortController(); setTimeout(()=>c.abort(), ms); return c.signal;
+  }catch{ return undefined; }
+};
 const sbReq = async(method, path, body=null) => {
   // SIEMPRE la anon key para las llamadas de datos.
   // Lección aprendida: enviar el token del usuario rompía las lecturas de
@@ -2314,6 +2367,7 @@ const sbReq = async(method, path, body=null) => {
   try {
     const r = await fetch(`${SB}/rest/v1/${path}`, {
       method, headers, body: body ? JSON.stringify(body) : null,
+      ...(method==="GET" ? { signal: senalConTope(LECTURA_TOPE_MS) } : {}),
     });
     if(!r.ok) throw new Error(`${r.status}`);
     if(method==="DELETE") return true;
@@ -7464,7 +7518,7 @@ function QuizModal({onClose, onComplete, todayKey, lang, onGoHome}){
         )}
 
         {phase==="result"&&(
-          <div style={{padding:"32px 24px",textAlign:"center"}} onClick={()=>{onComplete(xpGain,gemGain);onClose();}}>
+          <div role="button" tabIndex={0} style={{padding:"32px 24px",textAlign:"center"}} onClick={()=>{onComplete(xpGain,gemGain);onClose();}}>
             <div style={{fontSize:64,marginBottom:12,animation:"scaleIn 0.5s cubic-bezier(0.34,1.56,0.64,1)"}}>{correct?"🎉":"💡"}</div>
             <div style={{fontSize:22,fontWeight:900,color:correct?T.g1:"#FF8080",marginBottom:8}}>
               {correct?(lang==="en"?"Correct!":"¡Correcto!"):(lang==="en"?"Almost...":"Casi...")}
@@ -7489,7 +7543,7 @@ function QuizModal({onClose, onComplete, todayKey, lang, onGoHome}){
               {lang==="en"?"Tap anywhere to continue":"Toca en cualquier lugar para continuar"}
             </div>
             {/* Volver a inicio */}
-            <div onClick={e=>{e.stopPropagation();onComplete(xpGain,gemGain);onGoHome();}} style={{display:"inline-block",padding:"10px 28px",borderRadius:14,border:"1.5px solid rgba(255,255,255,0.15)",color:"rgba(255,255,255,0.45)",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
+            <div role="button" tabIndex={0} onClick={e=>{e.stopPropagation();onComplete(xpGain,gemGain);onGoHome();}} style={{display:"inline-block",padding:"10px 28px",borderRadius:14,border:"1.5px solid rgba(255,255,255,0.15)",color:"rgba(255,255,255,0.45)",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
               {lang==="en"?"← Home":"← Inicio"}
             </div>
           </div>
@@ -7908,16 +7962,9 @@ function WeightChart({chartData,setWeightMode,goalWeight,shareName,lang}){
           {goalWeight&&<div style={{fontSize:10,color:"#FF6B9D",fontFamily:"'DM Sans',sans-serif",display:"flex",alignItems:"center",gap:4}}><div style={{width:12,height:2,background:"#FF6B9D",borderRadius:2,borderTop:"2px dashed #FF6B9D"}}/> {t("chartGoalLabel")}</div>}
         </div>
       </div>
-      <ResponsiveContainer width="100%" height={200}>
-        <ComposedChart data={chartData} margin={{top:5,right:5,left:-22,bottom:0}}>
-          <XAxis dataKey="date" tickFormatter={d=>d.slice(5)} tick={{fontSize:9,fill:T.t2}} tickLine={false} axisLine={false}/>
-          <YAxis domain={goalWeight?[d=>{const mn=Math.min(...chartData.map(x=>x.weight||99),goalWeight)-2;return Math.floor(mn);},"auto"]:(["auto","auto"])} tick={{fontSize:9,fill:T.t2}} tickLine={false} axisLine={false}/>
-          <Tooltip content={<CTip/>}/>
-          {goalWeight&&<Line type="monotone" dataKey={()=>goalWeight} stroke="#FF6B9D" strokeWidth={2} strokeDasharray="6 4" dot={false} name={t("chartGoalLabel")}/>}
-          <Line type="monotone" dataKey="weight" stroke={T.au1} strokeWidth={2.5} dot={{r:4.5,fill:T.au1,strokeWidth:0}} activeDot={{r:7,fill:T.au2}}/>
-          <Line type="monotone" dataKey="ma" stroke={T.xp} strokeWidth={2} strokeDasharray="5 3" dot={false}/>
-        </ComposedChart>
-      </ResponsiveContainer>
+      <React.Suspense fallback={<div style={{height:200}}/>}>
+        <GraficaPeso chartData={chartData} goalWeight={goalWeight} T={T} t={t} tooltip={<CTip/>}/>
+      </React.Suspense>
       {chartData.length>=2&&(()=>{
         const initialEntry=chartData.find(d=>d.isInitial)||chartData[0];
         const lastEntry=chartData[chartData.length-1];
@@ -8031,7 +8078,7 @@ function UserAvatar({size=52, photoB64, initials, borderColor, onClick, frame=nu
   };
 
   if(photoB64) return(
-    <div onClick={onClick} style={{
+    <div role="button" tabIndex={0} onClick={onClick} style={{
       width:size, height:size, borderRadius:size*0.33,
       ...wrapStyle,
       overflow:"hidden", cursor:"pointer", flexShrink:0,
@@ -8045,7 +8092,7 @@ function UserAvatar({size=52, photoB64, initials, borderColor, onClick, frame=nu
   // Icono genérico SVG con iniciales
   const letter = (initials||"?")[0].toUpperCase();
   return(
-    <div onClick={onClick} style={{
+    <div role="button" tabIndex={0} onClick={onClick} style={{
       width:size, height:size, borderRadius:size*0.33,
       ...wrapStyle,
       background:`linear-gradient(135deg,#2A5A2A,#1A3A10)`,
@@ -8165,12 +8212,12 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
 
         {/* ── Cabecera ── */}
         <div style={{padding:"28px 24px 18px",textAlign:"center",position:"relative"}}>
-          <button onClick={onClose} style={{position:"absolute",top:14,right:14,width:32,height:32,borderRadius:"50%",background:"rgba(0,0,0,0.3)",border:"none",color:"rgba(255,255,255,0.6)",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+          <button aria-label="Cerrar" onClick={onClose} style={{position:"absolute",top:14,right:14,width:32,height:32,borderRadius:"50%",background:"rgba(0,0,0,0.3)",border:"none",color:"rgba(255,255,255,0.6)",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
           <button onClick={onGoHome} style={{position:"absolute",top:14,left:14,height:32,borderRadius:12,background:"rgba(0,0,0,0.25)",border:"1px solid rgba(255,255,255,0.12)",color:"rgba(255,255,255,0.5)",fontSize:12,fontWeight:700,cursor:"pointer",padding:"0 10px",fontFamily:"'Nunito',sans-serif"}}>← {lang==="en"?"Home":"Inicio"}</button>
 
           {/* Foto + botón 📷 */}
           <div style={{position:"relative",display:"inline-block",marginBottom:14}}>
-            <div style={{width:100,height:100,borderRadius:28,overflow:"hidden",border:`3px solid ${T.au1}`,boxShadow:`0 6px 0 ${T.au3}`,cursor:"pointer"}} onClick={()=>fileRef.current?.click()}>
+            <div role="button" tabIndex={0} style={{width:100,height:100,borderRadius:28,overflow:"hidden",border:`3px solid ${T.au1}`,boxShadow:`0 6px 0 ${T.au3}`,cursor:"pointer"}} onClick={()=>fileRef.current?.click()}>
               {photo?(
                 <img src={photo} alt="avatar" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top"}}/>
               ):(
@@ -8252,7 +8299,7 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
                 </div>
                 <div style={{display:"flex",gap:8}}>
                   <button onClick={()=>{onSaveProfile("height",heightEdit);setEditingHeight(false);}} style={{flex:1,background:T.g1,border:"none",borderRadius:10,padding:"8px 0",color:T.t1,fontWeight:900,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>✓ {lang==="en"?"Save":"Guardar"}</button>
-                  <button onClick={()=>setEditingHeight(false)} style={{background:"rgba(255,255,255,0.08)",border:"1.5px solid rgba(255,255,255,0.14)",borderRadius:10,padding:"8px 14px",color:T.t2,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>✕</button>
+                  <button aria-label="Cerrar" onClick={()=>setEditingHeight(false)} style={{background:"rgba(255,255,255,0.08)",border:"1.5px solid rgba(255,255,255,0.14)",borderRadius:10,padding:"8px 14px",color:T.t2,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>✕</button>
                 </div>
               </div>
             )}
@@ -8533,7 +8580,7 @@ function MiniListaCompra({nombre, ingredientes, idReceta, t, onClose, etiquetaRa
               </div>
             )}
           </div>
-          <button onClick={onClose} style={{background:"rgba(255,255,255,0.10)",border:"none",borderRadius:14,width:32,height:32,color:T.t2,fontSize:14,cursor:"pointer",fontWeight:900,flexShrink:0}}>✕</button>
+          <button aria-label="Cerrar" onClick={onClose} style={{background:"rgba(255,255,255,0.10)",border:"none",borderRadius:14,width:32,height:32,color:T.t2,fontSize:14,cursor:"pointer",fontWeight:900,flexShrink:0}}>✕</button>
         </div>
         <div style={{height:7,background:"rgba(255,255,255,0.08)",borderRadius:6,margin:"10px 0 14px",overflow:"hidden"}}>
           <div style={{height:"100%",width:`${items.length?Math.round(marc/items.length*100):0}%`,background:`linear-gradient(90deg,${T.g3},${T.g1})`,borderRadius:6,transition:"width 0.25s"}}/>
@@ -9955,7 +10002,7 @@ function GBHApp(){
   const lanzarProgramaciones=async(pacientes)=>{
     setProgFase('generando'); setProgT0(Date.now()); setProgJob(null);
     const r=await sbDirect("POST","admin_jobs",{tipo:'programaciones_premium',estado:'pendiente',
-      payload:{clave:GBH_ADMIN_PIN, pacientes}});
+      payload:{pacientes}});
     const j=(r?.ok&&Array.isArray(r.data)&&r.data[0])||null;
     if(j?.id){ setProgJobId(j.id); return; }
     setProgJob({resultado:{error:r?.status===404
@@ -10287,9 +10334,9 @@ function GBHApp(){
     if(todasRecetasPromiseRef.current) return todasRecetasPromiseRef.current;
     todasRecetasPromiseRef.current = (async ()=>{
       try{
-        const data = await sbLeerTodo("recipes?select=*&order=calorias.asc,id_receta.asc");
-        const norm = (Array.isArray(data)?data:[]).map(normalizeRecipe);
-        todasRecetasRef.current = norm;
+        const data = await leerRecetarioCompleto();
+        const norm = ordenPorKcal(data).map(normalizeRecipe);
+        if(Array.isArray(data)) todasRecetasRef.current = norm;   // si falla, el siguiente intento vuelve a pedirlo
         return norm;
       } finally {
         todasRecetasPromiseRef.current = null;
@@ -11234,6 +11281,13 @@ function GBHApp(){
   },[profile]);
 
   const showT=(t)=>{setToast(t);setTimeout(()=>setToast(null),4200);};
+  // La cola descartó una escritura tras 10 fallos: que el paciente lo sepa (MAESTRO-2026-1234)
+  useEffect(()=>{
+    const on=()=>showT(lang==="en"?"⚠️ A change could not be saved. Please check it and do it again.":"⚠️ Un cambio no se ha podido guardar. Revísalo y vuelve a hacerlo.");
+    window.addEventListener("gbh:cola-descarte",on);
+    return ()=>window.removeEventListener("gbh:cola-descarte",on);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[lang]);
 
   const chkBadges=useCallback(async(s,ws,b)=>{
     const wC=ws.length,tD=logs.filter(l=>l.diet).length;
@@ -12045,7 +12099,7 @@ function GBHApp(){
     await addXG(xpG, gemG);
   };
 
-  const tapSheep=()=>{const n=taps+1;setTaps(n);if(tapRef.current)clearTimeout(tapRef.current);tapRef.current=setTimeout(()=>setTaps(0),2500);if(n>=5){setPinVal("");setPinErr(false);setPinGate(true);setTaps(0);}};
+  const tapSheep=()=>{const n=taps+1;setTaps(n);if(tapRef.current)clearTimeout(tapRef.current);tapRef.current=setTimeout(()=>setTaps(0),2500);if(n>=5){setTaps(0);if(getSesion()?.admin===true){setVistaAdmin('home');setScreen("admin");loadAdmin();}else{setPinVal("");setPinErr(false);setPinGate(true);}}};
   // Reacción al toque de Bo: se apila sobre tapSheep, que sigue siendo la puerta
   // del PIN. La respuesta es SIEMPRE positiva, aunque el estado fuera hambrienta.
   const [boToque, setBoToque] = useState(false);
@@ -12056,16 +12110,9 @@ function GBHApp(){
     haptic("toma"); sfx("tap");
     setTimeout(() => setBoToque(false), 620);
   };
-  const GBH_ADMIN_PIN="5895";
-  const pinTecla=(d)=>{
-    if(pinErr)setPinErr(false);
-    const v=(pinVal+d).slice(0,4);
-    setPinVal(v);
-    if(v.length===4){
-      if(v===GBH_ADMIN_PIN){setPinGate(false);setPinVal("");setVistaAdmin('home');setScreen("admin");loadAdmin();}
-      else{setPinErr(true);setTimeout(()=>{setPinVal("");},350);}
-    }
-  };
+  // MAESTRO-2026-1234: el PIN de 4 cifras vivía aquí, en claro dentro del bundle público, y la
+  // puerta era solo del cliente. Ahora el panel se abre con la sesión de la cuenta de administración
+  // (gbh_login_pin → gbh_sesiones.es_admin), la misma que comprueba gbh_es_admin() en la base.
   const loadAdmin=async()=>{
     const d=await sbReq("GET","admin_overview?select=*")||[];
     // Plan de servicio por paciente para el filtro del panel. Se calcula el
@@ -12288,7 +12335,6 @@ function GBHApp(){
   };
 
   const CSS=`
-    @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&family=DM+Sans:wght@400;500;700&display=swap');
     *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}body{background:${T.bg};font-family:'Nunito',sans-serif;overflow-x:hidden;}
     /* Nada de recuadro azul ni de selección de texto al tocar lo que es pulsable:
        el gesto de los 5 toques en Bo llegaba a seleccionar el contenido. El texto
@@ -12856,31 +12902,14 @@ function GBHApp(){
         <style>{CSS}</style>
         <div style={{fontSize:38,marginBottom:8}}>🔐</div>
         <div style={{fontSize:17,fontWeight:900,marginBottom:4}}>Acceso de administrador</div>
-        <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:22}}>Introduce el PIN de 4 dígitos</div>
-        {/* Puntos del PIN */}
-        <div style={{display:"flex",gap:14,marginBottom:26,animation:pinErr?"gbhShake 0.35s":"none"}}>
-          {[0,1,2,3].map(i=>(
-            <div key={i} style={{width:16,height:16,borderRadius:"50%",transition:"all 0.12s",
-              background:pinErr?T.red:(i<pinVal.length?T.g1:"rgba(255,255,255,0.12)"),
-              border:"2px solid "+(pinErr?T.red:(i<pinVal.length?T.g1:"rgba(255,255,255,0.25)")),
-              boxShadow:i<pinVal.length&&!pinErr?`0 0 10px ${T.g1}66`:"none"}}/>
-          ))}
+        <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:22,maxWidth:300,textAlign:"center",lineHeight:1.5}}>
+          El panel solo se abre con la sesión de la cuenta de administración. Entra con esa cuenta y vuelve a tocar a Bo cinco veces.
         </div>
-        {pinErr&&<div style={{fontSize:12,color:T.red,fontWeight:800,marginTop:-16,marginBottom:14}}>PIN incorrecto</div>}
-        {/* Teclado */}
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,72px)",gap:12}}>
-          {["1","2","3","4","5","6","7","8","9","←","0","✕"].map(k=>(
-            <button key={k}
-              onClick={()=>{if(k==="✕"){setPinGate(false);setPinVal("");}else if(k==="←"){setPinVal(v=>v.slice(0,-1));setPinErr(false);}else pinTecla(k);}}
-              style={{height:64,borderRadius:18,fontSize:k==="←"||k==="✕"?18:22,fontWeight:900,cursor:"pointer",
-                fontFamily:"'Nunito',sans-serif",color:k==="✕"?T.red:T.t1,
-                background:k==="✕"?alpha(T.red,0.10):"rgba(255,255,255,0.06)",
-                border:"2px solid "+(k==="✕"?alpha(T.red,0.3):"rgba(255,255,255,0.12)"),
-                boxShadow:"0 4px 0 rgba(0,0,0,0.4)"}}>
-              {k}
-            </button>
-          ))}
-        </div>
+        <button onClick={()=>{setPinGate(false);setPinVal("");}}
+          style={{height:52,padding:"0 32px",borderRadius:18,fontSize:16,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",
+            color:T.t1,background:"rgba(255,255,255,0.06)",border:"2px solid rgba(255,255,255,0.12)",boxShadow:"0 4px 0 rgba(0,0,0,0.4)"}}>
+          Cerrar
+        </button>
         <style>{`@keyframes gbhShake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}`}</style>
       </div>
     );
@@ -13419,8 +13448,8 @@ function GBHApp(){
           <Suplementacion t={t} T={T} sfx={sfx} onAbrir={id=>{ if(id==="cafeina") setCafeinaAbierta(true); if(id==="creatina") abrirCreatina(); }}/>
         </div>
       )}
-      {cafeinaAbierta&&<Cafeina profile={profile} weights={weights} medicacion={suplPlan} lang={lang} t={t} T={T} sfx={sfx} onClose={()=>setCafeinaAbierta(false)}/>}
-      {creatinaAbierta&&<Creatina profile={profile} weights={weights} medicacion={suplPlan} tipoDieta={creatinaDatos.tipoDieta} sumaPliegues={creatinaDatos.sumaPliegues} lang={lang} t={t} T={T} sfx={sfx} onClose={()=>setCreatinaAbierta(false)}/>}
+      {cafeinaAbierta&&<React.Suspense fallback={null}><Cafeina profile={profile} weights={weights} medicacion={suplPlan} lang={lang} t={t} T={T} sfx={sfx} onClose={()=>setCafeinaAbierta(false)}/></React.Suspense>}
+      {creatinaAbierta&&<React.Suspense fallback={null}><Creatina profile={profile} weights={weights} medicacion={suplPlan} tipoDieta={creatinaDatos.tipoDieta} sumaPliegues={creatinaDatos.sumaPliegues} lang={lang} t={t} T={T} sfx={sfx} onClose={()=>setCreatinaAbierta(false)}/></React.Suspense>}
       {zonaJuego&&(
         <div style={{position:"fixed",inset:0,zIndex:9000,background:T.bg,display:"flex",flexDirection:"column"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"calc(14px + env(safe-area-inset-top, 0px)) 16px 8px"}}>
@@ -13702,14 +13731,14 @@ function GBHApp(){
       {/* Banner quiz diario — si no se ha hecho hoy */}
       {!quizDone&&!quizBannerDismissed&&(
         <div style={{background:"linear-gradient(135deg,rgba(123,47,190,0.97),rgba(74,14,143,0.97))",padding:"10px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,animation:"slideDown 0.35s ease"}}>
-          <div onClick={()=>{setShowQuiz(true);setQuizBannerDismissed(true);}} style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}}>
+          <div role="button" tabIndex={0} onClick={()=>{setShowQuiz(true);setQuizBannerDismissed(true);}} style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}}>
             <div style={{width:38,height:38,borderRadius:11,background:"rgba(255,255,255,0.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:20}}>🧠</div>
             <div>
               <div style={{fontSize:12,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif",lineHeight:1.2}}>¡Quiz de nutrición disponible!</div>
               <div style={{fontSize:10,color:"rgba(255,255,255,0.75)",fontFamily:"'DM Sans',sans-serif",marginTop:1}}>Responde y gana hasta +20 XP +8 💎 →</div>
             </div>
           </div>
-          <button onClick={()=>setQuizBannerDismissed(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:"50%",width:28,height:28,color:"rgba(255,255,255,0.6)",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
+          <button aria-label="Cerrar" onClick={()=>setQuizBannerDismissed(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:"50%",width:28,height:28,color:"rgba(255,255,255,0.6)",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
         </div>
       )}
       {/* Banner offline */}
@@ -13759,7 +13788,7 @@ function GBHApp(){
                   Instalar
                 </button>
               )}
-              <button onClick={()=>{setPwaDismissed(true);lsSet("gbh:pwaDismissed",Date.now());}} style={{background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:"50%",width:28,height:28,color:"rgba(255,255,255,0.5)",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
+              <button aria-label="Cerrar" onClick={()=>{setPwaDismissed(true);lsSet("gbh:pwaDismissed",Date.now());}} style={{background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:"50%",width:28,height:28,color:"rgba(255,255,255,0.5)",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
             </div>
           </div>
         );
@@ -13782,7 +13811,7 @@ function GBHApp(){
           position:"relative",
         }}>
           {/* Zona clickable */}
-          <div onClick={()=>{irA("peso");setWeightMode("input");}}
+          <div role="button" tabIndex={0} onClick={()=>{irA("peso");setWeightMode("input");}}
             style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}}>
             <span style={{fontSize:24}}>⚖️</span>
             <div>
@@ -13824,12 +13853,12 @@ function GBHApp(){
               <BarraProgreso pct={xpPct} color={`linear-gradient(90deg,${T.xp},${T.g1})`} alto={7} radio={8}
                 fondo="rgba(255,255,255,0.12)"
                 style={{width:94,marginTop:6,boxShadow:"inset 0 2px 4px rgba(0,0,0,0.4)"}}/>
-              <div onClick={()=>setRewardsOpen(true)} style={{fontSize:9,color:T.t2,marginTop:3,fontFamily:"'DM Sans',sans-serif",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:4}}><Contador value={xp}/> XP · Lv {lv.l} <span style={{color:T.au1}}>🎁</span></div>
+              <div role="button" tabIndex={0} onClick={()=>setRewardsOpen(true)} style={{fontSize:9,color:T.t2,marginTop:3,fontFamily:"'DM Sans',sans-serif",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:4}}><Contador value={xp}/> XP · Lv {lv.l} <span style={{color:T.au1}}>🎁</span></div>
             </div>
           </div>
           {/* Counters */}
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            <div onClick={()=>{
+            <div role="button" tabIndex={0} onClick={()=>{
                 const r=chipTapsRef.current; r.n++;
                 if(r.t) clearTimeout(r.t);
                 r.t=setTimeout(()=>{
@@ -13854,6 +13883,7 @@ function GBHApp(){
           propósito: esperar a que se vaya la anterior es latencia percibida.
           No bloquea el toque — es solo pintura, la nav sigue viva. */}
       <div key={tab} className="tab-in" style={{padding:"4px 18px 0"}}>
+      <LimiteSeccion lang={lang}>
 
         {/* ── HOME ──────────────────────────────────────────────────────────── */}
         {tab==="home"&&<>
@@ -13959,7 +13989,7 @@ function GBHApp(){
            es decisión de la app (clave gbh:reducemotion), no del sistema. */
       `}</style>
             <div style={{position:"relative",width:"100%"}}>
-                            <div onClick={tocarBo} className={`sin-sel${boToque && !MOVIMIENTO_REDUCIDO() ? " bo-toque" : ""}`}
+                            <div role="button" tabIndex={0} onClick={tocarBo} className={`sin-sel${boToque && !MOVIMIENTO_REDUCIDO() ? " bo-toque" : ""}`}
                    style={{cursor:"pointer",display:"flex",justifyContent:"center"}}>
                 <Sheep estado={boToque ? "feliz" : boEstado} equipados={boEquipados} color={boColor} size={200}/>
               </div>
@@ -14022,12 +14052,12 @@ function GBHApp(){
 
           {/* ── Quiz + Ruleta ── */}
           <div style={{display:"flex",gap:8,marginBottom:10}}>
-            <div onClick={quizDone?undefined:()=>setShowQuiz(true)} style={{flex:1,background:quizDone?alpha(T.g1,0.14):T.bgWood,border:`2px solid ${quizDone?T.g1:T.bW}`,borderRadius:18,padding:"12px 10px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:5,cursor:quizDone?"default":"pointer",boxShadow:quizDone?`0 4px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)",minHeight:76,textAlign:"center"}}>
+            <div role="button" tabIndex={0} onClick={quizDone?undefined:()=>setShowQuiz(true)} style={{flex:1,background:quizDone?alpha(T.g1,0.14):T.bgWood,border:`2px solid ${quizDone?T.g1:T.bW}`,borderRadius:18,padding:"12px 10px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:5,cursor:quizDone?"default":"pointer",boxShadow:quizDone?`0 4px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)",minHeight:76,textAlign:"center"}}>
               <div style={{fontSize:26,lineHeight:1}}>{quizDone?"✅":"❓"}</div>
               <div style={{fontSize:13,fontWeight:900,color:quizDone?T.g2:T.t1}}>{quizDone?t("quizDone"):t("quiz")}</div>
               <div style={{fontSize:10,color:T.au1,fontWeight:700}}>{quizDone?"+20 XP +8 💎":t("earnXP")}</div>
             </div>
-            <div onClick={ruletaDone?undefined:()=>setShowRuleta(true)} style={{flex:1,background:ruletaDone?alpha(T.g1,0.14):T.bgWood,border:`2px solid ${ruletaDone?T.g1:T.bW}`,borderRadius:18,padding:"12px 10px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:5,cursor:ruletaDone?"default":"pointer",boxShadow:ruletaDone?`0 4px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)",minHeight:76,textAlign:"center"}}>
+            <div role="button" tabIndex={0} onClick={ruletaDone?undefined:()=>setShowRuleta(true)} style={{flex:1,background:ruletaDone?alpha(T.g1,0.14):T.bgWood,border:`2px solid ${ruletaDone?T.g1:T.bW}`,borderRadius:18,padding:"12px 10px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:5,cursor:ruletaDone?"default":"pointer",boxShadow:ruletaDone?`0 4px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)",minHeight:76,textAlign:"center"}}>
               <div style={{fontSize:26,lineHeight:1,animation:ruletaDone?"none":"pulse 2s ease-in-out infinite"}}>{ruletaDone?"✅":"🎰"}</div>
               <div style={{fontSize:13,fontWeight:900,color:ruletaDone?T.g2:T.t1}}>{ruletaDone?t("rouletteDone"):t("roulette")}</div>
               <div style={{fontSize:10,color:T.au1,fontWeight:700}}>{ruletaDone?t("untilTomorrow"):t("spinFree")}</div>
@@ -14103,7 +14133,7 @@ function GBHApp(){
                 </div>
               </Card>
               {chartData.length>0&&<WeightChart chartData={chartData} setWeightMode={setWeightMode} goalWeight={profile?.goal_weight||null} shareName={profile?.name} lang={lang}/>}
-              {profile?.sex==="F"&&chartData.length>0&&<CicloPeso profile={profile} weights={weights} lang={lang} sbReq={sbReq} T={T} Card={Card} sfx={sfx}/>}
+              {profile?.sex==="F"&&chartData.length>0&&<React.Suspense fallback={null}><CicloPeso profile={profile} weights={weights} lang={lang} sbReq={sbReq} T={T} Card={Card} sfx={sfx}/></React.Suspense>}
               {profile?.plan==='premium'&&<TarjetaMetabolismo seg={segPlan} lang={lang}/>}
             </>
           );
@@ -14181,7 +14211,7 @@ function GBHApp(){
               )}
               {/* Gráfica */}
               {chartData.length>0&&<WeightChart chartData={chartData} setWeightMode={setWeightMode} goalWeight={profile?.goal_weight||null} shareName={profile?.name} lang={lang}/>}
-              {profile?.sex==="F"&&chartData.length>0&&<CicloPeso profile={profile} weights={weights} lang={lang} sbReq={sbReq} T={T} Card={Card} sfx={sfx}/>}
+              {profile?.sex==="F"&&chartData.length>0&&<React.Suspense fallback={null}><CicloPeso profile={profile} weights={weights} lang={lang} sbReq={sbReq} T={T} Card={Card} sfx={sfx}/></React.Suspense>}
               {profile?.plan==='premium'&&<TarjetaMetabolismo seg={segPlan} lang={lang}/>}
               {/* Empty state */}
               {chartData.length===0&&(
@@ -15027,6 +15057,7 @@ function GBHApp(){
         {tab==="tu"&&<TuTab profile={profile} lang={lang} sfx={sfx} T={T} lv={lv} xp={xp} streak={streak} badges={badges.length} userPhoto={userPhoto}
           onPerfil={()=>setShowPhotoPicker(true)} avisosOn={avisosOn} onAvisos={()=>setShowAvisos(true)}
           muted={muted} onMute={()=>{ const nm=!muted; setMuted(nm); lsSet("gbh:mute",nm); if(!nm) SFX.tap(); }} switchLang={switchLang}/>}
+      </LimiteSeccion>
       </div>
 
       {/* ── BOTTOM NAV ────────────────────────────────────────────────────── */}
@@ -16332,7 +16363,7 @@ function EspejoDiaCard({frases, lang, onVerSeguimiento, onClose}){
           <div style={{fontWeight:900,fontSize:15,color:T.g2,fontFamily:"'Nunito',sans-serif",flex:1}}>
             {lang==='en'?'Your mirror today':'Tu espejo de hoy'}
           </div>
-          <button onClick={onClose} style={{background:"none",border:"none",color:T.t3,fontSize:16,cursor:"pointer",padding:"2px 6px",lineHeight:1}}>✕</button>
+          <button aria-label="Cerrar" onClick={onClose} style={{background:"none",border:"none",color:T.t3,fontSize:16,cursor:"pointer",padding:"2px 6px",lineHeight:1}}>✕</button>
         </div>
         {frases.slice(0,2).map(f=>(
           <div key={f.id} style={{fontSize:13.5,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.55,marginBottom:8}}>
@@ -16397,7 +16428,7 @@ function EspejoSemanaCard({profile, logs, lang, onVerSeguimiento}){
             {EN?'See tracking →':'Ver seguimiento →'}
           </button>
         </div>
-        <button onClick={cerrar} style={{background:"none",border:"none",color:T.t3,fontSize:15,cursor:"pointer",padding:"0 2px",lineHeight:1,flexShrink:0}}>✕</button>
+        <button aria-label="Cerrar" onClick={cerrar} style={{background:"none",border:"none",color:T.t3,fontSize:15,cursor:"pointer",padding:"0 2px",lineHeight:1,flexShrink:0}}>✕</button>
       </div>
     </Card>
   );
@@ -17262,7 +17293,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
         return cached.mapa;
       }
     }catch{}
-    const todas = await sbLeerTodo('recipes?select=*&order=id_receta.asc');   // en bloques: con limit=1000, desde la receta 1.001 el cambio no la vería
+    const todas = await leerRecetarioCompleto();   // en bloques: con limit=1000, desde la receta 1.001 el cambio no la vería
     const mapa = {};
     (todas||[]).forEach(r=>{
       const nom = r.nombre||r.nombre_receta||r.Nombre_Receta||'';
@@ -17879,7 +17910,7 @@ function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,de
     <button onClick={()=>setIdx(i=>Math.max(i-1,0))} disabled={idx<=0} style={{background:'none',border:idx<=0?'1.5px solid rgba(255,255,255,0.1)':'1.5px solid '+T.bG,borderRadius:10,color:idx<=0?T.t3:T.g1,fontSize:18,width:36,height:36,cursor:idx<=0?'default':'pointer',flexShrink:0}}>›</button>
   </div></>);
   const BtnVolver=({onClick})=>(<button onClick={onClick} style={{background:'none',border:'none',color:T.g1,fontSize:13,fontWeight:700,cursor:'pointer',padding:'0 16px 10px',fontFamily:"'Nunito',sans-serif",display:'flex',alignItems:'center',gap:4}}>← {lang==='en'?'Back':'Volver'}</button>);
-  const DotsNav=()=>planes.length>1?(<div style={{display:'flex',justifyContent:'center',gap:6,padding:'8px 0 4px'}}>{planes.map((_,i)=>(<div key={i} onClick={()=>setIdx(i)} style={{width:i===idx?20:7,height:7,borderRadius:4,background:i===idx?T.g1:'rgba(255,255,255,0.15)',cursor:'pointer',transition:'all 0.3s'}}/>))}</div>):null;
+  const DotsNav=()=>planes.length>1?(<div style={{display:'flex',justifyContent:'center',gap:6,padding:'8px 0 4px'}}>{planes.map((_,i)=>(<div role="button" tabIndex={0} key={i} onClick={()=>setIdx(i)} style={{width:i===idx?20:7,height:7,borderRadius:4,background:i===idx?T.g1:'rgba(255,255,255,0.15)',cursor:'pointer',transition:'all 0.3s'}}/>))}</div>):null;
   // Chip de semana de prueba (solo cuentas estándar con trial activo)
   const trialMs = profile?.trial_ends_at ? Date.parse(profile.trial_ends_at) - Date.now() : null;
   const trialDias = (isStandard && trialMs!==null && trialMs>0) ? Math.max(1, Math.ceil(trialMs/(24*60*60*1000))) : null;
@@ -18943,6 +18974,32 @@ function RewardsModal({onClose, currentLevel}){
 
 
 // ─── Error Boundary ──────────────────────────────────────────────────────────
+// Límite de errores de una pestaña (MAESTRO-2026-1234): si una pestaña falla, se ve este aviso en su
+// sitio y la barra de pestañas sigue funcionando. key={tab} en el contenedor lo reinicia al cambiar.
+class LimiteSeccion extends React.Component {
+  constructor(p){ super(p); this.state={err:null}; }
+  static getDerivedStateFromError(e){ return {err:e}; }
+  componentDidCatch(e){ console.error("GBH sección:", e?.message); }
+  render(){
+    if(!this.state.err) return this.props.children;
+    const en = this.props.lang==="en";
+    return (
+      <div role="alert" style={{margin:"24px 0",padding:"22px 18px",borderRadius:18,background:"rgba(255,0,0,0.08)",
+        border:"1px solid rgba(255,0,0,0.25)",textAlign:"center",color:T.t1}}>
+        <div style={{fontSize:32,marginBottom:8}}>🩹</div>
+        <div style={{fontSize:15,fontWeight:900,marginBottom:6}}>{en?"This section did not load properly":"Esta sección no ha cargado bien"}</div>
+        <div style={{fontSize:12,color:T.t2,marginBottom:14,fontFamily:"'DM Sans',sans-serif"}}>
+          {en?"The rest of the app still works. Try again or switch tab.":"El resto de la app sigue funcionando. Vuelve a intentarlo o cambia de pestaña."}
+        </div>
+        <button onClick={()=>this.setState({err:null})}
+          style={{padding:"10px 24px",background:T.g1,border:"none",borderRadius:14,color:T.t1,fontWeight:900,cursor:"pointer",fontSize:14}}>
+          {en?"Retry":"Reintentar"}
+        </button>
+      </div>
+    );
+  }
+}
+
 class ErrorBoundary extends React.Component {
   constructor(props){ super(props); this.state={err:null}; }
   static getDerivedStateFromError(e){ return {err:e}; }

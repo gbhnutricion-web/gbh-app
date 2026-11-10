@@ -228,7 +228,7 @@ export function SemaforoDensidad({ lang = "es", T, Sheep, profile, valor, onEleg
         </div>
 
         {/* Bocadillo de Bo */}
-        <div onClick={() => setLetras(texto.length)}
+        <div role="button" tabIndex={0} onClick={() => setLetras(texto.length)}
           style={{ position: "relative", width: "100%", maxWidth: 380, marginTop: 16, background: "#FFFDF5", color: "#14110C", boxSizing: "border-box",
                    border: "3px solid #000", boxShadow: "4px 4px 0 #000", borderRadius: 6, padding: "12px 14px 10px",
                    cursor: letras < texto.length ? "pointer" : "default", flex: "0 0 auto" }}>
