@@ -4,7 +4,11 @@
 // Se abre desde «Tú» y desde cada pantalla que recomienda algo (objetivo, misiones, pliegues, ciclo, cafeína,
 // creatina): abrirFuentes("tema") lanza un evento y App la pinta encima. Por orden de Alejandro (7-nov),
 // PEND-2026-319. Cada DOI se comprobó el 7-nov contra Crossref, y cada PMID contra E-utilities de NCBI.
+// 11-nov-2026 (Apple 2.1(a), revisión de la 111: «the button was unresponsive»): la fila de «Tú» vive dentro de
+// la ficha de perfil (capa 11000) y esta pantalla salía en la 9500, DEBAJO. Ahora va a document.body con un
+// portal y en la capa 13000, por encima de cualquier capa de la app (la más alta es 12000).
 import React, { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 
 export const abrirFuentes = (tema) => {
   try { window.dispatchEvent(new CustomEvent("gbh:fuentes", { detail: { tema: tema || null } })); } catch { /* sin ventana */ }
@@ -129,9 +133,9 @@ export function FuentesCientificas({ tema, lang = "es", T, onClose }) {
     if (el) el.scrollIntoView({ block: "start" });
   }, [tema]);
   const c = T || {};
-  return (
+  const cuerpo = (
     <div role="dialog" aria-modal="true" aria-label={L.titulo}
-      style={{ position: "fixed", inset: 0, zIndex: 9500, background: "rgba(0,0,0,0.86)", display: "flex", justifyContent: "center",
+      style={{ position: "fixed", inset: 0, zIndex: CAPA_FUENTES, background: "rgba(0,0,0,0.86)", display: "flex", justifyContent: "center",
         padding: "calc(12px + env(safe-area-inset-top, 0px)) 14px calc(12px + env(safe-area-inset-bottom, 0px))" }}>
       <div style={{ width: "100%", maxWidth: 420, display: "flex", flexDirection: "column", background: "linear-gradient(180deg,#16301a,#0e2112)",
         border: `2px solid ${c.bW || "rgba(255,255,255,0.15)"}`, borderRadius: 22, overflow: "hidden" }}>
@@ -163,7 +167,11 @@ export function FuentesCientificas({ tema, lang = "es", T, onClose }) {
       </div>
     </div>
   );
+  return typeof document !== "undefined" && document.body ? createPortal(cuerpo, document.body) : cuerpo;
 }
+
+// Capa de la pantalla: por encima de todas las de la app (la ficha de perfil es 11000; la más alta, 12000).
+export const CAPA_FUENTES = 13000;
 
 // Enlace pequeño «📚 Fuentes» para poner debajo de cualquier recomendación.
 export function EnlaceFuentes({ tema, lang = "es", T, style }) {
