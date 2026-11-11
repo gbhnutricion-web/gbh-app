@@ -5,7 +5,23 @@ import { SPR, U, sprite, spriteCaja, bloque, suelo as dibujarSuelo, matas } from
 // Medidas corporales (silueta por zonas, perímetros y pliegues): módulo aparte,
 // recibe sbReq/T/Card por props para que este fichero solo cambie en 3 sitios.
 import { SelectorMedidas, MedidasCorporales } from "./MedidasCorporales";
-import { CicloPeso } from "./CicloPeso";                                 // ciclo y báscula: peso esperado con y sin retención, solo mujeres (12-oct-2026)
+// Carga diferida (MAESTRO-2026-1234): la gráfica de peso, el ciclo, la cafeína y la creatina
+// van en trozos aparte; recharts (540 KB) ya no se descarga al abrir Inicio. Extensión explícita:
+// en Mac/Windows «./Cafeina» encontraba cafeina.js (comprobar_mayusculas.py).
+const CicloPeso = React.lazy(() => import("./CicloPeso.jsx").then(m => ({ default: m.CicloPeso })));
+const GraficaPeso = React.lazy(() => import("./GraficaPeso.jsx"));
+const JuegoOveja = React.lazy(() => import("./JuegoOveja.jsx"));
+const PlanTab = React.lazy(() => import("./PlanTab.jsx"));
+const QuizModal = React.lazy(() => import("./QuizModal.jsx"));
+// Inglés bajo demanda (MAESTRO-2026-1238): TRANS.en llega de transEn.js; mientras, t() usa el español.
+let _inglesPromesa = null;
+export const cargarIngles = () => {
+  if (TRANS.en) return Promise.resolve(true);
+  if (!_inglesPromesa) _inglesPromesa = import("./transEn.js")
+    .then(m => { TRANS.en = m.default; return true; })
+    .catch(() => { _inglesPromesa = null; return false; });
+  return _inglesPromesa;
+};
 import { SelectorPrograma, BotonPrograma } from "./SelectorPrograma";
 import { SemaforoDensidad, BotonDensidad, leerDensidad, escribirDensidad } from "./SemaforoDensidad"; // densidad calórica con Bo de policía (1-nov-2026)
 import { TuDia } from "./TuDia";                                              // Kcal reales, fase 1
@@ -19,11 +35,21 @@ import { elegirRecetaCambio, permitidasDePlanes, normNombreCambio, claveMemoriaC
 import { rolPlatoMenu, listasPlatoMenu, elegirPlatoMenu, recomponerMenu } from "./cambioReceta"; // menús de 1º y 2º: cada plato se cambia por separado (12-oct-2026)
 import { leerTodo } from "./leerTodo";                                   // recetas en bloques: PostgREST corta en 1.000 filas sin avisar (12-oct-2026)
 import { persistirCelda, fusionarPlanes } from "./celdaPlan";            // el plan se escribe por CELDAS: ya no pisa lo cambiado en otro dispositivo (15-oct-2026)
-import { Cafeina } from "./Cafeina";                                     // calculadora de cafeína, fase 1 (25-sep-2026)
-import { Creatina } from "./Creatina";                                   // calculadora de creatina, fase 1 (5-oct-2026)
+const Cafeina = React.lazy(() => import("./Cafeina.jsx").then(m => ({ default: m.Cafeina })));
+const Creatina = React.lazy(() => import("./Creatina.jsx").then(m => ({ default: m.Creatina })));
+// Tras pintar, se piden en segundo plano: el service worker los guarda y sin red siguen abriendo.
+if (typeof window !== "undefined") {
+  const _precargar = () => setTimeout(() => {
+    [() => import("./PlanTab.jsx"), () => import("./GraficaPeso.jsx"), () => import("./JuegoOveja.jsx"), () => import("./QuizModal.jsx"), () => import("./CicloPeso.jsx"), () => import("./Cafeina.jsx"), () => import("./Creatina.jsx")]
+      .forEach(f => { try { f().catch(() => {}); } catch {} });
+  }, 4000);
+  if (document.readyState === "complete") _precargar(); else window.addEventListener("load", _precargar, { once: true });
+}
 import { Suplementacion } from "./Suplementacion";                       // pestaña 💊 Suplementación: ☕ Cafeína y 💪 Creatina (próximamente) (26-sep-2026)
 import { BarraPestanas } from "./BarraPestanas";                         // la barra de pestañas de abajo (26-sep-2026)
 import { FuentesCientificas, EnlaceFuentes, abrirFuentes } from "./FuentesCientificas"; // fuentes con enlace de cada recomendación (Apple 1.4.1, 7-nov-2026)
+import { HojaCompraApple, ControlSuscripcionIOS, abrirCompraApple } from "./CompraApple"; // compra de Apple del Estándar en iOS (PEND-2026-319, 11-nov-2026)
+import { escucharComprasApple, sincronizarComprasApple } from "./comprasApple";
 import { planificarAvisos, nombresDePlan, PREFS_POR_DEFECTO as AVISOS_PREFS, TOMAS_ORDEN as AVISOS_TOMAS } from "./motorAvisos"; // avisos fuera de la app, fase 1 (28-sep-2026)
 import { estadoPermiso, pedirPermiso, sincronizarAvisos, cancelarAvisos, alTocarAviso, plataforma as plataformaNativa } from "./avisosNativos";
 import { TarjetaPermisoAvisos, FilaRecordatorios, PanelRecordatorios } from "./PanelAvisos";
@@ -36,8 +62,8 @@ import { boActivo, planBo, filaMomento, textoTema, firmaTema, momentoVisto, marc
 
 // ─── Servidor de generación de programaciones (Railway) ─────────────────────
 // Rellena estos dos valores tras desplegar el servidor (ver GUIA_DESPLIEGUE_RAILWAY.md)
-const GBH_SERVER_URL = "https://web-production-98efe.up.railway.app";
-const GBH_GEN_TOKEN  = "gbh_nutricion_2026";
+export const GBH_SERVER_URL = "https://web-production-98efe.up.railway.app";
+export const GBH_GEN_TOKEN  = "gbh_nutricion_2026";
 
 // ─── Internacionalización (ES / EN) ─────────────────────────────────────────
 const LangCtx = React.createContext("es");
@@ -641,603 +667,7 @@ const TRANS = {
     suplProximamente:"(próximamente)",
     suplNoDisponible:"Creatina: próximamente, todavía no está disponible",
   },
-  en:{
-    tagline:"Your healthy habits companion 🌱",
-    loading:"Loading GBH…",
-    email:"Email", emailPH:"name@example.com",
-    fullName:"Full name", namePH:"First Last",
-    currentWeight:"Current weight", goalWeight:"Goal weight",
-    weightHint:"💡 This will be your starting point in the progress chart",
-    goalHint:"🎯 Optional — helps you see how far you have to go",
-    checkingAccount:"Checking account...",
-    welcomeBack:"Welcome back, {n}!",
-    accountExists:"Your account exists — enter your password to sign in.",
-    verifying:"Verifying...",
-    recoverAccount:"Sign in 🔓",
-    startAdventure:"Start my adventure! 🚀",
-    noConnRecover:"No connection. Connect to the internet to recover your account.",
-    // Password
-    password:"Password", passwordPH:"At least 6 characters",
-    passwordConfirm:"Confirm password", passwordConfirmPH:"Repeat your password",
-    passwordShow:"Show", passwordHide:"Hide",
-    passwordMismatch:"Passwords don't match.",
-    passwordTooShort:"Password must be at least 6 characters.",
-    passwordWrong:"Wrong password. Please try again.",
-    forgotPassword:"Forgot your password?",
-    forgotPasswordSent:"📧 We've sent you a password reset email.",
-    forgotPasswordErr:"Couldn't send the email. Please try again.",
-    // Access PIN
-    pinLabel:"Access PIN", pinPH:"4–6 digits",
-    pinWrong:"Wrong PIN. Please try again.",
-    pinNoNet:"No connection. Couldn't verify your PIN.",
-    pinForgot:"Forgot your PIN?",
-    pinEnterHint:"Enter your PIN to continue",
-    pinSinPinHint:"Your account doesn't have a PIN yet.",
-    pinSinPinExpl:"To protect it, we'll email you one: tap the button, send the email that opens, and your PIN will reach {e} in about 5 minutes.",
-    pinSinPinBtn:"📩 Email me my PIN",
-    pinYaLlego:"I've got my PIN",
-    pinCreateTitle:"Protect your account 🔐",
-    pinCreateDesc:"Create a 4-6 digit PIN. We'll ask for it when you log in with your email on a new device, so nobody else can access your data.",
-    pinNew:"New PIN", pinRepeat:"Repeat PIN",
-    pinMismatch:"PINs don't match.",
-    pinFormat:"The PIN must be 4 to 6 digits.",
-    pinSaveBtn:"Save my PIN 🔐", pinLater:"Not now",
-    pinCreateReq:"From now on it's required to keep using the app: it protects your data.",
-    pinBloqueado:"Too many attempts. Wait 15 minutes and try again.",
-    sesionRenovar:"We've strengthened security: please log in with your PIN once.",
-    pinLaterOffline:"No connection — continue without a PIN for now",
-    pinSaved:"PIN saved", pinSavedSub:"Your account is now protected",
-    pinSaveErr:"Couldn't save the PIN. Please try again.",
-    // Change the PIN from the profile (30-sep-2026, MAESTRO-2026-715)
-    pinChangeBtn:"Change", pinCurrent:"Current PIN",
-    pinChangeDesc:"Enter your current PIN and choose a new one you'll remember.",
-    pinChangeSave:"Save the new PIN", pinCancel:"Cancel",
-    pinChanged:"PIN changed. Use the new one next time you log in.",
-    // Migration for existing users without password
-    migrateTitle:"Protect your account! 🔐",
-    migrateDesc:"For added security, create a password for your account. Your data, streak and progress won't be touched.",
-    migrateBtn:"Create my password 🔐",
-    authErrGeneric:"Sign in error. Please try again.",
-    // Nav
-    tabHome:"Home", tabRecipe:"Recipes", tabWeight:"Measures", tabProgreso:"Progress", tabTu:"You",
-    tabRanking:"Ranking", tabAchievements:"Medals", tabCalc:"Goal",
-    // Tiers / levels
-    tiers:["Beginner","Apprentice","Consistent","Committed","Disciplined","Athlete","Expert","Elite","Master","Legend"],
-    champion:"GBH Champion",
-    // Days (Mon→Sun)
-    dayLabels:["M","T","W","T","F","S","S"],
-    // Home
-    dailyMissions:"🩺 Daily Missions",
-    dietBtn:"Log Daily Diet",
-    sleepLabel:"Sleep at least 7 hours",
-    dietDone:"Today's diet logged! +15 XP",
-    completedBadge:"Completed!",
-    quiz:"Quiz", quizDone:"Quiz ✓", earnXP:"Earn XP & 💎",
-    roulette:"Wheel", rouletteDone:"Wheel ✓",
-    spinFree:"Free spin", untilTomorrow:"Until tomorrow",
-    streakShield:"🛡️ Streak Shield",
-    shieldDesc:"Protects your streak 1 day · {n} available",
-    streakLabel:"Streak", gemsLabel:"Gems", progressLabel:"Progress",
-    // WeekPath
-    weeklyProgress:"📅 Weekly progress",
-    daysUnit:"days", dayUnit:"day",
-    chestUnlocked:"Chest unlocked! Tap to open it 🎉",
-    chestOpenedWeek:"Chest opened this week ✅",
-    chestDaysLeft:"{n} more {d} for the weekly chest",
-    // XP goal
-    weeklyXPGoal:"⚡ Weekly XP goal",
-    weeklyXPDone:"🎉 Weekly goal reached! Bonus: +20 XP",
-    // Calorie Calculator
-    calcTitle:"🔢 Calorie Calculator",
-    calcSubtitle:"Daily calories to reach your goal in 3 months",
-    calcSex:"Sex", calcMan:"♂ Male", calcWoman:"♀ Female",
-    calcHeight:"Height (cm)", calcHeightPH:"e.g. 170",
-    calcAge:"Age range", calcActivity:"Activity level",
-    calcBtn:"Calculate my calories 🔢",
-    calcResultTitle:"Your daily target",
-    calcKcal:"kcal / day", calcBMR:"Basal metabolism (BMR)",
-    calcTDEE:"Total expenditure (TDEE)", calcAdj:"Goal adjustment",
-    calcDeficit:"deficit", calcSurplus:"surplus",
-    calcNote:"📌 Always consult your nutritionist before changing your diet.",
-    calcNoGoal:"⚠️ Add a goal weight in your profile to see the calorie adjustment.",
-    calcNoWeight:"⚠️ Log your current weight first.",
-    calcSaved:"📊 Your saved calculation",
-    calcEditBtn:"✏️ Edit calculation",
-    calcResetBtn:"🔄 Recalculate",
-    backToHome:"← Back to home",
-    calcAgeRanges:["18 – 25 years","26 – 35 years","36 – 45 years","46 – 55 years","56 – 65 years","Over 65 years"],
-    calcActivityLevels:["Sedentary (no exercise)","Light (1-3 days/week)","Moderate (3-5 days/week)","Active (6-7 days/week)","Very active (physical job + exercise)"],
-    // Bubbles
-    b_celebrating:"🎉 Perfect day, {n}! All missions done",
-    b_legend:"👑 {s} days, {n}! Absolute legend",
-    b_excited:"🔥 {s} days in a row! Unstoppable, {n}!",
-    b_happy:"✅ Diet logged! Keep it up, {n}",
-    b_sleeping:"😴 Good rest, {n}. Back at it tomorrow!",
-    b_sad_late:"🥗 {n}, want to tell me what you ate today? There's still time 💚",
-    b_sad:"💚 Hey {n}! Today is the day to start",
-    b_default:"Hey {n}! Ready to mark the day? 🌱",
-    // Weight tab
-    scaleResting:"The scale is resting",
-    scaleRestingDesc:"Weighing every day creates unnecessary anxiety.",
-    scaleRestingBack:"Come back {d}",
-    scaleRestingDesc2:"to see your real progress without daily distortion. The scale opens on Wednesdays and at the weekend.",
-    editWeightTitle:"Edit today's weight",
-    howMuchToday:"How much do you weigh today?",
-    fastingHint:"💡 Fasted, before breakfast",
-    editNote:"✏️ Edit — no gems or XP added",
-    saveChanges:"💾 Save changes",
-    saveWeight:"✅ Save weight",
-    seeChart:"← See chart",
-    registerWeightToday:"⚖️ Log today's weight",
-    weightBannerTitle:"Log your weight this week!",
-    weightBannerCta:"Tap to go to weigh-in →",
-    weekendWeighLabel:"✅ Weekend weigh-in",
-    midweekWeighLabel:"✅ Wednesday weigh-in",
-    firstWeighLine1:"Log your first weigh-in",
-    firstWeighLine2:"to see your progress",
-    // Recipe tab
-    recipeOfDay:"🍰 Recipe of the day",
-    calories:"Calories", protein:"Protein", carbs:"Carbs", fat:"Fat",
-    ingredients:"🛒 Ingredients", preparation:"👨‍🍳 Preparation",
-    buyBtn:"🛒 Buy", buyListSub:"Tick items as you add them to your cart",
-    // "How many is this for?" label (Fase 0)
-    racionTuya:"Your portion (1 person): cook and eat these amounts as they are",
-    racionReparto:"List for {r} servings: cook it all and split it into {r} equal plates; you eat 1",
-    racionBase:"Recipe quantities (1 serving)",
-    racionBaseRinde:"Quantities for {n} servings · the kcal are for 1 serving",
-    // ── Partner / cooking for two (Fase 1) ──
-    parejaTitulo:"Cook for two",
-    parejaIntro:"Link your account with your partner's and cook once, for two, without doing the maths.",
-    parejaConsent:"Once linked, each of you will see the recipes and quantities of the other's plan. Both must accept, and either one can undo it at any time.",
-    parejaTuCodigo:"Your code",
-    parejaPedirCodigo:"Your partner's code",
-    parejaInvitar:"Send invitation",
-    parejaEnviada:"Invitation sent to {n}. They still have to accept it from their account.",
-    parejaRecibida:"{n} wants to cook with you",
-    parejaAceptar:"Accept",
-    parejaRechazar:"Decline",
-    parejaVinculada:"Linked with {n}",
-    parejaDesvincular:"Unlink",
-    parejaCancelar:"Cancel invitation",
-    parejaConfirmar:"Tap again to confirm ↺",
-    parejaNoEncontrado:"I can't find that code. Check the spelling.",
-    parejaEsTuyo:"That's your own code.",
-    parejaSinCodigo:"Your account doesn't have a code yet, so your partner can't invite you. You can still invite them using theirs; if neither of you has one, get in touch.",
-    parejaYaTiene:"One of the two accounts is already linked. Undo the previous link first.",
-    cocinarDosToggle:"Cook for both of us",
-    cocinarDosCantidades:"Quantities for two (your portion + {n}'s)",
-    cocinarDosCantidadesRinde:"Quantities for both: {k} servings for you and {k} for {n}",
-    cocinarDosReparto:"When serving: {a} % for you · {b} % for {n}",
-    cocinarDosNota:"You cook for two but eat one: the kcal and macros above are still YOUR portion.",
-    cocinarDosNotaRinde:"Your share makes {k} servings: split it and eat 1. The kcal and macros above are for 1 serving.",
-    cocinarDosAviso:"{ing}: I couldn't add it up (the two recipes measure it differently), so I'm showing both amounts.",
-    cocinarMasTitulo:"Cook extra",
-    cocinarMasNormal:"Normal",
-    cocinarMasNota:"This is the same list multiplied, for batch cooking or to serve someone else. Your kcal are still for one portion.",
-    cocinarMasPregunta:"How many servings do you want to cook?",
-    cocinarDosOpSolo:"Just me", cocinarDosOpPareja:"For both",
-    listaSoloMia:"Just mine",
-    listaDeDos:"For both",
-    listaDeDosNota:"This list adds up your plan and {n}'s. Whatever you tick is synced between you both, so neither buys what the other already got. It refreshes when you open the list.",
-    listReset:"🔄 Reset list", listConfirm:"Tap again to confirm ↺",
-    loadingRecipe:"Loading recipe...",
-    recipeLoadError:"Could not load the recipe.\nCheck your connection.",
-    retry:"Retry",
-    recipeLocked:"🔒 Locked", recipeNoGems:"💎 No gems",
-    recipeChange:"🔄 Change · 10💎",
-    availableTomorrow:"Available tomorrow",
-    changesLeft:"{n} change{s} left",
-    // Ranking
-    rankingTitle:"Ranking",
-    rankStreak:"Streak", rankXP:"XP", rankWeight:"Weight",
-    rankStreakSub:"Consecutive days", rankXPSub:"Total experience",
-    rankWeightSub:"Progress since start · only those who weighed in this week",
-    rankFueraTit:"You are not on this board",
-    rankFueraDesc:"The weight ranking only counts people who weighed in over the last {d} days. Log your weight and you are back in.",
-    rankFueraCta:"⚖️ Log my weight",
-    rankNadieTit:"Nobody weighed in this week",
-    rankNadieDesc:"This board fills up with weigh-ins from the last {d} days. Be the first.",
-    rankDays:"days", rankLoading:"Loading…",
-    rankEmpty:"No data yet",
-    rankEmptyDesc:"The ranking will fill up as more patients use the app",
-    rankUpdateBtn:"🔄 Refresh",
-    // Achievements
-    achievementsLabel:"achievements", xpTotalLabel:"total XP",
-    gemsStatLabel:"💎 gems",
-    noAchievements:"Complete missions to unlock achievements",
-    // Profile
-    profileFullName:"Full name", profileEmail:"Email",
-    profileInitialWeight:"Initial weight", profileGoalWeight:"Goal weight",
-    profileHeight:"Height",
-    closeBtn:"✕ Close",
-    // Height
-    heightTitle:"How tall are you?",
-    heightHint:"📏 Your height helps us calculate your BMI and personalise your plan",
-    // Update banner
-    updateAvailable:"New version available",
-    updateDesc:"Tap to update the app now",
-    updateBtn:"Update",
-    // Offline
-    offlineBanner:"📵 Offline — data saved locally",
-    // Toasts
-    insufficientGems:"Insufficient gems",
-    needGemsRecipe:"You need 10 💎 to change the recipe",
-    needGemsShield:"You need 200 💎 for a Shield",
-    shieldActivated:"Shield activated!",
-    shieldProtected:"Your streak is protected for 1 day",
-    // Error
-    errorTitle:"App error", retryBtn:"Retry",
-    // Language
-    langLabel:"Language",
-    // Steps widget
-    stepsLabel:"Walk 10,000 steps",
-    stepsXP:"+5 XP · {n} / 10,000 steps",
-    // Hydration
-    hydrationLabel:"Drink 1.5 - 2 L of water",
-    hydrationXP:"+5 XP · {g}/{target} glasses",
-    hydrationDone:"Completed!",
-    hydrationHint:"Tap each glass as you drink it — goal: {target} glasses (≈ 2L)",
-    // Tomorrow card
-    tomorrowTitle:"Day complete, {n}!",
-    tomorrowDesc:"You've completed all missions.",
-    tomorrowStreak:"Your streak is {s} 🔥 days.",
-    tomorrowBack:"🕐 Come back tomorrow",
-    // Weight chart
-    chartTitle:"📈 Weight progress",
-    chartReal:"Actual", chartTrend:"Trend", chartGoalLabel:"Goal",
-    chartTotalChange:"Total change · {n} weigh-ins",
-    chartLost:"lost", chartGained:"gained", chartNoChange:"no change ⚖️",
-    chartInitialWeight:"Initial weight ({d})",
-    chartGoalReached:"🎯 Goal reached!", chartGoalSection:"🎯 Goal",
-    chartGoalTarget:"Target: {n} kg",
-    chartGoalUpdate:"Update your goal!",
-    chartGoalRemaining:"{n} kg to go", chartGoalExcess:"{n} kg over goal",
-    chartTooltipTrend:"Trend:",
-    // Rewards modal
-    rewardsTitle:"Rewards", rewardsByLevel:"By level", rewardsClose:"✕ Close",
-    rewardsAll:"All", rewardsFreeMeal:"🍽️ Free meal",
-    rewardsReports:"📊 Reports", rewardsFrames:"🖼️ Frames",
-    rewardsFreeMealTag:"🍽️ Free meal", rewardsChampion:"🏆 CHAMPION",
-    rewardsShowingLevels:"Showing first 200 levels · {n} levels to maximum",
-    // Challenges banner
-    challengeBanner:"Streak at risk · Weekly weigh-in · Daily diet",
-    // Register weight button
-    registerWeightBtn:"⚖️ Log today's weight",
-    // Recetario personal
-    myRecipeBook:"📖 My recipe book",
-    recipeBookEmpty:"No saved recipes yet",
-    recipeBookEmptyDesc:"Save the daily recipe to build your personal collection.",
-    saveRecipe:"💾 Save · 20 💎",
-    recipeAlreadySaved:"✓ Saved in your book",
-    recipeSavedToast:"Recipe saved! -20 💎",
-    recipeDeleteFromBook:"Remove from book",
-    recipeTabDaily:"Recipe of the day",
-    recipeTabBook:"My book",
-    // Landing page
-    landingHeadline:"Your diet, turned into a game",
-    landingTagline:"Track habits, level up and reach your weight goal.",
-    landingF1:"Log diet, water, steps and sleep",
-    landingF2:"Level up and earn rewards",
-    landingF3:"Compete in the ranking with others",
-    landingF4:"Track your real weight progress",
-    landingCTA:"Start for free 🚀",
-    landingLogin:"I already have an account → Log in",
-    landingFree:"Free · No ads · No subscription",
-    // ── Real activity (admin panel) ──
-    admVistoHoy:"Seen today",
-    admVistoDias:"Seen {d}d ago",
-    admCaida:"Dropping off",
-    admSinActivar:"Never activated",
-    admRiesgo:"At risk",
-    admGratis:"Free",
-    admWspCopiado:"Message copied",
-    admWspCopiadoSub:"Paste it in WhatsApp for {n}",
-    admWspError:"Could not copy the message",
-    admWspMsgCaida:"Hi {n}! 👋 It's Alejandro from GBH Nutrición. I noticed you haven't been in the app for a few days and wanted to check how you're doing. How is the plan going? If something isn't working for you or this phase feels off, tell me and we'll adjust it — that's what I'm here for. Big hug! 💪",
-    admWspMsgSinActivar:"Hi {n}! 👋 It's Alejandro from GBH Nutrición. I wanted to make sure you've been able to get into the app and see your plan. If you have any trouble accessing it or doubts getting started, message me and we'll sort it out in a minute. Big hug! 💪",
-    // ── Caffeine calculator (src/Cafeina.jsx; phase 1, 25-sep-2026). «**x**» = bold ──
-    cafTitulo:"☕ Your caffeine",
-    cafSub:"How much to take, when, and how long it lasts",
-    cafAbrir:"Open the caffeine calculator",
-    cafFuentesBtn:"Where does this come from?",
-    cafCerrar:"Close",
-    cafFuentesTit:"Where it comes from",
-    cafFuentesIntro:"A one-compartment model with oral absorption, the standard for caffeine, with parameters from studies in healthy adults:",
-    cafFu_blanchard1983:"practically all of it is absorbed when taken by mouth",
-    cafFu_tantcheva1999:"how long it takes to clear, and how much smoking and contraceptives change that (786 people)",
-    cafFu_kamimori2002:"a capsule takes longer to kick in than gum",
-    cafFu_abernethy1985:"oestrogen-containing contraceptives slow it down",
-    cafFu_lieberman1987:"32 mg already improve vigilance and reaction time",
-    cafFu_efsa2011:"≥ 75 mg per serving for alertness; 3 mg/kg one hour before for endurance",
-    cafFu_guest2021:"3-6 mg/kg about 60 min before; from ~2 mg/kg; habitual intake does not change the dose",
-    cafFu_bell2002:"in daily users the effect is smaller and shorter: with 5 mg/kg, still there at 3 h and gone at 6 h",
-    cafFu_gardiner2023:"one coffee, ≥ 8.8 h before bed; ~217 mg, ≥ 13.2 h",
-    cafFu_efsa2015:"200 mg per serving and 400 mg a day; 200 mg a day in pregnancy and breastfeeding",
-    cafAntes:"Before we calculate",
-    cafSaludOk:"Nothing stops the calculation ✓",
-    cafSaludMal:"Something stops the calculation",
-    cafEmbarazo:"Pregnancy or breastfeeding",
-    cafMenor:"Under 18",
-    cafCorazon:"Heart or blood pressure",
-    cafCorazonX:"arrhythmias, palpitations, high blood pressure",
-    cafAnsiedad:"Anxiety or panic attacks",
-    cafHigado:"Liver disease",
-    cafReaccion:"It has made you feel bad before",
-    cafReaccionX:"racing heart, tremor, distress",
-    cafNo:"No",
-    cafSi:"Yes",
-    cafMedTit:"Your medication",
-    cafMedMal:"{que} does not mix with caffeine",
-    cafMedOkLista:"checked: nothing that slows it down ({lista})",
-    cafMedVacia:"no medication recorded in your plan",
-    cafInt_fluvoxamina:"fluvoxamine",
-    cafInt_quinolona:"a quinolone antibiotic",
-    cafInt_clozapina:"clozapine",
-    cafInt_litio:"lithium",
-    cafInt_teofilina:"theophylline",
-    cafInt_disulfiram:"disulfiram",
-    cafInt_imao:"an MAOI",
-    cafInt_estimulante:"a stimulant",
-    cafInt_betabloqueante:"a beta blocker",
-    cafInt_tension:"blood pressure medication",
-    cafInt_inhibidor_cyp1a2:"a drug that slows it down",
-    cafTu:"You",
-    cafTuSub:"from your data",
-    cafPeso:"Your weight",
-    cafPesoPesaje:"your last weigh-in, on {f}",
-    cafPesoAlta:"your sign-up weight (no weigh-ins yet)",
-    cafPesoAjustado:" · calculated with {p} kg (BMI {imc})",
-    cafSinPeso:"We don't have your weight yet: log it in Measurements and your dose will show up here.",
-    cafSinPesoCorto:"Your weight is missing",
-    cafMeses:["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
-    cafAntiComb:"Hormonal contraceptive",
-    cafAntiCombX:"{item} · in your medication: you clear it more slowly",
-    cafAntiSolo:"Oestrogen-free contraceptive",
-    cafAntiSoloX:"{item} · does not change how you clear caffeine",
-    cafAntiNo:"Hormonal contraceptives",
-    cafAntiNoX:"none in your medication",
-    cafTolAria:"Your caffeine tolerance",
-    cafTolSensible:"🐣 Sensitive",
-    cafTolSensibleX:"One coffee really wakes you up",
-    cafTolNormal:"🙂 Normal",
-    cafTolNormalX:"You feel it when you have it",
-    cafTolTolerante:"😫 Tolerant",
-    cafTolToleranteX:"You barely notice a coffee",
-    cafFumo:"I smoke",
-    cafFumoX:"smoking clears it faster",
-    cafUnaVez:"Your tolerance, smoking and how you take it are asked once and saved only on this phone.",
-    cafGuardadoTel:"Saved only on this phone. Your health answers are not saved.",
-    cafParaQue:"What for?",
-    cafConc:"Focus",
-    cafConcX:"study, work, driving",
-    cafRend:"Performance",
-    cafRendX:"training or competition",
-    cafComo:"How",
-    cafFormaCafe:"☕ Coffee",
-    cafFormaCapsula:"💊 Capsule",
-    cafFormaChicle:"🍬 Gum",
-    cafFormaEnergetica:"🥤 Energy drink",
-    cafComida:"With food",
-    cafComidaX:"it kicks in more slowly",
-    cafDesde:"I need it from",
-    cafDurante:"For",
-    cafDormir:"I go to bed at",
-    cafLlevo:"Already had today",
-    cafOtras0:"None",
-    cafOtras1:"1 coffee",
-    cafOtras2:"2 coffees",
-    cafOtras3:"3 coffees",
-    cafTuDosis:"Your dose",
-    cafProbando:"Trying another dose",
-    cafPauta:"Your plan: {n} servings",
-    cafParaRendir:"to perform",
-    cafParaConc:"to focus",
-    cafEnTotal:" in total",
-    cafPorKilo:"{v} mg per kilo",
-    cafCafeVaria:"(coffee varies a lot from one machine to another)",
-    cafRecomendada:" · the one recommended for you is **{mg} mg**",
-    cafEqCafeFiltro:"of filter coffee",
-    cafEqEspresso:"of espresso",
-    cafEqEnergetica:"of energy drink (32 mg per 100 mL; check the label)",
-    cafEqCapsula200:["200 mg capsule","200 mg capsules"],
-    cafEqCapsula100:["100 mg capsule","100 mg capsules"],
-    cafEqChicle100:["100 mg gum","100 mg gums"],
-    cafBloq:"🩺 With {motivos}, your dose has to come from your dietitian or your doctor.",
-    cafBloqEmb:"In pregnancy and breastfeeding, EFSA considers it safe not to go over **200 mg a day** from all sources: coffee, tea, cola and chocolate.",
-    cafBloqSano:"The calculator is for healthy adults. With this, the same dose can affect you very differently.",
-    cafMot_embarazo:"pregnancy or breastfeeding",
-    cafMot_lactancia:"breastfeeding",
-    cafMot_menor:"being under 18",
-    cafMot_corazon:"heart or blood pressure problems",
-    cafMot_ansiedad:"anxiety or panic",
-    cafMot_higado:"liver disease",
-    cafMot_reaccion:"a bad reaction before",
-    cafMot_medicacion:"your medication ({items})",
-    cafServidoTxt:"✋ You've already had {mg} mg today. Another serving would take you over the **400 mg a day** that EFSA considers safe.",
-    cafServidoX:"Best to stop here for today.",
-    cafCmpTol:"😫 With the dose for someone of normal tolerance ({mg} mg), {que}",
-    cafCmpNada:"you wouldn't even notice it.",
-    cafCmpSolo:"it would only last you {d}.",
-    cafCmpTolX:"That's why you need more. With yours it lasts {d}.",
-    cafCmpSens:"🐣 With the dose for someone of normal tolerance ({mg} mg), it would last you {d}{nerv}",
-    cafCmpNervios:" and at the peak you'd feel jittery.",
-    cafCmpSensX:"That's why less is enough for you. With yours it lasts {d}.",
-    cafPorqueNervios:"✂️ In a single serving of {mg} mg, the peak would reach {p} mg/L, in your jittery zone. Split up, it stays under {q}.",
-    cafPorqueTope:"✂️ In a single serving, the safety cap ({mg} mg) only covered {pct} % of {obj}. Split up, it covers it{fin}",
-    cafEntero:" fully.",
-    cafMejor:" better.",
-    cafPorqueX:"Each serving comes when your level was about to drop below your effect line, and always at least 1 h after the previous one.",
-    cafProbar:"What if you take a different amount? See how long it would last.",
-    cafMenos10:"10 mg less",
-    cafMas10:"10 mg more",
-    cafVolver:"back to the recommended one ({mg} mg)",
-    cafMinAntes:"{n} min before",
-    cafAntesEmpezar:"before you start",
-    cafDuranteToma:"during",
-    cafTomala:"Take it at **{h}**",
-    cafEfecto:"It works from **{a} to {b}**",
-    cafSinEfecto:"With this dose you don't reach your effect level",
-    cafCubreTodo:"Covers all of {obj} ({a}–{b})",
-    cafCubrePct:"Covers {pct} % of {obj}",
-    cafObjEntreno:"your training",
-    cafObjTiempo:"your time",
-    cafGrafAria:"Your blood caffeine level through the day",
-    cafScrubAria:"Slide to see your level at each hour",
-    cafLineaRend:"performance",
-    cafLineaConc:"focus",
-    cafLineaNervios:"jitters",
-    cafLectura:"At {h} · **{c} mg/L**",
-    cafZonaNada:"no effect",
-    cafZonaEfecto:"effect",
-    cafZonaPleno:"full effect",
-    cafZonaNervios:"jitters, racing heart",
-    cafSuenoOk:"🌙 At {h} you'll have {c} mg/L: it shouldn't keep you awake.",
-    cafSuenoMal:"🌙 At {h} you'll still have {c} mg/L, and that may cost you sleep.",
-    cafSuenoUltima:"Your last serving is at **{h}**. Without it, you'd have {c} mg/L at that time",
-    cafSuenoQuitala:": if the end of the session isn't key, drop it.",
-    cafSuenoAunAsi:". Even so it would be too much: if you can, train earlier.",
-    cafSuenoLimite:"To sleep well with this dose, take it before **{h}**",
-    cafSuenoLimite6:"For this dose not to cost you sleep you'd have to take it before 6:00",
-    cafSuenoMax:". At the time you take it, don't go over **{mg} mg**.",
-    cafSuenoSin:". At the time you take it, better without caffeine.",
-    cafAvTope:"**Safety cap:** it would take {n} mg to cover all of {obj}. We give you {mg} mg, the most for a single serving for you{extra}",
-    cafAvTopeConc:" (200 mg or 3 mg/kg, EFSA).",
-    cafAvSobreEfsa:"**Over 200 mg:** it's the sports-guideline dose for your weight, but it's above the 200 mg per serving that EFSA assessed as risk-free. Try it in training first, never for the first time on competition day.",
-    cafAvNoLineal:"**High dose:** above 300 mg the liver clears it more slowly, so it will last a bit longer than the curve shows.",
-    cafAvNervios:"**It's a lot for you:** at the peak you might feel jittery or have a racing heart.",
-    cafAvTolerante:"**Tolerant:** you need a bit more than the guideline to cover your session, and even so it lasts less than for someone who doesn't have it daily (Bell and McLellan 2002). Having it every day makes you feel it less: save it for key sessions.",
-    cafAvSesionLarga:"**Long session:** for anything past an hour and a half, part of the dose can be taken during exercise (IOC consensus).",
-    cafAvPesoAjustado:"**Calculated with your adjusted weight:** with a BMI over 30, caffeine doesn't spread through all of your weight, and counting all of it would give too much.",
-    cafAvFumador:"**You smoke:** smoking speeds up its clearance and it lasts less. If you quit, the same dose will last you quite a bit longer.",
-    cafAvAnti:"**Oestrogen contraceptive:** you clear it more slowly. It lasts longer and is more likely to cost you sleep.",
-    cafAvChicle:"**Gum:** chew it for about 5-10 min. It kicks in sooner than a capsule, so you take it closer to the moment.",
-    cafPildBloq:"🩺 No dose: your dietitian will set it",
-    cafPildServido:"✋ You've had enough for today",
-    cafPildTomas:"{n} servings · ",
-    cafPildProbando:"trying · ",
-    cafPildLa1:"1st at ",
-    cafPildA:"at ",
-    cafPildHasta:" · works until {h}",
-    cafPildVer:"see ↓",
-    cafLegal:"For guidance only, for healthy adults. It does not replace advice from your dietitian or your doctor.",
-    // ── Creatine calculator (src/Creatina.jsx; phase 1, 5-oct-2026) ──
-    creTitulo:"💪 Your creatine",
-    creSub:"Your dose, when your muscle fills up and how much you waste",
-    creAbrir:"Open the creatine calculator",
-    creFuentesBtn:"Where does it come from?",
-    creCerrar:"Close",
-    creFuentesTit:"Where it comes from",
-    creFuentesIntro:"The dose comes from the ISSN guidelines. The day your muscle fills up comes from a meta-analysis of 10 studies that measure muscle creatine, published on gbhnutricion.es.",
-    creDosisCarga:"{g} g a day for {d} days ({n} doses of {x} g), then {m} g a day",
-    creDosisMant:"{m} g a day",
-    creLlenoYa:"you are already full",
-    creLlenoNo:"does not fill up within 12 weeks",
-    creLleno1Dia:"full in 1 day{mas}",
-    creLlenoDias:"full in about {n} days{mas}",
-    creLlenoSem:"full in about {n} weeks{mas}",
-    creMas:" more",
-    creFranjaDias:"studies range from {a} to {b} days",
-    creFranjaSem:"studies range from {a} to {b} weeks",
-    creFranjaDiasMas:"studies range from {a} days to over 12 weeks",
-    creFranjaSemMas:"studies range from {a} to over 12 weeks",
-    creDejar:"if you stop, the effect fades in {a}-{b} weeks",
-    creBloqTit:"We will not give you a dose",
-    creBloq:"Because of {motivos}, creatine is decided in a consultation.",
-    creBloqX:"Book an appointment and we will look at it together.",
-    creY:" and ",
-    creMotRinon:"kidney disease",
-    creMotEmbarazo:"pregnancy or breastfeeding",
-    creMotMenor:"being under 18",
-    creMotReaccion:"a previous bad reaction",
-    creMotMedicacion:"your medication",
-    creFaltaTit:"We are missing one detail",
-    creFaltaPeso:"Your weight: log it in the Measurements tab.",
-    creFaltaSexo:"Your sex: add it to your profile.",
-    creFaltaAltura:"Your height: add it to your profile, or log your skinfolds.",
-    creFaltaEdad:"Your age: type it below.",
-    creSaludTit:"Before anything else",
-    creSaludOk:"all good",
-    creSaludMal:"check",
-    creSi:"Yes",
-    creNo:"No",
-    creCribRinon:"Kidney disease, or only one kidney?",
-    creCribEmbarazo:"Pregnant or breastfeeding?",
-    creCribMenor:"Under 18?",
-    creCribReaccion:"Has creatine ever made you feel unwell?",
-    creMedTit:"Your medication",
-    creMedOk:"Nothing in your plan puts load on the kidneys",
-    creMedVacia:"There is no medication in your plan",
-    creMedMal:"{items}: puts load on the kidneys, so it is decided in a consultation",
-    creTu:"You",
-    creTuSub:"what the app already knows",
-    crePeso:"Weight",
-    crePesoPesaje:"from your weigh-in on {f}",
-    crePesoAlta:"from your sign-up",
-    creGrasa:"Body fat %",
-    creGrasaPliegues:"from your skinfolds",
-    creGrasaEstimada:"estimated from your BMI, age and sex",
-    creDieta:"Diet",
-    creDietaTodo:"everything",
-    creDietaVeg:"vegetarian",
-    creVegPreg:"Are you vegetarian or vegan?",
-    creVegPregX:"Without meat or fish, muscle starts lower and rises more",
-    creEdadPreg:"Your age",
-    creEdadGuardar:"Save",
-    creYaTomas:"You already take it",
-    creYaTomasG:"{g} g in your plan",
-    creYaTomasSinG:"in your plan",
-    creGuardadoTel:"Your answers are saved only on this phone.",
-    creComo:"How do you start?",
-    creRapido:"Fast",
-    creRapidoX:"with loading",
-    creSinPrisa:"No rush",
-    creSinPrisaX:"daily dose only",
-    creYaLaTomo:"I take it",
-    creYaLaTomoX:"carry on from where you are",
-    creDescargaNo:"On Weigh-in there is no loading: daily dose only.",
-    creCuanta:"How much",
-    creDesde:"For",
-    creYa1sem:"1 week",
-    creYa2sem:"2 weeks",
-    creYa1mes:"1 month",
-    creYa2mes:"2 months or more",
-    creDeposito:"Your store",
-    creEstimacion:"estimate",
-    creCacitos:"{c} scoops a day · check the label",
-    creCacito1:"1 scoop a day · check the label",
-    creGrafAria:"Your creatine store by week",
-    creEjeLleno:"full",
-    creEjeNivel:"your level",
-    creEjeSem:"wk",
-    creFranjaNota:"The band on «full» is how much it changes from one study to another. A person may rise more or less; someone who already starts high barely rises.",
-    creProbar:"Try another dose",
-    creMenos:"Remove 1 g",
-    creMas1:"Add 1 g",
-    creLlega:"Does it fill up?",
-    creNoLlega:"it does not",
-    creSeVa:"Goes unused",
-    creSeVaX:"{g} g a week",
-    creVolver:"Back to {g} g",
-    creTomarTit:"How to take it",
-    creTomarHidratos:"With a meal that has carbs: you keep more.",
-    creTomarDiario:"Every day, rest days too.",
-    creTomarHora:"The time does not matter: before or after training.",
-    creTomarAlto:"If you already start high, it barely rises: that is normal.",
-    creAvBascula:"The scale may go up 1-3 kg in the first loading week: it is water inside the muscle, not fat.",
-    creAvAnalitica:"If you get a blood test, say you take creatine: blood creatinine rises without your kidneys getting worse.",
-    creAvDescarga:"You are on Weigh-in: no loading. Daily dose only, and expect some water before the weigh-in.",
-    creLegal:"For guidance only, for healthy adults. It does not replace advice from your dietitian or your doctor.",
-    creMeses:["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
-    // ── 💊 Supplements tab (src/Suplementacion.jsx; 26-sep-2026). The ☕ card uses cafSub and cafAbrir ──
-    tabSupl:"Supplements",
-    suplTitulo:"💊 Supplements",
-    suplIntro:"How much to take, worked out from your data.",
-    suplCafeina:"Caffeine",
-    suplCreatina:"Creatine",
-    suplCreatinaSub:"How much to take for your weight",
-    suplProximamente:"(coming soon)",
-    suplNoDisponible:"Creatine: coming soon, not available yet",
-  }
+  // en: en src/transEn.js, se carga solo en inglés (cargarIngles, MAESTRO-2026-1238)
 };
 
 // Hook de traducción — usar en cualquier componente funcional
@@ -1262,7 +692,7 @@ function translateLvName(name, lang){
 }
 
 // ─── Datos de contacto GBH — editar aquí ─────────────────────────────────────
-const GBH_WHATSAPP = "34697848500";
+export const GBH_WHATSAPP = "34697848500";
 const GBH_CALENDLY = "https://calendly.com/gbh-nutricion/20min";
 // Fisioterapia — equipo GBH en Pamplona (Nerea Ulzurrun). Número en
 // formato internacional sin "+" ni espacios: lo exige wa.me.
@@ -1279,7 +709,7 @@ const AudioCtx = (() => {
   };
 })();
 
-const SFX = {
+export const SFX = {
   // Tono suave con envelope
   _tone(freq, type="sine", dur=0.18, vol=0.35, delay=0){
     try{
@@ -1457,7 +887,7 @@ const HAPTIC_DE_SFX = { step:"toma", error:"error" };
 // su cuenta y en el móvil desaparecían los pops de registro y los popIn. Solo se
 // reducen si el propio usuario lo pide DENTRO de la app (clave gbh:reducemotion;
 // pendiente exponer el toggle en ajustes).
-const REDUCED_MOTION = ()=>{ try{ return lsGet("gbh:reducemotion", false)===true; }catch{ return false; } };
+export const REDUCED_MOTION = ()=>{ try{ return lsGet("gbh:reducemotion", false)===true; }catch{ return false; } };
 
 // Capa de movimiento (brief 7-ago-2026): entradas, barras que crecen y
 // contadores. ESTA capa sí obedece al ajuste del SISTEMA, porque no lleva
@@ -1474,7 +904,7 @@ const MOVIMIENTO_REDUCIDO = ()=>{
 // inicio y se notaba. A 30 ms acaba a 470 ms: la cascada se sigue leyendo y ya
 // no tiene cola. Constante única: es la palanca de TODO el escalonado de la app.
 const ESCALON_S = 0.03;
-const escalon = (i)=>`${Math.min(i,7)*ESCALON_S}s`;
+export const escalon = (i)=>`${Math.min(i,7)*ESCALON_S}s`;
 
 // Monta a 0 y salta al valor real en el siguiente frame: la barra CRECE en vez
 // de aparecer llena. Devuelve false en el primer render y true después.
@@ -1537,7 +967,6 @@ const GBH_EMAIL    = "gbh.nutricion@gmail.com";
 const GBH_NOMBRE   = "GBH Nutrición";
 const GBH_PRIVACY_URL = "https://app.gbhnutricion.es/legal/";
 // ─────────────────────────────────────────────────────────────────────────────
-import { ComposedChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 // ─── Supabase ────────────────────────────────────────────────────────────────
 const SB  = "https://kszytoufvqogcitzbzqs.supabase.co";
@@ -1553,21 +982,24 @@ const STRIPE_API          = "https://gbh-stripe-production.up.railway.app";
 // ES_IOS_NATIVO gobierna el ocultado de TODO el checkout/tarifas dentro de la
 // app de iOS (directriz 3.1.1 de Apple: sin CTAs ni enlaces de compra externa).
 const CAPN = (typeof window !== "undefined" && window.Capacitor) || null;
-const ES_NATIVO = !!(CAPN && CAPN.isNativePlatform && CAPN.isNativePlatform());
-const ES_IOS_NATIVO = ES_NATIVO && CAPN.getPlatform && CAPN.getPlatform() === "ios";
+export const ES_NATIVO = !!(CAPN && CAPN.isNativePlatform && CAPN.isNativePlatform());
+export const ES_IOS_NATIVO = ES_NATIVO && CAPN.getPlatform && CAPN.getPlatform() === "ios";
 // Android también es de «solo consumo» (PEND-2026-316, orden de Alejandro del 30-sep:
 // «si a la recomendacion»; MAESTRO-2026-717): la política de Pagos de Google Play no deja
 // vender el Estándar con Stripe desde la app. Donde iOS no enseña nada, Android dice SIN
 // enlace dónde se contrata, que Google sí permite. En iOS y en la web no cambia nada.
-const ES_ANDROID_NATIVO = ES_NATIVO && !ES_IOS_NATIVO;
+export const ES_ANDROID_NATIVO = ES_NATIVO && !ES_IOS_NATIVO;
 // iOS: «solo gratis + Premium 1:1» (7-nov-2026; Apple 3.1.1 del 4-nov; PEND-2026-319, por orden de
 // Alejandro: «la primera, si los pacientes premium pueden seguir recibiendo sus semanas y todas las
 // funcionalidades como hasta ahora»). En la app de iOS el Estándar no existe: quien lo tiene, por Stripe o
 // por la semana de prueba, ve la app gratuita, y en iOS el alta no trae prueba. El Premium, el servicio 1:1
 // con la dietista que se acuerda fuera de la app (3.1.3(d)), sigue entero. Es solo VISTA: nada de esto se
 // escribe en la base, así que la web y Android no cambian, y quien paga por la web lo sigue teniendo allí.
-const vistaTienda = (p) => (ES_IOS_NATIVO && p && p.plan === "standard") ? { ...p, plan: "free" } : p;
-const txtWebAndroid = (lang, que) => que === "gestionar"
+// 11-nov-2026 (Apple 3.1.1 del 11-nov; PEND-2026-319, por orden de Alejandro: «Compra de Apple del Estándar»): el Estándar
+// vuelve a iOS y se vende DENTRO con la compra de Apple (src/CompraApple.jsx). Con eso, quien lo pagó por la web también
+// lo usa en el iPhone (3.1.3(b)) y vistaTienda queda neutra. La semana de prueba y los referidos siguen fuera de iOS.
+const vistaTienda = (p) => p;
+export const txtWebAndroid = (lang, que) => que === "gestionar"
   ? (lang === "en" ? "Your subscription is managed on the web: app.gbhnutricion.es" : "Tu suscripción se gestiona en la web: app.gbhnutricion.es")
   : (lang === "en" ? "The Standard plan is available on the web: app.gbhnutricion.es" : "El plan Estándar se contrata en la web: app.gbhnutricion.es");
 
@@ -1575,7 +1007,7 @@ const txtWebAndroid = (lang, que) => que === "gestionar"
 // el webhook usa ese id para poner plan=standard al completarse el pago.
 // En las apps nativas NUNCA se abre: iOS (App Store 3.1.1) y, desde el 30-sep, Android
 // (Pagos de Google Play, PEND-2026-316). Los botones que lo llaman están además ocultos.
-const abrirCheckoutStripe = (profileId) => {
+export const abrirCheckoutStripe = (profileId) => {
   if(!profileId || ES_NATIVO) return;
   window.open(`${STRIPE_PAYMENT_LINK}?client_reference_id=${profileId}`, "_blank", "noopener");
 };
@@ -1789,7 +1221,7 @@ const racionNormalizarNumeros = (t) => {
     .replace(/(\d+)?(\s*)([½¼¾⅓⅔⅛])/g,(m,e,sp,f)=>(e?"":sp)+String(Math.round(((e?+e:0)+_FR[f])*1000)/1000))
     .replace(/\b(\d+)\s*\/\s*(\d+)\b/g,(m,a,b)=>String(Math.round(a/b*100)/100));
 };
-const escalarIngredientesJS = (texto, factor) => {
+export const escalarIngredientesJS = (texto, factor) => {
   if(!texto || Math.abs(factor-1)<0.02) return texto;
   const NO_ESCALAR = ["pizca","al gusto","opcional","para decorar"];
   // Split por comas RESPETANDO paréntesis: "(132,5 g)" es un decimal español,
@@ -1812,7 +1244,7 @@ const escalarIngredientesJS = (texto, factor) => {
     return t;
   }).join(",");
 };
-const racionTextoJS = (factor, lang) => {
+export const racionTextoJS = (factor, lang) => {
   const es = [[0.5,"media ración"],[0.67,"2/3 de la receta"],[0.75,"3/4 de la receta"],
               [1.25,"ración y cuarto"],[1.5,"ración y media"],[1.75,"casi ración doble"],[2,"ración doble"]];
   const en = [[0.5,"half portion"],[0.67,"2/3 of the recipe"],[0.75,"3/4 of the recipe"],
@@ -1830,7 +1262,7 @@ const racionTextoJS = (factor, lang) => {
 //                «¿Cuántas raciones quieres cocinar?» (1|2|3)
 // El ajuste del generador (x0,90…) NO va aquí desde el 17-sep: pegado a la lista se
 // leía como una resta pendiente. Va en la caja dorada (textosCajaRacion).
-const racionEtiqueta = (t, {raciones=1, x=1, base=false}={}) => {
+export const racionEtiqueta = (t, {raciones=1, x=1, base=false}={}) => {
   const n = parseInt(raciones,10)||1;
   if(base)  return n>1 ? t("racionBaseRinde",{n}) : t("racionBase");
   const r = racionesDeLaLista(n, x);
@@ -1840,7 +1272,7 @@ const racionEtiqueta = (t, {raciones=1, x=1, base=false}={}) => {
 // ─── Mascot image path (upload avatar.jpg to /public in GitHub) ───────────────
 
 // ─── Design tokens ───────────────────────────────────────────────────────────
-const T = {
+export const T = {
   // ── Paleta de MARCA GBH (verde oscuro #122B1D · dorado #C9A227 · crema
   //    #F5F0E8). Sustituye por completo a la paleta Duolingo anterior. ──
   // Backgrounds
@@ -1874,7 +1306,7 @@ const T = {
 // alpha(): hex del tema + opacidad → "rgba(r,g,b,a)". Todos los rgba de colores
 // de tema pasan por aquí para que en la fase 2 cambiar T recoloree TAMBIÉN las
 // transparencias (sombras, bordes, fondos suaves). Sin dependencias.
-const alpha=(hex,a)=>{const n=parseInt(hex.slice(1),16);return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;};
+export const alpha=(hex,a)=>{const n=parseInt(hex.slice(1),16);return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;};
 
 // ─── Levels ──────────────────────────────────────────────────────────────────
 // ─── Sistema de 500 niveles ──────────────────────────────────────────────────
@@ -1982,7 +1414,7 @@ const MACRO_MAP = {
 const FACT_MAP  = {
   " grasa":" fat"," prot":" protein"," HC":" carbs"
 };
-function getQuizQ(q, lang){
+export function getQuizQ(q, lang){
   if(lang!=="en") return q.q;
   if(q.q_en) return q.q_en;
   // Auto-traducir: "¿Cuál de estos platos del recetario GBH tiene más X?"
@@ -1992,11 +1424,11 @@ function getQuizQ(q, lang){
   Object.entries(MACRO_MAP).forEach(([es,en])=>{ out = out.replace(es,en); });
   return out;
 }
-function getQuizOpts(q, lang){
+export function getQuizOpts(q, lang){
   if(lang!=="en") return q.opts;
   return q.opts_en || q.opts; // dish names stay as-is if no opts_en
 }
-function getQuizFact(q, lang){
+export function getQuizFact(q, lang){
   if(lang!=="en"||!q.fact) return q.fact||"";
   if(q.fact_en) return q.fact_en;
   let out = q.fact;
@@ -2009,7 +1441,7 @@ function getQuizFact(q, lang){
 const puedePesarseHoy=()=>esDiaDeMedicion();
 // Clave de día en hora LOCAL (no UTC) → evita que a partir de medianoche en España
 // el día se adelante. Formato YYYY-MM-DD, idéntico al anterior.
-const toKey=(d=new Date())=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+export const toKey=(d=new Date())=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 // Pesaje ya registrado en la ventana EN CURSO ([miércoles] o [sábado, domingo] de la semana
 // actual, anclada al lunes como weekDates), excluyendo el punto inicial. El del miércoles y
 // el del fin de semana son filas distintas: dos puntos por semana.
@@ -2035,8 +1467,8 @@ const WLABELS=["L","M","X","J","V","S","D"];
 
 
 // ─── localStorage helpers ────────────────────────────────────────────────────
-const lsGet=(k,f)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):f;}catch{return f;}};
-const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
+export const lsGet=(k,f)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):f;}catch{return f;}};
+export const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
 
 // ?lang=es|en en la URL fija el idioma al arrancar (el CV enlaza ?lang=en).
 // Corre a nivel de módulo, ANTES de cualquier lsGet("gbh:lang"): el parámetro
@@ -2070,7 +1502,7 @@ const migrateQueue = (pid) => {
   }catch{}
 };
 
-function enqueue(op){
+export function enqueue(op){
   // op = { id, method, path, body, ts }
   if(!op || !op.path) return;
   const q = lsGet(getQueueKey(), []);
@@ -2112,7 +1544,7 @@ const SESION_KEY = "gbh:sesion";
 // Interruptor del cierre (Parte 2): cuando sea true, arrancar sin sesión manda
 // a la landing a volver a entrar con el PIN. Se pone a true el día del cierre.
 const SESION_OBLIGATORIA = true;   // 13-sep-2026: ENCENDIDO en la rama rls-cierre; se fusiona el día del cierre, junto a la Parte 2 del SQL
-const getSesion = () => lsGet(SESION_KEY, null);            // {token, pid, admin}
+export const getSesion = () => lsGet(SESION_KEY, null);            // {token, pid, admin}
 const setSesion = (s) => lsSet(SESION_KEY, s);
 const gbhHeaders = (extra={}) => {
   const s = getSesion();
@@ -2122,6 +1554,40 @@ const gbhHeaders = (extra={}) => {
     ...extra,
   };
 };
+
+// Descartes de la cola (MAESTRO-2026-1234): antes solo quedaba un console.warn y el paciente no se
+// enteraba de que un cambio no se había guardado. Se guardan los 20 últimos y se avisa en pantalla.
+const DESCARTES_KEY = "gbh:cola_descartes";
+const avisarDescarte = (op, status) => {
+  try{
+    const l = lsGet(DESCARTES_KEY, []);
+    l.push({ ts: Date.now(), method: op.method, path: String(op.path||"").split("?")[0], status });
+    lsSet(DESCARTES_KEY, l.slice(-20));
+    window.dispatchEvent(new CustomEvent("gbh:cola-descarte", { detail: { status } }));
+  }catch{}
+};
+
+// Recetario completo, UNA descarga por sesión (MAESTRO-2026-1234): la búsqueda por ingrediente y el
+// cambio de receta lo bajaban cada uno por su lado (1.112 recetas, select=*). Si la lectura falla
+// devuelve null y NO se guarda: el siguiente intento vuelve a pedirlo (antes la búsqueda guardaba []
+// para siempre y no reintentaba).
+let _recetarioCompleto = null, _recetarioPromesa = null;
+export const leerRecetarioCompleto = async () => {
+  if(_recetarioCompleto) return _recetarioCompleto;
+  if(_recetarioPromesa) return _recetarioPromesa;
+  _recetarioPromesa = (async ()=>{
+    try{
+      const d = await sbLeerTodo("recipes?select=*&order=id_receta.asc");
+      if(Array.isArray(d)) _recetarioCompleto = d;
+      return Array.isArray(d) ? d : null;
+    } finally { _recetarioPromesa = null; }
+  })();
+  return _recetarioPromesa;
+};
+// El mismo orden que pedía la búsqueda a la base (calorias.asc, id_receta.asc; los NULL al final).
+const ordenPorKcal = (lista) => (lista||[]).slice().sort((a,b)=>
+  ((a.calorias==null)-(b.calorias==null)) || ((a.calorias??0)-(b.calorias??0)) ||
+  (a.id_receta<b.id_receta?-1:a.id_receta>b.id_receta?1:0));
 
 async function flushQueue(){
   const q = lsGet(getQueueKey(), []);
@@ -2143,7 +1609,7 @@ async function flushQueue(){
         op.tries = (op.tries || 0) + 1;
         // 4xx persistente (columna/índice inexistente…): descartar tras 10 intentos
         if(op.tries < 10 || r.status >= 500) failed.push(op);
-        else console.warn("[cola] operación descartada tras 10 fallos:", op.method, op.path, r.status);
+        else { console.warn("[cola] operación descartada tras 10 fallos:", op.method, op.path, r.status); avisarDescarte(op, r.status); }
       }
     } catch {
       failed.push(op); // sin red, volver a encolar
@@ -2197,7 +1663,7 @@ const mergeWeeklyState = (profileId, patch) => {
 // ─── sbDirect: petición directa SIN cola offline ──────────────────────────────
 // Para (a) escrituras opcionales que no deben envenenar la cola si la columna
 // aún no existe en Supabase, y (b) reintentos con payload reducido.
-const sbDirect = async (method, path, body) => {
+export const sbDirect = async (method, path, body) => {
   try{
     const r = await fetch(`${SB}/rest/v1/${path}`, {
       method,
@@ -2217,7 +1683,7 @@ const sbDirect = async (method, path, body) => {
 // Sin cola offline: una pregunta que no llega se le dice al paciente y se queda en su caja.
 // 07. App GBH/bo_prueba_vivo.py lee BO_PREFER de aquí y lo prueba contra la base real.
 const BO_PREFER = "return=minimal";
-const boRegistrar = async (fila) => {
+export const boRegistrar = async (fila) => {
   try{
     const r = await fetch(`${SB}/rest/v1/bo_registro`, { method:"POST", headers: gbhHeaders({ "Prefer": BO_PREFER }), body: JSON.stringify(fila) });
     return { ok: r.ok, status: r.status };
@@ -2263,7 +1729,7 @@ const boGuardarConfig = async (pid, cambio = {}) => {
 // Railway) saca al paciente de su sesión, mira los interruptores (bo_activo, bo_ia_activo), el
 // permiso (bo_ia_ok) y la edad, y CLASIFICA la frase; la IA no redacta nada que vea el paciente.
 // Al servidor solo va la sesión (X-GBH-Sesion), nunca la clave de Supabase.
-const boIA = {
+export const boIA = {
   estado: async () => {
     const s = getSesion(); if(!s?.token) return { ia:false, motivo:"sin_sesion" };
     try{ const r = await fetch(`${GBH_SERVER_URL}/bo/estado`, { method:"POST", headers:{ "X-GBH-Sesion": s.token } });
@@ -2279,7 +1745,7 @@ const boIA = {
   },
 };
 // El permiso del paciente (Apple 5.1.2(i), RGPD): cuándo aceptó que su frase vaya a la IA.
-const boIAConsentir = async (pid) => {
+export const boIAConsentir = async (pid) => {
   if(!pid) return false;
   const r = await sbDirect("PATCH", `profiles?id=eq.${pid}`, { bo_ia_ok: new Date().toISOString() });
   if(r.ok){ try{ const p = lsGet(`gbh:p:${pid}`, null); if(p) lsSet(`gbh:p:${pid}`, { ...p, bo_ia_ok: new Date().toISOString() }); }catch{} }
@@ -2295,7 +1761,15 @@ const patchWeeklyState = (profileId, merged) => {
 // ─── sbReq: offline-first ────────────────────────────────────────────────────
 // GET → siempre intenta red, sin encolar si falla
 // POST/PATCH → intenta red; si falla, encola para después
-const sbReq = async(method, path, body=null) => {
+// Tope de las lecturas (MAESTRO-2026-1234): con mala cobertura un GET podía quedarse esperando sin fin.
+const LECTURA_TOPE_MS = 20000;
+const senalConTope = (ms) => {
+  try{
+    if(typeof AbortSignal!=="undefined" && typeof AbortSignal.timeout==="function") return AbortSignal.timeout(ms);
+    const c = new AbortController(); setTimeout(()=>c.abort(), ms); return c.signal;
+  }catch{ return undefined; }
+};
+export const sbReq = async(method, path, body=null) => {
   // SIEMPRE la anon key para las llamadas de datos.
   // Lección aprendida: enviar el token del usuario rompía las lecturas de
   // recipes/saved_recipes (las políticas RLS están definidas para el rol
@@ -2314,6 +1788,7 @@ const sbReq = async(method, path, body=null) => {
   try {
     const r = await fetch(`${SB}/rest/v1/${path}`, {
       method, headers, body: body ? JSON.stringify(body) : null,
+      ...(method==="GET" ? { signal: senalConTope(LECTURA_TOPE_MS) } : {}),
     });
     if(!r.ok) throw new Error(`${r.status}`);
     if(method==="DELETE") return true;
@@ -2868,7 +2343,7 @@ function useParpadeo(estado, activo) {
   return cerrado ? estado + "_p" : estado;
 }
 
-function Sheep({ estado, equipados, color, size = 200, mini = false }) {
+export function Sheep({ estado, equipados, color, size = 200, mini = false }) {
   const col = COLORES.find(c => c.id === color) || COLORES[0];
   const eq = Array.isArray(equipados) ? equipados : [];
   // `!mini` no basta: los avatares de 44-48 px (tutorial, listas) no pasan mini y
@@ -2904,7 +2379,7 @@ function Sheep({ estado, equipados, color, size = 200, mini = false }) {
 // congelado con las cartas boca arriba y 300/300. Blindado con try/catch para
 // que un fallo de audio jamás vuelva a tumbar el juego.
 let _jfxCtx = null;
-const jfx = (nombre) => {
+export const jfx = (nombre) => {
   try{
     _jfxCtx = _jfxCtx || new (window.AudioContext || window.webkitAudioContext)();
     const actx = _jfxCtx;
@@ -2955,12 +2430,12 @@ function AvatarRankBo({ color, equipados, nivel = 1, isMe = false, size = 38 }) 
 }
 
 // ─── Píxeles compuestos de la oveja (para el canvas del juego) ───────────────
-function buildPixels(colorId, equipados) {
+export function buildPixels(colorId, equipados) {
   // Mismo motor que el componente Sheep: ya no puede divergir del canvas.
   const col = COLORES.find(c => c.id === colorId) || COLORES[0];
   return tramosBo32(col, equipados || [], "normal");
 }
-function buildPixelsEstado(colorId, equipados, estado) {
+export function buildPixelsEstado(colorId, equipados, estado) {
   // Reutiliza las caras que ya existen (feliz/triste) en vez de inventar tintes
   const col = COLORES.find(c => c.id === colorId) || COLORES[0];
   return tramosBo32(col, equipados || [], estado);
@@ -2971,1623 +2446,11 @@ function buildPixelsEstado(colorId, equipados, estado) {
 // con contorno, luz arriba-izquierda, sombra abajo-derecha y tres gemas: el
 // zigzag vectorial de antes era plano y desentonaba con la cabeza de píxeles.
 // Formato [x, y, ancho, tono] igual que los tramos de bo32/juego32.
-const CORONA_PAL = { O:"#4A3A08", L:"#E8C766", B:T.au1, S:T.au3, R:"#D9484F", V:"#3FA96A" };
-const CORONA = [[1,0,1,"O"],[6,0,1,"O"],[11,0,1,"O"],[0,1,1,"O"],[1,1,1,"L"],[2,1,1,"O"],[5,1,1,"O"],[6,1,1,"L"],[7,1,1,"O"],[10,1,1,"O"],[11,1,1,"L"],[12,1,1,"O"],[0,2,1,"O"],[1,2,1,"L"],[2,2,1,"B"],[5,2,1,"O"],[6,2,1,"L"],[7,2,1,"B"],[10,2,1,"O"],[11,2,1,"L"],[12,2,1,"B"],[0,3,1,"O"],[1,3,1,"L"],[2,3,10,"B"],[12,3,1,"S"],[0,4,1,"O"],[1,4,1,"L"],[2,4,1,"B"],[3,4,1,"R"],[4,4,2,"B"],[6,4,1,"V"],[7,4,2,"B"],[9,4,1,"R"],[10,4,2,"B"],[12,4,1,"S"],[0,5,1,"O"],[1,5,1,"L"],[2,5,10,"B"],[12,5,1,"S"],[0,6,1,"O"],[1,6,11,"S"],[12,6,1,"O"]];
+export const CORONA_PAL = { O:"#4A3A08", L:"#E8C766", B:T.au1, S:T.au3, R:"#D9484F", V:"#3FA96A" };
+export const CORONA = [[1,0,1,"O"],[6,0,1,"O"],[11,0,1,"O"],[0,1,1,"O"],[1,1,1,"L"],[2,1,1,"O"],[5,1,1,"O"],[6,1,1,"L"],[7,1,1,"O"],[10,1,1,"O"],[11,1,1,"L"],[12,1,1,"O"],[0,2,1,"O"],[1,2,1,"L"],[2,2,1,"B"],[5,2,1,"O"],[6,2,1,"L"],[7,2,1,"B"],[10,2,1,"O"],[11,2,1,"L"],[12,2,1,"B"],[0,3,1,"O"],[1,3,1,"L"],[2,3,10,"B"],[12,3,1,"S"],[0,4,1,"O"],[1,4,1,"L"],[2,4,1,"B"],[3,4,1,"R"],[4,4,2,"B"],[6,4,1,"V"],[7,4,2,"B"],[9,4,1,"R"],[10,4,2,"B"],[12,4,1,"S"],[0,5,1,"O"],[1,5,1,"L"],[2,5,10,"B"],[12,5,1,"S"],[0,6,1,"O"],[1,6,11,"S"],[12,6,1,"O"]];
 
-// ─── 🎮 El Salto del Rebaño (runner offline, estilo dino) ────────────────────
-function JuegoOveja({ color, equipados, nombre, onSalir, partidasProp, onPagarYJugar, arrancarRef,
-  puntosHoy = 0, puntosSemana = 0, onFinPartida, perfilId = null,
-  scoreRef = null, onScoreVivo = null, esperaSeg = 0, cargandoPartidas = false }) {
-  const canvasRef = useRef(null);
-  // Clave ESTABLE de los accesorios: el efecto del juego depende de ella y no del
-  // array. Un array nuevo con el mismo contenido (perfil releído del servidor a
-  // media partida) reiniciaba el bucle: la oveja volvía al principio y la
-  // dificultad a cero, con el marcador de antes todavía en pantalla.
-  const eqKey = Array.isArray(equipados) ? equipados.join(",") : "";
-  const tapRef = useRef(null);      // handler del toque expuesto al JSX (sobrevive re-renders)
-  const [modoElegido, setModoElegido] = useState("noche");   // juego seleccionado en la pantalla previa
-  const [jugando, setJugando] = useState(false);
-  const [fin, setFin] = useState(false);
-  const [score, setScore] = useState(0);
-  const [best, setBest] = useState(0);
-  const [cuenta, setCuenta] = useState(0); // 5..1 countdown; 0 = jugando
-  // ── Aviso al retado: duelos recibidos desde la última visita (§ tabla duelos) ──
-  const [avisoDuelos, setAvisoDuelos] = useState(null);
-  useEffect(() => {
-    if (!perfilId) return;
-    let vivoA = true;
-    (async () => {
-      try {
-        const pf = await sbReq("GET", `profiles?id=eq.${perfilId}&select=duelos_vistos_at`);
-        const desde = Array.isArray(pf) && pf[0] ? pf[0].duelos_vistos_at : null;
-        const filtro = desde ? `&creado=gt.${encodeURIComponent(desde)}` : "";
-        const filas = await sbReq("GET", `duelos?rival_id=eq.${perfilId}${filtro}&select=gana,puntos`);
-        if (!vivoA || !Array.isArray(filas) || filas.length === 0) return;
-        // gana = ganó el retador → para mí, derrota
-        const derrotas = filas.filter(f => f.gana).length;
-        const victorias = filas.length - derrotas;
-        const saldo = filas.reduce((s, f) => s + (f.gana ? -(f.puntos || 0) : (f.puntos || 0)), 0);
-        setAvisoDuelos({ total: filas.length, victorias, derrotas, saldo });
-        sbReq("PATCH", `profiles?id=eq.${perfilId}`, { duelos_vistos_at: new Date().toISOString() }).catch(() => {});
-      } catch {}
-    })();
-    return () => { vivoA = false; };
-  }, [perfilId]);
-
-  // Al terminar cada partida, sus puntos se suman al marcador diario y semanal
-  useEffect(() => { if (fin) onFinPartida && onFinPartida(score); }, [fin]);
-
-  // El padre necesita el marcador VIVO: si el paciente sale con la ✕ o cierra la
-  // app a media partida, la partida se registra igualmente con lo conseguido
-  // hasta ese instante (nunca con 0, y nunca sin registrar → sin exploits).
-  useEffect(() => {
-    const vivo = jugando && !fin ? score : null;
-    if (scoreRef) scoreRef.current = vivo;
-    if (onScoreVivo) onScoreVivo(vivo);
-  }, [score, jugando, fin]);
-
-  useEffect(() => {
-    if (!jugando) return;
-    const cv = canvasRef.current;
-    const ctx = cv.getContext("2d");
-    // Lienzo LÓGICO fijo 340×680; el buffer real se ajusta a pantalla × devicePixelRatio
-    // → se acabaron los gráficos reescalados: cada frame se dibuja a resolución nativa
-    const W = 340, H = 680, suelo = H - 52;
-    const S = 2.5, SH = 32 * S, SX = 36;   // 32x32 a S=2.5 -> SH sigue siendo 80: la física no cambia
-    const ajustarBuffer = () => {
-      const r = cv.getBoundingClientRect();
-      const dpr = Math.min(window.devicePixelRatio || 1, 3);
-      cv.width  = Math.max(1, Math.round((r.width  || W) * dpr));
-      cv.height = Math.max(1, Math.round((r.height || H) * dpr));
-    };
-    ajustarBuffer();
-    const px = buildPixels(color, equipados);
-    const pxFeliz = buildPixelsEstado(color, equipados, "feliz");
-    const pxTriste = buildPixelsEstado(color, equipados, "triste");
-    // pintarBo del brief: tramos [x, y, ancho, hex] a cualquier escala y posición
-    const pintarTramos = (tr, x, y, esc) => tr.forEach(([tx2, ty2, tw, c]) =>
-      { ctx.fillStyle = c; ctx.fillRect(x + tx2 * esc, y + ty2 * esc, tw * esc + 0.5, esc + 0.5); });
-
-    // ── Temas de juego: el consumible transforma el modo completo ──
-    const TEMAS = {
-      noche: {
-        familia: "runner",
-        cielo: "#4A2C4E", cieloBottom: "#C25E3A", suelo: T.g3, hierba: "#3E7A2A",   // hex: matas()/tonos() no admite rgba()
-        sol: "rgba(255,210,120,0.55)",
-        obstaculo: "lobo",            // lobos que saltar
-        volador: "cuervo",            // cuervos que rebotan
-        nubeColor: "rgba(255,200,160,0.18)",
-      },
-      oro: {
-        familia: "plataformas",
-        cielo: "#3A2A5A", cieloBottom: "#8A5A9E", suelo: "#6B4A2A", hierba: "rgba(255,200,100,0.4)",
-        nubeColor: "rgba(255,220,180,0.14)",
-      },
-      vuelo: {
-        familia: "vuelo",
-        cielo: "#6EC6E8", cieloBottom: "#E8F5D8",
-        nubeColor: "rgba(255,255,255,0.6)",
-      },
-      jefe: {
-        familia: "shooter",
-        cielo: "#2A1E36", cieloBottom: "#3E2C4E", suelo: "#3A2F44", hierba: "rgba(180,150,220,0.25)",
-        nubeColor: "rgba(0,0,0,0)",
-      },
-      duelo: {
-        familia: "duelo",
-        cielo: "#3E2C5E", cieloBottom: "#1E3A2A",
-        nubeColor: "rgba(0,0,0,0)",
-      },
-    };
-    // Icono del consumible según a qué modo lleva
-    const ICONO_MODO = { noche: "🌙", oro: "💲", vuelo: "✈️", jefe: "🎯", duelo: "⚔️" };
-    const otroModo = (actual) => {
-      // Nunca repite el último destino: garantiza variedad real entre transiciones
-      let otros = Object.keys(TEMAS).filter(m => m !== actual && m !== st.ultimoDestino);
-      if (otros.length === 0) otros = Object.keys(TEMAS).filter(m => m !== actual);
-      const destino = otros[Math.floor(Math.random() * otros.length)];
-      st.ultimoDestino = destino;
-      return destino;
-    };
-    // Se arranca en el juego ELEGIDO en la pantalla previa
-    const modoInicial = TEMAS[modoElegido] ? modoElegido : "noche";
-
-    const st = { y: suelo - SH, vy: 0, modo: modoInicial, transicion: 0,
-      vallas: TEMAS[modoInicial].familia === "runner"
-        ? [{ tipo: TEMAS[modoInicial].obstaculo, x: W + 60, w: 20, h: 52, ok: false }] : [],
-      consumibles: [], desdeConsumible: 0, graciaTransicion: 50, mismos: 0,
-      monedas: [], suelos: [{ x: -20, w: W + 60, top: suelo }], sx: SX, enSuelo: true,
-      corales: [], balas: [], balasJefe: [], jefe: null, jefeNivel: 0, flotantes: [],
-      carril: 1, objetos: [], olaCad: 0, faseCamino: 0, flechaFlash: null,
-      vel: 4.2, score: 0, frames: 0, vivo: true, duelosGanados: 0, nubes: [
-      { x: 50, y: 70 }, { x: 190, y: 130 }, { x: 280, y: 45 }],
-    };
-    // ── Economía del duelo ────────────────────────────────────────────────────
-    // Hay DOS marcadores distintos y no deben mezclarse:
-    //   1) El robo PvP (±100 semanales) lo resuelve el servidor en resolver_duelo.
-    //      Es de suma cero: lo que gano yo lo pierde el rival. No pasa por st.score
-    //      o se contaría dos veces al cerrar la partida (registrar_partida_juego).
-    //   2) El botín de partida (esto): puntos de arcade que SÍ suben el marcador
-    //      de arriba a la derecha y escalan con la racha de duelos de esta partida.
-    //      1ª victoria 120 · 2ª 240 · 3ª 360 … así encadenar duelos renta de verdad.
-    //      Era 40 hasta el 22-ago-2026: ver la tabla de pagos, unas líneas abajo.
-    const PTS_DUELO_BASE = 120;
-    const botinDuelo = (n) => PTS_DUELO_BASE * n;
-    // ── Economía del vuelo (recalibrada 22-ago-2026) ─────────────────────────
-    // El anillo pagaba 10. Medido por simulación del desove (200 partidas de
-    // 5 min, jugador que toma todos los anillos): arcos de 2-3 anillos cada ~74
-    // fotogramas ⇒ 1.205 pts/min, x2,6 el runner (467), x4,8 el oro (253) y el
-    // jefe (235). Tres razones que se suman:
-    //   · el premio por evento era 2,5 veces el del runner (10 vs 4) sin que el
-    //     evento costase más;
-    //   · la cadencia del vuelo es por FOTOGRAMA, no por distancia, así que el
-    //     grifo no espera a que el juego acelere: paga a tope desde el segundo
-    //     uno, mientras el runner arranca a velocidad 4,2 de 7,6.
-    //   · y encima es el modo MÁS seguro: sin gravedad, la avioneta se queda
-    //     donde la dejas y su aire está capado a 5,08 cuando el resto llega a 7,6.
-    // Máxima recompensa con mínimo riesgo, que es el sesgo que vacía el ranking.
-    // Con 4 queda a la par del runner (482 vs 467 pts/min medidos). Es el único
-    // número que hay que tocar para recalibrar el modo: súbelo a 5 si se quiere
-    // dejarlo un 30 % por encima, bájalo a 3 para ponerlo al nivel del oro.
-    const PTS_ANILLO = 4;
-    // ── Tabla de pagos de los cinco modos (rebalanceada 22-ago-2026) ─────────
-    // Medida con `equilibrio_juegos.py` (junto a este fichero), que replica los
-    // desovadores y calcula el grifo de cada modo con jugador perfecto.
-    //   ANTES: vuelo 1.205 · runner 467 · oro 253 · jefe 235 · duelo 92 pts/min.
-    //   AHORA: oro 504 · vuelo 482 · runner 467 (referencia, sin tocar) ·
-    //          jefe 408 (al 65 % de acierto) · duelo 247 pts por PARTIDA.
-    // El vuelo pagaba x2,6 el segundo y x5 el cuarto: quien elegía la esfera
-    // azul subía en el ranking semanal por elegirla, no por jugar mejor.
-    // Tres cosas que hay que tener presentes antes de volver a tocar estos números:
-    //   · El runner es el ÚNICO modo que paga por SOBREVIVIR; los demás pagan
-    //     por RECOGER, así que sus cifras son TECHOS y en la mano de un paciente
-    //     caen. Por eso oro y vuelo se dejan justo por encima del runner.
-    //   · El duelo no se iguala por ritmo sino por PARTIDA: no tiene
-    //     supervivencia libre — la primera derrota lo cierra, a los ~54 s —, así
-    //     que igualar su pts/min obligaría a un botín absurdo. 247 pts/partida es
-    //     la media real observada en `juego_partidas` (238 sobre 399 partidas).
-    //     Y su techo, 4 victorias encadenadas = 1.200, encaja con el máximo
-    //     histórico jamás registrado por nadie: 1.473.
-    //   · Estos números YA NO tocan la dificultad. Hasta hoy `dif` era
-    //     `score/200`, así que subir un pago adelantaba la rampa de rebote (el
-    //     oro se ponía difícil a los 24 s en vez de a los 48). Desde esta entrega
-    //     `dif` cuenta FOTOGRAMAS — ver `DIF_FRAMES`, unas líneas más abajo —, de
-    //     modo que se puede recalibrar la economía sin mover el juego.
-    const PTS_VALLA = 4;      // runner: rebasar un lobo o un cuervo
-    const PTS_MONEDA = 6;     // oro: recoger una moneda         (era 3)
-    const PTS_IMPACTO = 3;    // jefe: bola de lana que acierta   (era 2)
-    const PTS_REY = 50;       // jefe: rey abatido                (era 20)
-    // ── Rampa de dificultad: por TIEMPO, no por puntos (22-ago-2026) ─────────
-    // `dif` era `st.score / 200`, o sea que la dificultad estaba atada a la
-    // tabla de pagos de aquí arriba: al rebalancear los modos, el que pasaba a
-    // pagar más se volvía difícil antes SIN QUE NADIE LO HUBIERA DECIDIDO (el
-    // oro llegaba a dif=1 en 24 s en vez de 48). Son dos perillas distintas y
-    // ahora están separadas: cambiar puntos ya no cambia la dificultad.
-    // Calibrado contra el RUNNER, que es el modo de referencia y el único que
-    // no se ha tocado: con sus pagos de siempre llegaba a dif=1 a los 41 s
-    // (2.460 fotogramas, medido sobre 400 partidas simuladas). El exponente 1,4
-    // reproduce su CURVA ENTERA, no solo el punto final — desviación máxima
-    // 0,028 sobre 1 frente a la rampa de puntos. Sin él, una rampa lineal se
-    // adelantaría hasta 0,12 a mitad de partida y el runner sería otro juego.
-    const DIF_FRAMES = 2460;   // ~41 s a 60 fps
-    if (TEMAS[modoInicial].familia === "vuelo") { st.y = H * 0.4; st.objetivoY = st.y; }
-
-    // ── Transición a otro juego (la usan el orbe Y la victoria del duelo) ──
-    const transita = (to) => {
-      st.modo = to; st.transicion = 1; st.score += 40; setScore(st.score);
-      st.vallas = []; st.monedas = []; st.suelos = [{ x: -20, w: W + 60, top: suelo }]; st.sx = SX;
-      st.corales = []; st.balas = []; st.balasJefe = []; st.jefe = null; st.jefeNivel = 0;
-      st.cad = 0; st.jefeCad = 0; st.flotantes = [];
-      st.jefeYPos = undefined; st.jefeCarga = 0;
-      st.carril = 1; st.objetos = []; st.olaCad = 0; st.faseCamino = 0; st.flechaFlash = null;
-      st.aves = []; st.anillos = []; st.objetivoY = undefined; st.arrastre = false; st.duelo = null;
-      st.chispas = []; st.cadAve = 0; st.cadAnillo = 0; st.cadAveTope = 92; st.cadAniTope = 74;
-      st.quiereConsumible = false;
-      st.desdeConsumible = -400; st.graciaTransicion = 90;
-      // Recolocar a la oveja según el juego destino
-      st.y = TEMAS[to].familia === "vuelo" ? H * 0.4 : suelo - SH;
-      if (TEMAS[to].familia === "vuelo") st.objetivoY = st.y;
-      st.vy = 0; st.enSuelo = true;
-    };
-    // ── Equilibrio del duelo (medido por simulación, 200.000 combates) ────────
-    // El rival NO es una persona: es un bot con la piel de otro paciente. Si su
-    // carta fuese uniforme al azar, cualquier patrón fijo lo revienta (el escudo
-    // ganaba el 100% y el ataque el 73%). Tres reglas lo cierran:
-    //   · MAX_TURNOS: el combate no puede eternizarse; al llegar gana quien tenga
-    //     más PS, y si están igualados es empate (nadie roba nada a nadie).
-    //   · D vs D cuesta 25 a los dos: turtlear ya no es gratis.
-    //   · P_LEE: el rival responde a tu carta más repetida con la que la vence
-    //     (⚔️→🛡️→🍎→⚔️). A 0.35 ninguna estrategia fija supera al juego honesto.
-    // Con P_LEE = 0 vuelve al rival aleatorio de antes.
-    const MAX_TURNOS = 12;
-    const P_LEE = 0.35;
-    const CONTRA = { A: "D", D: "P", P: "A" };
-    const cartaRival = (d) => {
-      const v = d.vistas || {};
-      const tot = (v.A || 0) + (v.D || 0) + (v.P || 0);
-      if (tot > 0 && Math.random() < P_LEE) {
-        const fav = ["A", "D", "P"].sort((x, y) => (v[y] || 0) - (v[x] || 0))[0];
-        return CONTRA[fav];
-      }
-      return ["A", "D", "P"][Math.floor(Math.random() * 3)];
-    };
-    // ── Bo entrenador: rival de reserva cuando el rebaño aún no tiene puntos ──
-    // Sin id → resolverDuelo corta antes de llamar a la RPC: no se le quitan
-    // puntos a nadie. El botín de partida sí cuenta, así que se sigue jugando
-    // por puntos y nadie se queda encerrado en el tapete tras gastar el diamante.
-    const RIVAL_BOT = { id: null, bot: true, usuario: "Bo", oveja: "entrenador", pts: 0,
-      px: buildPixels("verde", []), pxTriste: buildPixelsEstado("verde", [], "triste") };
-    // ── Duelo: rivales reales del ranking semanal (top 1, top 2 y el rebaño) ──
-    // Plazo para las lecturas del tapete: si la red se queda colgada (móvil con
-    // cobertura a medias), el duelo no puede quedarse en «Buscando al rebaño…»
-    // para siempre. A los 8 s se juega contra Bo entrenador.
-    const conPlazo = (p, ms) => Promise.race([p, new Promise(r => setTimeout(() => r(null), ms))]);
-    const cargarRivales = async () => {
-      try {
-        const jr = await conPlazo(sbReq("GET", "v_ranking_juego_semanal?select=profile_id,puntos_semana&order=puntos_semana.desc&limit=14"), 8000) || [];
-        const filas = (Array.isArray(jr) ? jr : []).filter(r => r.profile_id !== perfilId);
-        const ids = filas.map(r => r.profile_id).slice(0, 10);
-        let perf = [];
-        // Fase 2b: los perfiles AJENOS se leen de la vista perfiles_publicos (nombre + Bo), no de profiles
-        if (ids.length) perf = await conPlazo(sbReq("GET", `perfiles_publicos?id=in.(${ids.join(",")})&select=id,name,bo_nombre,bo_color,bo_equipados`), 8000) || [];
-        const pMap = {}; (Array.isArray(perf) ? perf : []).forEach(p => { pMap[p.id] = p; });
-        const rivales = filas.map(r => {
-          const p = pMap[r.profile_id]; if (!p) return null;
-          return { id: p.id, usuario: (p.name || "Paciente").split(" ")[0], oveja: p.bo_nombre || "Bo",
-            pts: r.puntos_semana || 0,
-            px: buildPixels(p.bo_color, p.bo_equipados),
-            pxTriste: buildPixelsEstado(p.bo_color, p.bo_equipados, "triste") };
-        }).filter(Boolean);
-        if (st.duelo) { st.duelo.rivales = rivales; st.duelo.cargando = false; }
-      } catch { if (st.duelo) { st.duelo.rivales = []; st.duelo.cargando = false; } }
-    };
-    // Misma forma que apply_referral: una RPC SECURITY DEFINER mueve los dos marcadores
-    const resolverDuelo = (rival, gana) => {
-      if (!perfilId || !rival || !rival.id) return;
-      sbReq("POST", "rpc/resolver_duelo", { p_reta: perfilId, p_rival: rival.id, p_gana: gana })
-        .then(res => { if (st.duelo && res && res.puntos_semana !== undefined) st.duelo.misPts = res.puntos_semana; })
-        .catch(() => {});
-    };
-
-    const saltar = (px, py) => {
-      if (!st.vivo) return;
-      const fam = TEMAS[st.modo].familia;
-      if (fam === "plataformas") {
-        if (st.enSuelo) { st.vy = -18; st.enSuelo = false; }
-      } else if (fam === "vuelo") {
-        // Sin gravedad: la avioneta va a tu dedo y SE QUEDA donde la dejes
-        st.arrastre = true;
-        if (py !== undefined) st.objetivoY = py - SH * 0.55;
-      } else if (fam === "duelo") {
-        const d = st.duelo; if (!d || py === undefined) return;
-        if (d.fase === "tapete") {
-          const rv = d.rivales || [];
-          if (d.cargando) return;
-          if (rv.length === 0) {
-            // Carta única centrada: sin esto el tapete se quedaba muerto y había
-            // que salir del juego habiendo pagado el diamante sin jugar nada
-            if (py > 240 && py < 412 && px > 112 && px < 228) {
-              d.rival = RIVAL_BOT; d.fase = "turno"; d.t = 0; d.psYo = 300; d.psRiv = 300; jfx("rival");
-            }
-            return;
-          }
-          if (py > 240 && py < 412) {
-            const i = px < 115 ? 0 : px < 227 ? 1 : 2;
-            let elegido = null;
-            if (i === 0) elegido = rv[0];
-            else if (i === 1) elegido = rv[1] || rv[0];
-            else elegido = rv[Math.floor(Math.random() * rv.length)];
-            if (elegido) { d.rival = elegido; d.fase = "turno"; d.t = 0; d.psYo = 300; d.psRiv = 300; jfx("rival"); }
-          }
-        } else if (d.fase === "turno") {
-          if (py > 294 && py < 420) {
-            const i = px < 115 ? 0 : px < 227 ? 1 : 2;
-            d.miIdx = i; d.miCarta = ["A", "D", "P"][i];
-            d.suCarta = cartaRival(d);
-            if (!d.vistas) d.vistas = { A: 0, D: 0, P: 0 };
-            d.vistas[d.miCarta]++;
-            d.turno = (d.turno || 0) + 1;
-            d.suIdx = Math.floor(Math.random() * 3);
-            d.fase = "revela"; d.t = 0;
-            jfx("carta");
-          }
-        } else if (d.fase === "fin") {
-          if (d.resultado === "gana" || d.resultado === "empate") {
-            if (py > 376 && py < 442) { transita(otroModo(st.modo)); return; }        // 🔮 al siguiente juego
-            if (py > 452 && py < 500) {
-              // Otro duelo: SIEMPRE contra un rival aleatorio (y distinto del recién
-              // vencido si hay más), para que nadie pueda cebarse con el mismo paciente
-              const rv2 = (d.rivales || []).filter(r => !d.rival || r.id !== d.rival.id);
-              const pool = rv2.length ? rv2 : (d.rivales || []);
-              // Sin rebaño con puntos, la revancha es contra Bo: encadenar duelos
-              // nunca deja el tapete sin salida
-              const nuevoRival = pool.length ? pool[Math.floor(Math.random() * pool.length)] : RIVAL_BOT;
-              {
-                st.duelo = { fase: "turno", t: 0, psYo: 300, psRiv: 300, rival: nuevoRival,
-                  rivales: d.rivales, cargando: false, miCarta: null, suCarta: null,
-                  miIdx: 1, suIdx: 1, golpeYo: 0, golpeRiv: 0, resultado: null, flot: [], misPts: d.misPts,
-                  turno: 0, vistas: { A: 0, D: 0, P: 0 } };
-                jfx("rival");
-              }
-            }
-          } else if (d.t > 40) {
-            // La derrota cierra la partida, como cualquier tropiezo
-            st.vivo = false; setFin(true); setBest(b => Math.max(b, st.score));
-          }
-        }
-      } else {
-        if (st.y >= suelo - SH - 1) st.vy = -17;   // runner y shooter
-      }
-    };
-    const onTap = (e) => {
-      const r = cv.getBoundingClientRect();
-      const cx = e.clientX !== undefined ? e.clientX
-        : (e.touches && e.touches[0] ? e.touches[0].clientX : undefined);
-      const cyT = e.clientY !== undefined ? e.clientY
-        : (e.touches && e.touches[0] ? e.touches[0].clientY : undefined);
-      if (cx === undefined || !r.width) saltar();
-      else saltar((cx - r.left) * (W / r.width),
-        cyT !== undefined && r.height ? (cyT - r.top) * (H / r.height) : undefined);
-    };
-    tapRef.current = onTap;
-    // Arrastre continuo del vuelo: la avioneta persigue el dedo mientras está apoyado
-    const onMove = (e) => {
-      if (!st.arrastre || !st.vivo || TEMAS[st.modo].familia !== "vuelo") return;
-      const r = cv.getBoundingClientRect();
-      const cyM = e.clientY !== undefined ? e.clientY
-        : (e.touches && e.touches[0] ? e.touches[0].clientY : undefined);
-      if (cyM !== undefined && r.height) st.objetivoY = (cyM - r.top) * (H / r.height) - SH * 0.55;
-    };
-    const onUp = () => { st.arrastre = false; };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    const onKey = (e) => {
-      if (e.code === "Space" || e.code === "ArrowUp") { e.preventDefault(); saltar(); }
-      if (e.code === "ArrowLeft")  { e.preventDefault(); saltar(0); }
-      if (e.code === "ArrowRight") { e.preventDefault(); saltar(W); }
-    };
-    window.addEventListener("keydown", onKey);
-
-    let raf;
-    // ── Un PASO de simulación = 1/60 s de juego ──────────────────────────────
-    // Toda la física está escrita «por fotograma» y calibrada a 60 por segundo
-    // (velocidades, gravedad, cadencias, DIF_FRAMES). Hasta hoy cada rAF era un
-    // paso, así que el juego iba a la velocidad que quisiera la pantalla: iOS
-    // baja requestAnimationFrame a 30 por segundo en ahorro de energía (el juego
-    // iba a la MITAD, con la oveja flotando a cámara lenta) y una pantalla de
-    // 90/120 Hz lo doblaría. Ahora el bucle pinta a la cadencia de la pantalla y
-    // simula los pasos de 1/60 s que hayan pasado de verdad.
-    const paso = () => {
-        if (st.vel < 7.6) st.vel += 0.0011;  // acelera suave, con tope
-        if (st.transicion > 0) st.transicion -= 0.04;
-        const tema = TEMAS[st.modo];
-        if (st.graciaTransicion > 0) st.graciaTransicion--;
-        st.frames++;
-        const dif = Math.min(Math.pow(st.frames / DIF_FRAMES, 1.4), 1);
-
-        if (tema.familia === "runner") {
-          // ═══ FAMILIA RUNNER (día / noche): saltar obstáculos de tierra; los voladores REBOTAN ═══
-          if (st.sx === undefined) st.sx = SX;
-          st.vy += 1.05; st.y = Math.min(st.y + st.vy, suelo - SH);
-          if (st.y === suelo - SH) st.vy = 0;
-          // La oveja tiende a volver a su carril (SX) tras un empujón lateral
-          if (st.sx > SX) st.sx = Math.max(SX, st.sx - 1.4);
-          else if (st.sx < SX) st.sx = Math.min(SX, st.sx + 1.0);   // recuperas terreno poco a poco: jugar bien te devuelve a tu sitio
-          const ultima = st.vallas[st.vallas.length - 1];
-          const sepMin = 240 - dif * 80;
-          const sepJit = 40 + Math.random() * (260 - dif * 120);
-          const sepActual = ultima ? (W + 14) - ultima.x : 9999;
-
-          if (st.graciaTransicion <= 0 && sepActual > sepMin + sepJit) {
-            if (st.quiereConsumible) {
-              // El orbe corona el arco de salto del siguiente lobo: esquivarlo es recogerlo
-              st.quiereConsumible = false;
-              st.vallas.push({ tipo: tema.obstaculo, x: W + 14, w: 20, h: 52, ok: false });
-              st.consumibles.push({ x: W + 14 + 34, y: suelo - SH - 108, to: otroModo(st.modo) });
-              st.mismos = 0;
-            } else {
-            // >= PTS_VALLA, no >= 3: es "ya he rebasado un obstáculo", y así no
-            // vuelve a depender de cuánto pague la valla.
-            const pVolador = st.score >= PTS_VALLA ? 0.30 + dif * 0.25 : 0;
-            const ultTipo = ultima ? (ultima.vuela ? "aire" : "tierra") : null;
-            let quiereAire = Math.random() < pVolador;
-            if (st.mismos >= 2) { quiereAire = ultTipo !== "aire"; st.mismos = 0; }
-            if ((quiereAire ? "aire" : "tierra") === ultTipo) st.mismos = (st.mismos || 0) + 1;
-            else st.mismos = 0;
-            if (quiereAire) {
-              const alto = suelo - SH - (44 + Math.floor(Math.random() * 3) * 12);
-              st.vallas.push({ tipo: tema.volador, vuela: true, x: W + 14, w: 46, h: 30, y: alto, ok: false });
-            } else {
-              st.vallas.push({ tipo: tema.obstaculo, x: W + 14, w: 20, h: 38 + Math.floor(Math.random() * 4) * 13, ok: false });
-            }
-            if (dif > 0.4 && Math.random() < dif * 0.25) {
-              const gapCombo = 130 + Math.random() * 40;
-              const aire2 = Math.random() < pVolador;
-              if (aire2) st.vallas.push({ tipo: tema.volador, vuela: true, x: W + 14 + gapCombo, w: 46, h: 30,
-                y: suelo - SH - (44 + Math.floor(Math.random() * 3) * 12), ok: false });
-              else st.vallas.push({ tipo: tema.obstaculo, x: W + 14 + gapCombo, w: 20,
-                h: 38 + Math.floor(Math.random() * 4) * 13, ok: false });
-            }
-            }
-          }
-          st.vallas.forEach(v => { v.x -= st.vel * (v.vuela ? 1.18 : 1); });
-          st.vallas = st.vallas.filter(v => v.x > -50);
-          st.vallas.forEach(v => {
-            if (!v.ok && v.x + v.w < st.sx) { v.ok = true; st.score += PTS_VALLA; setScore(st.score); }
-            const margen = 12;
-            const sL = st.sx + margen, sR = st.sx + SH - margen;
-            const sT = st.y + 10, sB = st.y + SH - 6;
-            if (v.vuela) {
-              // ── VOLADOR: no mata, REBOTA ──
-              const solapa = sR > v.x && sL < v.x + v.w && sB > v.y && sT < v.y + v.h;
-              if (solapa && !v.rebotado) {
-                v.rebotado = true;
-                const pisaDesdeArriba = st.vy > 0 && st.y + SH - 20 < v.y;
-                if (pisaDesdeArriba) {
-                  // Caes encima → rebote hacia ARRIBA (y un empujón adelante)
-                  st.vy = -15; st.sx = Math.min(st.sx + 26, W * 0.5);
-                } else {
-                  // Choque frontal → rebote hacia la IZQUIERDA (riesgo de borde)
-                  st.sx -= 70; st.vy = -6;
-                }
-              }
-            } else {
-              // ── OBSTÁCULO DE TIERRA: mata ──
-              if (sR > v.x && sL < v.x + v.w && sB > suelo - v.h) {
-                st.vivo = false; setFin(true); setBest(b => Math.max(b, st.score));
-              }
-            }
-          });
-          // Muerte por borde izquierdo (empujada por los rebotes)
-          if (st.sx + SH < 6) { st.vivo = false; setFin(true); setBest(b => Math.max(b, st.score)); }
-
-        } else if (tema.familia === "plataformas") {
-          // ═══ FAMILIA PLATAFORMAS (oro): niveles de suelo sólido con COLISIÓN real ═══
-          // st.suelos = bloques macizos a distinta altura. Colisión por arriba y por los lados.
-          // Muerte: caer por un hueco O quedar empujada fuera por el borde izquierdo.
-          if (st.suelos === undefined) { st.suelos = []; st.monedas = []; }
-          if (st.sx === undefined) st.sx = SX;   // posición X propia de la oveja (empujable)
-          if (st.suelos.length === 0) st.suelos.push({ x: -20, w: W - 100, top: suelo });
-
-          // 3 niveles de altura del "top" de cada bloque de suelo
-          const NIVELES = [suelo, suelo - 60, suelo - 120];
-
-          const fin = st.suelos.reduce((m, s) => Math.max(m, s.x + s.w), 0);
-          if (fin < W + 300) {
-            const hayHueco = st.graciaTransicion <= 0 && Math.random() < 0.38;
-            const hueco = hayHueco ? 80 + Math.random() * (30 + dif * 45) : 0;
-            const tramo = 140 + Math.random() * 150;
-            const top = NIVELES[Math.floor(Math.random() * 3)];
-            const x0 = fin + hueco;
-            st.suelos.push({ x: x0, w: tramo, top });
-            // monedas sobre el tramo (a ras del top, no requieren saltar salvo cambio de nivel)
-            if (st.quiereConsumible) {
-              // El orbe espera en mitad del tramo, a la altura de la carrera: tu camino pasa por él
-              st.quiereConsumible = false;
-              st.consumibles.push({ x: x0 + 70, y: top - 58, to: otroModo(st.modo) });
-            } else if (Math.random() < 0.55) {
-              const nMon = 1 + (Math.random() < 0.5 ? 1 : 0);
-              for (let i = 0; i < nMon; i++) st.monedas.push({ x: x0 + 40 + i * 34, y: top - 40, cogida: false });
-            }
-          }
-          st.suelos.forEach(s => { s.x -= st.vel; });
-          st.suelos = st.suelos.filter(s => s.x + s.w > -60);
-          st.monedas.forEach(m => { m.x -= st.vel; });
-          st.monedas = st.monedas.filter(m => m.x > -30 && !m.cogida);
-
-          // Física vertical
-          st.vy += 1.15; st.y += st.vy;
-          const sL = st.sx + 8, sR = st.sx + SH - 8;     // caja horizontal de la oveja
-          const pieY = st.y + SH, cabezaY = st.y;
-          st.enSuelo = false;
-
-          st.suelos.forEach(s => {
-            const solapaX = sR > s.x && sL < s.x + s.w;
-            if (!solapaX) return;
-            // Aterrizar sobre el top del bloque
-            if (st.vy >= 0 && pieY >= s.top && pieY <= s.top + 30 && cabezaY < s.top - 10) {
-              st.y = s.top - SH; st.vy = 0; st.enSuelo = true;
-            }
-          });
-          // Colisión lateral: si la oveja está "dentro" de la altura de un bloque, el bloque la empuja
-          st.suelos.forEach(s => {
-            const dentroAltura = pieY > s.top + 6 && cabezaY < H;   // su cuerpo pisa el nivel del bloque
-            if (!dentroAltura) return;
-            // Choca contra la cara izquierda del bloque → la oveja es empujada hacia la izquierda (scroll)
-            if (sR > s.x && sL < s.x && st.y + SH > s.top + 4) {
-              st.sx = s.x - (SH - 8);   // pegada a la cara izquierda; el scroll la arrastra
-            }
-          });
-
-          // Recuperar posición X poco a poco hacia el centro-izquierda cuando puede
-          if (st.sx > SX) st.sx = Math.max(SX, st.sx - st.vel * 0.6);
-          else if (st.sx < SX && st.enSuelo) st.sx = Math.min(SX, st.sx + 1.0);   // tras el empujón de un bloque, recuperas tu posición poco a poco
-
-          // Recoger monedas
-          st.monedas.forEach(m => {
-            if (!m.cogida && st.sx + SH > m.x && st.sx < m.x + 24 && st.y + SH > m.y && st.y < m.y + 24) {
-              m.cogida = true; st.score += PTS_MONEDA; setScore(st.score);
-            }
-          });
-          // Muerte 1: caer por un hueco
-          if (st.y > H + 40) { st.vivo = false; setFin(true); setBest(b => Math.max(b, st.score)); }
-          // Muerte 2: comida por el borde izquierdo de la pantalla
-          if (st.sx + SH < 6) { st.vivo = false; setFin(true); setBest(b => Math.max(b, st.score)); }
-
-        } else if (tema.familia === "vuelo") {
-          // ═══ FAMILIA VUELO: la avioneta sigue el dedo; sin gravedad, sin suelo ═══
-          if (st.objetivoY === undefined) st.objetivoY = st.y;
-          st.y += (st.objetivoY - st.y) * 0.22;
-          st.y = Math.max(40, Math.min(suelo - 70, st.y));
-          st.vy = 0;
-          const ux = st.sx !== undefined ? st.sx : SX;
-          // El aire tiene su propio ritmo, como lo tenía el agua
-          const velAire = Math.min(st.vel, 6.2) * 0.82;
-          // Centro HONESTO del conjunto avión+oveja. El fuselaje ocupa de y+21 a
-          // y+36 y la oveja asoma por encima de la cabina: el centro real cae en
-          // y+26, no en y+22. Con el centro desplazado 4 px hacia arriba, los
-          // cuervos que pasaban por encima mataban sin llegar a tocar.
-          const cxA = ux + 42, cyA = st.y + 26;
-          // Caja de choque del cuervo, medida sobre el dibujo (20×15 a escala 2,4 =
-          // 48×36): el cuerpo mata, las puntas de las alas no. Antes 38×28.
-          const AVE_RX = 34, AVE_RY = 23;
-          const ANI_RY = 32;                       // media altura del hueco dorado
-          // ── Regla de oro del vuelo: un cuervo NUNCA ocupa el corredor de un anillo ──
-          // Cuervos y anillos avanzan a la MISMA velocidad, así que la distancia
-          // entre ellos no cambia en toda su vida: basta comprobarlo al nacer.
-          // Sin esta regla aparecían anillos imposibles de tomar (el cuervo tapando
-          // justo la entrada) y choques que parecían injustos porque el ave venía
-          // escondida dentro del oro.
-          const RESERVA_X = 108, RESERVA_Y = 60;
-          const libre = (cx2, cy2, lista) => !lista.some(o =>
-            Math.abs(o.x - cx2) < RESERVA_X && Math.abs(o.y - cy2) < RESERVA_Y);
-          const centrosAnillos = () => (st.anillos || []).map(a => ({ x: a.x + 44, y: a.y + 57 }))
-            .concat((st.consumibles || []).map(k => ({ x: k.x + 18, y: k.y + 18 })));
-          const centrosAves = () => (st.aves || []).map(a => ({ x: a.x + 24, y: a.y + 18 }));
-          // Cuervos en cinco bandas de altura, con más aire entre oleadas que en el buceo
-          st.aves = st.aves || [];
-          st.cadAve = (st.cadAve || 0) + 1;
-          if (st.cadAveTope === undefined) st.cadAveTope = 92;
-          if (st.graciaTransicion <= 0 && st.cadAve >= st.cadAveTope) {
-            st.cadAve = 0;
-            // Cadencia irregular: antes cuervos y anillos iban los dos a 74
-            // fotogramas a partir de 200 puntos, se acompasaban y el resto de la
-            // partida repetía siempre el mismo patrón (y siempre el mismo estorbo).
-            st.cadAveTope = 66 - dif * 6 + Math.random() * 32;
-            const bandas = [90, 190, 290, 390, 490].map(b => b + Math.random() * 36 - 18);
-            for (let i = bandas.length - 1; i > 0; i--) {          // barajado honesto
-              const j = Math.floor(Math.random() * (i + 1));
-              const tmp = bandas[i]; bandas[i] = bandas[j]; bandas[j] = tmp;
-            }
-            const anil = centrosAnillos();
-            const yLibre = bandas.find(yy => libre(W + 30 + 24, yy + 18, anil));
-            // Si las cinco bandas están tomadas, esta tanda se queda sin cuervo:
-            // mejor un hueco de aire que una muerte imposible de esquivar.
-            if (yLibre !== undefined) st.aves.push({ x: W + 30, y: yLibre });
-          }
-          st.aves.forEach(a => { a.x -= velAire; });
-          st.aves = st.aves.filter(a => a.x > -60);
-          // Anillos en arcos de 2-3; el orbe ocupa el sitio del arco cuando toca transición
-          st.anillos = st.anillos || [];
-          st.cadAnillo = (st.cadAnillo || 0) + 1;
-          if (st.cadAniTope === undefined) st.cadAniTope = 74;
-          if (st.graciaTransicion <= 0 && st.cadAnillo >= st.cadAniTope) {
-            st.cadAnillo = 0;
-            st.cadAniTope = 62 + Math.random() * 24;
-            const avs = centrosAves();
-            const nA = 2 + Math.floor(Math.random() * 2);
-            // Se prueban varias alturas y se coge la primera cuyo arco COMPLETO
-            // queda despejado de cuervos; si ninguna sirve, no hay arco esta vez.
-            let y0 = null;
-            for (let intento = 0; intento < 8 && y0 === null; intento++) {
-              const cand = 60 + Math.random() * (suelo - 250);
-              const chocan = st.quiereConsumible
-                ? !libre(W + 30 + 18, cand + 48, avs)
-                : Array.from({ length: nA }, (_, i) =>
-                    ({ x: W + 30 + i * 96 + 44, y: cand + Math.sin(i * 1.4) * 30 + 57 }))
-                    .some(c => !libre(c.x, c.y, avs));
-              if (!chocan) y0 = cand;
-            }
-            if (y0 !== null) {
-              if (st.quiereConsumible) {
-                st.quiereConsumible = false;
-                st.consumibles.push({ x: W + 30, y: y0 + 30, velX: velAire, to: otroModo(st.modo) });
-              } else {
-                for (let i = 0; i < nA; i++)
-                  st.anillos.push({ x: W + 30 + i * 96, y: y0 + Math.sin(i * 1.4) * 30, ok: false, xPrev: W + 30 + i * 96 });
-              }
-            }
-          }
-          st.anillos.forEach(a => { a.xPrev = a.x; a.x -= velAire; });
-          st.anillos = st.anillos.filter(a => a.x > -100 && !a.ok);
-          // Choque con cuervo
-          st.aves.forEach(a => {
-            if (Math.abs(a.x + 24 - cxA) < AVE_RX && Math.abs(a.y + 18 - cyA) < AVE_RY) {
-              st.vivo = false; setFin(true); setBest(b => Math.max(b, st.score));
-            }
-          });
-          // El anillo solo cuenta atravesándolo POR DENTRO; rozar el borde no castiga.
-          // Detección por BARRIDO: antes se exigía |Δx| < 12 en un fotograma suelto y,
-          // con el aire ya a tope, un tirón del móvil bastaba para saltarse la ventana
-          // y que el anillo NO contase. Ahora cuenta si el centro cruza el morro entre
-          // un fotograma y el siguiente, aunque el salto sea grande.
-          st.anillos.forEach(a => {
-            if (a.ok) return;
-            const acx = a.x + 44, acxPrev = (a.xPrev !== undefined ? a.xPrev : a.x) + 44;
-            const acy = a.y + 57;                  // centro del anillo a escala 4.4 (88×114)
-            const cruza = (acxPrev >= cxA && acx <= cxA) || Math.abs(acx - cxA) < 12;
-            if (cruza && Math.abs(acy - cyA) < ANI_RY) {
-              a.ok = true; st.score += PTS_ANILLO; setScore(st.score);
-              st.flotantes.push({ x: acx, y: a.y + 14, t: 0 });
-              // Chispas del anillo: el dibujo ya existía pero nadie las creaba
-              st.chispas = st.chispas || [];
-              st.chispas.push({ x: acx, y: acy, t: 0, tipo: "onda" });
-              for (let ci = 0; ci < 8; ci++)
-                st.chispas.push({ x: acx, y: acy, t: 0,
-                  vx: Math.cos(ci * 0.785) * 2.4, vy: Math.sin(ci * 0.785) * 2.4 });
-            }
-          });
-          st.chispas = (st.chispas || []).filter(c => {
-            c.t++;
-            if (c.vx !== undefined) { c.x += c.vx - velAire * 0.5; c.y += c.vy; }
-            else c.x -= velAire;
-            return c.t < 26;
-          });
-          st.flotantes.forEach(f => { f.t++; f.y -= 0.9; });
-          st.flotantes = st.flotantes.filter(f => f.t < 42);
-
-        } else if (tema.familia === "shooter") {
-          // ═══ FAMILIA SHOOTER (guarida): la oveja dispara sola; salta para esquivar ═══
-          st.vy += 1.05; st.y = Math.min(st.y + st.vy, suelo - SH);
-          if (st.y === suelo - SH) st.vy = 0;
-          // En el duelo la oveja se coloca pegada al borde izquierdo (máxima distancia)
-          if (st.sx === undefined) st.sx = SX;
-          if (st.sx > 14) st.sx = Math.max(14, st.sx - 2.5);
-          const ux = st.sx;
-          if (!st.jefe) st.jefe = { t: 0, hp: 12 + st.jefeNivel * 3, max: 12 + st.jefeNivel * 3, herido: 0,
-            alto: Math.random() < 0.5, mora: 200 };
-          st.jefe.t++;
-          // DOS alturas fijas, como pájaros y vallas:
-          //  · ABAJO: su bola va a ras → SALTA para esquivar; tus disparos desde el suelo le dan
-          //  · ARRIBA: su bola pasa por encima → NO saltes para esquivar; salta si quieres acertarle
-          const J_BAJO = suelo - 84, J_ALTO = suelo - 232;
-          st.jefe.mora--;
-          if (st.jefe.mora <= 0) {
-            st.jefe.alto = !st.jefe.alto;
-            st.jefe.mora = 220 + Math.random() * 120 - dif * 60;
-          }
-          const objetivoJ = st.jefe.alto ? J_ALTO : J_BAJO;
-          if (st.jefeYPos === undefined) st.jefeYPos = objetivoJ;
-          const dj = objetivoJ - st.jefeYPos;
-          st.jefeYPos += Math.abs(dj) < 4 ? dj : Math.sign(dj) * 4;
-          const asentado = Math.abs(dj) < 12;
-          const jefeY = st.jefeYPos + Math.sin(st.jefe.t * 0.05) * 5;   // leve flotación en el sitio
-          st.jefeYDraw = jefeY;
-          const jefeX = W - 104;
-          // Disparo automático de bolas de lana
-          st.cad = (st.cad || 0) + 1;
-          if (st.cad >= 26) { st.cad = 0; st.balas.push({ x: ux + SH, y: st.y + SH * 0.42 }); }
-          st.balas.forEach(b => { b.x += 9.5; });
-          st.balas = st.balas.filter(b => b.x < W + 30);
-          // Impactos al jefe
-          st.balas = st.balas.filter(b => {
-            const da = b.x > jefeX && b.x < jefeX + 84 && b.y > jefeY - 10 && b.y < jefeY + 86;
-            if (da) {
-              st.jefe.hp--; st.score += PTS_IMPACTO; setScore(st.score); st.jefe.herido = 6;
-              if (st.jefe.hp <= 0) {
-                st.jefeNivel++; st.jefe = null; st.score += PTS_REY; setScore(st.score);
-                // Botín real: el rey suelta un orbe de transición hacia otro juego
-                if (st.consumibles.length === 0) {
-                  const oy = Math.min(Math.max(jefeY + 20, suelo - SH - 140), suelo - SH - 30);
-                  st.consumibles.push({ x: jefeX, y: oy, to: otroModo(st.modo) });
-                  st.desdeConsumible = 0;
-                }
-              }
-              return false;
-            }
-            return true;
-          });
-          if (st.jefe && st.jefe.herido > 0) st.jefe.herido--;
-          // Ataques del jefe: bajo (salta) o alto (no saltes)
-          if (asentado) st.jefeCad = (st.jefeCad || 0) + 1;   // en tránsito no carga: cada altura avisa desde cero
-          const umbralDisparo = 88 - dif * 24;
-          // Carga visible: la boca brilla los 26 frames previos al disparo (aviso justo)
-          st.jefeCarga = st.jefe && asentado && st.jefeCad > umbralDisparo - 26
-            ? (st.jefeCad - (umbralDisparo - 26)) / 26 : 0;
-          if (st.jefe && asentado && st.graciaTransicion <= 0 && st.jefeCad >= umbralDisparo) {
-            st.jefeCad = 0;
-            // La bola sale de la boca del rey: su altura depende de dónde esté flotando
-            st.balasJefe.push({ x: jefeX, y: jefeY + 50 });
-          }
-          st.balasJefe.forEach(b => { b.x -= 4.2 + dif * 1.2; });
-          st.balasJefe = st.balasJefe.filter(b => b.x > -30);
-          st.balasJefe.forEach(b => {
-            if (b.x + 20 > ux + 12 && b.x + 4 < ux + SH - 12 && b.y + 12 > st.y + 10 && b.y + 2 < st.y + SH - 4) {
-              st.vivo = false; setFin(true); setBest(bb => Math.max(bb, st.score));
-            }
-          });
-
-        } else if (tema.familia === "duelo") {
-          // ═══ FAMILIA DUELO (cartas por turnos): las fases avanzan solas; el toque decide ═══
-          if (!st.duelo) {
-            st.duelo = { fase: "tapete", t: 0, psYo: 300, psRiv: 300, rival: null, rivales: null,
-              cargando: true, miCarta: null, suCarta: null, miIdx: 1, suIdx: 1,
-              turno: 0, vistas: { A: 0, D: 0, P: 0 },
-              golpeYo: 0, golpeRiv: 0, resultado: null, flot: [], misPts: null };
-            cargarRivales();
-          }
-          const d = st.duelo;
-          d.t++;
-          if (d.golpeYo > 0) d.golpeYo--;
-          if (d.golpeRiv > 0) d.golpeRiv--;
-          d.flot.forEach(f => { f.t++; f.y -= 0.8; });
-          d.flot = d.flot.filter(f => f.t < 46);
-          if (d.fase === "revela") {
-            if (d.t === 34) {
-              // La carta rival ya está boca arriba: matriz confirmada (ataque 100, escudo refleja 50, manzana +50)
-              const m = d.miCarta, b = d.suCarta;
-              let dYo = 0, dRiv = 0;
-              if (m === "A" && b === "A") { dYo = -50; dRiv = -50; }
-              else if (m === "A" && b === "D") { dYo = -50; }
-              else if (m === "A" && b === "P") { dRiv = -100; }
-              else if (m === "D" && b === "A") { dRiv = -50; }
-              else if (m === "D" && b === "D") { dYo = -25; dRiv = -25; }   // turtlear ya no es gratis
-              else if (m === "D" && b === "P") { dRiv = +50; }
-              else if (m === "P" && b === "A") { dYo = -100; }
-              else if (m === "P" && b === "D") { dYo = +50; }
-              else if (m === "P" && b === "P") { dYo = +50; dRiv = +50; }
-              d.psYo = Math.min(300, d.psYo + dYo);
-              d.psRiv = Math.min(300, d.psRiv + dRiv);
-              if (dYo) { d.flot.push({ lado: "yo", tx: (dYo > 0 ? "+" : "") + dYo, mal: dYo < 0, t: 0, y: 0 }); if (dYo < 0) d.golpeYo = 26; }
-              if (dRiv) { d.flot.push({ lado: "riv", tx: (dRiv > 0 ? "+" : "") + dRiv, mal: dRiv < 0, t: 0, y: 0 }); if (dRiv < 0) d.golpeRiv = 26; }
-              if (dYo < 0 || dRiv < 0) jfx("golpe");
-              else if (dYo > 0 || dRiv > 0) jfx("cura");
-            }
-            if (d.t >= 96) {
-              const ko = d.psYo <= 0 || d.psRiv <= 0;
-              const limite = !ko && (d.turno || 0) >= MAX_TURNOS;
-              if (ko || limite) {
-                d.fase = "fin"; d.t = 0; d.porLimite = limite;
-                d.resultado = ko ? (d.psYo > 0 ? "gana" : "pierde")
-                  : (d.psYo > d.psRiv ? "gana" : d.psYo < d.psRiv ? "pierde" : "empate");
-                jfx(d.resultado === "gana" ? "victoria" : d.resultado === "pierde" ? "derrota" : "carta");
-                // El empate no mueve un solo punto: ni a ti ni al rival
-                if (d.resultado !== "empate") {
-                  // ±100 a los marcadores semanales de LOS DOS, con suelo en 0 (RPC resolver_duelo)
-                  resolverDuelo(d.rival, d.resultado === "gana");
-                }
-                if (d.resultado === "gana") {
-                  // Botín de partida creciente: la 2ª victoria vale el doble que la 1ª.
-                  // Antes ganar tres duelos seguidos puntuaba igual que ganar uno.
-                  st.duelosGanados++;
-                  d.racha = st.duelosGanados;
-                  d.botin = botinDuelo(st.duelosGanados);
-                  st.score += d.botin; setScore(st.score);
-                }
-              } else { d.fase = "turno"; d.t = 0; d.miCarta = null; d.suCarta = null; }
-            }
-          }
-        }
-
-        // ═══ Consumible (común a todos los modos): lleva a OTRO modo al azar ═══
-        st.desdeConsumible++;
-        if (st.desdeConsumible > 900 && Math.random() < 0.004 && st.consumibles.length === 0
-            && !st.quiereConsumible && tema.familia !== "shooter" && tema.familia !== "duelo") {
-          st.desdeConsumible = 0;
-          // El orbe NUNCA flota suelto: cada juego lo integra en su siguiente patrón
-          // (salto del lobo, tramo del banco, hueco del coral, camino libre entre lobos, botín del rey)
-          st.quiereConsumible = true;
-        }
-        st.consumibles.forEach(k => { if (k.laneMode) return; if (k.caida) k.y += 3.1; else k.x -= (k.velX || st.vel); });
-        st.consumibles = st.consumibles.filter(k => k.laneMode ? k.y < H + 60 : (k.x > -40 && k.y < H + 40));
-        st.consumibles = st.consumibles.filter(k => {
-          const ox = st.sx !== undefined ? st.sx : SX;
-          const cogido = ox + SH > k.x && ox < k.x + 40 && st.y + SH > k.y && st.y < k.y + 40;
-          if (cogido) { transita(k.to); return false; }
-          return true;
-        });
-        st.nubes.forEach(n => { n.x -= st.vel * 0.25; if (n.x < -30) n.x = W + 20; });
-    };
-    const PASO_MS = 1000 / 60;
-    let tPrev = performance.now(), deuda = 0;
-    const loop = (tRaf) => {
-      // Coordenadas lógicas → resolución nativa (nítido en cualquier pantalla)
-      ctx.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
-      const tAhora = typeof tRaf === "number" ? tRaf : performance.now();
-      // Tope de 250 ms: al volver del segundo plano no se «recupera» el tiempo
-      // perdido de golpe (la oveja aparecería muerta sin haber visto el lobo).
-      const dt = Math.min(Math.max(tAhora - tPrev, 0), 250);
-      tPrev = tAhora;
-      let pasos;
-      if (Math.abs(dt - PASO_MS) < PASO_MS * 0.25) { pasos = 1; deuda = 0; }   // pantalla de 60 Hz: un paso exacto, sin tirones
-      else {
-        deuda += dt; pasos = Math.floor(deuda / PASO_MS); deuda -= pasos * PASO_MS;
-        if (pasos > 4) { pasos = 4; deuda = 0; }                                // nunca una avalancha de pasos
-      }
-      for (let i = 0; i < pasos; i++) if (st.vivo && cuentaRef.current <= 0) paso();
-      const tema = TEMAS[st.modo];
-      // ── dibujo del fondo ──
-      if (tema.familia === "plataformas") {
-        // Interior de banco: pared de piedra + relieves de billetes 💶
-        ctx.fillStyle = "#4A4E58"; ctx.fillRect(0, 0, W, H);
-        // sillería de piedra (ladrillos grandes desfasados) con scroll lento
-        const off = (performance.now() / 22) % 96;
-        ctx.strokeStyle = "rgba(0,0,0,0.22)"; ctx.lineWidth = 2;
-        for (let ry = 0; ry < suelo; ry += 44) {
-          const fila = Math.floor(ry / 44);
-          ctx.beginPath(); ctx.moveTo(0, ry); ctx.lineTo(W, ry); ctx.stroke();
-          for (let rx = -off + (fila % 2 ? 48 : 0); rx < W; rx += 96) {
-            ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx, ry + 44); ctx.stroke();
-          }
-        }
-        // sombreado suave de piedra
-        ctx.fillStyle = "rgba(255,255,255,0.03)";
-        for (let ry = 4; ry < suelo; ry += 44) ctx.fillRect(0, ry, W, 3);
-        // Columnas de piedra en paralaje (sensación de avance)
-        const colOff = (performance.now() / 9) % 200;
-        for (let cxx = -colOff; cxx < W + 60; cxx += 200) {
-          ctx.fillStyle = "rgba(0,0,0,0.20)"; ctx.fillRect(cxx, 0, 30, suelo);
-          ctx.fillStyle = "rgba(255,255,255,0.05)"; ctx.fillRect(cxx + 3, 0, 5, suelo);
-          ctx.fillStyle = "rgba(0,0,0,0.28)";
-          ctx.fillRect(cxx - 5, 0, 40, 12);            // capitel
-          ctx.fillRect(cxx - 5, suelo - 12, 40, 12);   // base
-        }
-      } else if (tema.familia === "vuelo") {
-        // Cielo diurno con dos capas de nubes (las lejanas, más pálidas y lentas)
-        const g = ctx.createLinearGradient(0, 0, 0, H);
-        g.addColorStop(0, tema.cielo); g.addColorStop(0.62, "#BFE3F0"); g.addColorStop(1, tema.cieloBottom);
-        ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-        ctx.fillStyle = "rgba(255,255,255,0.30)";
-        st.nubes.forEach(n => { ctx.fillRect((n.x * 0.6 + 60) % (W + 40) - 20, n.y + 230, 40, 9); });
-        ctx.fillStyle = tema.nubeColor;
-        st.nubes.forEach(n => { ctx.fillRect(n.x, n.y, 58, 12); ctx.fillRect(n.x + 12, n.y - 8, 30, 10); });
-      } else if (tema.familia === "shooter") {
-        // Guarida del jefe: cueva oscura con antorchas parpadeantes
-        const g = ctx.createLinearGradient(0, 0, 0, H);
-        g.addColorStop(0, tema.cielo); g.addColorStop(1, tema.cieloBottom);
-        ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-        ctx.fillStyle = "rgba(0,0,0,0.25)";
-        for (let rx = 0; rx < W; rx += 60) {
-          ctx.beginPath(); ctx.arc(rx + 30, 0, 34 + (rx % 3) * 8, 0, 7); ctx.fill();
-        }
-        [W * 0.22, W * 0.62].forEach((tx, ti) => {
-          ctx.fillStyle = "#5A4630"; ctx.fillRect(tx - 4, 96, 8, 34);
-          const fl = 10 + Math.abs(Math.sin(performance.now() / 130 + ti * 2)) * 7;
-          const fg = ctx.createRadialGradient(tx, 90, 2, tx, 90, fl + 12);
-          fg.addColorStop(0, "rgba(255,200,90,0.85)"); fg.addColorStop(1, "rgba(255,140,40,0)");
-          ctx.fillStyle = fg; ctx.beginPath(); ctx.arc(tx, 90, fl + 12, 0, 7); ctx.fill();
-          ctx.fillStyle = "#FFB030"; ctx.beginPath(); ctx.ellipse(tx, 90, 7, fl, 0, 0, 7); ctx.fill();
-          ctx.fillStyle = "#FFE080"; ctx.beginPath(); ctx.ellipse(tx, 92, 3.5, fl * 0.55, 0, 0, 7); ctx.fill();
-        });
-        // Ascuas que flotan en la penumbra
-        ctx.fillStyle = "rgba(255,150,60,0.5)";
-        for (let e = 0; e < 6; e++) {
-          const ey = H - ((performance.now() / 24 + e * 141) % (H + 30));
-          const ex = (e * 67 + 30) % W + Math.sin(performance.now() / 300 + e) * 8;
-          ctx.fillRect(ex, ey, 3, 3);
-        }
-      } else if (tema.familia === "duelo") {
-        // Penumbra violeta arriba (rival) que cae al verde del tapete (tú)
-        const gd = ctx.createLinearGradient(0, 0, 0, H);
-        gd.addColorStop(0, tema.cielo); gd.addColorStop(0.5, "#2A2440"); gd.addColorStop(1, tema.cieloBottom);
-        ctx.fillStyle = gd; ctx.fillRect(0, 0, W, H);
-      } else {
-        // Atardecer del runner
-        const g = ctx.createLinearGradient(0, 0, 0, suelo);
-        g.addColorStop(0, tema.cielo); g.addColorStop(1, tema.cieloBottom || tema.cielo);
-        ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-        if (tema.sol) {
-          ctx.fillStyle = tema.sol;
-          ctx.beginPath(); ctx.arc(W * 0.5, suelo - 20, 46, 0, 7); ctx.fill();
-        }
-        // Colinas en silueta: profundidad contra el atardecer
-        ctx.fillStyle = "rgba(30,15,38,0.45)";
-        ctx.beginPath(); ctx.ellipse(W * 0.22, suelo + 26, 190, 66, 0, Math.PI, 0); ctx.fill();
-        ctx.fillStyle = "rgba(24,12,30,0.55)";
-        ctx.beginPath(); ctx.ellipse(W * 0.82, suelo + 30, 210, 78, 0, Math.PI, 0); ctx.fill();
-        ctx.fillStyle = tema.nubeColor;
-        st.nubes.forEach(n => { ctx.fillRect(n.x, n.y, 44, 12); ctx.fillRect(n.x + 9, n.y - 8, 26, 10); });
-      }
-
-      if (tema.familia === "plataformas") {
-        // ── Bloques de suelo macizos (cemento) a distintos niveles, con caras laterales ──
-        (st.suelos || []).forEach(s => {
-          // bloque() ya hace a mano lo que hacían los cinco fillRect: contorno, luz y sombra
-          bloque(ctx, s.x, s.top, s.w, H - s.top, "#8E9299");
-          // junta de cemento en rejilla
-          ctx.fillStyle = "rgba(0,0,0,0.14)";
-          for (let bx = s.x + 34; bx < s.x + s.w - 4; bx += 34) ctx.fillRect(bx, s.top + 10, 2, H - s.top - 10);
-          for (let byy = s.top + 30; byy < H; byy += 30) ctx.fillRect(s.x + 3, byy, s.w - 6, 2);
-        });
-        // ── Monedas: el € va dibujado en el sprite, ya no depende de la fuente del móvil ──
-        (st.monedas || []).forEach(m => {
-          if (m.cogida) return;
-          sprite(ctx, SPR.moneda, m.x - 2, m.y - 2, 2.4);
-        });
-      } else if (tema.familia === "vuelo") {
-        // Cielo abierto: el vuelo no tiene suelo que pintar
-      } else if (tema.familia === "shooter") {
-        // ── Suelo de la guarida ──
-        ctx.fillStyle = "#241A2E"; ctx.fillRect(0, suelo + 3, W, H - suelo);
-        ctx.fillStyle = tema.suelo; ctx.fillRect(0, suelo, W, 5);
-        ctx.fillStyle = tema.hierba;
-        for (let gx = (performance.now() / 7) % 44; gx < W; gx += 44) ctx.fillRect(gx, suelo + 10, 4, 4);
-      } else if (tema.familia !== "duelo") {
-        // ── Suelo pradera continuo (runner), con canto iluminado ──
-        dibujarSuelo(ctx, suelo, W, H - suelo, tema.suelo);
-        matas(ctx, suelo + U * 2, W, tema.hierba, performance.now() / 5);
-      }
-      const aleteo = Math.floor(performance.now() / 140) % 2 === 0;
-      st.vallas.forEach(v => {
-        if (v.tipo === "aguila" || v.tipo === "cuervo") {
-          // Dos fotogramas de verdad: el aleteo lo marca `aleteo` (140 ms), igual que antes
-          const s = SPR[(v.tipo === "cuervo" ? "cuervo" : "aguila") + (aleteo ? "Sube" : "Baja")];
-          sprite(ctx, s, v.x - 1, v.y - 3, 2.4);
-        } else if (v.tipo === "lobo") {
-          // Mismo sprite que el Rey Lobo, anclado al suelo y escalado con la altura.
-          // El hitbox mide 20 px: a proporción, la cabeza llegaba a ser 3,5 veces más
-          // ancha y engañaba al saltar. Se estrecha (ESTRECHO) y se centra en el hitbox.
-          const ch = v.h, ESTRECHO = 0.85, escL = ch / SPR.lobo.h;   // por debajo de 0,8 el pixel-art se deforma
-          ctx.save();
-          ctx.translate(v.x + v.w / 2, suelo - ch);
-          ctx.scale(ESTRECHO, 1);
-          sprite(ctx, SPR.lobo, -SPR.lobo.w * escL / 2, 0, escL);
-          ctx.restore();
-        } else {
-          // Valla de madera con canto y sombra
-          const yv = suelo - v.h;
-          bloque(ctx, v.x, yv, U * 3, v.h, "#8B5A2B");
-          bloque(ctx, v.x + v.w - U * 3, yv, U * 3, v.h, "#8B5A2B");
-          bloque(ctx, v.x - U * 2, yv + U * 2, v.w + U * 4, U * 2.4, "#A9713B");
-          bloque(ctx, v.x - U * 2, yv + v.h / 2, v.w + U * 4, U * 2.4, "#A9713B");
-        }
-      });
-      // ── Entidades de los juegos nuevos ──
-      if (tema.familia === "vuelo") {
-        // La mitad TRASERA del anillo va detrás del avión; la delantera se pinta tras
-        // la oveja. Los cuervos ya NO se pintan aquí: iban por debajo de la mitad
-        // baja del anillo y el oro los tapaba justo al entrar (ver capa de delante).
-        (st.anillos || []).filter(a => !a.ok).forEach(a => sprite(ctx, SPR.anilloAlto, a.x, a.y, 4.4));
-      }
-      if (tema.familia === "shooter") {
-        if (st.jefe) {
-          // jx = jefeX: el dibujo se alinea con el hitbox de las balas (antes iba 26 px a la izquierda)
-          const jx = W - 104, jy = st.jefeYDraw || H * 0.30;
-          // Rey Lobo: el MISMO sprite que los lobos pequeños, a lo grande, para que no desentonen.
-          // Escala 4 exacta: el dibujo ocupa jx-2..jx+86 y jy-10..jy+86, o sea el hitbox
-          // completo, y las orejas suben hasta la base de la corona.
-          sprite(ctx, SPR.lobo, jx - 10, jy - 10, 4);
-          if (st.jefe.herido > 0) { ctx.fillStyle = "rgba(200,60,60,0.35)"; ctx.fillRect(jx - 2, jy - 10, 88, 96); }
-          // La corona, la barra de vida y el brillo de la boca son estado de juego, no textura
-          // Corona: 13x7 en la rejilla del sprite, centrada entre las orejas (grid x7..x19)
-          CORONA.forEach(([cx, cy, cw, cc]) => {
-            ctx.fillStyle = CORONA_PAL[cc];
-            ctx.fillRect(jx - 10 + (cx + 7) * 4, jy - 10 + (cy - 2) * 4, cw * 4, 4);
-          });
-          ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(jx - 2, jy - 36, 88, 10);
-          ctx.fillStyle = T.red; ctx.fillRect(jx, jy - 34, 84, 6);
-          ctx.fillStyle = T.g1; ctx.fillRect(jx, jy - 34, 84 * (st.jefe.hp / st.jefe.max), 6);
-          // Aviso de disparo: brillo naranja creciente en la boca
-          if (st.jefeCarga > 0) {
-            const cr2 = 5 + st.jefeCarga * 11;
-            const cg = ctx.createRadialGradient(jx + 42, jy + 64, 2, jx + 42, jy + 64, cr2 + 8);
-            cg.addColorStop(0, `rgba(255,170,60,${0.5 + st.jefeCarga * 0.5})`);
-            cg.addColorStop(1, "rgba(255,120,40,0)");
-            ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(jx + 42, jy + 64, cr2 + 8, 0, 7); ctx.fill();
-          }
-        }
-        (st.balas || []).forEach(b => {
-          ctx.fillStyle = "#FDF6E3"; ctx.beginPath(); ctx.arc(b.x, b.y, 6, 0, 7); ctx.fill();
-          ctx.fillStyle = "rgba(0,0,0,0.15)"; ctx.beginPath(); ctx.arc(b.x + 1.5, b.y + 1.5, 3, 0, 7); ctx.fill();
-        });
-        (st.balasJefe || []).forEach(b => {
-          ctx.fillStyle = "rgba(255,120,40,0.4)"; ctx.beginPath(); ctx.arc(b.x + 16, b.y + 7, 11, 0, 7); ctx.fill();
-          ctx.fillStyle = "#FF6A1E"; ctx.beginPath(); ctx.arc(b.x + 12, b.y + 7, 8, 0, 7); ctx.fill();
-          ctx.fillStyle = "#FFC04D"; ctx.beginPath(); ctx.arc(b.x + 10, b.y + 6, 4, 0, 7); ctx.fill();
-        });
-      }
-      if (tema.familia === "duelo") {
-        const rr = (x, y, w, h, r) => { ctx.beginPath();
-          ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
-          ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
-        const d = st.duelo || { fase: "tapete", cargando: true, flot: [], psYo: 300, psRiv: 300, golpeYo: 0, golpeRiv: 0 };
-        const XS = [26, 126, 226], CW = 88, CH = 116;
-        const ICONO_CARTA = { A: "⚔️", D: "🛡️", P: "🍎" };
-        const COLOR_CARTA = { A: "#C43A32", D: "#2E6FB0", P: "#2D9B5A" };
-        const ovejitaOro = (cx2, cy2) => {   // dorso: la oveja en oro de marca #C9A227
-          ctx.fillStyle = "#C9A227";
-          ctx.fillRect(cx2 - 14, cy2 - 4, 24, 12); ctx.fillRect(cx2 - 10, cy2 - 10, 18, 7);
-          ctx.fillRect(cx2 + 8, cy2 - 9, 9, 10); ctx.fillRect(cx2 - 10, cy2 + 8, 3, 6); ctx.fillRect(cx2 + 1, cy2 + 8, 3, 6);
-          ctx.fillStyle = "#7A5E10"; ctx.fillRect(cx2 + 13, cy2 - 7, 2, 2);
-        };
-        // Las cartas van con bloque(): contorno, luz arriba-izquierda y sombra abajo-derecha
-        const cartaDorso = (x, y, w, h) => { bloque(ctx, x, y, w, h, "#2D9B5A"); ovejitaOro(x + w / 2, y + h / 2); };
-        const cartaFrente = (x, y, w, h, mov) => {
-          bloque(ctx, x, y, w, h, COLOR_CARTA[mov]);
-          ctx.font = "36px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-          ctx.fillText(ICONO_CARTA[mov], x + w / 2, y + h / 2 + 2);
-          ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
-        };
-        const barraVida = (x, y, wB, ps) => {
-          ctx.fillStyle = "rgba(0,0,0,0.5)"; rr(x - 2, y - 2, wB + 4, 14, 7); ctx.fill();
-          ctx.fillStyle = "#26313D"; rr(x, y, wB, 10, 5); ctx.fill();
-          const f = Math.max(0, ps / 300);
-          ctx.fillStyle = ps <= 75 ? "#E04545" : ps <= 150 ? "#E07A2A" : T.g1;
-          if (f > 0) { rr(x, y, wB * f, 10, 5); ctx.fill(); }
-        };
-        if (d.fase === "tapete") {
-          // ── Tapete de casino: 👑 top 1 · 🥈 top 2 · ❔ aleatorio ──
-          const gt = ctx.createRadialGradient(W / 2, H * 0.38, 30, W / 2, H * 0.38, 330);
-          gt.addColorStop(0, "#2E7D46"); gt.addColorStop(1, "#0B3A1C");
-          ctx.fillStyle = gt; ctx.fillRect(0, 0, W, H);
-          ctx.strokeStyle = "rgba(255,255,255,0.045)"; ctx.lineWidth = 1;
-          for (let li = -H; li < W; li += 26) {
-            ctx.beginPath(); ctx.moveTo(li, 0); ctx.lineTo(li + H, H); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(li + H, 0); ctx.lineTo(li, H); ctx.stroke();
-          }
-          ctx.strokeStyle = "rgba(255,216,77,0.35)"; ctx.lineWidth = 2;
-          rr(10, 10, W - 20, H - 20, 18); ctx.stroke();
-          ctx.fillStyle = "rgba(255,216,77,0.5)";
-          [[22, 22], [W - 22, 22], [22, H - 22], [W - 22, H - 22]].forEach(([ex, ey]) => {
-            ctx.beginPath(); ctx.moveTo(ex, ey - 5); ctx.lineTo(ex + 5, ey); ctx.lineTo(ex, ey + 5); ctx.lineTo(ex - 5, ey); ctx.closePath(); ctx.fill();
-          });
-          ctx.textAlign = "center";
-          ctx.fillStyle = "#CFEBD8"; ctx.font = "bold 11px system-ui";
-          ctx.fillText("DUELO DE OVEJAS", W / 2, 118);
-          ctx.fillStyle = "#FFFFFF"; ctx.font = "bold 22px system-ui";
-          ctx.fillText("Elige a tu rival", W / 2, 150);
-          const rv = d.rivales || [];
-          if (d.cargando) {
-            ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.font = "bold 14px system-ui";
-            ctx.fillText("Buscando al rebaño…", W / 2, 330);
-          } else if (rv.length === 0) {
-            ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.font = "bold 12px system-ui";
-            ctx.fillText("Aún no hay rivales con puntos esta semana", W / 2, 192);
-            ctx.fillStyle = "rgba(255,255,255,0.62)"; ctx.font = "bold 11px system-ui";
-            ctx.fillText("Entrena contra Bo: nadie pierde puntos", W / 2, 212);
-            const rxB = 124, RWB = 92, RYB = 250, RHB = 150;
-            const latB = Math.sin(performance.now() / 260) * 3;
-            ctx.font = "26px system-ui";
-            ctx.fillText("🐑", rxB + RWB / 2, RYB - 12 + latB);
-            bloque(ctx, rxB, RYB, RWB, RHB, "#EAE4CC");
-            ctx.fillStyle = "#0f4a2a"; ctx.font = "bold 11px system-ui";
-            ctx.fillText("Bo", rxB + RWB / 2, RYB + 22);
-            pintarTramos(RIVAL_BOT.px, rxB + RWB / 2 - 26, RYB + 32, 1.6);
-            ctx.fillStyle = "#8A6508"; ctx.font = "bold 10.5px system-ui";
-            ctx.fillText("«entrenador»", rxB + RWB / 2, RYB + RHB - 12);
-            ctx.fillStyle = T.au1; ctx.font = "bold 10px system-ui";
-            ctx.fillText("Amistoso", rxB + RWB / 2, RYB + RHB + 22);
-            ctx.fillStyle = "rgba(255,255,255,0.75)"; ctx.font = "bold 11px system-ui";
-            ctx.fillText("Sin robo de puntos · el botín de partida sí cuenta", W / 2, 456);
-          } else {
-            const RXS = [18, 124, 230], RW2 = 92, RY = 250, RH2 = 150;
-            const insignias = ["👑", "🥈", ""];
-            [0, 1, 2].forEach(i => {
-              const rx = RXS[i];
-              const info = i === 0 ? rv[0] : i === 1 ? (rv[1] || null) : null;
-              if (i === 1 && !info) return;                    // con un solo rival: 👑 y ❔
-              if (insignias[i]) {
-                const lat = Math.sin(performance.now() / 260 + i) * 3;
-                ctx.font = "26px system-ui"; ctx.textAlign = "center";
-                ctx.fillText(insignias[i], rx + RW2 / 2, RY - 12 + lat);
-              }
-              if (info) {
-                // Carta del rival: usuario arriba · su oveja real en medio · nombre de la oveja debajo
-                bloque(ctx, rx, RY, RW2, RH2, "#EAE4CC");
-                ctx.fillStyle = "#0f4a2a"; ctx.font = "bold 11px system-ui"; ctx.textAlign = "center";
-                ctx.fillText(String(info.usuario).slice(0, 11), rx + RW2 / 2, RY + 22);
-                pintarTramos(info.px, rx + RW2 / 2 - 26, RY + 32, 1.6);
-                ctx.fillStyle = "#8A6508"; ctx.font = "bold 10.5px system-ui";
-                ctx.fillText("«" + String(info.oveja).slice(0, 10) + "»", rx + RW2 / 2, RY + RH2 - 12);
-                ctx.fillStyle = T.au1; ctx.font = "bold 10px system-ui";
-                ctx.fillText("🏆 " + info.pts + " pts", rx + RW2 / 2, RY + RH2 + 22);
-              } else {
-                cartaDorso(rx, RY, RW2, RH2);
-                ctx.fillStyle = "#EAF7EE"; ctx.font = "bold 11px system-ui"; ctx.textAlign = "center";
-                ctx.fillText("Aleatorio", rx + RW2 / 2, RY + 22);
-                ctx.font = "38px system-ui";
-                ctx.fillText("❔", rx + RW2 / 2, RY + 96);
-                ctx.fillStyle = "rgba(234,247,238,0.8)"; ctx.font = "bold 11px system-ui";
-                ctx.fillText("¿?", rx + RW2 / 2, RY + RH2 - 12);
-              }
-            });
-            ctx.fillStyle = "rgba(255,255,255,0.75)"; ctx.font = "bold 11px system-ui";
-            ctx.fillText("Ganador +100 · Perdedor −100", W / 2, 456);
-          }
-          ctx.textAlign = "left";
-        } else {
-          // ── Tablero vertical: rival y barra arriba · sus cartas · las tuyas · tu Bo y barra abajo ──
-          const r0 = d.rival || { usuario: "Rival", oveja: "Bo", pts: 0 };
-          ctx.fillStyle = "rgba(0,0,0,0.32)";
-          rr(8, 6, W - 16, 40, 12); ctx.fill();
-          rr(8, 512, W - 16, 42, 12); ctx.fill();
-          ctx.fillStyle = T.cr; ctx.font = "bold 12px system-ui";
-          ctx.fillText("🐑 " + String(r0.usuario).slice(0, 10) + " · «" + String(r0.oveja).slice(0, 10) + "»", 14, 22);
-          ctx.fillStyle = T.au1; ctx.font = "bold 10px system-ui";
-          ctx.fillText("🏆 " + r0.pts, 14, 38);
-          barraVida(96, 30, W - 200, d.psRiv);
-          ctx.fillStyle = "rgba(255,255,255,0.7)"; ctx.font = "bold 9px system-ui";
-          ctx.fillText(Math.max(0, d.psRiv) + "/300", W - 96, 38);
-          // El límite de turnos tiene que verse: decide el combate si nadie cae
-          ctx.textAlign = "right";
-          ctx.fillStyle = (d.turno || 0) >= MAX_TURNOS - 2 ? "#FFD84D" : "rgba(255,255,255,0.5)";
-          ctx.font = "bold 9.5px system-ui";
-          ctx.fillText("Turno " + Math.min(d.turno || 0, MAX_TURNOS) + "/" + MAX_TURNOS, W - 14, 22);
-          ctx.textAlign = "left";
-          const shR = d.golpeRiv > 0 ? Math.sin(d.golpeRiv * 0.9) * 4 : 0;
-          ctx.fillStyle = "rgba(0,0,0,0.30)";
-          ctx.beginPath(); ctx.ellipse(W / 2, 114, 34, 7, 0, 0, Math.PI * 2); ctx.fill();
-          pintarTramos(d.golpeRiv > 0 && r0.pxTriste ? r0.pxTriste : (r0.px || px), W / 2 - 32 + shR, 48, 2);
-          // Cartas del rival boca abajo; en la revelación solo queda la suya y SE VOLTEA
-          const RY1 = 128;
-          [0, 1, 2].forEach(i => {
-            const cxC = XS[i];
-            if (d.fase === "turno") { cartaDorso(cxC, RY1, CW, CH); return; }
-            if (i !== d.suIdx) return;
-            const ft = Math.min(1, d.t / 34);
-            const wf = Math.max(6, Math.abs(Math.cos(Math.PI * ft)) * CW);
-            const xf = cxC + (CW - wf) / 2;
-            if (ft < 0.5) cartaDorso(xf, RY1 + 8, wf, CH);
-            else cartaFrente(xf, RY1 + 8, wf, CH, d.suCarta);
-          });
-          // Tus tres cartas boca arriba: solo el icono, sin descripción
-          const MY1 = 300;
-          [0, 1, 2].forEach(i => {
-            const mov = ["A", "D", "P"][i];
-            if (d.fase !== "turno" && i !== d.miIdx) return;
-            const lift = d.fase !== "turno" && i === d.miIdx ? -8 : 0;
-            cartaFrente(XS[i], MY1 + lift, CW, CH, mov);
-            if (d.fase === "turno") {
-              const pj = 0.3 + 0.25 * Math.sin(performance.now() / 260 + i * 1.4);
-              ctx.strokeStyle = `rgba(255,216,77,${pj})`; ctx.lineWidth = 2.5;
-              rr(XS[i] + 2, MY1 + 2, CW - 4, CH - 4, 6); ctx.stroke();
-            }
-            if (lift) { ctx.strokeStyle = T.au1; ctx.lineWidth = 3; rr(XS[i], MY1 + lift, CW, CH, 6); ctx.stroke(); }
-          });
-          if (d.fase === "revela") {
-            // Medallón VS entre las dos manos, como separador del tablero
-            ctx.fillStyle = "#1A1000";
-            ctx.beginPath(); ctx.arc(W / 2, 272, 17, 0, Math.PI * 2); ctx.fill();
-            const gv = ctx.createLinearGradient(0, 256, 0, 288);
-            gv.addColorStop(0, "#FFD84D"); gv.addColorStop(1, "#C9A227");
-            ctx.fillStyle = gv;
-            ctx.beginPath(); ctx.arc(W / 2, 270, 16, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = "#3A2A00"; ctx.font = "bold 13px system-ui";
-            ctx.textAlign = "center"; ctx.textBaseline = "middle";
-            ctx.fillText("VS", W / 2, 271);
-            ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
-          }
-          if (d.fase === "turno") {
-            ctx.fillStyle = "rgba(0,0,0,0.45)";
-            rr(W / 2 - 62, 261, 124, 22, 11); ctx.fill();
-            ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.font = "bold 11px system-ui"; ctx.textAlign = "center";
-            ctx.fillText("Elige una carta", W / 2, 276);
-            ctx.textAlign = "left";
-          }
-          // Tu Bo con sus personalizaciones; feliz de normal, triste el instante del golpe
-          const shY = d.golpeYo > 0 ? Math.sin(d.golpeYo * 0.9) * 4 : 0;
-          ctx.fillStyle = "rgba(0,0,0,0.30)";
-          ctx.beginPath(); ctx.ellipse(W / 2, 504, 34, 7, 0, 0, Math.PI * 2); ctx.fill();
-          pintarTramos(d.golpeYo > 0 ? pxTriste : pxFeliz, W / 2 - 32 + shY, 438, 2);
-          ctx.fillStyle = T.cr; ctx.font = "bold 12px system-ui";
-          ctx.fillText("🐑 " + String(nombre || "Tu Bo").slice(0, 12), 14, 530);
-          if (d.misPts !== null && d.misPts !== undefined) {
-            ctx.fillStyle = T.au1; ctx.font = "bold 10px system-ui";
-            ctx.fillText("🏆 " + d.misPts, 14, 546);
-          }
-          barraVida(96, 522, W - 200, d.psYo);
-          ctx.fillStyle = "rgba(255,255,255,0.7)"; ctx.font = "bold 9px system-ui";
-          ctx.fillText(Math.max(0, d.psYo) + "/300", W - 96, 530);
-          // Sin narración: daños y curaciones flotantes junto a cada oveja, y nada más
-          (d.flot || []).forEach(f => {
-            const a2 = Math.max(0, 1 - f.t / 46);
-            const fy = (f.lado === "yo" ? 470 : 100) - f.y;
-            ctx.font = "bold 19px system-ui"; ctx.textAlign = "center";
-            ctx.lineWidth = 4; ctx.strokeStyle = `rgba(0,0,0,${0.55 * a2})`;
-            ctx.strokeText(f.tx, W / 2 + 58, fy);
-            ctx.fillStyle = f.mal ? `rgba(255,138,138,${a2})` : `rgba(125,245,168,${a2})`;
-            ctx.fillText(f.tx, W / 2 + 58, fy);
-            ctx.textAlign = "left";
-          });
-          if (d.fase === "fin") {
-            ctx.fillStyle = "rgba(10,15,22,0.86)"; ctx.fillRect(0, 0, W, H);
-            ctx.textAlign = "center";
-            const gano = d.resultado === "gana";
-            const tablas = d.resultado === "empate";
-            ctx.font = "44px system-ui"; ctx.fillText(tablas ? "🤝" : gano ? "🏆" : "😵", W / 2, 252);
-            ctx.fillStyle = "#FFFFFF"; ctx.font = "bold 24px system-ui";
-            ctx.fillText(tablas ? "Empate" : gano ? "¡Victoria!" : "Derrota…", W / 2, 298);
-            const amistoso = !!(d.rival && d.rival.bot);
-            if (tablas) {
-              ctx.fillStyle = "rgba(255,255,255,0.82)"; ctx.font = "bold 15px system-ui";
-              ctx.fillText("Sin cambios en el marcador", W / 2, 332);
-            } else if (amistoso) {
-              ctx.fillStyle = "rgba(255,255,255,0.82)"; ctx.font = "bold 15px system-ui";
-              ctx.fillText("Amistoso · sin robo de puntos", W / 2, 332);
-            } else {
-              ctx.fillStyle = gano ? T.au1 : "#FF8A8A"; ctx.font = "bold 22px system-ui";
-              ctx.fillText(gano ? "+100 puntos" : "−100 puntos", W / 2, 332);
-            }
-            if (d.porLimite) {
-              ctx.fillStyle = "rgba(255,255,255,0.5)"; ctx.font = "bold 10.5px system-ui";
-              ctx.fillText("Límite de " + MAX_TURNOS + " turnos · decide quien tenga más PS", W / 2, 224);
-            }
-            // Los dos marcadores, separados y legibles: el robo semanal arriba,
-            // el botín de esta partida (que crece con la racha) justo debajo.
-            if (gano && d.botin) {
-              ctx.fillStyle = "#7DF5A8"; ctx.font = "bold 13px system-ui";
-              ctx.fillText("+" + d.botin + " a la partida" +
-                (d.racha > 1 ? "  ·  " + d.racha + "ª seguida" : ""), W / 2, 352);
-            }
-            if (d.misPts !== null && d.misPts !== undefined) {
-              ctx.fillStyle = "rgba(255,255,255,0.75)"; ctx.font = "bold 12px system-ui";
-              ctx.fillText("Esta semana llevas " + d.misPts + " pts", W / 2, gano && d.botin ? 369 : 358);
-            }
-            if (gano || tablas) {
-              // El orbe aparece al ganar o al empatar: la derrota es la única que cierra
-              const gb = ctx.createLinearGradient(0, 380, 0, 440);
-              gb.addColorStop(0, "#B08AF0"); gb.addColorStop(1, "#5A2EA8");
-              ctx.fillStyle = "#3E1E80"; rr(52, 386, W - 104, 58, 16); ctx.fill();
-              ctx.fillStyle = gb; rr(52, 380, W - 104, 58, 16); ctx.fill();
-              ctx.fillStyle = "#FFFFFF"; ctx.font = "bold 15px system-ui";
-              ctx.fillText("🔮 Pasar al siguiente juego", W / 2, 415);
-              ctx.fillStyle = "rgba(255,255,255,0.12)"; rr(82, 456, W - 164, 42, 12); ctx.fill();
-              ctx.strokeStyle = "rgba(255,255,255,0.35)"; ctx.lineWidth = 1.5; rr(82, 456, W - 164, 42, 12); ctx.stroke();
-              ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.font = "bold 12.5px system-ui";
-              ctx.fillText("🎲 Otro duelo · rival aleatorio", W / 2, 482);
-            } else if (d.t > 40) {
-              ctx.fillStyle = "rgba(255,255,255,0.6)"; ctx.font = "bold 12px system-ui";
-              ctx.fillText("Toca para terminar la partida", W / 2, 400);
-            }
-            ctx.textAlign = "left";
-          }
-        }
-      }
-
-      // Consumible: orbe brillante; disco + icono según el juego destino
-      st.consumibles.forEach(k => {
-        const fy = k.y + (k.caida ? 0 : Math.sin(performance.now() / 250) * 5);
-        const cx = k.x + 18, cy = fy + 18, r = 23;
-        const CFG = {
-          noche:  { halo: "rgba(150,180,255,0.95)", g: ["#3A4A80", "#1E2A55", "#0E1638"], borde: "#8FA8E8" },
-          oro:    { halo: "rgba(120,240,160,0.95)", g: ["#3BE07A", "#1E9E52", "#0E6B34"], borde: "#7DF5A8" },
-          vuelo:  { halo: "rgba(174,220,248,0.95)", g: ["#7EC8F0", "#3A8AC8", "#14507E"], borde: "#AEDCF8" },
-          jefe:   { halo: "rgba(255,130,130,0.95)", g: ["#F56A6A", "#C42A2A", "#7E0E0E"], borde: "#FF9A9A" },
-          duelo:  { halo: "rgba(207,174,248,0.95)", g: ["#B08AF0", "#7A4CD0", "#3E1E80"], borde: "#CFAEF8" },
-        }[k.to] || { halo: "rgba(255,224,120,0.95)", g: ["#FFF3B0", "#FFD84D", "#E0A000"], borde: "#B8860B" };
-        const glow = ctx.createRadialGradient(cx, cy, 4, cx, cy, r + 14);
-        glow.addColorStop(0, CFG.halo); glow.addColorStop(1, "rgba(255,255,255,0)");
-        ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(cx, cy, r + 14, 0, 7); ctx.fill();
-        const grad = ctx.createRadialGradient(cx - 6, cy - 6, 2, cx, cy, r);
-        grad.addColorStop(0, CFG.g[0]); grad.addColorStop(0.6, CFG.g[1]); grad.addColorStop(1, CFG.g[2]);
-        ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fill();
-        ctx.strokeStyle = CFG.borde; ctx.lineWidth = 3; ctx.stroke();
-        // Icono de alto contraste
-        if (k.to === "noche") {
-          ctx.fillStyle = "#FFFFFF"; ctx.beginPath(); ctx.arc(cx - 1, cy, 12, 0, 7); ctx.fill();
-          ctx.fillStyle = CFG.g[1]; ctx.beginPath(); ctx.arc(cx + 5, cy - 3, 11, 0, 7); ctx.fill();
-          ctx.fillStyle = "#FFFFFF"; ctx.fillRect(cx + 8, cy + 6, 3, 3);
-        } else if (k.to === "oro") {
-          ctx.fillStyle = "#FFFFFF"; ctx.font = "bold 30px system-ui";
-          ctx.textAlign = "center"; ctx.textBaseline = "middle";
-          ctx.fillText("$", cx, cy + 1);
-          ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
-        } else if (k.to === "vuelo") {
-          // Avioneta de trazo blanco
-          ctx.strokeStyle = "#FFFFFF"; ctx.lineWidth = 3; ctx.lineCap = "round";
-          ctx.beginPath(); ctx.moveTo(cx - 12, cy + 3); ctx.lineTo(cx + 12, cy + 3); ctx.stroke();
-          ctx.beginPath(); ctx.moveTo(cx + 2, cy + 3); ctx.lineTo(cx - 6, cy - 9); ctx.stroke();
-          ctx.beginPath(); ctx.moveTo(cx - 10, cy + 3); ctx.lineTo(cx - 14, cy - 4); ctx.stroke();
-          ctx.lineCap = "butt";
-        } else if (k.to === "jefe") {
-          ctx.strokeStyle = "#FFFFFF"; ctx.lineWidth = 3;
-          ctx.beginPath(); ctx.arc(cx, cy, 9, 0, 7); ctx.stroke();
-          ctx.beginPath(); ctx.moveTo(cx - 14, cy); ctx.lineTo(cx + 14, cy); ctx.stroke();
-          ctx.beginPath(); ctx.moveTo(cx, cy - 14); ctx.lineTo(cx, cy + 14); ctx.stroke();
-          ctx.fillStyle = "#FFFFFF"; ctx.beginPath(); ctx.arc(cx, cy, 2.5, 0, 7); ctx.fill();
-        } else if (k.to === "duelo") {
-          // Espadas cruzadas
-          ctx.strokeStyle = "#FFFFFF"; ctx.lineWidth = 3; ctx.lineCap = "round";
-          ctx.beginPath(); ctx.moveTo(cx - 10, cy - 10); ctx.lineTo(cx + 10, cy + 10); ctx.stroke();
-          ctx.beginPath(); ctx.moveTo(cx + 10, cy - 10); ctx.lineTo(cx - 10, cy + 10); ctx.stroke();
-          ctx.beginPath(); ctx.moveTo(cx - 12, cy + 5); ctx.lineTo(cx - 5, cy + 12); ctx.stroke();
-          ctx.beginPath(); ctx.moveTo(cx + 5, cy + 12); ctx.lineTo(cx + 12, cy + 5); ctx.stroke();
-          ctx.lineCap = "butt";
-        }
-      });
-
-      // Sombra de la oveja (runner y guarida): se encoge y aclara al saltar
-      if (tema.familia === "runner" || tema.familia === "shooter") {
-        const alt = (suelo - SH) - st.y;
-        const k2 = Math.max(0, 1 - alt / 160);
-        ctx.fillStyle = `rgba(0,0,0,${(0.28 * k2).toFixed(3)})`;
-        ctx.beginPath();
-        ctx.ellipse((st.sx !== undefined ? st.sx : SX) + SH / 2, suelo - 2,
-          30 * (0.6 + 0.4 * k2), 7 * k2 + 2, 0, 0, 7);
-        ctx.fill();
-      }
-
-      if (tema.familia === "vuelo") {
-        // La oveja va DENTRO del avión: avión → oveja → fuselaje delantero → media anilla
-        const ax = (st.sx !== undefined ? st.sx : SX) - 10, ay = st.y;
-        const PA = 2.6, BA = 1.3;
-        // Inclinación suave hacia donde vuela + hélice de dos fotogramas (solo dibujo)
-        const inc = Math.max(-0.16, Math.min(0.16, ((st.objetivoY !== undefined ? st.objetivoY : st.y) - st.y) * 0.006));
-        const pcx = ax + 19 * PA, pcy = ay + 11 * PA;
-        ctx.save();
-        ctx.translate(pcx, pcy); ctx.rotate(st.vivo ? inc : 0.32); ctx.translate(-pcx, -pcy);
-        sprite(ctx, aleteo ? SPR.avion : SPR.avionGira, ax, ay, PA);
-        const bxA = ax + 20 * PA - 16 * BA;   // centrada en la cabina
-        const byA = ay + 8 * PA - 24 * BA;    // su y=24 cae en el borde del fuselaje (y=8)
-        pintarTramos(st.vivo ? pxFeliz : pxTriste, bxA, byA, BA);
-        sprite(ctx, SPR.avionFrente, ax, ay, PA);
-        ctx.restore();
-        // Estela de la hélice: rachitas de aire que salen del morro
-        ctx.fillStyle = "rgba(255,255,255,0.35)";
-        for (let ei = 0; ei < 3; ei++) {
-          const ew = 10 + ((performance.now() / 40 + ei * 30) % 26);
-          ctx.fillRect(ax - 6 - ew, pcy - 8 + ei * 8 + Math.sin(performance.now() / 90 + ei) * 2, ew * 0.55, 2);
-        }
-        (st.anillos || []).filter(a => !a.ok).forEach(a => sprite(ctx, SPR.anilloBajo, a.x, a.y, 4.4));
-        // ── Cuervos: la capa de DELANTE, por encima del anillo y del avión ──
-        // Es lo único que mata: tiene que verse siempre, y sobre todo cuando se
-        // cruza con el oro. Un halo claro lo despega del anillo y del cielo.
-        (st.aves || []).forEach(a => {
-          const hx = a.x + 24, hy = a.y + 18;
-          const halo = ctx.createRadialGradient(hx, hy, 6, hx, hy, 30);
-          halo.addColorStop(0, "rgba(255,255,255,0.55)");
-          halo.addColorStop(0.6, "rgba(255,255,255,0.22)");
-          halo.addColorStop(1, "rgba(255,255,255,0)");
-          ctx.fillStyle = halo;
-          ctx.beginPath(); ctx.ellipse(hx, hy, 30, 24, 0, 0, 7); ctx.fill();
-          sprite(ctx, SPR[aleteo ? "cuervoSube" : "cuervoBaja"], a.x, a.y, 2.4);
-        });
-        // Chispas doradas del anillo recién atravesado
-        (st.chispas || []).forEach(c => {
-          if (c.tipo === "onda") {
-            const rw = 12 + c.t * 4.2;
-            ctx.strokeStyle = `rgba(255,216,77,${Math.max(0, 0.75 - c.t * 0.042)})`;
-            ctx.lineWidth = 3.5;
-            ctx.beginPath(); ctx.arc(c.x, c.y, rw, 0, Math.PI * 2); ctx.stroke();
-          } else {
-            ctx.fillStyle = `rgba(255,${200 + (c.t % 3) * 18},77,${Math.max(0, 1 - c.t / 30)})`;
-            ctx.fillRect(c.x - 2, c.y - 2, 4, 4);
-          }
-        });
-        (st.flotantes || []).forEach(f => {
-          const a2 = Math.max(0, 1 - f.t / 42);
-          ctx.font = "bold 16px system-ui"; ctx.textAlign = "center";
-          ctx.lineWidth = 4; ctx.strokeStyle = `rgba(255,255,255,${a2})`;
-          ctx.strokeText("+" + PTS_ANILLO, f.x, f.y);
-          ctx.fillStyle = `rgba(138,101,8,${a2})`; ctx.fillText("+" + PTS_ANILLO, f.x, f.y);
-          ctx.textAlign = "left";
-        });
-      } else if (tema.familia !== "duelo") {
-        const ovejaX = st.sx !== undefined ? st.sx : SX;
-        px.forEach(([x, y, w, c]) => { ctx.fillStyle = c; ctx.fillRect(ovejaX + x * S, st.y + y * S, w * S + 0.5, S + 0.5); });
-      }
-      // Flash de transición al coger el consumible
-      if (st.transicion > 0) {
-        ctx.fillStyle = `rgba(255,255,255,${st.transicion * 0.6})`;
-        ctx.fillRect(0, 0, W, H);
-      }
-      ctx.fillStyle = st.modo === "noche" ? "#DDE4F5" : T.cr;
-      ctx.font = "bold 20px monospace";
-      ctx.lineWidth = 3.5; ctx.strokeStyle = "rgba(0,0,0,0.55)";
-      ctx.strokeText(String(st.score).padStart(4, "0"), W - 76, 32);
-      ctx.fillText(String(st.score).padStart(4, "0"), W - 76, 32);
-      if (cuentaRef.current > 0) {
-        ctx.fillStyle = "rgba(10,26,15,0.5)"; ctx.fillRect(0, 0, W, H);
-        ctx.textAlign = "center";
-        ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.font = "bold 22px system-ui";
-        ctx.fillText("¡Prepárate!", W / 2, H / 2 - 76);
-        ctx.fillStyle = T.g2; ctx.font = "bold 120px system-ui";
-        ctx.fillText(String(cuentaRef.current), W / 2, H / 2 + 38);
-
-        ctx.textAlign = "left";
-      }
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => {
-      cancelAnimationFrame(raf);
-      tapRef.current = null;
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-    };
-  }, [jugando, color, eqKey]);
-
-  // Cuenta atrás de preparación: 5,4,3,2,1 -> arranca
-  useEffect(() => {
-    if (!jugando || cuenta <= 0) return;
-    const t = setTimeout(() => setCuenta(c => c - 1), 1000);
-    return () => clearTimeout(t);
-  }, [jugando, cuenta]);
-
-  const cuentaRef = useRef(5);
-  useEffect(() => { cuentaRef.current = cuenta; }, [cuenta]);
-
-  // Ref del modo elegido: arrancar() vive en un closure fijado al montar
-  // (arrancarRef se asigna una sola vez), así que lee el modo por ref para
-  // no quedarse con el valor inicial. Y nada de TEMAS aquí: está dentro del
-  // efecto del juego y no existe en este ámbito.
-  const modoElegidoRef = useRef(modoElegido);
-  useEffect(() => { modoElegidoRef.current = modoElegido; }, [modoElegido]);
-  const arrancar = () => {
-    // El duelo es por turnos: no necesita cuenta atrás, el tapete ya es su antesala
-    const n0 = modoElegidoRef.current === "duelo" ? 0 : 5;
-    setFin(false); setScore(0); cuentaRef.current = n0; setCuenta(n0); setJugando(true);
-  };
-  useEffect(() => { if (arrancarRef) arrancarRef.current = arrancar; }, []);
-  const puedeJugar = partidasProp > 0 && esperaSeg <= 0 && !cargandoPartidas;
-
-  return (
-    <div style={{ position: "relative", display: "flex", flexDirection: "column", height: "100%",
-      overflowY: jugando ? "hidden" : "auto" }}>
-      {/* Pantalla previa: marco con info de partidas y botón Jugar */}
-      {!jugando && !fin && (
-        <div style={{ display: "flex", justifyContent: "center", padding: "12px 6px" }}>
-          <div style={{ position: "relative", width: "100%", maxWidth: 340, margin: "auto",
-            background: `linear-gradient(160deg, ${alpha(T.g1,0.10)}, ${alpha(T.bgCard,0.6)})`,
-            border: `2.5px solid ${T.g1}`, borderRadius: 24, padding: "26px 22px 28px",
-            textAlign: "center", boxShadow: "0 8px 30px rgba(0,0,0,0.4)" }}>
-            {/* esquinas decorativas */}
-            <div style={{ position: "absolute", top: 10, left: 10, fontSize: 16 }}>🐑</div>
-            <div style={{ position: "absolute", top: 10, right: 10, fontSize: 16 }}>🎮</div>
-
-            <div style={{ fontSize: 13, color: T.au1, fontWeight: 900, letterSpacing: 1.5,
-              textTransform: "uppercase", marginBottom: 14 }}>Zona de juego</div>
-
-            <div style={{ fontSize: 14, color: T.cr, fontWeight: 700, lineHeight: 1.55, marginBottom: 14 }}>
-              Puedes jugar un total de<br/><b style={{ color: T.g2, fontSize: 17 }}>3 partidas al día</b>
-            </div>
-
-            <div style={{ fontSize: 15, color: T.t2, fontWeight: 700, marginBottom: 8 }}>
-              Cada partida cuesta un diamante 💎
-            </div>
-            <div style={{ fontSize: 26, letterSpacing: 6, marginBottom: 6 }}>
-              {"💎".repeat(partidasProp)}{"▫️".repeat(3 - partidasProp)}
-            </div>
-            <div style={{ fontSize: 12, color: T.t3, fontWeight: 700, marginBottom: 20 }}>
-              {partidasProp > 0 ? `Te quedan ${partidasProp} hoy` : "Sin partidas por hoy — ¡vuelve mañana!"}
-            </div>
-
-            <div style={{ margin: "10px auto 14px", display: "inline-flex", gap: 16,
-              background: "rgba(255,255,255,0.06)", border: "1.5px solid rgba(255,255,255,0.12)",
-              borderRadius: 12, padding: "8px 16px", fontSize: 12, fontWeight: 800 }}>
-              <span style={{ color: T.t2 }}>Hoy: <b style={{ color: T.cr }}>{puntosHoy} pts</b></span>
-              <span style={{ color: T.t2 }}>Semana: <b style={{ color: T.au1 }}>{puntosSemana} pts</b></span>
-            </div>
-            {/* El botón cuenta la verdad del servidor: se apaga mientras se leen los
-                contadores del día y durante los 30 s que la RPC exige entre partidas.
-                Antes cobraba el diamante y el servidor rechazaba la partida después. */}
-            <button onClick={() => onPagarYJugar(modoElegido)} disabled={!puedeJugar}
-              style={{ background: puedeJugar ? `linear-gradient(180deg,${T.g2},${T.g1})` : "rgba(255,255,255,0.1)",
-                border: "none", borderRadius: 18, color: puedeJugar ? T.bg : T.t3,
-                fontWeight: 900, fontSize: puedeJugar ? 18 : 14.5, padding: "15px 28px",
-                cursor: puedeJugar ? "pointer" : "not-allowed", fontFamily: "inherit",
-                boxShadow: puedeJugar ? `0 5px 0 ${T.g3}` : "none",
-                display: "inline-flex", alignItems: "center", gap: 10 }}>
-              {cargandoPartidas ? "⏳ Leyendo tus partidas…"
-                : esperaSeg > 0 ? `⏳ Siguiente partida en ${esperaSeg} s`
-                : <>▶ Jugar <span style={{ fontSize: 19 }}>💎</span></>}
-            </button>
-
-            {/* Factual y sin reproche; la salida es la revancha, no la pérdida */}
-            {avisoDuelos && (
-              <div style={{ margin: "14px 0 0", background: "rgba(176,138,240,0.12)",
-                border: "1.5px solid rgba(176,138,240,0.45)", borderRadius: 14,
-                padding: "11px 14px", textAlign: "left" }}>
-                <div style={{ fontSize: 13, fontWeight: 900 }}>
-                  ⚔️ Te han retado {avisoDuelos.total === 1 ? "1 vez" : `${avisoDuelos.total} veces`}
-                </div>
-                <div style={{ fontSize: 11.5, color: T.t2, fontWeight: 800, marginTop: 2 }}>
-                  {avisoDuelos.victorias} {avisoDuelos.victorias === 1 ? "victoria" : "victorias"} · {avisoDuelos.derrotas} {avisoDuelos.derrotas === 1 ? "derrota" : "derrotas"}
-                </div>
-                <div style={{ fontSize: 15, fontWeight: 900, marginTop: 3,
-                  color: avisoDuelos.saldo >= 0 ? T.g2 : "#FF8A8A" }}>
-                  {avisoDuelos.saldo >= 0 ? "+" : ""}{avisoDuelos.saldo} puntos
-                </div>
-                <button onClick={() => { setModoElegido("duelo"); setAvisoDuelos(null); }}
-                  style={{ marginTop: 8, background: "linear-gradient(160deg,#B08AF0,#5A2EA8)", border: "none",
-                    borderRadius: 12, color: "#fff", fontWeight: 900, fontSize: 12.5, padding: "8px 14px",
-                    cursor: "pointer", fontFamily: "inherit", boxShadow: "0 3px 0 #3E1E80" }}>
-                  ⚔️ Devolver el golpe
-                </button>
-              </div>
-            )}
-            {/* ── Selector de juego: las 5 esferas ── */}
-            {(() => {
-              const JUEGOS = [
-                { id: "noche", nombre: "El Salto del Rebaño", icono: "🌙",
-                  desc: "Toca para saltar lobos al atardecer. Los cuervos no matan: te empujan hacia atrás.",
-                  css: "radial-gradient(circle at 35% 30%, #3A4A80, #1E2A55 60%, #0E1638)", borde: "#8FA8E8" },
-                { id: "oro", nombre: "La Cámara del Banco", icono: "💲",
-                  desc: "Salta entre bloques y recoge monedas €. Si caes al hueco o te come el borde, fin.",
-                  css: "radial-gradient(circle at 35% 30%, #3BE07A, #1E9E52 60%, #0E6B34)", borde: "#7DF5A8" },
-                { id: "vuelo", nombre: "El Vuelo de Bo", icono: "✈️",
-                  desc: "Desliza ↑↓: la avioneta se queda donde la dejes. Esquiva cuervos y atraviesa los anillos dorados por dentro.",
-                  css: "radial-gradient(circle at 35% 30%, #7EC8F0, #3A8AC8 60%, #14507E)", borde: "#AEDCF8" },
-                { id: "jefe", nombre: "El Rey Lobo", icono: "🎯",
-                  desc: "Disparas sola. Jefe abajo: salta su bola y acierta desde el suelo. Jefe arriba: no saltes… salvo para darle.",
-                  css: "radial-gradient(circle at 35% 30%, #F56A6A, #C42A2A 60%, #7E0E0E)", borde: "#FF9A9A" },
-                { id: "duelo", nombre: "Duelo de Ovejas", icono: "⚔️",
-                  desc: "Elige rival y combate por cartas: ⚔️ 🛡️ 🍎. El rival aprende tu patrón, 🛡️ contra 🛡️ desgasta a los dos y a los 12 turnos gana quien tenga más PS. El ganador le quita 100 puntos al perdedor; encadenar duelos suma botín creciente a la partida (120, 240, 360…).",
-                  css: "radial-gradient(circle at 35% 30%, #B08AF0, #7A4CD0 60%, #3E1E80)", borde: "#CFAEF8" },
-              ];
-              const sel = JUEGOS.find(jj => jj.id === modoElegido) || JUEGOS[0];
-              return (
-                <div style={{ marginTop: 16 }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 900, letterSpacing: 1.2, textTransform: "uppercase",
-                    color: T.t2, marginBottom: 9 }}>Elige tu juego</div>
-                  <div style={{ display: "flex", justifyContent: "center", gap: 9 }}>
-                    {JUEGOS.map(jj => (
-                      <button key={jj.id} onClick={() => setModoElegido(jj.id)}
-                        style={{ width: 46, height: 46, borderRadius: "50%", padding: 0, cursor: "pointer",
-                          background: jj.css, fontFamily: "inherit",
-                          border: `2.5px solid ${modoElegido === jj.id ? T.au1 : jj.borde}`,
-                          boxShadow: modoElegido === jj.id
-                            ? `0 0 12px ${alpha(T.au1,0.65)}, 0 3px 0 ${T.au3}`
-                            : "0 3px 6px rgba(0,0,0,0.4)",
-                          transform: modoElegido === jj.id ? "scale(1.12)" : "scale(1)",
-                          transition: "all 0.15s",
-                          display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        <span style={{ fontSize: 21, lineHeight: 1,
-                          filter: "drop-shadow(0 1px 1px rgba(0,0,0,0.5))" }}>{jj.icono}</span>
-                      </button>
-                    ))}
-                  </div>
-                  <div style={{ marginTop: 11, minHeight: 58, background: "rgba(255,255,255,0.05)",
-                    border: "1.5px solid rgba(255,255,255,0.1)", borderRadius: 12, padding: "9px 12px" }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 900, color: T.g2, marginBottom: 3 }}>
-                      {sel.icono} {sel.nombre}
-                    </div>
-                    <div style={{ fontSize: 11.5, color: T.t2, lineHeight: 1.45, fontWeight: 600 }}>
-                      {sel.desc}
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-        </div>
-      )}
-
-      {/* Escena del juego (la cuenta atrás 5-4-3-2-1 se dibuja DENTRO del canvas) */}
-      {jugando && (
-        <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
-          <canvas ref={canvasRef} width={340} height={680}
-            onPointerDown={(e) => { e.preventDefault(); tapRef.current && tapRef.current(e); }}
-            style={{ position: "absolute", inset: 0, width: "100%", height: "100%",
-              display: "block", touchAction: "none" }} />
-        </div>
-      )}
-
-      {/* Fin de partida */}
-      {jugando && fin && (
-        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column",
-          alignItems: "center", justifyContent: "center", gap: 8, background: alpha(T.bg,0.85),
-          borderRadius: 14, animation: "popIn .2s ease-out", padding: "0 16px" }}>
-          <div style={{ fontWeight: 900, fontSize: 16 }}>💥 ¡{nombre} ha tropezado!</div>
-          <div style={{ fontSize: 13, color: T.au1, fontWeight: 800 }}>Puntos: {score} · Récord: {best}</div>
-          <div style={{ fontSize: 12, color: T.g2, fontWeight: 800 }}>
-            +{score} pts a tu marcador → esta semana llevas {puntosSemana}
-          </div>
-          <button onClick={() => { setJugando(false); setFin(false); onSalir && onSalir(); }}
-            style={{ background: `linear-gradient(180deg,${T.g2},${T.g1})`, border: "none",
-              borderRadius: 14, color: T.bg, fontWeight: 900, fontSize: 13.5, padding: "10px 20px",
-              cursor: "pointer", fontFamily: "inherit", boxShadow: `0 3px 0 ${T.g3}` }}>
-            Volver
-          </button>
-          <div style={{ fontSize: 10.5, color: "rgba(255,255,255,0.4)", textAlign: "center" }}>
-            Para jugar otra vez, paga una gema 💎 desde el botón de la oveja
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+// El juego de la oveja vive en src/JuegoOveja.jsx desde el 10-nov (MAESTRO-2026-1234): se carga
+// aparte, al abrir la zona de juego, y no con la app.
 
 
 // ─── Desplegable reutilizable del modal de personalización ───────────────────
@@ -6957,199 +4820,7 @@ function WeeklyXPGoal({logs,xp}){
 
 
 // ─── Banco de preguntas de nutrición (30 preguntas) ──────────────────────────
-const QUIZ_BANK = [
-  {q:"¿Cuántas calorías tiene aproximadamente 100g de pechuga de pollo a la plancha?",q_en:"How many calories does 100g of grilled chicken breast have?",opts:["85 kcal","165 kcal","240 kcal","310 kcal"],ans:1},
-  {q:"¿Qué macronutriente proporciona más energía por gramo?",q_en:"Which macronutrient provides the most energy per gram?",opts:["Proteína (4 kcal/g)","Hidratos (4 kcal/g)","Grasa (9 kcal/g)","Fibra (2 kcal/g)"],opts_en:["Protein (4 kcal/g)","Carbs (4 kcal/g)","Fat (9 kcal/g)","Fibre (2 kcal/g)"],ans:2},
-  {q:"¿Cuál de estos alimentos tiene más proteína por 100g?",q_en:"Which of these foods has the most protein per 100g?",opts:["Huevo entero","Atún en lata","Leche entera","Yogur natural"],opts_en:["Whole egg","Canned tuna","Whole milk","Natural yogurt"],ans:1},
-  {q:"¿Qué vitamina produce el cuerpo con la exposición al sol?",q_en:"Which vitamin does the body produce with sun exposure?",opts:["Vitamina A","Vitamina B12","Vitamina C","Vitamina D"],opts_en:["Vitamin A","Vitamin B12","Vitamin C","Vitamin D"],ans:3},
-  {q:"¿Cuántos vasos de agua equivalen aproximadamente a 2 litros?",q_en:"How many glasses of water equal approximately 2 litres?",opts:["4 vasos","6 vasos","8 vasos","10 vasos"],opts_en:["4 glasses","6 glasses","8 glasses","10 glasses"],ans:2},
-  {q:"¿Cuál de estos alimentos tiene el índice glucémico más bajo?",q_en:"Which of these foods has the lowest glycaemic index?",opts:["Pan blanco","Arroz blanco","Legumbres","Sandía"],opts_en:["White bread","White rice","Legumes","Watermelon"],ans:2},
-  {q:"¿Qué porcentaje del cuerpo humano es agua aproximadamente?",q_en:"What percentage of the human body is approximately water?",opts:["40%","55-60%","75-80%","90%"],ans:1},
-  {q:"¿Cuántas kcal tiene 1 gramo de alcohol?",q_en:"How many kcal does 1 gram of alcohol have?",opts:["4 kcal","5 kcal","7 kcal","9 kcal"],ans:2},
-  {q:"¿Cuál es la principal función de los hidratos de carbono?",q_en:"What is the main function of carbohydrates?",opts:["Construir músculo","Proporcionar energía rápida","Regular el sistema inmune","Transportar vitaminas"],opts_en:["Build muscle","Provide quick energy","Regulate the immune system","Transport vitamins"],ans:1},
-  {q:"¿Qué alimento es rico en omega-3?",q_en:"Which food is rich in omega-3?",opts:["Aceite de girasol","Salmón","Carne de cerdo","Queso curado"],opts_en:["Sunflower oil","Salmon","Pork","Aged cheese"],ans:1},
-  {q:"¿Cuántas calorías tiene aproximadamente 1 cucharada de aceite de oliva?",q_en:"How many calories does approximately 1 tablespoon of olive oil have?",opts:["50 kcal","90 kcal","120 kcal","150 kcal"],ans:1},
-  {q:"¿Cuál de estos es un ejemplo de proteína completa?",q_en:"Which of these is an example of a complete protein?",opts:["Arroz","Lentejas","Huevo","Pan"],opts_en:["Rice","Lentils","Egg","Bread"],ans:2},
-  {q:"¿Qué mineral es esencial para la salud ósea?",q_en:"Which mineral is essential for bone health?",opts:["Hierro","Zinc","Calcio","Magnesio"],opts_en:["Iron","Zinc","Calcium","Magnesium"],ans:2},
-  {q:"¿Cuántas calorías tiene 100g de aguacate?",q_en:"How many calories does 100g of avocado have?",opts:["80 kcal","160 kcal","250 kcal","320 kcal"],ans:1},
-  {q:"¿Qué es el metabolismo basal?",q_en:"What is basal metabolic rate?",opts:["Calorías quemadas haciendo ejercicio","Calorías mínimas para funciones vitales en reposo","Velocidad de digestión","Absorción de nutrientes"],opts_en:["Calories burned during exercise","Minimum calories for vital functions at rest","Speed of digestion","Nutrient absorption"],ans:1},
-  {q:"¿Cuál de estos cereales tiene más fibra?",q_en:"Which of these cereals has the most fibre?",opts:["Arroz blanco","Maíz","Avena","Trigo refinado"],opts_en:["White rice","Corn","Oats","Refined wheat"],ans:2},
-  {q:"¿En qué alimento hay más hierro por 100g?",q_en:"Which food has the most iron per 100g?",opts:["Lentejas","Espinacas","Hígado de ternera","Almejas"],opts_en:["Lentils","Spinach","Veal liver","Clams"],ans:3},
-  {q:"¿Cuántas calorías tiene 100g de plátano?",q_en:"How many calories does 100g of banana have?",opts:["55 kcal","89 kcal","120 kcal","145 kcal"],ans:1},
-  {q:"¿Qué vitamina es fundamental para la absorción del hierro?",q_en:"Which vitamin is key for iron absorption?",opts:["Vitamina A","Vitamina B6","Vitamina C","Vitamina K"],opts_en:["Vitamin A","Vitamin B6","Vitamin C","Vitamin K"],ans:2},
-  {q:"¿Cuántas horas sin comer se considera ayuno intermitente básico?",q_en:"How many hours without eating is considered basic intermittent fasting?",opts:["8 horas","12 horas","16 horas","24 horas"],opts_en:["8 hours","12 hours","16 hours","24 hours"],ans:2},
-  {q:"¿Cuál de estos NO es un aminoácido esencial?",q_en:"Which of these is NOT an essential amino acid?",opts:["Leucina","Valina","Alanina","Lisina"],opts_en:["Leucine","Valine","Alanine","Lysine"],ans:2},
-  {q:"¿Cuántas calorías tiene 100g de almendras?",q_en:"How many calories does 100g of almonds have?",opts:["350 kcal","460 kcal","580 kcal","700 kcal"],ans:2},
-  {q:"¿Qué hormona regula el azúcar en sangre?",q_en:"Which hormone regulates blood sugar?",opts:["Cortisol","Insulina","Adrenalina","Melatonina"],opts_en:["Cortisol","Insulin","Adrenaline","Melatonin"],ans:1},
-  {q:"¿Cuál es la temperatura interna segura para cocinar pollo?",q_en:"What is the safe internal temperature for cooking chicken?",opts:["60°C","70°C","74°C","85°C"],ans:2},
-  {q:"¿Cuántos gramos de proteína necesita aproximadamente una persona activa por kg de peso?",q_en:"How many grams of protein does an active person need per kg of body weight?",opts:["0.4-0.6g","0.8-1.2g","1.6-2.2g","3-4g"],ans:2},
-  {q:"¿Cuál de estos alimentos tiene más potasio?",q_en:"Which of these foods has the most potassium?",opts:["Plátano","Naranja","Espinacas","Patata cocida"],opts_en:["Banana","Orange","Spinach","Boiled potato"],ans:3},
-  {q:"¿Qué proceso ocurre durante el sueño en relación a los músculos?",q_en:"What process occurs during sleep in relation to muscles?",opts:["Se pierden","Se sintetiza proteína muscular","Se quema grasa muscular","No pasa nada"],opts_en:["They are lost","Muscle protein is synthesised","Muscle fat is burned","Nothing happens"],ans:1},
-  {q:"¿Cuántas calorías tiene 100g de pasta cocida?",q_en:"How many calories does 100g of cooked pasta have?",opts:["80 kcal","131 kcal","200 kcal","260 kcal"],ans:1},
-  {q:"¿Cuál de estos tiene menos azúcar?",q_en:"Which of these has the least sugar?",opts:["Zumo de naranja natural","Naranja entera","Refresco light","Yogur con frutas"],opts_en:["Fresh orange juice","Whole orange","Diet soft drink","Fruit yogurt"],ans:1},
-  {q:"¿Qué significa IMC?",q_en:"What does BMI stand for?",opts:["Índice de Masa Corporal","Ingesta Máxima Calórica","Índice Metabólico Corporal","Ingesta Mínima de Carbohidratos"],opts_en:["Body Mass Index","Maximum Caloric Intake","Metabolic Body Index","Minimum Carbohydrate Intake"],ans:0},
-];
-
-const QUIZ_RECETARIO = [
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Espaguetis a la marinera','Hamburguesa vegana de soja texturizada','Ensalada verde con vinagreta de mostaza y miel','Guiso de patata y bacalao'],ans:3,fact:'Guiso de patata y bacalao · 42g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Arroz con mejillones','Ensalada de pollo y aguacate','Salteado de pollo con verduras al wok','Pastel de patata'],ans:1,fact:'Ensalada de pollo y aguacate · 60g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Pollo con almendras','Ensalada de salmón con frutas','Caldereta de cordero','Crema de zanahorias'],ans:2,fact:'Caldereta de cordero · 28g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Bocadillo de tortilla francesa vegano','Tortilla de patata y calabacín','Sopa de fresas','Merluza con pimientos del piquillo'],ans:0,fact:'Bocadillo de tortilla francesa vegano · 845kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Ensalada de pavo y naranja','Tortilla de berenjenas queso y pimiento','Espuma de frutos congelados','Sorbete de frutas (melocoton)'],ans:0,fact:'Ensalada de pavo y naranja · 24g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Tarta de queso calórica','Quesadilla vegana','Guiso marinero','Sopa de quinoa'],ans:0,fact:'Tarta de queso calórica · 50g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Crema cuajada de leche y queso','Tostada con Huevo y Queso Gratinado','Ensaladilla de pollo y aguacate','Guiso de merluza y gambas'],ans:0,fact:'Crema cuajada de leche y queso · 47g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Ensalada de pollo con arroz y mango','Ensalada de pollo con aguacate','Tortilla de atún','Bowl ensalada vegana taco'],ans:3,fact:'Bowl ensalada vegana taco · 77g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Bol de kiwi, rúcula y avena','Pavo salteado con calabacín','Tostada con Revuelto de Tofu y Aguacate','Ensalada de cogollos y espárragos'],ans:0,fact:'Bol de kiwi, rúcula y avena · 815kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Triángulos de maíz con carne','Huevos revueltos con champiñones','Carbonara vegetariana','Guiso marinero'],ans:0,fact:'Triángulos de maíz con carne · 25g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Pimientos rellenos de bacalao con sticks de zanahoria','Milhoja de merengue','Falsa lasaña de merluza y verduras','Tosta de aguacate con anchoa y tomate'],ans:3,fact:'Tosta de aguacate con anchoa y tomate · 30g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Olla gitana','Pan de manzana','Mousse de mango y coco vegano','Tostada de Pera y Queso Roquefort'],ans:1,fact:'Pan de manzana · 77.7g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Guiso de alubias blancas y verduras','Ensalada crujiente de garbanzos y boniato','Gachas de avena con manzana','Berenjena con relleno vegano de soja o tofu'],ans:1,fact:'Ensalada crujiente de garbanzos y boniato · 91g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Budin de limon y coco','Tostadas con jamón y queso','Merluza al horno con patata','Pastel de patata'],ans:1,fact:'Tostadas con jamón y queso · 690kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Gelatina de naranja','Yogur proteico con plátano y almendras','Ensalada parrillada','Tostada Proteica con Crema de Almendra'],ans:3,fact:'Tostada Proteica con Crema de Almendra · 28g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Pizza de yuca','Falsa lasaña de merluza y verduras','Wrap de vegetales','Garbanzos con almejas'],ans:0,fact:'Pizza de yuca · 501kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Alcachofas con jamón y huevo','Brochetas de rape con tomate y pimiento','Manzana asada','Seitán con salsa de champiñones'],ans:3,fact:'Seitán con salsa de champiñones · 31g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Sopa de quinoa y verduras vegana','Ensalada de aguacate y quinoa','Bacalao con salsa de pimiento y tomate','Tostada con Plátano y Canela'],ans:1,fact:'Ensalada de aguacate y quinoa · 23g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Escalopes de ternera','Merluza a la plancha con ensalada','Ensalada de coliflor','Ensalada de naranjas'],ans:0,fact:'Escalopes de ternera · 30g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Tostada de Pera y Queso Roquefort','Mousse de melon','Garbanzos con marisco','Ensalada de lentejas y aguacate'],ans:3,fact:'Ensalada de lentejas y aguacate · 42g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Sepia con alubias y almejas','Pasta con pollo y verduras','Rollitos de chocolate y almendra','Arroz con pollo'],ans:2,fact:'Rollitos de chocolate y almendra · 700kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Garbanzos con tomate y espinacas','Pudin de pan','Pavo con champiñones y arroz','Panache de verduras'],ans:2,fact:'Pavo con champiñones y arroz · 37g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Copa de yogur con helado y galleta','Batido de mango y proteína','Estofado vegano de soja texturizada','Crêpes con salsa de arándanos'],ans:1,fact:'Batido de mango y proteína · 27g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Guiso de patatas con champiñones','Sorbete de merengue','Lentejas estofadas rápidas','Fabada vegana'],ans:3,fact:'Fabada vegana · 36g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Crema de alubia blanca y sésamo','Gelatina de naranja','Tostadas con jamón y queso','Ensalada mixta'],ans:2,fact:'Tostadas con jamón y queso · 50g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Patatas guisadas con cerdo','Wok de pollo y verduras','Pasta vegana','Pasta amatriciana'],ans:1,fact:'Wok de pollo y verduras · 60.9g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Tostada de Paté de Hígado','Salteado de gambas y verduras','Patatas guisadas con cerdo','Merluza a la plancha con ensalada'],ans:2,fact:'Patatas guisadas con cerdo · 35g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Ensalada de judías verdes con jamón','Mero con cebollitas y zanahoria al microondas','Berenjena con relleno vegano de soja o tofu','Ensalada de pavo y naranja'],ans:1,fact:'Mero con cebollitas y zanahoria al microondas · 38g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Pasta con setas','Pasta integral con pollo y brócoli','Crema de verduras y legumbres','Lentejas estofadas rápidas'],ans:1,fact:'Pasta integral con pollo y brócoli · 718kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Platano y pina gratinados','Bol de papaya y requesón','Ensalada de champiñones','Tortitas de claras y avena'],ans:3,fact:'Tortitas de claras y avena · 36g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Crema de calabacines','Tostada de Dátiles con Miel','Brochetas veganas','Tostada con Ricotta y Pera Caramelizada'],ans:1,fact:'Tostada de Dátiles con Miel · 471kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Pimientos rellenos al horno','Arroz con mejillones','Pizza de yuca','Mousse de melocoton'],ans:1,fact:'Arroz con mejillones · 65g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Ensalada de kale','Sándwich de garbanzos y aguacate','Merluza al horno con gambas','Pad thai vegano'],ans:0,fact:'Ensalada de kale · 33g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Ensalada california','Tostada de Jamón Serrano con Tortilla de Huevo','Gachas de avena con manzana','Pisto con huevo'],ans:2,fact:'Gachas de avena con manzana · 20g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Calamares rellenos de gambas y berenjena','Ensalada de patata','Ensalada de lentejas y mango','Tortitas de plátano y avena'],ans:2,fact:'Ensalada de lentejas y mango · 28g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Gelatina de naranja','Ensalada de brócoli y manzana','Revuelto de gulas y champiñones','Mousse de mango y coco vegano'],ans:0,fact:'Gelatina de naranja · 94.3g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Ensalada de espinacas con salsa miel y mostaza','Wrap de vegetales','Flan de coco','Pasta vegana'],ans:2,fact:'Flan de coco · 34g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Risotto con champiñones y bacon','Ensalada de cogollos y espárragos','Fabada vegana','Ensalada de arroz chino'],ans:0,fact:'Risotto con champiñones y bacon · 896kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Tortilla dulce de frutos rojos','Sopa de quinoa y verduras vegana','Pudin de pan','Gachas de avena con manzana'],ans:3,fact:'Gachas de avena con manzana · 19g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Tortilla dulce de frutos rojos','Albóndigas de pollo con arroz al curry','Sándwich vegetal con jamón y queso','Tostada de Paté de Hígado'],ans:1,fact:'Albóndigas de pollo con arroz al curry · 54.1g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Ensalada de gourmet','Rollitos de pollo con pimiento del piquillo y queso','Sopa crema de calabaza','Crema de yogur'],ans:1,fact:'Rollitos de pollo con pimiento del piquillo y queso · 36g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Ensalada caprese con melocotón','Helado de fresas','Arroz con leche','Hamburguesa vegana de soja texturizada'],ans:0,fact:'Ensalada caprese con melocotón · 16g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Carbonara vegetariana','Espuma de frutos congelados','Minestrone','Merluza al horno con patata'],ans:2,fact:'Minestrone · 627kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Tostada de aguacate y huevo','Helado de frambuesa','Tortitas de avena veganas','Alubias con pulpo'],ans:2,fact:'Tortitas de avena veganas · 70g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Olla gitana','Pimientos rellenos al horno','Pollo con pesto rosso de tomates secos','Guisantes con tomate seco veganos'],ans:2,fact:'Pollo con pesto rosso de tomates secos · 38g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Power bowl vegano con soja texturizada, boniato y guacamole','Flan de verduras','Guiso de pescado y marisco','Tortilla de coliflor'],ans:0,fact:'Power bowl vegano con soja texturizada, boniato y guacamole · 65g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Gazpacho andaluz','Calamares a la riojana','Ensalada verde','Tostada con Revuelto de Tofu y Aguacate'],ans:2,fact:'Ensalada verde · 20g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Ensalada de pollo con mango y aguacate','Lasaña de pollo y acelgas','Mousse de pera y kiwi','Crêpes con jamón y queso'],ans:3,fact:'Crêpes con jamón y queso · 30g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Ensalada de quinoa y atún','Platano y pina gratinados','Solomillo de cerdo con espárragos','Pollo con salsa de frutos rojos y yuca'],ans:0,fact:'Ensalada de quinoa y atún · 26g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Salmón al horno con espárragos','Natillas de mandarina','Ensalada de mango y arroz','Samosas de morcilla y manzana'],ans:0,fact:'Salmón al horno con espárragos · 32g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Ensalada de kale','Burritos con boloñesa vegana','Tartar de atún','Berenjena con relleno vegano de soja o tofu'],ans:1,fact:'Burritos con boloñesa vegana · 56g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Porridge de avena con manzana','Calabacines rellenos de gambas y rape','Yogur griego con tartar de aguacate','Pimientos rellenos al horno'],ans:2,fact:'Yogur griego con tartar de aguacate · 541kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Tortilla de acelgas','Pavo en salsa','Tortilla de calabacín al queso','Hamburguesa completa'],ans:3,fact:'Hamburguesa completa · 45g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Pollo al curry rápido con arroz','Ensalada de coliflor','Wraps de alubias negras y salsa de aguacate','Pan de manzana'],ans:0,fact:'Pollo al curry rápido con arroz · 464kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Rollitos de berenjena tomate y queso','Pechuga de pollo con salsa vegana de champiñones','Pimientos rellenos de bacalao con sticks de zanahoria','Lentejas hindúes'],ans:1,fact:'Pechuga de pollo con salsa vegana de champiñones · 54g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Ajoblanco con sardina ahumada','Rollitos de chocolate y almendra','Buddha bowl de quinoa vegano','Pan con aceite y tomate'],ans:0,fact:'Ajoblanco con sardina ahumada · 88g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Ensalada griega vegana','Pisto con huevo','Merluza con cebolla al microondas','Copa de yogur con helado y galleta'],ans:2,fact:'Merluza con cebolla al microondas · 24g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Calamares encebollados','Guiso de patatas con sepia','Ensalada de pollo con arroz y mango','Guiso de sepia y mejillones'],ans:2,fact:'Ensalada de pollo con arroz y mango · 21g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Mero con salsa de yogur','Rape con calabaza al microondas','Crêpes con jamón y queso','Flan de verduras'],ans:0,fact:'Mero con salsa de yogur · 37g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Ensalada de sandía','Ensalada de lentejas y aguacate','Pasta integral con pollo y brócoli','Guiso de garbanzos y albaricoques'],ans:2,fact:'Pasta integral con pollo y brócoli · 56.4g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Sopa crema de zanahoria y cúrcuma','Ensalada de pavo y naranja','Salmón con verduras al microondas','Bol de plátano y mango'],ans:3,fact:'Bol de plátano y mango · 693kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Albóndigas de ternera en salsa de tomate','Ensalada de col y manzana','Pechuga de pavo rellena','Pollo al curry rápido con arroz'],ans:2,fact:'Pechuga de pavo rellena · 65g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Ensalada de pavo con piña y manzana','Lubina con espinacas y piñones','Calamares en salsa','Tortilla de cebolla'],ans:2,fact:'Calamares en salsa · 35g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Tostada de crema de cacahuete y plátano','Manzana asada','Tostada de Aguacate con Tomate y Huevo','Sopa Thai vegana'],ans:3,fact:'Sopa Thai vegana · 596kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Ensalada de pollo con aguacate','Batido vegetal','Calabacines rellenos de gambas y rape','Guiso de patatas y calamares'],ans:0,fact:'Ensalada de pollo con aguacate · 24g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Ensalada waldorf','Fabada vegana','Bowl de yogur, plátano y nueces','Tortilla francesa con queso'],ans:1,fact:'Fabada vegana · 457kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Milhojas de nata','Natillas de mandarina','Berenjena con relleno vegano de soja o tofu','Patatas rellenas veganas'],ans:3,fact:'Patatas rellenas veganas · 64g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Tartar de atún vegano con vinagreta de mostaza y lima','Guiso de patatas con sepia','Estofado de habichuelas','Lentejas con verduras'],ans:3,fact:'Lentejas con verduras · 22g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Ensalada de pollo con mango y aguacate','Helado de mango','Salmón a la plancha con brócoli','Calamares encebollados'],ans:2,fact:'Salmón a la plancha con brócoli · 34g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Potaje de vigilia','Milhoja de merengue','Tostada de Peanut Butter','Ensalada de garbanzos y lechuga'],ans:0,fact:'Potaje de vigilia · 39.4g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Tostada de Cottage y Arándanos','Quinoa citrica con leche de coco','Espuma de frutos congelados','Tartaleta de arroz y pollo'],ans:3,fact:'Tartaleta de arroz y pollo · 764kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Pollo a la plancha con verduras','Tosta de atún con gambas y tomate','Yogur proteico con avena y fresas','Bizcocho de limon'],ans:3,fact:'Bizcocho de limon · 481kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Pastel de patata','Atún a la plancha con pimientos','Tortilla francesa de queso muzarella','Brochetas de rape con tomate y pimiento'],ans:2,fact:'Tortilla francesa de queso muzarella · 28g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Salteado de tofu con verduras','Potaje de vigilia','Pollo a la plancha con verduras','Helado de vainilla'],ans:0,fact:'Salteado de tofu con verduras · 20g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Huevos a la plancha con tomate y pan','Salmón al horno con brócoli y patatas','Crepes de avena con espinacas y champiñones','Guiso de patatas con champiñones'],ans:1,fact:'Salmón al horno con brócoli y patatas · 50g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Tostada con Plátano y Canela','Sopa postre de chocolate y almendras','Tostada con Revuelto de Tofu y Aguacate','Sopa de pollo'],ans:1,fact:'Sopa postre de chocolate y almendras · 521kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Mousse de chocolate y yogur','Helado de vainilla','Hamburguesa vegana de soja texturizada','Ensalada de pasta'],ans:3,fact:'Ensalada de pasta · 455kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Ensalada de cangrejo','Bowl de yogur con manzana y canela','Alcachofas con jamón y huevo','Ensalada waldorf'],ans:2,fact:'Alcachofas con jamón y huevo · 22g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Carbonara vegetariana','Natillas','Ensalada de cogollos y espárragos','Escalopes de ternera'],ans:3,fact:'Escalopes de ternera · 610kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Guiso de patatas y calamares','Tartar de atún vegano con vinagreta de mostaza y lima','Helado de yogur griego','Merluza al horno con gambas'],ans:3,fact:'Merluza al horno con gambas · 30g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Brownie en microondas','Manzana asada con canela','Yogur proteico con plátano y almendras','Leche frita'],ans:0,fact:'Brownie en microondas · 33g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Ensalada verde','Hamburguesa de pimiento y soya','Rape con verduras','Quinoa con verduras y huevo'],ans:3,fact:'Quinoa con verduras y huevo · 38.9g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Ensalada tibia de vegetales asados','Panache de verduras','Hamburguesa de pimiento y soya','Guiso de pavo'],ans:3,fact:'Guiso de pavo · 32g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Manzana asada','Ensalada de champiñones','Sopa de pollo','Muffin de chocolate'],ans:3,fact:'Muffin de chocolate · 75g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Power bowl vegano con soja texturizada, boniato y guacamole','Guiso de ternera con champiñones','Batido de plátano y avena','Guiso de alubias con hongos'],ans:2,fact:'Batido de plátano y avena · 112.6g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Patatas guisadas con cerdo','Crema de brócoli y queso','Helado de yogur griego','Pavo con champiñones y arroz'],ans:0,fact:'Patatas guisadas con cerdo · 755kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Mousse de pera y kiwi','Ensalada de lentejas y mango','Ensalada de arroz casera','Yogur proteico con plátano y almendras'],ans:1,fact:'Ensalada de lentejas y mango · 561kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Sepia con alubias y almejas','Arroz con leche de chocolate','Arroz de alubias y pimientos','Lubina al microondas con calabacín'],ans:2,fact:'Arroz de alubias y pimientos · 66g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Tostada de Guacamole','Ensalada de manzana y fresas con pipas','Pancakes veganos','Ramen vegano'],ans:3,fact:'Ramen vegano · 39g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Manzana asada con canela','Pasta vegana','Lomo de cerdo a la manzana','Merluza con pimientos del piquillo'],ans:2,fact:'Lomo de cerdo a la manzana · 466kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Alcachofas con jamón y huevo','Tortitas de claras y avena','Sopa crema de calabaza vegana','Batido vegano de plátano y dátiles'],ans:3,fact:'Batido vegano de plátano y dátiles · 363kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Fabada vegana','Crema de patatas y apio','Garbanzos con almejas','Brocheta de frutas'],ans:0,fact:'Fabada vegana · 55g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Vegan poke bowl de tofu','Tostadas con aguacate y huevo','Fideuá al horno','Habas con huevo'],ans:0,fact:'Vegan poke bowl de tofu · 109g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Bizcocho rapido','Ceviche vegano','Tortilla de patata y calabacín','Ensalada campera'],ans:0,fact:'Bizcocho rapido · 680kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Brownie en microondas','Sándwich de bacalao ahumado y aguacate','Brocheta de fruta gratinada','Mero con fideos'],ans:0,fact:'Brownie en microondas · 555kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Ensalada parrillada','Tostas de tomate, queso y mortadela','Natillas','Pizza de pollo'],ans:3,fact:'Pizza de pollo · 45g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Ensalada de alcachofas y atún','Brochetas de rape con tomate y pimiento','Hamburguesa de lentejas','Huevos revueltos con jamón'],ans:3,fact:'Huevos revueltos con jamón · 35g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Copa de yogur con helado y galleta','Rape con calabaza al microondas','Guiso pavo con verduras','Ensalada thai'],ans:2,fact:'Guiso pavo con verduras · 34g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Copa de yogur con helado y galleta','Pad thai vegano','Tostada Proteica con Crema de Almendra','Crema de brócoli y queso'],ans:0,fact:'Copa de yogur con helado y galleta · 70g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Tostada de Aguacate con Tomate y Huevo','Rape con verduras','Salteado de gambas y verduras','Trenza de chocolate'],ans:3,fact:'Trenza de chocolate · 440kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Rollitos de salmón ahumado','Ensalada de cuscús','Ensalada de cangrejo','Ensalada de arroz con vinagreta de miel'],ans:3,fact:'Ensalada de arroz con vinagreta de miel · 56g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Tostadas con aguacate y huevo','Ensalada de langostinos rúcula y papaya','Tortilla de espinacas y queso','Pan con aceite y tomate'],ans:0,fact:'Tostadas con aguacate y huevo · 60g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Tostada de Guacamole','Ensalada de cogollos con mejillones','Tortitas de plátano y avena','Huevos revueltos con espárragos'],ans:2,fact:'Tortitas de plátano y avena · 117.5g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Ensalada de coliflor','Ensalada de berenjena y queso','Ensalada de aguacate y mango','Sándwich de salmón, queso y aguacate'],ans:1,fact:'Ensalada de berenjena y queso · 510kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Guiso de garbanzos y albaricoques','Tortitas de claras y avena','Pasta vegana','Muffin de chocolate'],ans:2,fact:'Pasta vegana · 39g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Tostada con Ricotta y Pera Caramelizada','Ensalada de langostinos rúcula y papaya','Pisto con huevo','Tostada de Peanut Butter'],ans:3,fact:'Tostada de Peanut Butter · 367kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Wraps de alubias negras y salsa de aguacate','Batido vegano','Tostas de tomate, queso y mortadela','Crema con rape y gambas'],ans:2,fact:'Tostas de tomate, queso y mortadela · 35g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Guiso de merluza y gambas','Tortilla de berenjenas queso y pimiento','Estofado vegano de soja texturizada','Manzana asada con canela'],ans:1,fact:'Tortilla de berenjenas queso y pimiento · 22g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Quesadilla vegana','Rollitos de lenguado con salsa de espinacas','Risotto vegano de champiñones','Merluza al horno con patata'],ans:2,fact:'Risotto vegano de champiñones · 88g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Pasta con brócoli y queso','Tortilla de espinacas (variante 2)','Tosta de aguacate con anchoa y tomate','Rollitos de pollo con pimiento del piquillo y queso'],ans:0,fact:'Pasta con brócoli y queso · 45g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Ensalada de atún marinado con salsa de soja','Espuma de frutos congelados','Mousse de mango y coco vegano','Ensalada de arroz yamaní'],ans:3,fact:'Ensalada de arroz yamaní · 34g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Escalopes de ternera','Espaguetis con bechamel vegana','Ensalada de pasta fácil','Hamburguesas de arroz con queso'],ans:1,fact:'Espaguetis con bechamel vegana · 83g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Hamburguesa completa','Salteado de tofu brócoli y zanahoria','Ensalada de alcachofas y atún','Guiso de patatas y calamares'],ans:0,fact:'Hamburguesa completa · 800kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Pasta amatriciana','Tostada Estilo Cheesecake de Arándanos','Ensalada de col y manzana','Porridge vegano de avena'],ans:3,fact:'Porridge vegano de avena · 61g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Mousse de pera y kiwi','Tostada de Pera y Queso Roquefort','Natillas de mandarina','Gachas de avena con manzana'],ans:3,fact:'Gachas de avena con manzana · 505kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Ensalada de pasta','Chocolatinas de frutos secos','Tostada de Cottage y Arándanos','Crepes de avena con espinacas y champiñones'],ans:1,fact:'Chocolatinas de frutos secos · 30g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Filete de ternera con champiñones','Tortilla de patata sencilla','Ensalada de cuscús','Tostada Francesa con Toppings'],ans:1,fact:'Tortilla de patata sencilla · 27g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Pasta con tomate y atún','Calamares encebollados','Crema de verduras y legumbres','Pizza de berenjena'],ans:0,fact:'Pasta con tomate y atún · 55g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Crema de verduras y legumbres','Salteado de pollo con verduras al wok','Porridge de avena con manzana','Ensalada mixta'],ans:1,fact:'Salteado de pollo con verduras al wok · 39g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Espaguetis boloñesa','Salmón al horno con brócoli y patatas','Bol de açai','Ensalada de quinoa y atún'],ans:2,fact:'Bol de açai · 112.7g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Tostada de Peanut Butter','Tortilla de patata y calabacín','Brochetas de tomate, queso y anchoas','Ensalada de langostinos rúcula y papaya'],ans:1,fact:'Tortilla de patata y calabacín · 26g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Muffin de chocolate','Pollo guisado con verduras','Quinoa con verduras y huevo','Tosta de salmón y huevo duro'],ans:1,fact:'Pollo guisado con verduras · 32g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Helado de yogur griego','Ensalada de coliflor','Ensalada de cogollos con mejillones','Salmón al horno'],ans:3,fact:'Salmón al horno · 473kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Bacalao con salsa de pimiento y tomate','Hamburguesa vegana de alubias','Mousse de pera y kiwi','Ensalada de arroz casera'],ans:1,fact:'Hamburguesa vegana de alubias · 19g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Gnocchi con mozzarella y pollo','Bacalao al papillote','Crema cuajada de leche y queso','Trenza de chocolate'],ans:0,fact:'Gnocchi con mozzarella y pollo · 995kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Milhojas de nata','Salmorejo falso','Tortilla de espinacas y queso','Platano y pina gratinados'],ans:0,fact:'Milhojas de nata · 455kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Tartar de atún','Ensalada thai','Calamares en salsa','Potaje de setas y alubias'],ans:3,fact:'Potaje de setas y alubias · 63g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Mousse de melon','Yogur proteico con avena y fresas','Sopa crema de zanahoria y cúrcuma','Tostada con Plátano y Canela'],ans:2,fact:'Sopa crema de zanahoria y cúrcuma · 12g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Veganesa','Garbanzos con marisco','Lomo con pimientos','Tortitas de avena veganas'],ans:2,fact:'Lomo con pimientos · 33g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Merluza a la plancha con ensalada','Lomo con pimientos','Gachas dulces','Sopa crema de calabaza'],ans:2,fact:'Gachas dulces · 178.2g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Wok de pollo y verduras','Tostada Proteica con Crema de Almendra','Gambas al ajillo con arroz','Lentejas estofadas'],ans:0,fact:'Wok de pollo y verduras · 900kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Crema de verduras y legumbres','Wraps de alubias negras y salsa de aguacate','Ensalada griega vegana','Hojaldre con natillas'],ans:3,fact:'Hojaldre con natillas · 19g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Ensalada de coliflor','Tortitas proteicas de avena','Tostada Caprese','Guiso de patatas con sepia'],ans:0,fact:'Ensalada de coliflor · 18g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Boloñesa de lentejas','Estofado de pollo','Revuelto de gulas y champiñones','Pescado a la parrilla con espárragos'],ans:0,fact:'Boloñesa de lentejas · 34g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Ensalada de patata','Calamares encebollados','Tostada de Hummus con Salmón Ahumado','Sopa crema de calabaza'],ans:2,fact:'Tostada de Hummus con Salmón Ahumado · 38g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Garbanzos con almejas','Pimientos rellenos de carne','Natillas de mandarina','Patatas rellenas veganas'],ans:1,fact:'Pimientos rellenos de carne · 32g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Tosta de salmón y huevo duro','Rollitos de lenguado con salsa de espinacas','Ensaladilla de pollo y aguacate','Merluza al horno con gambas'],ans:2,fact:'Ensaladilla de pollo y aguacate · 31g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Tostada de Jamón Serrano con Tortilla de Huevo','Calamares encebollados','Fideuá al horno','Sopa de pollo'],ans:2,fact:'Fideuá al horno · 50.8g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Tortilla de verduras','Salteado de pollo con verduras al wok','Tostada con Queso, Miel y Nueces','Tostada de Guacamole'],ans:0,fact:'Tortilla de verduras · 23g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Ensalada de queso cabra y berenjenas a la plancha','Ensalada tibia de vegetales asados','Pavo salteado con calabacín','Arroz con verduras vegan'],ans:0,fact:'Ensalada de queso cabra y berenjenas a la plancha · 26g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Sopa de puerros','Sopa Thai vegana','Sopa de quinoa y verduras vegana','Pavo con champiñones y arroz'],ans:1,fact:'Sopa Thai vegana · 32g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Pancakes veganos','Ensaladilla de pollo y aguacate','Helado de platano','Ensalada de espinacas'],ans:1,fact:'Ensaladilla de pollo y aguacate · 21g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Milhoja de merengue','Tiramisu','Pizza de pollo','Arroz con mejillones'],ans:1,fact:'Tiramisu · 627kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más grasas?',opts:['Chipirones en su tinta','Guisantes con jamón y huevo duro','Risotto con champiñones y bacon','Ensalada de pollo con aguacate'],ans:2,fact:'Risotto con champiñones y bacon · 60.4g grasa'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Veganesa','Tortilla francesa de queso muzarella','Brownie en microondas','Yogur proteico con avena y fresas'],ans:2,fact:'Brownie en microondas · 55g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Gazpacho andaluz','Tostada con Yogur Griego, Fresas y Almendras','Crema de calabacín con tejas de queso','Tortitas de plátano y avena'],ans:3,fact:'Tortitas de plátano y avena · 769kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Merluza a la plancha con ensalada','Caldereta de cordero','Crema cuajada de leche y queso','Ensalada de cogollos con mejillones'],ans:2,fact:'Crema cuajada de leche y queso · 42g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Vegetales mixtos salteados','Sándwich de salmón, queso y aguacate','Tostada al Pesto con Queso','Risoto de quinoa vegano'],ans:3,fact:'Risoto de quinoa vegano · 471kcal'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más hidratos de carbono?',opts:['Platano banado en choco','Bol de salmón y col rizada / versión calórica','Gachas de avena con manzana','Tortilla de espinacas y queso'],ans:2,fact:'Gachas de avena con manzana · 62g HC'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Merluza al horno con patata','Tostada con Queso y Miel','Guiso de pescado y marisco','Brocheta de fruta gratinada'],ans:0,fact:'Merluza al horno con patata · 30g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más proteínas?',opts:['Guiso de patatas y calamares','Ensalada de pasta con pollo','Arroz integral con verduras y pollo','Salteado de verduras con huevo'],ans:2,fact:'Arroz integral con verduras y pollo · 56g prot'},
-  {q:'¿Cuál de estos platos del recetario GBH tiene más calorías?',opts:['Tostada Proteica con Crema de Almendra','Crema de calabacines','Calabacines rellenos de gambas y rape','Mero con fideos'],ans:0,fact:'Tostada Proteica con Crema de Almendra · 535kcal'}
-];
-
-// Banco combinado: 30 generales + 152 recetario = 182 dias sin repetir.
-// Regenerado 2026-07-21 desde el CSV corregido (GBH_Correccion_Recetario.sql):
-// cada pregunta usa solo recetas cuyo macro consultado esta verificado contra
-// sus propios ingredientes, con margen minimo para que la respuesta sea inequivoca.
-const QUIZ_ALL = [...QUIZ_BANK, ...QUIZ_RECETARIO];
+// Los bancos del quiz y QuizModal viven en src/QuizModal.jsx desde el 10-nov (MAESTRO-2026-1238).
 
 
 // ─── Ruleta diaria ────────────────────────────────────────────────────────────
@@ -7383,121 +5054,6 @@ function RuletaModal({onClose, onCollect, onGoHome}){
   );
 }
 
-// ─── QuizModal ────────────────────────────────────────────────────────────────
-function QuizModal({onClose, onComplete, todayKey, lang, onGoHome}){
-  const dayIdx = (()=>{const d=new Date();return(d.getFullYear()*366+Math.floor((d-new Date(d.getFullYear(),0,0))/(1000*60*60*24)))%QUIZ_ALL.length;})();
-  const q = QUIZ_ALL[dayIdx];
-  const [selected, setSelected] = useState(null);
-  const [revealed, setRevealed] = useState(false);
-  const [phase,    setPhase]    = useState("question"); // question | result
-
-  const choose = (i) => {
-    if(revealed) return;
-    setSelected(i);
-    setRevealed(true);
-    const isOk = i === q.ans;
-    if(isOk) SFX.quizOk(); else SFX.quizFail();
-    setTimeout(()=>setPhase("result"), 900);
-  };
-
-  const correct = selected===q.ans;
-  const xpGain  = correct ? 20 : 5;
-  const gemGain = correct ? 8  : 1;
-
-  return(
-    <div style={{position:"fixed",inset:0,zIndex:11000,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(8px)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={phase==="result"?onClose:undefined}>
-      <div style={{background:`linear-gradient(180deg,#1A3A10,${T.bgWood})`,borderRadius:28,width:"100%",maxWidth:360,border:`2px solid ${T.bW}`,boxShadow:"0 24px 60px rgba(0,0,0,0.8)",animation:"popIn 0.35s cubic-bezier(0.34,1.56,0.64,1)",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
-
-        {phase==="question"&&(
-          <>
-            {/* Header */}
-            <div style={{background:`linear-gradient(135deg,${T.g1},${T.g2})`,padding:"16px 20px",display:"flex",alignItems:"center",gap:12}}>
-              <div style={{fontSize:28}}>🧠</div>
-              <div style={{flex:1}}>
-                <div style={{fontSize:11,fontWeight:900,color:"rgba(255,255,255,0.7)",textTransform:"uppercase",letterSpacing:"0.1em"}}>
-                  {lang==="en"?"Daily quiz":"Quiz del día"}
-                </div>
-                <div style={{fontSize:14,fontWeight:900,color:T.t1}}>
-                  {lang==="en"?"Nutrition":"Nutrición"} · {correct?"":(lang==="en"?"Earn up to":"Gana hasta")} +20 XP +8 💎
-                </div>
-              </div>
-              {/* Botón cerrar */}
-              <button onClick={onClose} style={{
-                background:"rgba(0,0,0,0.2)",border:"2px solid rgba(255,255,255,0.3)",
-                borderRadius:"50%",width:32,height:32,color:T.t1,
-                fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",
-                justifyContent:"center",flexShrink:0,lineHeight:1,
-              }}>✕</button>
-            </div>
-            {/* Pregunta */}
-            <div style={{padding:"22px 20px 16px"}}>
-              <div style={{fontSize:16,fontWeight:800,color:T.wh,lineHeight:1.5,marginBottom:20,fontFamily:"'DM Sans',sans-serif"}}>
-                {getQuizQ(q, lang)}
-              </div>
-              {/* Opciones */}
-              <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                {getQuizOpts(q, lang).map((opt,i)=>{
-                  let bg="rgba(255,255,255,0.07)";
-                  let border=T.bW;
-                  let col=T.t1;
-                  if(revealed){
-                    if(i===q.ans){bg=alpha(T.g1,0.25);border=T.g1;col=T.g2;}
-                    else if(i===selected&&selected!==q.ans){bg="rgba(255,80,80,0.2)";border="rgba(255,80,80,0.6)";col="#FF8080";}
-                  } else if(selected===i){
-                    bg=alpha(T.au1,0.15);border=T.au1;col=T.au1;
-                  }
-                  return(
-                    <button key={i} onClick={()=>choose(i)} style={{
-                      background:bg,border:`2px solid ${border}`,borderRadius:16,
-                      padding:"14px 18px",color:col,fontWeight:800,fontSize:14,
-                      cursor:revealed?"default":"pointer",textAlign:"left",
-                      fontFamily:"'DM Sans',sans-serif",lineHeight:1.3,
-                      transition:"all 0.3s",boxShadow:"0 3px 0 rgba(0,0,0,0.4)",
-                    }}>
-                      <span style={{marginRight:10,opacity:0.5}}>{"ABCD"[i]}.</span>{opt}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </>
-        )}
-
-        {phase==="result"&&(
-          <div style={{padding:"32px 24px",textAlign:"center"}} onClick={()=>{onComplete(xpGain,gemGain);onClose();}}>
-            <div style={{fontSize:64,marginBottom:12,animation:"scaleIn 0.5s cubic-bezier(0.34,1.56,0.64,1)"}}>{correct?"🎉":"💡"}</div>
-            <div style={{fontSize:22,fontWeight:900,color:correct?T.g1:"#FF8080",marginBottom:8}}>
-              {correct?(lang==="en"?"Correct!":"¡Correcto!"):(lang==="en"?"Almost...":"Casi...")}
-            </div>
-            <div style={{fontSize:14,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:20,lineHeight:1.5}}>
-              {correct
-                ? (lang==="en"?"You knew the answer! Your nutritionist would be proud 🐑":"¡Sabías la respuesta! Tu nutricionista estaría orgulloso 🐑")
-                : lang==="en"
-                  ? `The correct answer was: "${getQuizOpts(q,lang)[q.ans]}"${getQuizFact(q,lang)?" · "+getQuizFact(q,lang):""}`
-                  : `La respuesta correcta era: "${q.opts[q.ans]}"${q.fact?" · "+q.fact:""}`}
-            </div>
-            {/* Recompensa */}
-            <div style={{display:"flex",justifyContent:"center",gap:16,marginBottom:24}}>
-              {[{icon:"⚡",val:`+${xpGain} XP`,col:T.xp},{icon:"💎",val:`+${gemGain}`,col:T.au1}].map(({icon,val,col})=>(
-                <div key={val} style={{background:"rgba(255,255,255,0.08)",borderRadius:18,padding:"12px 20px",border:`2px solid rgba(255,255,255,0.12)`}}>
-                  <div style={{fontSize:22}}>{icon}</div>
-                  <div style={{fontSize:16,fontWeight:900,color:col}}>{val}</div>
-                </div>
-              ))}
-            </div>
-            <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:16}}>
-              {lang==="en"?"Tap anywhere to continue":"Toca en cualquier lugar para continuar"}
-            </div>
-            {/* Volver a inicio */}
-            <div onClick={e=>{e.stopPropagation();onComplete(xpGain,gemGain);onGoHome();}} style={{display:"inline-block",padding:"10px 28px",borderRadius:14,border:"1.5px solid rgba(255,255,255,0.15)",color:"rgba(255,255,255,0.45)",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>
-              {lang==="en"?"← Home":"← Inicio"}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 // ─── StreakChest — cofre de racha ─────────────────────────────────────────────
 function StreakChest({streak, onOpen, alreadyOpened}){
@@ -7908,16 +5464,9 @@ function WeightChart({chartData,setWeightMode,goalWeight,shareName,lang}){
           {goalWeight&&<div style={{fontSize:10,color:"#FF6B9D",fontFamily:"'DM Sans',sans-serif",display:"flex",alignItems:"center",gap:4}}><div style={{width:12,height:2,background:"#FF6B9D",borderRadius:2,borderTop:"2px dashed #FF6B9D"}}/> {t("chartGoalLabel")}</div>}
         </div>
       </div>
-      <ResponsiveContainer width="100%" height={200}>
-        <ComposedChart data={chartData} margin={{top:5,right:5,left:-22,bottom:0}}>
-          <XAxis dataKey="date" tickFormatter={d=>d.slice(5)} tick={{fontSize:9,fill:T.t2}} tickLine={false} axisLine={false}/>
-          <YAxis domain={goalWeight?[d=>{const mn=Math.min(...chartData.map(x=>x.weight||99),goalWeight)-2;return Math.floor(mn);},"auto"]:(["auto","auto"])} tick={{fontSize:9,fill:T.t2}} tickLine={false} axisLine={false}/>
-          <Tooltip content={<CTip/>}/>
-          {goalWeight&&<Line type="monotone" dataKey={()=>goalWeight} stroke="#FF6B9D" strokeWidth={2} strokeDasharray="6 4" dot={false} name={t("chartGoalLabel")}/>}
-          <Line type="monotone" dataKey="weight" stroke={T.au1} strokeWidth={2.5} dot={{r:4.5,fill:T.au1,strokeWidth:0}} activeDot={{r:7,fill:T.au2}}/>
-          <Line type="monotone" dataKey="ma" stroke={T.xp} strokeWidth={2} strokeDasharray="5 3" dot={false}/>
-        </ComposedChart>
-      </ResponsiveContainer>
+      <React.Suspense fallback={<div style={{height:200}}/>}>
+        <GraficaPeso chartData={chartData} goalWeight={goalWeight} T={T} t={t} tooltip={<CTip/>}/>
+      </React.Suspense>
       {chartData.length>=2&&(()=>{
         const initialEntry=chartData.find(d=>d.isInitial)||chartData[0];
         const lastEntry=chartData[chartData.length-1];
@@ -8031,7 +5580,7 @@ function UserAvatar({size=52, photoB64, initials, borderColor, onClick, frame=nu
   };
 
   if(photoB64) return(
-    <div onClick={onClick} style={{
+    <div role="button" tabIndex={0} onClick={onClick} style={{
       width:size, height:size, borderRadius:size*0.33,
       ...wrapStyle,
       overflow:"hidden", cursor:"pointer", flexShrink:0,
@@ -8045,7 +5594,7 @@ function UserAvatar({size=52, photoB64, initials, borderColor, onClick, frame=nu
   // Icono genérico SVG con iniciales
   const letter = (initials||"?")[0].toUpperCase();
   return(
-    <div onClick={onClick} style={{
+    <div role="button" tabIndex={0} onClick={onClick} style={{
       width:size, height:size, borderRadius:size*0.33,
       ...wrapStyle,
       background:`linear-gradient(135deg,#2A5A2A,#1A3A10)`,
@@ -8165,12 +5714,12 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
 
         {/* ── Cabecera ── */}
         <div style={{padding:"28px 24px 18px",textAlign:"center",position:"relative"}}>
-          <button onClick={onClose} style={{position:"absolute",top:14,right:14,width:32,height:32,borderRadius:"50%",background:"rgba(0,0,0,0.3)",border:"none",color:"rgba(255,255,255,0.6)",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+          <button aria-label="Cerrar" onClick={onClose} style={{position:"absolute",top:14,right:14,width:32,height:32,borderRadius:"50%",background:"rgba(0,0,0,0.3)",border:"none",color:"rgba(255,255,255,0.6)",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
           <button onClick={onGoHome} style={{position:"absolute",top:14,left:14,height:32,borderRadius:12,background:"rgba(0,0,0,0.25)",border:"1px solid rgba(255,255,255,0.12)",color:"rgba(255,255,255,0.5)",fontSize:12,fontWeight:700,cursor:"pointer",padding:"0 10px",fontFamily:"'Nunito',sans-serif"}}>← {lang==="en"?"Home":"Inicio"}</button>
 
           {/* Foto + botón 📷 */}
           <div style={{position:"relative",display:"inline-block",marginBottom:14}}>
-            <div style={{width:100,height:100,borderRadius:28,overflow:"hidden",border:`3px solid ${T.au1}`,boxShadow:`0 6px 0 ${T.au3}`,cursor:"pointer"}} onClick={()=>fileRef.current?.click()}>
+            <div role="button" tabIndex={0} style={{width:100,height:100,borderRadius:28,overflow:"hidden",border:`3px solid ${T.au1}`,boxShadow:`0 6px 0 ${T.au3}`,cursor:"pointer"}} onClick={()=>fileRef.current?.click()}>
               {photo?(
                 <img src={photo} alt="avatar" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center top"}}/>
               ):(
@@ -8252,7 +5801,7 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
                 </div>
                 <div style={{display:"flex",gap:8}}>
                   <button onClick={()=>{onSaveProfile("height",heightEdit);setEditingHeight(false);}} style={{flex:1,background:T.g1,border:"none",borderRadius:10,padding:"8px 0",color:T.t1,fontWeight:900,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>✓ {lang==="en"?"Save":"Guardar"}</button>
-                  <button onClick={()=>setEditingHeight(false)} style={{background:"rgba(255,255,255,0.08)",border:"1.5px solid rgba(255,255,255,0.14)",borderRadius:10,padding:"8px 14px",color:T.t2,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>✕</button>
+                  <button aria-label="Cerrar" onClick={()=>setEditingHeight(false)} style={{background:"rgba(255,255,255,0.08)",border:"1.5px solid rgba(255,255,255,0.14)",borderRadius:10,padding:"8px 14px",color:T.t2,fontSize:13,cursor:"pointer",fontFamily:"'Nunito',sans-serif"}}>✕</button>
                 </div>
               </div>
             )}
@@ -8325,7 +5874,7 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
               <div style={{minWidth:0}}>
                 <div style={{fontSize:10,color:T.t2,textTransform:"uppercase",letterSpacing:"0.08em",fontFamily:"'DM Sans',sans-serif",marginBottom:3}}>
-                  {ES_IOS_NATIVO?(lang==="en"?"Account":"Cuenta"):(lang==="en"?"Subscription":"Suscripción")}
+                  {lang==="en"?"Subscription":"Suscripción"}
                 </div>
                 <div style={{fontSize:14,fontWeight:800,color:T.wh,fontFamily:"'DM Sans',sans-serif"}}>
                   {profile?.plan==="premium" ? "💎 Premium"
@@ -8342,7 +5891,7 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
               {profile?.plan==="premium" ? null
                 : (profile?.plan==="standard" && !profile?.trial_ends_at && profile?.plan_until) ? (ES_NATIVO ? (ES_ANDROID_NATIVO ? (
                 <div style={{fontSize:10,color:T.t3,fontFamily:"'DM Sans',sans-serif",maxWidth:150,textAlign:"right",lineHeight:1.4}}>{txtWebAndroid(lang,"gestionar")}</div>
-                ) : null) : (
+                ) : <ControlSuscripcionIOS lang={lang} T={T} pagado/>) : (
                 <button disabled={portalLoading}
                   onClick={async()=>{
                     setPortalLoading(true);
@@ -8358,7 +5907,7 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
                 </button>
               )) : ES_NATIVO ? (ES_ANDROID_NATIVO ? (
                 <div style={{fontSize:10,color:T.t3,fontFamily:"'DM Sans',sans-serif",maxWidth:150,textAlign:"right",lineHeight:1.4}}>{txtWebAndroid(lang,"estandar")}</div>
-              ) : null) : (
+              ) : <ControlSuscripcionIOS lang={lang} T={T} pagado={false}/>) : (
                 <button onClick={()=>abrirCheckoutStripe(profile?.id)}
                   style={{background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:"none",
                     borderRadius:10,padding:"8px 12px",color:T.t1,fontWeight:900,fontSize:12,
@@ -8433,6 +5982,12 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
                     ?<>All your data will be deleted: diet, weight, achievements and gems.<br/><b style={{color:"#FF8080"}}>This action cannot be undone.</b></>
                     :<>Se borrarán todos tus datos: dieta, peso, logros y gemas.<br/><b style={{color:"#FF8080"}}>Esta acción no se puede deshacer.</b></>}
                 </div>
+                {ES_IOS_NATIVO&&profile?.plan==="standard"&&(
+                <div style={{fontSize:11,color:"rgba(255,220,160,0.9)",fontFamily:"'DM Sans',sans-serif",marginTop:-6,marginBottom:14,textAlign:"center",lineHeight:1.5}}>
+                  {lang==="en"
+                    ?"If you have Standard through Apple, deleting your account does not cancel it: cancel it in Settings ▸ your name ▸ Subscriptions."
+                    :"Si tienes el Estándar con Apple, borrar la cuenta no lo cancela: cancélalo en Ajustes ▸ tu nombre ▸ Suscripciones."}
+                </div>)}
                 <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:8}}>
                   {lang==="en"?<>Type <b style={{color:"#FF8080",letterSpacing:"0.05em"}}>DELETE DATA</b> to confirm:</>:<>Escribe <b style={{color:"#FF8080",letterSpacing:"0.05em"}}>BORRAR DATOS</b> para confirmar:</>}
                 </div>
@@ -8491,7 +6046,7 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
 // marcados se guardan SOLO en el dispositivo (localStorage, clave por receta),
 // deliberadamente sin Supabase: es un dato personal de compra y ahorra carga.
 // Al reabrir la receta recuerda lo tachado; "Regenerar" limpia para recomprar.
-function MiniListaCompra({nombre, ingredientes, idReceta, t, onClose, etiquetaRacion, lang='es'}){
+export function MiniListaCompra({nombre, ingredientes, idReceta, t, onClose, etiquetaRacion, lang='es'}){
   const items=React.useMemo(()=>(ingredientes||"").split(/[,;](?![^(]*\))/).map(s=>s.trim()).filter(Boolean),[ingredientes]);
   const key=`gbh:minilista:${idReceta||nombre}`;
   const [checks,setChecks]=React.useState(()=>lsGet(key,{}));
@@ -8533,7 +6088,7 @@ function MiniListaCompra({nombre, ingredientes, idReceta, t, onClose, etiquetaRa
               </div>
             )}
           </div>
-          <button onClick={onClose} style={{background:"rgba(255,255,255,0.10)",border:"none",borderRadius:14,width:32,height:32,color:T.t2,fontSize:14,cursor:"pointer",fontWeight:900,flexShrink:0}}>✕</button>
+          <button aria-label="Cerrar" onClick={onClose} style={{background:"rgba(255,255,255,0.10)",border:"none",borderRadius:14,width:32,height:32,color:T.t2,fontSize:14,cursor:"pointer",fontWeight:900,flexShrink:0}}>✕</button>
         </div>
         <div style={{height:7,background:"rgba(255,255,255,0.08)",borderRadius:6,margin:"10px 0 14px",overflow:"hidden"}}>
           <div style={{height:"100%",width:`${items.length?Math.round(marc/items.length*100):0}%`,background:`linear-gradient(90deg,${T.g3},${T.g1})`,borderRadius:6,transition:"width 0.25s"}}/>
@@ -8611,6 +6166,7 @@ const normNombreG = (s)=>(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
 // MiniListaCompra al guardar el gasto real). Lo asigna el componente ra\u00edz en
 // cada render; null hasta que hay sesi\u00f3n \u2014 con null, el guardado no env\u00eda.
 let _perfilActualId = null;
+export const setPerfilActualId = (v) => { _perfilActualId = v; };   // PlanTab.jsx (MAESTRO-2026-1238)
 
 function SavedRecipeCard({rec, t, T, removeFromBook, lang, gems, isSaved, isDiscarded, onSave, onDiscard}){
   const [expanded, setExpanded] = React.useState(false);
@@ -8718,7 +6274,7 @@ function SavedRecipeCard({rec, t, T, removeFromBook, lang, gems, isSaved, isDisc
   );
 }
 
-function GBHApp(){
+export function GBHApp(){
   // Inicialización síncrona: si hay sesión guardada → "loading" (nunca "auth" en frío)
   const [screen,  setScreen]  = useState(()=>{
     try{
@@ -8744,6 +6300,8 @@ function GBHApp(){
     else setTab(d);
   };
   const [lang,    setLang]    = useState(()=>lsGet("gbh:lang","es"));
+  const [, setInglesListo] = useState(0);
+  useEffect(()=>{ if(lang==="en"&&!TRANS.en) cargarIngles().then(ok=>{ if(ok) setInglesListo(x=>x+1); }); },[lang]);
   const [muted,   setMuted]   = useState(()=>lsGet("gbh:mute",false));
   const sfx = (name,...args) => { if(!muted){ SFX[name]?.(...args); if(HAPTIC_DE_SFX[name]) haptic(HAPTIC_DE_SFX[name]); } };
   // En iOS, la app ve el perfil por vistaTienda (el Estándar como gratis). setProfile sigue escribiendo
@@ -9812,6 +7370,28 @@ function GBHApp(){
   // Fuentes científicas (Apple 1.4.1, 7-nov-2026): cualquier pantalla lanza abrirFuentes("tema") y aquí se
   // pinta la lista encima. undefined = cerrada; null = abierta arriba; "tema" = abierta en ese tema.
   const [fuentesTema,setFuentesTema]=useState(undefined);
+  // Compra de Apple del Estándar (iOS, 11-nov-2026): cualquier pantalla llama a abrirCompraApple() y aquí se pinta.
+  // Al entrar, lo que StoreKit tenga sin cerrar y los derechos vigentes van al servidor (src/comprasApple.js).
+  const [compraApple,setCompraApple]=useState(false);
+  const refrescarPlanRef=useRef(null);
+  refrescarPlanRef.current=async()=>{
+    const id=profileReal?.id; if(!id) return;
+    try{
+      const rows=await sbReq("GET",`profiles?id=eq.${id}&select=plan,trial_ends_at,plan_until&limit=1`);
+      const srv=rows&&rows[0]; if(!srv) return;
+      setProfile(p=>{ if(!p) return p; const u={...p, plan:srv.plan, trial_ends_at:srv.trial_ends_at||null, plan_until:srv.plan_until||null}; try{lsSet(`gbh:p:${u.id}`,u);}catch{} return u; });
+    }catch{}
+  };
+  useEffect(()=>{
+    const h=()=>setCompraApple(true);
+    window.addEventListener("gbh:compra-apple",h);
+    return ()=>window.removeEventListener("gbh:compra-apple",h);
+  },[]);
+  useEffect(()=>{
+    if(!ES_IOS_NATIVO||!profileReal?.id) return;
+    escucharComprasApple({ getToken:()=>getSesion()?.token, onCambio:()=>refrescarPlanRef.current?.() });
+    sincronizarComprasApple(getSesion()?.token).then(r=>{ if(r&&r.enviadas) refrescarPlanRef.current?.(); }).catch(()=>{});
+  },[profileReal?.id]);
   useEffect(()=>{
     const h=(e)=>setFuentesTema(e?.detail?.tema ?? null);
     window.addEventListener("gbh:fuentes",h);
@@ -9822,7 +7402,8 @@ function GBHApp(){
   const tutoTerminar=()=>{ try{ if(profile?.id) lsSet(`gbh:tuto:${profile.id}`,'done'); }catch{} setTutoPaso(null); };
   // En iOS, quien no es Premium no tiene programación (vistaTienda): el tour se salta los pasos del
   // plan (B3 y B4) en vez de llevarle a una pantalla que no puede usar (7-nov-2026).
-  const tutoSinPlan = ES_IOS_NATIVO && profile?.plan!=='premium';
+  // Desde el 11-nov el Estándar de Apple también la tiene.
+  const tutoSinPlan = ES_IOS_NATIVO && profile?.plan!=='premium' && profile?.plan!=='standard';
   const tutoPasoValido=(p)=> (tutoSinPlan && /^B[34]_/.test(p)) ? 'B5_peso' : p;
   const tutoAvanzar=()=>{
     const i=TUTO_ORDEN.indexOf(tutoPaso);
@@ -9955,7 +7536,7 @@ function GBHApp(){
   const lanzarProgramaciones=async(pacientes)=>{
     setProgFase('generando'); setProgT0(Date.now()); setProgJob(null);
     const r=await sbDirect("POST","admin_jobs",{tipo:'programaciones_premium',estado:'pendiente',
-      payload:{clave:GBH_ADMIN_PIN, pacientes}});
+      payload:{pacientes}});
     const j=(r?.ok&&Array.isArray(r.data)&&r.data[0])||null;
     if(j?.id){ setProgJobId(j.id); return; }
     setProgJob({resultado:{error:r?.status===404
@@ -10287,9 +7868,9 @@ function GBHApp(){
     if(todasRecetasPromiseRef.current) return todasRecetasPromiseRef.current;
     todasRecetasPromiseRef.current = (async ()=>{
       try{
-        const data = await sbLeerTodo("recipes?select=*&order=calorias.asc,id_receta.asc");
-        const norm = (Array.isArray(data)?data:[]).map(normalizeRecipe);
-        todasRecetasRef.current = norm;
+        const data = await leerRecetarioCompleto();
+        const norm = ordenPorKcal(data).map(normalizeRecipe);
+        if(Array.isArray(data)) todasRecetasRef.current = norm;   // si falla, el siguiente intento vuelve a pedirlo
         return norm;
       } finally {
         todasRecetasPromiseRef.current = null;
@@ -11234,6 +8815,13 @@ function GBHApp(){
   },[profile]);
 
   const showT=(t)=>{setToast(t);setTimeout(()=>setToast(null),4200);};
+  // La cola descartó una escritura tras 10 fallos: que el paciente lo sepa (MAESTRO-2026-1234)
+  useEffect(()=>{
+    const on=()=>showT(lang==="en"?"⚠️ A change could not be saved. Please check it and do it again.":"⚠️ Un cambio no se ha podido guardar. Revísalo y vuelve a hacerlo.");
+    window.addEventListener("gbh:cola-descarte",on);
+    return ()=>window.removeEventListener("gbh:cola-descarte",on);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[lang]);
 
   const chkBadges=useCallback(async(s,ws,b)=>{
     const wC=ws.length,tD=logs.filter(l=>l.diet).length;
@@ -12045,7 +9633,7 @@ function GBHApp(){
     await addXG(xpG, gemG);
   };
 
-  const tapSheep=()=>{const n=taps+1;setTaps(n);if(tapRef.current)clearTimeout(tapRef.current);tapRef.current=setTimeout(()=>setTaps(0),2500);if(n>=5){setPinVal("");setPinErr(false);setPinGate(true);setTaps(0);}};
+  const tapSheep=()=>{const n=taps+1;setTaps(n);if(tapRef.current)clearTimeout(tapRef.current);tapRef.current=setTimeout(()=>setTaps(0),2500);if(n>=5){setTaps(0);if(getSesion()?.admin===true){setVistaAdmin('home');setScreen("admin");loadAdmin();}else{setPinVal("");setPinErr(false);setPinGate(true);}}};
   // Reacción al toque de Bo: se apila sobre tapSheep, que sigue siendo la puerta
   // del PIN. La respuesta es SIEMPRE positiva, aunque el estado fuera hambrienta.
   const [boToque, setBoToque] = useState(false);
@@ -12056,16 +9644,9 @@ function GBHApp(){
     haptic("toma"); sfx("tap");
     setTimeout(() => setBoToque(false), 620);
   };
-  const GBH_ADMIN_PIN="5895";
-  const pinTecla=(d)=>{
-    if(pinErr)setPinErr(false);
-    const v=(pinVal+d).slice(0,4);
-    setPinVal(v);
-    if(v.length===4){
-      if(v===GBH_ADMIN_PIN){setPinGate(false);setPinVal("");setVistaAdmin('home');setScreen("admin");loadAdmin();}
-      else{setPinErr(true);setTimeout(()=>{setPinVal("");},350);}
-    }
-  };
+  // MAESTRO-2026-1234: el PIN de 4 cifras vivía aquí, en claro dentro del bundle público, y la
+  // puerta era solo del cliente. Ahora el panel se abre con la sesión de la cuenta de administración
+  // (gbh_login_pin → gbh_sesiones.es_admin), la misma que comprueba gbh_es_admin() en la base.
   const loadAdmin=async()=>{
     const d=await sbReq("GET","admin_overview?select=*")||[];
     // Plan de servicio por paciente para el filtro del panel. Se calcula el
@@ -12288,7 +9869,6 @@ function GBHApp(){
   };
 
   const CSS=`
-    @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&family=DM+Sans:wght@400;500;700&display=swap');
     *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}body{background:${T.bg};font-family:'Nunito',sans-serif;overflow-x:hidden;}
     /* Nada de recuadro azul ni de selección de texto al tocar lo que es pulsable:
        el gesto de los 5 toques en Bo llegaba a seleccionar el contenido. El texto
@@ -12856,31 +10436,14 @@ function GBHApp(){
         <style>{CSS}</style>
         <div style={{fontSize:38,marginBottom:8}}>🔐</div>
         <div style={{fontSize:17,fontWeight:900,marginBottom:4}}>Acceso de administrador</div>
-        <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:22}}>Introduce el PIN de 4 dígitos</div>
-        {/* Puntos del PIN */}
-        <div style={{display:"flex",gap:14,marginBottom:26,animation:pinErr?"gbhShake 0.35s":"none"}}>
-          {[0,1,2,3].map(i=>(
-            <div key={i} style={{width:16,height:16,borderRadius:"50%",transition:"all 0.12s",
-              background:pinErr?T.red:(i<pinVal.length?T.g1:"rgba(255,255,255,0.12)"),
-              border:"2px solid "+(pinErr?T.red:(i<pinVal.length?T.g1:"rgba(255,255,255,0.25)")),
-              boxShadow:i<pinVal.length&&!pinErr?`0 0 10px ${T.g1}66`:"none"}}/>
-          ))}
+        <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:22,maxWidth:300,textAlign:"center",lineHeight:1.5}}>
+          El panel solo se abre con la sesión de la cuenta de administración. Entra con esa cuenta y vuelve a tocar a Bo cinco veces.
         </div>
-        {pinErr&&<div style={{fontSize:12,color:T.red,fontWeight:800,marginTop:-16,marginBottom:14}}>PIN incorrecto</div>}
-        {/* Teclado */}
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,72px)",gap:12}}>
-          {["1","2","3","4","5","6","7","8","9","←","0","✕"].map(k=>(
-            <button key={k}
-              onClick={()=>{if(k==="✕"){setPinGate(false);setPinVal("");}else if(k==="←"){setPinVal(v=>v.slice(0,-1));setPinErr(false);}else pinTecla(k);}}
-              style={{height:64,borderRadius:18,fontSize:k==="←"||k==="✕"?18:22,fontWeight:900,cursor:"pointer",
-                fontFamily:"'Nunito',sans-serif",color:k==="✕"?T.red:T.t1,
-                background:k==="✕"?alpha(T.red,0.10):"rgba(255,255,255,0.06)",
-                border:"2px solid "+(k==="✕"?alpha(T.red,0.3):"rgba(255,255,255,0.12)"),
-                boxShadow:"0 4px 0 rgba(0,0,0,0.4)"}}>
-              {k}
-            </button>
-          ))}
-        </div>
+        <button onClick={()=>{setPinGate(false);setPinVal("");}}
+          style={{height:52,padding:"0 32px",borderRadius:18,fontSize:16,fontWeight:900,cursor:"pointer",fontFamily:"'Nunito',sans-serif",
+            color:T.t1,background:"rgba(255,255,255,0.06)",border:"2px solid rgba(255,255,255,0.12)",boxShadow:"0 4px 0 rgba(0,0,0,0.4)"}}>
+          Cerrar
+        </button>
         <style>{`@keyframes gbhShake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}`}</style>
       </div>
     );
@@ -13328,7 +10891,7 @@ function GBHApp(){
         );
       })()}
 
-      {showQuiz&&<QuizModal onClose={()=>setShowQuiz(false)} onComplete={onQuizComplete} todayKey={toKey()} lang={lang} onGoHome={()=>{setShowQuiz(false);setTab("home");}}/>}
+      {showQuiz&&<React.Suspense fallback={null}><QuizModal onClose={()=>setShowQuiz(false)} onComplete={onQuizComplete} todayKey={toKey()} lang={lang} onGoHome={()=>{setShowQuiz(false);setTab("home");}}/></React.Suspense>}
       {showChest&&<ChestOpenModal streak={streak} onClose={()=>setShowChest(false)} onCollect={onChestCollect} onGoHome={()=>{setShowChest(false);setTab("home");}}/>}
       {/* ── 🐑 Zona de juego + Personalización de Bo ── */}
       {/* ── Tour guiado con Bo (Fase B): spotlight sobre acciones reales ── */}
@@ -13381,6 +10944,10 @@ function GBHApp(){
       {fuentesTema!==undefined&&(
         <FuentesCientificas tema={fuentesTema} lang={lang} T={T} onClose={()=>setFuentesTema(undefined)}/>
       )}
+      {compraApple&&ES_IOS_NATIVO&&profileReal?.plan!=="premium"&&(
+        <HojaCompraApple lang={lang} T={T} profile={profileReal} getToken={()=>getSesion()?.token}
+          onHecho={()=>refrescarPlanRef.current?.()} onClose={()=>setCompraApple(false)}/>
+      )}
       {tutoPaso==='B9_cierre'&&(
         <TutoCierre nombre={profile?.name} boNombre={boNombre} boColor={boColor} boEquipados={boEquipados} sinPlan={tutoSinPlan}
           lang={lang} onFin={()=>{ sfx("streakCelebration"); tutoTerminar(); }}/>
@@ -13419,8 +10986,8 @@ function GBHApp(){
           <Suplementacion t={t} T={T} sfx={sfx} onAbrir={id=>{ if(id==="cafeina") setCafeinaAbierta(true); if(id==="creatina") abrirCreatina(); }}/>
         </div>
       )}
-      {cafeinaAbierta&&<Cafeina profile={profile} weights={weights} medicacion={suplPlan} lang={lang} t={t} T={T} sfx={sfx} onClose={()=>setCafeinaAbierta(false)}/>}
-      {creatinaAbierta&&<Creatina profile={profile} weights={weights} medicacion={suplPlan} tipoDieta={creatinaDatos.tipoDieta} sumaPliegues={creatinaDatos.sumaPliegues} lang={lang} t={t} T={T} sfx={sfx} onClose={()=>setCreatinaAbierta(false)}/>}
+      {cafeinaAbierta&&<React.Suspense fallback={null}><Cafeina profile={profile} weights={weights} medicacion={suplPlan} lang={lang} t={t} T={T} sfx={sfx} onClose={()=>setCafeinaAbierta(false)}/></React.Suspense>}
+      {creatinaAbierta&&<React.Suspense fallback={null}><Creatina profile={profile} weights={weights} medicacion={suplPlan} tipoDieta={creatinaDatos.tipoDieta} sumaPliegues={creatinaDatos.sumaPliegues} lang={lang} t={t} T={T} sfx={sfx} onClose={()=>setCreatinaAbierta(false)}/></React.Suspense>}
       {zonaJuego&&(
         <div style={{position:"fixed",inset:0,zIndex:9000,background:T.bg,display:"flex",flexDirection:"column"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"calc(14px + env(safe-area-inset-top, 0px)) 16px 8px"}}>
@@ -13444,12 +11011,14 @@ function GBHApp(){
           </div>
           <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}>
             <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,width:"100%"}}>
+              <React.Suspense fallback={<div style={{flex:1}}/>}>
               <JuegoOveja color={boColor} equipados={boEquipados} nombre={boNombre} perfilId={profile?.id}
                 partidasProp={partidasRestantes} puntosHoy={ptsHoy} puntosSemana={ptsSemana}
                 onFinPartida={finPartida} onPagarYJugar={pagarYJugar}
                 esperaSeg={esperaJugar} cargandoPartidas={!partidasListas}
                 scoreRef={scoreVivoRef} onScoreVivo={(p)=>{ if(p!==null) anotarPuntos(p); }}
                 onSalir={()=>setZonaJuego(false)} arrancarRef={arrancarJuegoRef}/>
+              </React.Suspense>
             </div>
           </div>
         </div>
@@ -13702,14 +11271,14 @@ function GBHApp(){
       {/* Banner quiz diario — si no se ha hecho hoy */}
       {!quizDone&&!quizBannerDismissed&&(
         <div style={{background:"linear-gradient(135deg,rgba(123,47,190,0.97),rgba(74,14,143,0.97))",padding:"10px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,animation:"slideDown 0.35s ease"}}>
-          <div onClick={()=>{setShowQuiz(true);setQuizBannerDismissed(true);}} style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}}>
+          <div role="button" tabIndex={0} onClick={()=>{setShowQuiz(true);setQuizBannerDismissed(true);}} style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}}>
             <div style={{width:38,height:38,borderRadius:11,background:"rgba(255,255,255,0.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:20}}>🧠</div>
             <div>
               <div style={{fontSize:12,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif",lineHeight:1.2}}>¡Quiz de nutrición disponible!</div>
               <div style={{fontSize:10,color:"rgba(255,255,255,0.75)",fontFamily:"'DM Sans',sans-serif",marginTop:1}}>Responde y gana hasta +20 XP +8 💎 →</div>
             </div>
           </div>
-          <button onClick={()=>setQuizBannerDismissed(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:"50%",width:28,height:28,color:"rgba(255,255,255,0.6)",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
+          <button aria-label="Cerrar" onClick={()=>setQuizBannerDismissed(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:"50%",width:28,height:28,color:"rgba(255,255,255,0.6)",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
         </div>
       )}
       {/* Banner offline */}
@@ -13759,7 +11328,7 @@ function GBHApp(){
                   Instalar
                 </button>
               )}
-              <button onClick={()=>{setPwaDismissed(true);lsSet("gbh:pwaDismissed",Date.now());}} style={{background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:"50%",width:28,height:28,color:"rgba(255,255,255,0.5)",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
+              <button aria-label="Cerrar" onClick={()=>{setPwaDismissed(true);lsSet("gbh:pwaDismissed",Date.now());}} style={{background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:"50%",width:28,height:28,color:"rgba(255,255,255,0.5)",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
             </div>
           </div>
         );
@@ -13782,7 +11351,7 @@ function GBHApp(){
           position:"relative",
         }}>
           {/* Zona clickable */}
-          <div onClick={()=>{irA("peso");setWeightMode("input");}}
+          <div role="button" tabIndex={0} onClick={()=>{irA("peso");setWeightMode("input");}}
             style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}}>
             <span style={{fontSize:24}}>⚖️</span>
             <div>
@@ -13824,12 +11393,12 @@ function GBHApp(){
               <BarraProgreso pct={xpPct} color={`linear-gradient(90deg,${T.xp},${T.g1})`} alto={7} radio={8}
                 fondo="rgba(255,255,255,0.12)"
                 style={{width:94,marginTop:6,boxShadow:"inset 0 2px 4px rgba(0,0,0,0.4)"}}/>
-              <div onClick={()=>setRewardsOpen(true)} style={{fontSize:9,color:T.t2,marginTop:3,fontFamily:"'DM Sans',sans-serif",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:4}}><Contador value={xp}/> XP · Lv {lv.l} <span style={{color:T.au1}}>🎁</span></div>
+              <div role="button" tabIndex={0} onClick={()=>setRewardsOpen(true)} style={{fontSize:9,color:T.t2,marginTop:3,fontFamily:"'DM Sans',sans-serif",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:4}}><Contador value={xp}/> XP · Lv {lv.l} <span style={{color:T.au1}}>🎁</span></div>
             </div>
           </div>
           {/* Counters */}
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            <div onClick={()=>{
+            <div role="button" tabIndex={0} onClick={()=>{
                 const r=chipTapsRef.current; r.n++;
                 if(r.t) clearTimeout(r.t);
                 r.t=setTimeout(()=>{
@@ -13854,6 +11423,7 @@ function GBHApp(){
           propósito: esperar a que se vaya la anterior es latencia percibida.
           No bloquea el toque — es solo pintura, la nav sigue viva. */}
       <div key={tab} className="tab-in" style={{padding:"4px 18px 0"}}>
+      <LimiteSeccion lang={lang}>
 
         {/* ── HOME ──────────────────────────────────────────────────────────── */}
         {tab==="home"&&<>
@@ -13959,7 +11529,7 @@ function GBHApp(){
            es decisión de la app (clave gbh:reducemotion), no del sistema. */
       `}</style>
             <div style={{position:"relative",width:"100%"}}>
-                            <div onClick={tocarBo} className={`sin-sel${boToque && !MOVIMIENTO_REDUCIDO() ? " bo-toque" : ""}`}
+                            <div role="button" tabIndex={0} onClick={tocarBo} className={`sin-sel${boToque && !MOVIMIENTO_REDUCIDO() ? " bo-toque" : ""}`}
                    style={{cursor:"pointer",display:"flex",justifyContent:"center"}}>
                 <Sheep estado={boToque ? "feliz" : boEstado} equipados={boEquipados} color={boColor} size={200}/>
               </div>
@@ -14022,12 +11592,12 @@ function GBHApp(){
 
           {/* ── Quiz + Ruleta ── */}
           <div style={{display:"flex",gap:8,marginBottom:10}}>
-            <div onClick={quizDone?undefined:()=>setShowQuiz(true)} style={{flex:1,background:quizDone?alpha(T.g1,0.14):T.bgWood,border:`2px solid ${quizDone?T.g1:T.bW}`,borderRadius:18,padding:"12px 10px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:5,cursor:quizDone?"default":"pointer",boxShadow:quizDone?`0 4px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)",minHeight:76,textAlign:"center"}}>
+            <div role="button" tabIndex={0} onClick={quizDone?undefined:()=>setShowQuiz(true)} style={{flex:1,background:quizDone?alpha(T.g1,0.14):T.bgWood,border:`2px solid ${quizDone?T.g1:T.bW}`,borderRadius:18,padding:"12px 10px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:5,cursor:quizDone?"default":"pointer",boxShadow:quizDone?`0 4px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)",minHeight:76,textAlign:"center"}}>
               <div style={{fontSize:26,lineHeight:1}}>{quizDone?"✅":"❓"}</div>
               <div style={{fontSize:13,fontWeight:900,color:quizDone?T.g2:T.t1}}>{quizDone?t("quizDone"):t("quiz")}</div>
               <div style={{fontSize:10,color:T.au1,fontWeight:700}}>{quizDone?"+20 XP +8 💎":t("earnXP")}</div>
             </div>
-            <div onClick={ruletaDone?undefined:()=>setShowRuleta(true)} style={{flex:1,background:ruletaDone?alpha(T.g1,0.14):T.bgWood,border:`2px solid ${ruletaDone?T.g1:T.bW}`,borderRadius:18,padding:"12px 10px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:5,cursor:ruletaDone?"default":"pointer",boxShadow:ruletaDone?`0 4px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)",minHeight:76,textAlign:"center"}}>
+            <div role="button" tabIndex={0} onClick={ruletaDone?undefined:()=>setShowRuleta(true)} style={{flex:1,background:ruletaDone?alpha(T.g1,0.14):T.bgWood,border:`2px solid ${ruletaDone?T.g1:T.bW}`,borderRadius:18,padding:"12px 10px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:5,cursor:ruletaDone?"default":"pointer",boxShadow:ruletaDone?`0 4px 0 ${T.g3}`:"0 4px 0 rgba(0,0,0,0.4)",minHeight:76,textAlign:"center"}}>
               <div style={{fontSize:26,lineHeight:1,animation:ruletaDone?"none":"pulse 2s ease-in-out infinite"}}>{ruletaDone?"✅":"🎰"}</div>
               <div style={{fontSize:13,fontWeight:900,color:ruletaDone?T.g2:T.t1}}>{ruletaDone?t("rouletteDone"):t("roulette")}</div>
               <div style={{fontSize:10,color:T.au1,fontWeight:700}}>{ruletaDone?t("untilTomorrow"):t("spinFree")}</div>
@@ -14103,7 +11673,7 @@ function GBHApp(){
                 </div>
               </Card>
               {chartData.length>0&&<WeightChart chartData={chartData} setWeightMode={setWeightMode} goalWeight={profile?.goal_weight||null} shareName={profile?.name} lang={lang}/>}
-              {profile?.sex==="F"&&chartData.length>0&&<CicloPeso profile={profile} weights={weights} lang={lang} sbReq={sbReq} T={T} Card={Card} sfx={sfx}/>}
+              {profile?.sex==="F"&&chartData.length>0&&<React.Suspense fallback={null}><CicloPeso profile={profile} weights={weights} lang={lang} sbReq={sbReq} T={T} Card={Card} sfx={sfx}/></React.Suspense>}
               {profile?.plan==='premium'&&<TarjetaMetabolismo seg={segPlan} lang={lang}/>}
             </>
           );
@@ -14181,7 +11751,7 @@ function GBHApp(){
               )}
               {/* Gráfica */}
               {chartData.length>0&&<WeightChart chartData={chartData} setWeightMode={setWeightMode} goalWeight={profile?.goal_weight||null} shareName={profile?.name} lang={lang}/>}
-              {profile?.sex==="F"&&chartData.length>0&&<CicloPeso profile={profile} weights={weights} lang={lang} sbReq={sbReq} T={T} Card={Card} sfx={sfx}/>}
+              {profile?.sex==="F"&&chartData.length>0&&<React.Suspense fallback={null}><CicloPeso profile={profile} weights={weights} lang={lang} sbReq={sbReq} T={T} Card={Card} sfx={sfx}/></React.Suspense>}
               {profile?.plan==='premium'&&<TarjetaMetabolismo seg={segPlan} lang={lang}/>}
               {/* Empty state */}
               {chartData.length===0&&(
@@ -14434,9 +12004,9 @@ function GBHApp(){
                     </div>
                     <div style={{color:T.platos,fontSize:20,flexShrink:0}}>›</div>
                   </button>
-                  {/* Recetario completo (bloqueado para free). En iOS, a quien no lo tiene ni se le
-                      enseña: nada bloqueado a la vista (Apple 3.1.1, 7-nov-2026). */}
-                  {!(ES_IOS_NATIVO&&!tieneAccesoCompleto)&&(
+                  {/* Recetario completo (bloqueado para free). En iOS se ocultó a quien no lo tenía del 7 al
+                      11-nov-2026; desde la compra de Apple del Estándar se enseña también allí. */}
+                  {(
                   <button onClick={()=>setRecipeView("completo")} style={{background:alpha(T.au1,0.10),border:`2px solid ${alpha(T.au1,0.3)}`,borderRadius:20,padding:'20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)',opacity:tieneAccesoCompleto?1:0.9}}>
                     <div style={{fontSize:40,flexShrink:0}}>{tieneAccesoCompleto?"📚":"🔒"}</div>
                     <div style={{flex:1,minWidth:0}}>
@@ -14647,6 +12217,11 @@ function GBHApp(){
                     </div>
                     </>}
                     {ES_ANDROID_NATIVO&&(<div style={{fontSize:12.5,color:T.t2,lineHeight:1.6,maxWidth:300,fontFamily:"'DM Sans',sans-serif"}}>{txtWebAndroid(lang,"estandar")}</div>)}
+                    {ES_IOS_NATIVO&&(
+                    <button onClick={()=>{sfx&&sfx("tap");abrirCompraApple();}}
+                      style={{marginTop:4,width:'100%',maxWidth:300,background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:'none',color:T.t1,fontWeight:900,fontSize:15,borderRadius:18,padding:'16px 20px',cursor:'pointer',boxShadow:`0 4px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif",display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
+                      <span style={{fontSize:20}}>⭐</span>{lang==='en'?'See the Standard plan':'Ver el plan Estándar'}
+                    </button>)}
                     {!ES_NATIVO&&(
                     <a href={`https://wa.me/${GBH_WHATSAPP}?text=${encodeURIComponent(lang==='en'?`Hi! I'm ${profile?.name||''} and I have a question about the GBH subscription 📚`:`¡Hola! Soy ${profile?.name||''} y tengo una duda sobre la suscripción de GBH 📚`)}`}
                       target="_blank" rel="noopener noreferrer" onClick={()=>sfx&&sfx("tap")}
@@ -15003,7 +12578,7 @@ function GBHApp(){
             onVerSeguimiento={espejoAbrirSeguimiento}
             onClose={()=>{sfx("tap");setEspejoDia(null);}}/>
         )}
-        {tab==="plan"&&<div data-tuto="plan-zona"><PlanTab onSupl={()=>setSuplAbierta(true)} profile={profile} lang={lang} hoyKey={hoyKey} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} descartadas={descartadas} setDescartadas={setDescartadas} showT={showT} sfx={sfx} t={t} setTab={irA} onMealRegistered={onMealRegistered} vistaInicial={planVista} onVistaConsumida={()=>setPlanVista(null)} onTutoEvent={tutoEvento}/></div>}
+        {tab==="plan"&&<div data-tuto="plan-zona"><React.Suspense fallback={<div style={{minHeight:240}}/>}><PlanTab onSupl={()=>setSuplAbierta(true)} profile={profile} lang={lang} hoyKey={hoyKey} setProfile={setProfile} savedRecipes={savedRecipes} setSavedRecipes={setSavedRecipes} descartadas={descartadas} setDescartadas={setDescartadas} showT={showT} sfx={sfx} t={t} setTab={irA} onMealRegistered={onMealRegistered} vistaInicial={planVista} onVistaConsumida={()=>setPlanVista(null)} onTutoEvent={tutoEvento}/></React.Suspense></div>}
         {/* «Pregúntale a Bo» desde el bocadillo de Inicio (src/PreguntaBo.jsx). Las acciones
             solo abren pestañas que ya existen; la escritura va a bo_registro sin cola (sbDirect). */}
         {boInicio&&boActivo(profile)&&<PreguntaBo T={T} Sheep={Sheep} lang={lang} pid={profile?.id}
@@ -15027,6 +12602,7 @@ function GBHApp(){
         {tab==="tu"&&<TuTab profile={profile} lang={lang} sfx={sfx} T={T} lv={lv} xp={xp} streak={streak} badges={badges.length} userPhoto={userPhoto}
           onPerfil={()=>setShowPhotoPicker(true)} avisosOn={avisosOn} onAvisos={()=>setShowAvisos(true)}
           muted={muted} onMute={()=>{ const nm=!muted; setMuted(nm); lsSet("gbh:mute",nm); if(!nm) SFX.tap(); }} switchLang={switchLang}/>}
+      </LimiteSeccion>
       </div>
 
       {/* ── BOTTOM NAV ────────────────────────────────────────────────────── */}
@@ -15623,18 +13199,18 @@ function ConsultaTab({profile,lang,sfx,enTu=false}){
 }
 
 // ─── PlanTab — programación semanal del paciente ────────────────────────────
-const PLAN_DIAS    = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
-const PLAN_DIAS_F  = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
-const PLAN_TOMAS   = ['Desayuno','Almuerzo','Comida','Merienda','Cena'];
-const PLAN_TOMA_IC = {Desayuno:'☀️',Almuerzo:'🍎',Comida:'🍽️',Merienda:'🥤',Cena:'🌙'};
+export const PLAN_DIAS    = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+export const PLAN_DIAS_F  = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+export const PLAN_TOMAS   = ['Desayuno','Almuerzo','Comida','Merienda','Cena'];
+export const PLAN_TOMA_IC = {Desayuno:'☀️',Almuerzo:'🍎',Comida:'🍽️',Merienda:'🥤',Cena:'🌙'};
 
 // ── Medicación y suplementación (plan_json.suplementacion) ──────────────────
 // El bloque viene del Excel de pautas vía la automatización. El parser es
 // tolerante con la clave y la capitalización de los campos para no depender
 // de la versión exacta del generador. hora en formato 'HH:MM'.
 const SUPL_HORAS_TOMA = {Desayuno:'08:00',Almuerzo:'11:00',Comida:'14:00',Merienda:'17:30',Cena:'21:00'};
-const SUPL_IC = {'Medicación':'💊','Medicacion':'💊','Suplemento':'💪'};
-const normSupl = (pj)=>{
+export const SUPL_IC = {'Medicación':'💊','Medicacion':'💊','Suplemento':'💪'};
+export const normSupl = (pj)=>{
   const raw = pj?.suplementacion ?? pj?.Suplementacion ?? pj?.medicacion ?? pj?.suplementos ?? null;
   if(!Array.isArray(raw)) return null;
   const out = raw.map(it=>({
@@ -15647,12 +13223,12 @@ const normSupl = (pj)=>{
   return out.length?out:null;
 };
 // Toma tras la que se coloca el botón según la hora ('' = antes del desayuno)
-const suplTrasToma = (hora)=>{
+export const suplTrasToma = (hora)=>{
   let tras='';
   for(const tm of PLAN_TOMAS){ if((SUPL_HORAS_TOMA[tm]||'99:99') <= hora) tras=tm; }
   return tras;
 };
-const suplHechosKey = (id,date)=>`gbh:suplhecho:${id}:${date}`;   // {nombre:true}
+export const suplHechosKey = (id,date)=>`gbh:suplhecho:${id}:${date}`;   // {nombre:true}
 // Hora local del móvil a la que "empieza" la franja de cada toma. Guía a la
 // oveja 🐑 de los mini-botones de Inicio: señala hasta qué comida debería haber
 // registrado ya el paciente. Editable si cambian los horarios habituales.
@@ -15723,7 +13299,7 @@ const _canonMatch=(txt)=>{
   return mejor;
 };
 // Porte fiel de formato_compra_realista (badges cortos: el nombre ya va a la izquierda)
-function _fmtCompra(e, c){
+export function _fmtCompra(e, c){
   const tipo=e[4], pud=e[5], paq=e[6]||6;
   const g=(c.g||0)+((pud&&c.ud)?c.ud*pud:0), ml=c.ml||0, ud=c.ud||0, cda=c.cda||0, cdta=c.cdta||0;
   const rk=(gr,paso)=>{const kg=Math.max(paso,Math.ceil(gr/paso)*paso);return kg>=1000?`${Math.round(kg/100)/10} kg`.replace(".",","):`${kg} g`;};
@@ -15783,7 +13359,7 @@ function _fmtCompra(e, c){
 // si cambia _RECHAZO_EXPANSION; `--rech --comprobar` dice si esta línea sigue al día (PEND-2026-306).
 const _RECH_EXP={"pescado":["abadejo","anchoa","anguila","atun","bacalao","besugo","bonito","boqueron","caballa","dorada","emperador","gulas","huevas","jurel","lenguado","lubina","merluza","mero","mojama","palitos de cangrejo","palitos de mar","palometa","panga","perca","pescadilla","pescado","pez espada","rape","rodaballo","salmon","salmonete","sardina","surimi","tilapia","trucha","ventresca"],"pescados":["abadejo","anchoa","anguila","atun","bacalao","besugo","bonito","boqueron","caballa","dorada","emperador","gulas","huevas","jurel","lenguado","lubina","merluza","mero","mojama","palitos de cangrejo","palitos de mar","palometa","panga","perca","pescadilla","pescado","pez espada","rape","rodaballo","salmon","salmonete","sardina","surimi","tilapia","trucha","ventresca"],"marisco":["almeja","berberecho","bogavante","calamar","cangrejo","carabinero","centollo","chipiron","chirla","cigala","coquina","gamba","langosta","langostino","marisco","mejillon","navaja","necora","ostra","percebe","pulpo","quisquilla","sepia","vieira","zamburina"],"mariscos":["almeja","berberecho","bogavante","calamar","cangrejo","carabinero","centollo","chipiron","chirla","cigala","coquina","gamba","langosta","langostino","marisco","mejillon","navaja","necora","ostra","percebe","pulpo","quisquilla","sepia","vieira","zamburina"],"carne":["albondiga","bacon","beicon","buey","butifarra","carne","carrillada","cerdo","chorizo","chuleta","codillo","conejo","contramuslo","cordero","costilla","embutido","entrecot","fiambre","hamburguesa","jamon","lomo","longaniza","morcilla","mortadela","muslo","panceta","pato","pavo","pechuga","pollo","presa","rabo","salami","salchicha","salchichon","solomillo","ternera","tocino","vaca","vacuno"],"carnes":["albondiga","bacon","beicon","buey","butifarra","carne","carrillada","cerdo","chorizo","chuleta","codillo","conejo","contramuslo","cordero","costilla","embutido","entrecot","fiambre","hamburguesa","jamon","lomo","longaniza","morcilla","mortadela","muslo","panceta","pato","pavo","pechuga","pollo","presa","rabo","salami","salchicha","salchichon","solomillo","ternera","tocino","vaca","vacuno"],"huevo":["clara","flan","frittata","huevo","mayonesa","merengue","quiche","revuelto","tortilla espanola","tortilla francesa","yema"],"huevos":["clara","flan","frittata","huevo","mayonesa","merengue","quiche","revuelto","tortilla espanola","tortilla francesa","yema"],"lacteo":["bechamel","burgos","cheddar","cottage","cuajada","emmental","feta","gouda","helado","kefir","lacteo","leche","mantequilla","mascarpone","mozzarella","nata","natillas","parmesano","queso","queso crema","queso fresco","requeson","ricotta","yogur","yogurt"],"lacteos":["bechamel","burgos","cheddar","cottage","cuajada","emmental","feta","gouda","helado","kefir","lacteo","leche","mantequilla","mascarpone","mozzarella","nata","natillas","parmesano","queso","queso crema","queso fresco","requeson","ricotta","yogur","yogurt"],"lactosa":["bechamel","burgos","cheddar","cottage","cuajada","emmental","feta","gouda","helado","kefir","lacteo","leche","mantequilla","mascarpone","mozzarella","nata","natillas","parmesano","queso","queso crema","queso fresco","requeson","ricotta","yogur","yogurt"],"gluten":["baguette","biscote","bizcocho","bocadillo","canelon","cebada","centeno","colines","cous cous","crepe","croqueta","cuscus","empanada","empanadilla","espagueti","fideo","focaccia","galleta","gluten","gnocchi","gofre","harina","hojaldre","lasana","macarron","magdalena","masa","noodles","noquis","pan","pan rallado","pasta","picos","pizza","raviolis","rebozado","seitan","tallarin","tostada","trigo","wrap"],"trigo":["baguette","biscote","bizcocho","bocadillo","canelon","cebada","centeno","colines","cous cous","crepe","croqueta","cuscus","empanada","empanadilla","espagueti","fideo","focaccia","galleta","gluten","gnocchi","gofre","harina","hojaldre","lasana","macarron","magdalena","masa","noodles","noquis","pan","pan rallado","pasta","picos","pizza","raviolis","rebozado","seitan","tallarin","tostada","trigo","wrap"],"fruto seco":["almendra","anacardo","avellana","cacahuete","castana","fruto seco","frutos secos","macadamia","mani","nueces","nuez","pecana","pinon","pistacho"],"frutos secos":["almendra","anacardo","avellana","cacahuete","castana","fruto seco","frutos secos","macadamia","mani","nueces","nuez","pecana","pinon","pistacho"],"frutoseco":["almendra","anacardo","avellana","cacahuete","castana","fruto seco","frutos secos","macadamia","mani","nueces","nuez","pecana","pinon","pistacho"],"soja":["edamame","miso","soja","soja texturizada","tempeh","tofu"],"legumbre":["alubia","frijol","garbanzo","haba","hummus","humus","judia blanca","judion","legumbre","lenteja"],"legumbres":["alubia","frijol","garbanzo","haba","hummus","humus","judia blanca","judion","legumbre","lenteja"],"garbanzo":["garbanzo","hummus","humus"],"garbanzos":["garbanzo","hummus","humus"],"fruta":["albaricoque","arandano","cereza","ciruela","frambuesa","fresa","fruta","granada","higo","kiwi","macedonia","mandarina","mango","manzana","melocoton","melon","naranja","papaya","pera","pina","platano","sandia","uva"],"frutas":["albaricoque","arandano","cereza","ciruela","frambuesa","fresa","fruta","granada","higo","kiwi","macedonia","mandarina","mango","manzana","melocoton","melon","naranja","papaya","pera","pina","platano","sandia","uva"],"casqueria":["callos","casqueria","higado","molleja","rinon","sesos"],"conserva":["conserva","lata"],"conservas":["conserva","lata"],"baina":["judia verde","vaina"],"bainas":["judia verde","vaina"],"vinagrillo":["encurtido","pepinillo","vinagre"],"vinagrillos":["encurtido","pepinillo","vinagre"],"col":["berza","col","coliflor","kale","lombarda","repollo"],"coles":["berza","col","coliflor","kale","lombarda","repollo"]};
 const _RECH_STOP=new Set(["los","las","que","con","por","del","una","uno","este","esta","como","muy","para","the","and","alimentos","alimento","comida","comidas","ningun","ninguna","nada","tipo","tipos"]);
-function interpretarRechazados(notas){
+export function interpretarRechazados(notas){
   const pref={terms:new Set(), tipos:new Set()};
   const t=String(notas||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
   if(!t) return pref;
@@ -15812,7 +13388,7 @@ function interpretarRechazados(notas){
   }
   return pref;
 }
-function recetaRechazadaJS(rec, pref){
+export function recetaRechazadaJS(rec, pref){
   if(!pref||(!pref.terms.size&&!pref.tipos.size)) return false;
   if(pref.tipos.has(String(rec.tipo||rec.Tipo||""))) return true;
   const txt=String((rec.nombre||rec.nombre_receta||"")+" "+(rec.ingredientes||""))
@@ -15889,7 +13465,7 @@ function parsearIngredienteJS(seg){
 // Acepta UNO o DOS planes semanales. Con dos, la fusión por claveIngredienteJS
 // + `partes` ya hace el trabajo: no hay lógica nueva, solo se le dan dos planes
 // en vez de uno. Es literalmente el mismo carrito con el doble de recetas.
-function agregarListaCompra(planJ, planB){
+export function agregarListaCompra(planJ, planB){
   const planes=[planJ,planB].filter(Boolean);
   if(!planes.length) return [];
   const nrm=_nrmIng;
@@ -15962,7 +13538,7 @@ const _PRECIOS_ING={"Aceite de oliva":[6,10,10],"Aceitunas":[5,10,12],"Acelgas":
 // GBH_Precios_Ingredientes.xlsx es la única fuente; esto es su export --js).
 // Se calcula sobre los items YA agregados de la instantánea. Lo que no tiene
 // precio se cuenta aparte y no se inventa.
-function costeListaItems(items){
+export function costeListaItems(items){
   let total=0, sinPrecio=0;
   for(const it of (items||[])){
     const nombre=(it.entry?it.entry[1]:it.nombre)||"";
@@ -16000,11 +13576,11 @@ function costeListaItems(items){
   const FACTOR_COMPRA = 1.07;
   return {total:Math.round(total*FACTOR_COMPRA*100)/100, sinPrecio};
 }
-const eurES=(v)=>(Math.round(v*100)/100).toFixed(2).replace(".",",");
+export const eurES=(v)=>(Math.round(v*100)/100).toFixed(2).replace(".",",");
 
 // Coste estimado de UNA receta (el texto de ingredientes tal y como lo ve el
 // paciente: su ración ya escalada). Mismo diccionario que la lista y el PDF.
-function costeRecetaJS(texto){
+export function costeRecetaJS(texto){
   let total=0, sin=0;
   for(const seg of segmentarIngredientesJS(texto||"")){
     const P=parsearIngredienteJS(seg);
@@ -16061,7 +13637,7 @@ function _sumarSegmentos(segA, segB){
 
 // Devuelve {texto, avisos}. `avisos` lista los ingredientes que NO se han
 // podido sumar: se muestran los dos y se dice por qué, en vez de inventar.
-function fusionarIngredientesJS(textoA, textoB){
+export function fusionarIngredientesJS(textoA, textoB){
   if(!textoA) return {texto:textoB||"", avisos:[]};
   if(!textoB) return {texto:textoA, avisos:[]};
   const B=segmentarIngredientesJS(textoB).map(seg=>({seg, nombre:parsearIngredienteJS(seg).nombre}));
@@ -16092,7 +13668,7 @@ function fusionarIngredientesJS(textoA, textoB){
 // (suma sobre lo previsto); 🔄 «La cambié» = otra cosa en vez de la receta (fuera o en casa).
 // 'cambiada' queda como clave HISTÓRICA (hasta el 14-sep valía «la cambié»): no se ofrece como
 // botón (oculto) y se agrega junto a 'fuera'. 'fuera' conserva su clave por los scripts que la leen.
-const PLAN_CUMPL = [
+export const PLAN_CUMPL = [
   {k:'seguida',  es:'Seguida',     en:'Followed', ic:'✅', c:T.g1},
   {k:'menos',    es:'Menos',       en:'Less',     ic:'➖', c:T.au1},
   {k:'anadida',  es:'Añadí',       en:'Added',    ic:'➕', c:T.blue},   // la receta y, además, otros platos o ingredientes
@@ -16136,22 +13712,22 @@ const MENU_ETQ = {
   es: {'1º':'1er plato','2º':'2º plato','Plato':'Plato','Postre':'Postre'},
   en: {'1º':'1st course','2º':'2nd course','Plato':'Main','Postre':'Dessert'},
 };
-const menuEtiqueta = (et, lang) => (MENU_ETQ[lang==='en'?'en':'es'][et]) || et || '';
+export const menuEtiqueta = (et, lang) => (MENU_ETQ[lang==='en'?'en':'es'][et]) || et || '';
 // La corta, para el botón «Cambiar 1º» del plato que se ve (12-oct-2026).
 const MENU_ETQ_CORTA = {
   es: {'1º':'1º','2º':'2º','Plato':'plato','Postre':'postre'},
   en: {'1º':'1st','2º':'2nd','Plato':'main','Postre':'dessert'},
 };
-const menuEtiquetaCorta = (et, lang) => (MENU_ETQ_CORTA[lang==='en'?'en':'es'][et]) || et || '';
+export const menuEtiquetaCorta = (et, lang) => (MENU_ETQ_CORTA[lang==='en'?'en':'es'][et]) || et || '';
 
-const emojiPlato = (nombre, tipo) => {
+export const emojiPlato = (nombre, tipo) => {
   if(tipo==='Postre'||tipo==='Dessert') return '🍰';
   const n = String(nombre||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
   for(const [re,em] of REGLAS_EMOJI_PLATO) if(re.test(n)) return em;
   return PLAN_TIPO_IC[tipo] || '🍴';
 };
-const PLAN_TIPO_BG = {Carne:'rgba(192,57,43,0.22)',Pescado:'rgba(41,128,185,0.22)',Vegetariana:'rgba(39,174,96,0.18)',Vegana:'rgba(22,160,133,0.18)',Ensalada:'rgba(139,195,74,0.18)','Sopa/Crema':'rgba(230,126,34,0.22)',Postre:'rgba(214,70,158,0.22)',Directo:'rgba(212,175,55,0.22)'};
-const PLAN_TIPO_COLOR={Carne:'#E57373',Pescado:T.platos,Vegetariana:'#81C784',Vegana:'#A5D6A7',Postre:'#F06292',Ensalada:'#AED581','Sopa/Crema':'#FFB74D'};
+export const PLAN_TIPO_BG = {Carne:'rgba(192,57,43,0.22)',Pescado:'rgba(41,128,185,0.22)',Vegetariana:'rgba(39,174,96,0.18)',Vegana:'rgba(22,160,133,0.18)',Ensalada:'rgba(139,195,74,0.18)','Sopa/Crema':'rgba(230,126,34,0.22)',Postre:'rgba(214,70,158,0.22)',Directo:'rgba(212,175,55,0.22)'};
+export const PLAN_TIPO_COLOR={Carne:'#E57373',Pescado:T.platos,Vegetariana:'#81C784',Vegana:'#A5D6A7',Postre:'#F06292',Ensalada:'#AED581','Sopa/Crema':'#FFB74D'};
 
 // ── Exportación CSV del seguimiento de un paciente (para el nutricionista) ────
 async function exportarSeguimientoCSV(profileId, nombre){
@@ -16332,7 +13908,7 @@ function EspejoDiaCard({frases, lang, onVerSeguimiento, onClose}){
           <div style={{fontWeight:900,fontSize:15,color:T.g2,fontFamily:"'Nunito',sans-serif",flex:1}}>
             {lang==='en'?'Your mirror today':'Tu espejo de hoy'}
           </div>
-          <button onClick={onClose} style={{background:"none",border:"none",color:T.t3,fontSize:16,cursor:"pointer",padding:"2px 6px",lineHeight:1}}>✕</button>
+          <button aria-label="Cerrar" onClick={onClose} style={{background:"none",border:"none",color:T.t3,fontSize:16,cursor:"pointer",padding:"2px 6px",lineHeight:1}}>✕</button>
         </div>
         {frases.slice(0,2).map(f=>(
           <div key={f.id} style={{fontSize:13.5,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.55,marginBottom:8}}>
@@ -16397,7 +13973,7 @@ function EspejoSemanaCard({profile, logs, lang, onVerSeguimiento}){
             {EN?'See tracking →':'Ver seguimiento →'}
           </button>
         </div>
-        <button onClick={cerrar} style={{background:"none",border:"none",color:T.t3,fontSize:15,cursor:"pointer",padding:"0 2px",lineHeight:1,flexShrink:0}}>✕</button>
+        <button aria-label="Cerrar" onClick={cerrar} style={{background:"none",border:"none",color:T.t3,fontSize:15,cursor:"pointer",padding:"0 2px",lineHeight:1,flexShrink:0}}>✕</button>
       </div>
     </Card>
   );
@@ -16407,7 +13983,7 @@ function EspejoSemanaCard({profile, logs, lang, onVerSeguimiento}){
 // Se alimenta de los registros que el paciente marca en la Programación diaria
 // (daily_logs.meals_log). El paciente ve su cumplimiento; el nutricionista lo
 // ve en su panel y puede exportarlo a CSV.
-function SeguimientoView({profile, lang}){
+export function SeguimientoView({profile, lang}){
   const EN = lang==='en';
   const MESES = EN
     ? ['January','February','March','April','May','June','July','August','September','October','November','December']
@@ -16591,7 +14167,7 @@ function SeguimientoView({profile, lang}){
 // cierre hasta que su programación esté volcada (evita estados a medias).
 const GEN_MSGS_ES=["🧮 Calculando tus calorías objetivo…","🥗 Eligiendo tus recetas…","📅 Cuadrando la semana…","🛒 Preparando tu lista de la compra…","✨ Últimos retoques…"];
 const GEN_MSGS_EN=["🧮 Calculating your target calories…","🥗 Picking your recipes…","📅 Balancing your week…","🛒 Building your shopping list…","✨ Final touches…"];
-function OverlayGenerando({lang}){
+export function OverlayGenerando({lang}){
   const msgs=lang==='en'?GEN_MSGS_EN:GEN_MSGS_ES;
   const [i,setI]=React.useState(0);
   React.useEffect(()=>{ const id=setInterval(()=>setI(x=>(x+1)%msgs.length),2600); return ()=>clearInterval(id); },[msgs.length]);
@@ -16617,1995 +14193,11 @@ function OverlayGenerando({lang}){
   );
 }
 
-function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,descartadas,setDescartadas,showT,sfx,t,setTab,onMealRegistered,vistaInicial,onVistaConsumida,onTutoEvent,onSupl}){
-  const isPremium=profile?.plan==='premium';
-  const isStandard=profile?.plan==='standard';
-  const tieneAcceso=isPremium||isStandard;
-  const gems=profile?.gems??0;
-  // ── Semana de prueba: regenerar y cambiar recetas es GRATIS (tutorial §B3:
-  //    «invita la casa»). Al acabar el trial vuelven el candado semanal y las
-  //    gemas de siempre. ──
-  const enTrial = isStandard && profile?.trial_ends_at && Date.parse(profile.trial_ends_at)>Date.now();
-  const [planes,setPlanes]=React.useState([]);
-  const [idx,setIdx]=React.useState(0);
-  const [loading,setLoading]=React.useState(true);
-  const [view,setView]=React.useState(null);
-  // "Ver mi seguimiento →" del espejo llega desde Inicio con una vista inicial:
-  // se consume una vez y se limpia en el padre, para que la siguiente entrada
-  // manual a Programación arranque en el menú de siempre.
-  React.useEffect(()=>{
-    // 'config' (desde «Pregúntale a Bo»): la pantalla «Configura tu plan», solo del estándar.
-    // {vista:'daily', dia, toma, bo} (Bo con IA desde Inicio): esa comida, con el cambio ya preparado.
-    if(vistaInicial){
-      if(typeof vistaInicial==='object'){ setView('daily'); setBoNav({dia:vistaInicial.dia, toma:vistaInicial.toma, bo:vistaInicial.bo||null}); }
-      else if(vistaInicial==='config'){ if(isStandard) setConfigView(true); }
-      else setView(vistaInicial);
-      onVistaConsumida&&onVistaConsumida(); }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[vistaInicial]);
-  // ── Tour guiado: la lista de la compra vista de verdad avanza su paso ──────
-  React.useEffect(()=>{ if(view==='lista') onTutoEvent&&onTutoEvent('lista_vista');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[view]);
-  const [config,setConfig]=React.useState(null);       // fila patient_config
-  const [configView,setConfigView]=React.useState(false); // pantalla de edición de plan
-  // ── Candado del plan estándar ──────────────────────────────────────────────
-  // 1 programación por SEMANA DE CALENDARIO. El paciente estándar (7€/mes)
-  // genera su plan y puede REGENERARLO GRATIS a partir del lunes siguiente.
-  // No hay regeneración con gemas: si quiere variar un plato, cambia esa
-  // receta concreta con gemas desde la comida del día.
-  const tienePlan = Array.isArray(planes) && planes.length > 0;   // ¿ya tiene un plan generado?
-  // ¿Ha definido su objetivo nutricional? El plan se ajusta a estas kcal, así
-  // que es OBLIGATORIO calcularlo en la pestaña Objetivo antes de generar.
-  // El objetivo puede estar en el perfil (profile.target_kcal) o, si el perfil
-  // en memoria aún no se ha refrescado, en patient_config.kcal_objetivo (que la
-  // calculadora también guarda). Comprobamos AMBOS para no volver a pedir el
-  // objetivo a quien ya lo tiene fijado.
-  const objKcal = Number(profile?.target_kcal);
-  const cfgKcal = Number(config?.kcal_objetivo);
-  const tieneObjetivo = (Number.isFinite(objKcal) && objKcal > 0) || (Number.isFinite(cfgKcal) && cfgKcal > 0);
-  // Lunes (00:00, hora local) de la semana en que se generó el plan actual.
-  const lunesDe = (ts) => {
-    const d = new Date(ts);
-    const dow = d.getDay();                 // 0=domingo … 6=sábado
-    const offset = dow===0 ? 6 : dow-1;     // días desde el lunes
-    const lunes = new Date(d.getFullYear(), d.getMonth(), d.getDate()-offset);
-    return lunes.getTime();
-  };
-  const ultimaGenMs = (tienePlan && planes[0]?.fecha_gen) ? Date.parse(planes[0].fecha_gen) : null;
-  // El plan está bloqueado mientras siga siendo la MISMA semana natural en que
-  // se generó. Al llegar el lunes siguiente, se desbloquea gratis.
-  const lunesActual = lunesDe(Date.now());
-  const lunesDelPlan = (ultimaGenMs!==null && !isNaN(ultimaGenMs)) ? lunesDe(ultimaGenMs) : null;
-  // Durante el trial NO hay candado: se puede regenerar cuantas veces se quiera
-  const planBloqueado = !enTrial && isStandard && tienePlan && lunesDelPlan!==null && lunesDelPlan >= lunesActual;
-  // Días que faltan hasta el próximo lunes (para el mensaje)
-  const proximoLunes = lunesActual + 7*24*60*60*1000;
-  const diasDesbloqueo = planBloqueado ? Math.max(1, Math.ceil((proximoLunes - Date.now())/(24*60*60*1000))) : 0;
-  const _hoyD=()=>hoyKey?new Date(hoyKey+"T12:00:00"):new Date();
-  const todayJS=_hoyD().getDay();
-  const todayPlan=todayJS===0?7:todayJS;
-  const [selDay,setSelDay]=React.useState(todayPlan);
-  // Al cruzar la medianoche con la pestaña abierta, el día seleccionado salta
-  // al nuevo "hoy". Antes se quedaba clavado en el de ayer que, si la noche era
-  // la del domingo, ya pertenecía a la semana anterior.
-  const _diaRef=React.useRef(hoyKey);
-  React.useEffect(()=>{
-    if(_diaRef.current===hoyKey) return;
-    _diaRef.current=hoyKey;
-    setSelDay(todayPlan);
-  },[hoyKey,todayPlan]);
-  const [openToma,setOpenToma]=React.useState(null);
-  const [tomaReceta,setTomaReceta]=React.useState(null);
-  const [loadingToma,setLoadingToma]=React.useState(false);
-  // ── Pareja vinculada (Fase 1) ──────────────────────────────────────────────
-  // Solo se carga el plan de la pareja si el vínculo está ACEPTADO por los dos.
-  const [pareja,setPareja]=React.useState(null);          // {id,nombre} o null
-  const [parejaPlanJ,setParejaPlanJ]=React.useState(null);
-  const [cocinarDos,setCocinarDos]=React.useState(false);
-  const [cocinarDeMas,setCocinarDeMas]=React.useState(1); // 1 | 2 | 3 (§5.3)
-  // ── MENÚ DESGLOSADO (tomas de objetivo alto: 1º y 2º) ──
-  // {etiquetas:[..], platos:[..], kcalTotal} o null si la toma es de un plato.
-  const [tomaMenu,setTomaMenu]=React.useState(null);
-  const [platoSel,setPlatoSel]=React.useState(0);
-  React.useEffect(()=>{
-    let vivo=true;
-    if(!profile?.id){ setPareja(null); setParejaPlanJ(null); return; }
-    (async()=>{
-      const filas=await sbReq('GET',`couple_links?select=de_id,a_id&estado=eq.aceptado`
-        +`&or=(de_id.eq.${profile.id},a_id.eq.${profile.id})&limit=1`);
-      const l=Array.isArray(filas)?filas[0]:null;
-      if(!vivo) return;
-      if(!l){ setPareja(null); setParejaPlanJ(null); return; }
-      const otroId = l.de_id===profile.id ? l.a_id : l.de_id;
-      const perf=await sbReq('GET',`perfiles_publicos?id=eq.${otroId}&select=id,name&limit=1`);  // Fase 2b: perfil ajeno → vista pública
-      if(!vivo) return;
-      setPareja({id:otroId, nombre:(Array.isArray(perf)&&perf[0]?.name)||''});
-    })();
-    return ()=>{vivo=false;};
-  },[profile?.id]);
-  const [generando,setGenerando]=React.useState(false);
-  // ── Recetas DESCARTADAS (repositorio OCULTO) ───────────────────────────────
-  // El estado ÚNICO vive en GBHApp (props descartadas/setDescartadas), igual
-  // que savedRecipes: así el descarte hecho desde el recetario completo y el
-  // hecho desde la ficha de una toma comparten fuente de verdad y caché
-  // (gbh:discarded:{id}). La carga inicial también la hace GBHApp en el login.
-
-  // ── Registro de cumplimiento por comida (aditivo) ───────────────────────────
-  // El paciente marca, por toma del día, qué hizo (seguida / menos / cambiada /
-  // comí fuera / saltada) y deja una nota libre del día. Se persiste en
-  // daily_logs (columnas meals_log jsonb, day_note text) por la MISMA vía de
-  // upsert que ya usa el resto de la app. No toca diet/steps/sleep ni la lógica
-  // de rachas, XP o calorías: es una capa de información para el nutricionista.
-  // ⚠️ Deps [hoyKey], no []. Congelado al montar, con la app viva pasada la
-  // medianoche del domingo la tira de días y `selDateKey` seguían apuntando a
-  // la semana ANTERIOR: lo que el paciente marcaba hoy se escribía 7 días atrás.
-  const lunesSemana = React.useMemo(()=>{
-    const d=_hoyD(); const dow=d.getDay(); const off=dow===0?6:dow-1;
-    return new Date(d.getFullYear(),d.getMonth(),d.getDate()-off);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[hoyKey]);
-  const fechaDeDia = (n)=>{ const d=new Date(lunesSemana); d.setDate(d.getDate()+(n-1)); return d; };
-  const selDateKey = toKey(fechaDeDia(selDay));
-  const finDeHoy   = (()=>{ const d=new Date(); d.setHours(23,59,59,999); return d; })();
-  const esFuturo   = fechaDeDia(selDay) > finDeHoy;             // no se registran días futuros
-  // ── Semana vigente ──────────────────────────────────────────────────────────
-  // La semana en curso es la MÁS RECIENTE EN FECHA DE PUBLICACIÓN (fecha_gen).
-  // Es lo que el nutricionista espera: al publicar una semana nueva, esa pasa a
-  // ser la actual del paciente. Así el arranque queda coherente con lo que ya
-  // hace la generación (que salta a planes[0], la recién publicada).
-  // Respaldos, por si faltara fecha_gen: (1) patient_config.semana_actual, y
-  // (2) la primera de la lista (planes viene ordenado semana.desc → idx 0 = nº
-  // más alto). Antes se priorizaba semana_actual, y si el generador no la
-  // refrescaba (se quedaba en 6), el paciente veía una semana vieja aunque
-  // hubiera un plan más nuevo publicado.
-  // (Declarado ANTES de puedeRegistrar porque este depende de él.)
-  const idxActual = React.useMemo(()=>{
-    if(!Array.isArray(planes) || !planes.length) return 0;
-    // 1) Prioridad: la de fecha de publicación más reciente.
-    let best=-1, bestT=-Infinity;
-    planes.forEach((p,i)=>{ const t=p.fecha_gen?Date.parse(p.fecha_gen):NaN; if(!isNaN(t)&&t>bestT){bestT=t;best=i;} });
-    if(best>=0) return best;
-    // 2) Respaldo: la que el config marca como actual.
-    const sa = config?.semana_actual;
-    if(sa!=null){
-      const i = planes.findIndex(p=>String(p.semana)===String(sa));
-      if(i>=0) return i;
-    }
-    // 3) Último recurso: la de número más alto (planes va en semana.desc).
-    return 0;
-  },[planes, config?.semana_actual]);
-  // El registro de platos se ancla a la SEMANA VIGENTE (idxActual), no a la de
-  // número más alto (idx===0). Con idx===0, un reinicio de ciclo (S12 → S1) o
-  // una fila huérfana con nº alto dejaban el registro apuntando a un plan viejo:
-  // el paciente monitorizaba los platos de una semana que no era.
-  const puedeRegistrar = (idx===idxActual) && !esFuturo;        // solo la semana en curso
-  const [regDia,setRegDia]   = React.useState({});              // { 'YYYY-MM-DD': {meals:{}, note:''} }
-  const [notaTmp,setNotaTmp] = React.useState('');              // texto en edición de la nota del día
-  const [notaOK,setNotaOK]   = React.useState(false);           // indicador "guardada ✓"
-  const realDia = regDia[selDateKey]?.real || {};                // Kcal reales: detalle por toma (fase 1: fracción de «menos»)
-
-  // Carga inicial: semilla desde caché local + refresco remoto de la semana actual.
-  React.useEffect(()=>{
-    if(!profile?.id) return;
-    const cache = lsGet(`gbh:logs:${profile.id}`, []);
-    const seed={};
-    (Array.isArray(cache)?cache:[]).forEach(l=>{
-      if(l?.date && (l.meals || l.note || l.real)) seed[l.date]={meals:l.meals||{}, note:l.note||'', real:l.real||{}};
-    });
-    setRegDia(seed);
-    const lunesKey=toKey(lunesSemana);
-    sbReq('GET',`daily_logs?profile_id=eq.${profile.id}&log_date=gte.${lunesKey}&select=log_date,meals_log,day_note,meals_real`)
-      .then(rows=>{
-        if(!Array.isArray(rows)) return;
-        setRegDia(prev=>{
-          const next={...prev};
-          rows.forEach(r=>{ const k=r.log_date; if(!k) return;
-            next[k]={meals:r.meals_log||next[k]?.meals||{}, note:(r.day_note??next[k]?.note)||'', real:r.meals_real||next[k]?.real||{}}; });
-          return next;
-        });
-      });
-  },[profile?.id,hoyKey]); // eslint-disable-line react-hooks/exhaustive-deps
-                           // `hoyKey`: al cruzar la medianoche se relee la semana
-                           // (que puede ser otra) en vez de arrastrar la vieja.
-
-  // Al cambiar de día (o llegar datos remotos), refleja la nota de ese día en el textarea.
-  React.useEffect(()=>{ setNotaTmp(regDia[selDateKey]?.note||''); setNotaOK(false); },[selDateKey, regDia[selDateKey]?.note]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Persiste un cambio del día: actualiza estado, caché local y upsert parcial a Supabase.
-  // El merge se basa en la caché local (que escribimos de forma SÍNCRONA) para que
-  // toques rápidos sobre varias comidas se acumulen sin pisarse.
-  const persistDia = (dateKey,{toma,estado,note,real}) => {
-    const key=`gbh:logs:${profile.id}`;
-    const arr=lsGet(key,[]); const i=arr.findIndex(l=>l.date===dateKey);
-    const cur = i>=0 ? arr[i] : {date:dateKey,diet:false,steps:false,hydration:false,sleep:false,sc:0,meals:{},note:''};
-    let meals = {...(cur.meals||{})};
-    if(toma){
-      if(meals[toma]===estado) delete meals[toma];   // volver a tocar el mismo estado lo desmarca
-      else meals[toma]=estado;
-    }
-    const nota = note!==undefined ? note : (cur.note||'');
-    // Kcal reales (fase 1): `real[toma]` guarda lo que el plan NO sabe (hoy, la fracción
-    // de «menos»; en la fase 2, los ítems de «la cambié»/«comí fuera»). Cambiar o desmarcar
-    // el estado de una toma borra su detalle; `real:{toma,detalle}` lo escribe (detalle null lo borra).
-    // Viaja en daily_logs.meals_real, columna aparte: meals_log sigue siendo la cadena de siempre.
-    let realMap={...(cur.real||{})}; let realTocado=false;
-    if(toma){ delete realMap[toma]; realTocado=true; }
-    if(real&&real.toma){ if(real.detalle) realMap[real.toma]=real.detalle; else delete realMap[real.toma]; realTocado=true; }
-    const entry={...cur,meals,note:nota,real:realMap};
-    if(i>=0) arr[i]=entry; else arr.push(entry);
-    try{ lsSet(key,arr); }catch{}
-    setRegDia(prev=>({...prev,[dateKey]:{meals,note:nota,real:realMap}}));
-    // upsert parcial: solo envía las columnas que cambian (no toca diet/steps/sleep/…)
-    const body={profile_id:profile.id,log_date:dateKey};
-    if(toma) body.meals_log=meals;
-    if(note!==undefined) body.day_note=nota;
-    if(realTocado) body.meals_real=realMap;
-    sbReq('POST','daily_logs?on_conflict=profile_id,log_date',body);
-    // Avisar a Inicio: actualiza los mini-botones por toma y, si con este registro
-    // quedan todas las tomas del día registradas, completa la misión de dieta (racha).
-    if(toma && typeof onMealRegistered==='function') onMealRegistered(dateKey, meals);
-  };
-  const setEstadoComida = (toma,estado)=>{ if(!puedeRegistrar) return; const seSetea = regDia[selDateKey]?.meals?.[toma]!==estado; persistDia(selDateKey,{toma,estado}); sfx&&sfx('step'); onTutoEvent&&onTutoEvent('comida_marcada');
-    if(seSetea&&estado==='fuera') setHoja({toma,modo:'sustituir'}); else if(seSetea&&estado==='anadida') setHoja({toma,modo:'anadir'});   // al marcar: 🔄 pregunta qué comiste en vez de la receta; ➕ qué añadiste (las dos se cierran con «Ahora no»)
-    if(seSetea&&boActivo(profile)) avisoBoMomento(estado); };
-  // «Pregúntale a Bo»: al marcar ⏭️ o 🔄, el texto FIRMADO de ese momento, una vez al día (hoyKey,
-  // no el día que se marca), en un bocadillo que no bloquea. Sin fila firmada, no sale nada.
-  const [boMomento,setBoMomento] = React.useState(null);       // {texto, firma, tema} | null
-  const [boHoja,setBoHoja] = React.useState(false);            // «Pregúntale a Bo» desde la ficha de receta
-  const avisoBoMomento = (estado)=>{
-    const ctxB = {plan:planBo(profile)};
-    const f = filaMomento(estado, ctxB); if(!f) return;
-    let alm=null; try{ alm=window.localStorage; }catch(e){ alm=null; }
-    if(momentoVisto(alm, profile?.id, hoyKey)) return;
-    marcarMomentoVisto(alm, profile?.id, hoyKey);
-    setBoMomento({texto:textoTema(f, ctxB, lang), firma:firmaTema(f, ctxB), tema:f.id});
-    boRegistrar({profile_id:profile?.id,tipo:'uso',contexto:f.contexto[0],tema:f.id,resultado:'abierto'});
-  };
-  // Kcal reales (fase 2): la hoja «¿Qué comiste?» — 'sustituir' (la cambié / comí fuera) o 'extras' (sobre cualquier estado).
-  // Los ítems viajan con sus números dentro; el total se recalcula aquí con sumaItems y se guarda en meals_real[toma].
-  const [hoja,setHoja] = React.useState(null);                 // {toma, modo} | null
-  const abrirHoja = (toma,modo)=>{ if(!puedeRegistrar) return; setHoja({toma,modo}); sfx&&sfx('tap'); };
-  const guardarHoja = (items,conocido)=>{
-    if(!hoja) return;
-    const prev = realDia[hoja.toma] || {};
-    let detalle;
-    if(hoja.modo==='extras'){ detalle = {...prev, extras: items}; }
-    else { const s = sumaItems(items); const ok = conocido!==false && items.length>0;
-      detalle = {...prev, items, conocido: ok, kcal: ok? Math.round(s.kcal) : null, p: ok? +s.p.toFixed(1) : 0, h: ok? +s.h.toFixed(1) : 0, g: ok? +s.g.toFixed(1) : 0, conMacros: ok ? s.conMacros : false}; }
-    persistDia(selDateKey,{real:{toma:hoja.toma, detalle}});
-    setHoja(null); sfx&&sfx('step');
-  };
-  // «Menos»: ¿cuánto? (¼ · ½ · ¾). Solo escribe si la toma está en «menos»; no toca el estado ni la racha.
-  const setFraccionMenos = (toma,f)=>{ if(!puedeRegistrar || regDia[selDateKey]?.meals?.[toma]!=='menos') return; persistDia(selDateKey,{real:{toma,detalle:{frac:f}}}); sfx&&sfx('tap'); };
-  const guardarNotaDia  = ()=>{ if(!puedeRegistrar) return; if(notaTmp===(regDia[selDateKey]?.note||'')) return;
-    persistDia(selDateKey,{note:notaTmp.trim()}); setNotaOK(true); setTimeout(()=>setNotaOK(false),1800); };
-
-  // Recarga los planes desde Supabase (tras generar)
-  const recargarPlanes=React.useCallback(()=>{
-    if(!profile) return Promise.resolve();
-    return sbReq('GET',`weekly_plans?profile_id=eq.${profile.id}&select=semana,plan_json,fecha_gen,pdf_url&order=semana.desc&limit=12`)
-      .then(wp=>{setPlanes(wp||[]);return wp;});
-  },[profile?.id]);
-  // Llama al servidor Railway para generar la programación al instante
-  async function generarProgramacion(opts={}){
-    if(generando) return;
-    if(!GBH_SERVER_URL){
-      showT&&showT({icon:"⚙️",title:lang==='en'?'Not configured yet':'Aún no configurado',sub:lang==='en'?'The generation server is not set up.':'El servidor de generación no está configurado todavía.'});
-      onTutoEvent&&onTutoEvent('plan_fallo');   // tour: sin servidor, el paso se salta
-      return;
-    }
-    // ── Sin objetivo nutricional no se genera (el plan se ajusta a esas kcal) ──
-    if(isStandard && !tieneObjetivo){
-      showT&&showT({icon:"🎯",title:lang==='en'?'Set your goal first':'Define tu objetivo primero',
-        sub:lang==='en'?'Go to the Goal tab to calculate your daily calories.':'Ve a la pestaña Objetivo para calcular tus calorías diarias.'});
-      setTab&&setTab('objetivo');   // Objetivo es una vista de Progreso (6-oct-2026); setTab aquí es irA()
-      return;
-    }
-
-    // ── Candado semanal: 1 plan por semana natural. SIN gemas ──
-    // Si está bloqueado (misma semana en que se generó), no se regenera:
-    // el paciente espera al lunes (gratis) o cambia recetas sueltas con gemas.
-    if(planBloqueado && tienePlan){
-      showT&&showT({icon:"🔒",title:lang==='en'?'One plan per week':'Un plan por semana',
-        sub:lang==='en'
-          ? `Your new plan unlocks Monday (${diasDesbloqueo} day${diasDesbloqueo!==1?'s':''}). To vary a meal, swap that recipe with gems.`
-          : `Tu nueva programación se desbloquea el lunes (${diasDesbloqueo} día${diasDesbloqueo!==1?'s':''}). Para variar una comida, cambia esa receta con gemas.`});
-      return;
-    }
-    setGenerando(true);   // el OverlayGenerando bloqueante informa del progreso
-    // Semana de la que partimos: si tras el intento hay una MÁS NUEVA en
-    // Supabase, la generación funcionó aunque el fetch fallara/expirara.
-    // Para detectar éxito tras regenerar: guardamos la fecha_gen previa de la
-    // semana actual. Al regenerar, el servidor REEMPLAZA la misma semana con
-    // una fecha_gen nueva (no crea una semana superior), así que comparar por
-    // número de semana fallaba y reembolsaba un plan que SÍ se había generado.
-    const fechaGenPrevia = (Array.isArray(planes)&&planes[0]?.fecha_gen) ? String(planes[0].fecha_gen) : null;
-    const semanaPrevia   = (Array.isArray(planes)&&planes[0]?.semana!=null) ? planes[0].semana : -1;
-    const planJsonPrevio = (Array.isArray(planes)&&planes[0]?.plan_json) ? JSON.stringify(planes[0].plan_json) : null;
-    let exito=false;
-    try{
-      // Timeout duro: Railway (plan gratuito) puede tardar en "despertar".
-      // Sin esto, si el servidor se cuelga la promesa no resuelve nunca y el
-      // botón se queda en "Generando…" para siempre con las gemas ya cobradas.
-      const ctrl=new AbortController();
-      const tId=setTimeout(()=>ctrl.abort(), 75000); // 75 s
-      let resp=null;
-      try{
-        resp=await fetch(GBH_SERVER_URL.replace(/\/$/,'')+'/generar',{
-          method:'POST',
-          // La identidad es la sesión (MAESTRO-2026-738): el servidor genera para el perfil de
-          // X-GBH-Sesion e ignora el profile_id del cuerpo, que queda solo para servidores antiguos.
-          headers:{'Content-Type':'application/json','X-GBH-Token':GBH_GEN_TOKEN,
-                   ...(getSesion()?.token ? {'X-GBH-Sesion':getSesion().token} : {})},
-          body:JSON.stringify({profile_id:profile.id}),
-          signal:ctrl.signal,
-        });
-      }catch(fetchErr){
-        // Abort o red caída: no lanzamos aún, comprobamos Supabase abajo.
-        console.warn("[generar] fetch falló o expiró:", fetchErr?.name||fetchErr);
-      }finally{ clearTimeout(tId); }
-
-      if(resp && !resp.ok){
-        const err=await resp.json().catch(()=>({}));
-        throw new Error(err.detail||('HTTP '+resp.status));
-      }
-
-      // Dar margen a que Supabase refleje el plan y recargar.
-      await new Promise(r=>setTimeout(r,1500));
-      const recargados = await recargarPlanes();
-      // VERIFICACIÓN REAL: ¿hay una semana nueva? Esto manda sobre el fetch:
-      // si el servidor respondió pero la app perdió la respuesta, igualmente
-      // detectamos el plan y NO cobramos de más ni dejamos colgado el botón.
-      // Éxito si: (a) el servidor respondió OK, o (b) detectamos un plan nuevo
-      // en Supabase — ya sea una semana superior (primera generación) o la
-      // misma semana con una fecha_gen distinta (REGENERACIÓN).
-      const top = Array.isArray(recargados) ? recargados[0] : null;
-      const semanaSuperior = top?.semana!=null && top.semana>semanaPrevia;
-      const fechaDistinta  = top?.fecha_gen!=null && String(top.fecha_gen)!==fechaGenPrevia;
-      const planJsonDistinto = top?.plan_json!=null && JSON.stringify(top.plan_json)!==planJsonPrevio;
-      // Cualquiera de las tres señales = se generó un plan nuevo (regeneración
-      // incluida). El plan_json siempre cambia al regenerar (recetas nuevas).
-      const planNuevo = semanaSuperior || fechaDistinta || planJsonDistinto;
-      if((resp && resp.ok) || planNuevo){
-        exito=true;
-        setIdx(0);
-        onTutoEvent&&onTutoEvent('plan_generado');   // tour: programación creada de verdad
-        sfx&&sfx("recipe");
-        showT&&showT({icon:"🎉",title:lang==='en'?'Plan ready!':'¡Programación lista!',sub:lang==='en'?'Your weekly plan is here':'Tu plan semanal ya está disponible'});
-      }else{
-        throw new Error(lang==='en'?'The server did not respond in time':'El servidor no respondió a tiempo');
-      }
-    }catch(e){
-      // (sin coletilla de gemas: la regeneración ya no cobra gemas — el texto
-      //  «gemas devueltas» era un resto de la era anterior y confundía)
-      showT&&showT({icon:"⚠️",title:lang==='en'?'Could not generate':'No se pudo generar',
-        sub:String(e.message||e).slice(0,90)});
-      onTutoEvent&&onTutoEvent('plan_fallo');   // tour: el paso se salta, no se rompe
-    }finally{
-      setGenerando(false);
-    }
-  }
-  React.useEffect(()=>{setView(null);setOpenToma(null);setTomaReceta(null);setTomaMenu(null);},[idx]);
-  React.useEffect(()=>{setOpenToma(null);setTomaReceta(null);setTomaMenu(null);},[selDay]);
-  React.useEffect(()=>{
-    if(!profile) return;
-    if(!tieneAcceso){setLoading(false);return;}
-    Promise.all([
-      sbReq('GET',`weekly_plans?profile_id=eq.${profile.id}&select=semana,plan_json,fecha_gen,pdf_url&order=semana.desc&limit=12`),
-      sbReq('GET',`patient_config?profile_id=eq.${profile.id}&select=*&limit=1`),
-    ]).then(([wp,pc])=>{
-      setPlanes(wp||[]);
-      setConfig(pc&&pc.length?pc[0]:null);
-      setLoading(false);
-    });
-  },[profile?.id]);
-  // ── El plan se escribe por CELDAS (15-oct-2026, PEND-2026-387 · MAESTRO-2026-923) ──────────────
-  // Cambiar una receta o un plato mandaba el plan_json ENTERO que la app tenía en memoria: si el
-  // paciente había cambiado algo en otro dispositivo o pestaña, lo borraba (Aritz, 15-oct: su app
-  // borró 4 cambios hechos en Safari). Ahora se escribe SOLO la celda (src/celdaPlan.js → función
-  // cambiar_celda_plan de la base, atómica) y la app se queda con el plan que devuelve la base, que
-  // trae también lo cambiado en el otro lado. Con un error HTTP, el PATCH de siempre; sin red, la
-  // celda va a la cola. `escrituraPlan` impide que una respuesta o una relectura más vieja pise en
-  // pantalla un cambio más nuevo. 07. App GBH/arnes_celda_plan.py lo prueba con este mismo texto.
-  const escrituraPlan = React.useRef({ n: 0, enVuelo: 0 });
-  const escribirCelda = (semana, toma, dia, celda, planEntero) => {
-    const e = escrituraPlan.current; const n = ++e.n; e.enVuelo++;
-    persistirCelda({ sbDirect, sbReq, enqueue, profileId: profile.id, semana, toma, dia, celda, planEntero })
-      .then(res => {
-        if(res.via === 'rpc' && res.plan && e.n === n)
-          setPlanes(ps => ps.map(p => p.semana === semana ? { ...p, plan_json: res.plan } : p));
-      })
-      .catch(err => console.warn("[celda-plan] no se pudo persistir:", err))
-      .finally(() => { e.enVuelo--; });
-  };
-  // Al volver a primer plano se relee el plan: lo cambiado en el otro dispositivo aparece sin cerrar
-  // la app, y un PATCH de reserva sale de un plan fresco. Sin red (sbReq da null) o con una escritura
-  // en marcha, se queda lo que hay: nunca se vacía la lista ni se mueve la semana que se mira.
-  const releerPlan = () => {
-    if(!profile?.id) return;
-    const e = escrituraPlan.current;
-    if(e.enVuelo > 0) return;
-    const n = e.n;
-    sbReq('GET', `weekly_plans?profile_id=eq.${profile.id}&select=semana,plan_json,fecha_gen,pdf_url&order=semana.desc&limit=12`)
-      .then(wp => { if(Array.isArray(wp) && e.n === n && e.enVuelo === 0) setPlanes(ps => fusionarPlanes(ps, wp)); });
-  };
-  // fin de los ayudantes del plan por celdas
-  React.useEffect(()=>{
-    if(!profile?.id || !tieneAcceso) return;
-    const alVolver = ()=>{ if(document.visibilityState === 'visible') releerPlan(); };
-    document.addEventListener('visibilitychange', alVolver);
-    return ()=>document.removeEventListener('visibilitychange', alVolver);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[profile?.id, tieneAcceso]);
-  const plan=planes[idx];const planJ=plan?.plan_json;
-  // «Pregúntale a Bo» con IA: ir a una comida concreta (día y toma) y abrir Bo en su ficha con el
-  // cambio ya preparado. Va aquí, detrás de planJ: el efecto lo lee en su lista de dependencias.
-  const [boNav,setBoNav] = React.useState(null);               // {dia, toma, bo} | null
-  const [boPendiente,setBoPendiente] = React.useState(null);   // {accion, ingrediente, tipo_receta} | null
-  React.useEffect(()=>{
-    if(!boNav || !planJ) return;
-    if(view!=='daily'){ setView('daily'); return; }
-    if(selDay!==boNav.dia){ setSelDay(boNav.dia); return; }
-    const nav = boNav; setBoNav(null);
-    (async()=>{ await abrirToma(nav.toma); setBoPendiente(nav.bo||null); setBoHoja(true); })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[boNav, planJ, view, selDay]);
-  // ── Plan de la pareja, de LA MISMA SEMANA que se está mirando ──────────────
-  // Tiene que ir aquí abajo (después de `plan`): arriba, junto al vínculo, la
-  // semana todavía no se conoce. Antes se traía "el último plan" de la pareja
-  // sin mirar la semana: si ella regeneraba y él no, o él navegaba a otra
-  // semana con el WeekNav, se sumaban DOS SEMANAS DISTINTAS en silencio.
-  // Si la pareja no tiene plan de esa semana, no hay fila y no se ofrece nada.
-  React.useEffect(()=>{
-    let vivo=true;
-    if(!pareja?.id || plan?.semana==null){ setParejaPlanJ(null); return; }
-    (async()=>{
-      const pl=await sbReq('GET',`weekly_plans?profile_id=eq.${pareja.id}`
-        +`&semana=eq.${encodeURIComponent(plan.semana)}&select=plan_json&limit=1`);
-      if(!vivo) return;
-      const pj=(Array.isArray(pl)&&pl[0]?.plan_json)||null;
-      // Solo las tomas: dentro de plan_json también viajan `seguimiento`
-      // (pesajes) y `suplementacion`, que no hacen falta para cocinar ni para
-      // la compra. No se guardan en memoria ni en localStorage.
-      if(!pj){ setParejaPlanJ(null); return; }
-      const soloTomas={};
-      for(const tm of PLAN_TOMAS) if(pj[tm]) soloTomas[tm]=pj[tm];
-      setParejaPlanJ(Object.keys(soloTomas).length?soloTomas:null);
-    })();
-    return ()=>{vivo=false;};
-  },[pareja?.id, plan?.semana]);
-  // ── Medicación/suplementación de HOY ─────────────────────────────────────────
-  // Premium: viene del Excel vía plan_json.suplementacion (automatización).
-  // Standard: la define el PROPIO paciente en su configuración de plan
-  // (patient_config.suplementacion, máx. 3 recordatorios → máx. +15 💎/día).
-  // Botones horizontales entre las tomas (colocados por hora). Al completarlos:
-  // +5 gemas y desaparecen el resto del día. Solo seguimiento: no tocan la racha.
-  // ⚠️ Este bloque DEBE ir después de la declaración de planJ y config (TDZ).
-  const suplHoy = React.useMemo(()=>{
-    const delPlan = normSupl(planJ);
-    if(delPlan) return delPlan;
-    if(isStandard){
-      const arr = Array.isArray(config?.suplementacion) ? config.suplementacion.slice(0,3) : null;
-      return normSupl({suplementacion:arr});
-    }
-    return null;
-  },[planJ,config,isStandard]);
-  const [suplHechos,setSuplHechos]=React.useState({});
-  React.useEffect(()=>{
-    if(!profile?.id) return;
-    setSuplHechos(lsGet(suplHechosKey(profile.id,selDateKey),{}));
-  },[profile?.id,selDateKey]);
-  const marcarSupl=(item)=>{
-    if(!profile?.id || suplHechos[item.nombre]) return;
-    const nuevos={...suplHechos,[item.nombre]:true};
-    setSuplHechos(nuevos);
-    lsSet(suplHechosKey(profile.id,selDateKey),nuevos);
-    persistDia(selDateKey,{toma:`supl|${item.nombre}`,estado:'hecho'});   // seguimiento en daily_logs
-    const newGems=(profile.gems||0)+5;
-    const updP={...profile,gems:newGems};
-    setProfile(updP); lsSet(`gbh:p:${profile.id}`,updP);
-    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:newGems});
-    sfx&&sfx("missionDone");
-    showT&&showT({icon:SUPL_IC[item.tipo]||'💊',
-      title:lang==='en'?'Done! +5 💎':'¡Completado! +5 💎',sub:item.nombre});
-  };
-  // ── Media calórica de la semana (mismo método que la automatización: media
-  //    de los totales diarios de kcal, cada día = suma de las kcal ya escaladas
-  //    de sus tomas). Da al paciente la seguridad de que, aunque cada comida
-  //    varíe, el promedio de la semana es preciso. ──────────────────────────
-  const mediaKcalSem = React.useMemo(()=>{
-    if(!planJ) return null;
-    const totales=[];
-    for(let d=1; d<=7; d++){
-      let tot=0, hay=false;
-      for(const tm of PLAN_TOMAS){
-        const m=planJ?.[tm]?.[String(d)];
-        const k=m?(parseFloat(m.Calorias_Totales)||0):0;
-        if(k>0){ tot+=k; hay=true; }
-      }
-      if(hay) totales.push(tot);
-    }
-    if(!totales.length) return null;
-    return Math.round(totales.reduce((a,b)=>a+b,0)/totales.length);
-  },[planJ]);
-  // ── Lista de la compra interactiva (FIJA) ───────────────────────────────────
-  // Es una INSTANTÁNEA de la programación original de la semana, tomada la
-  // primera vez que el plan llega al dispositivo y guardada en localStorage.
-  // Deliberadamente NO se actualiza cuando el paciente cambia recetas con gemas:
-  // probar varias opciones hasta dar con la buena acumularía ingredientes de
-  // recetas descartadas. Para comprar una receta concreta (cambiada o del
-  // recetario) está el botón 🛒 Comprar de cada receta (MiniListaCompra).
-  // ── Modo "lista para los dos" (§6) ─────────────────────────────────────────
-  // ⚠️ La instantánea Y los tachados van SCOPEADOS POR MODO. Si compartieran
-  // clave, al alternar entre "solo la mía" y "para los dos" se pisarían los
-  // tachados y aparecerían como comprados ingredientes que no lo están.
-  const [listaDeDos,setListaDeDos]=React.useState(false);
-  const puedeListaDeDos = !!(pareja && parejaPlanJ);
-  const modoDos = listaDeDos && puedeListaDeDos;
-  const sufijoModo = modoDos ? ":pareja" : "";
-  const listaSnapKey=`gbh:listasnap5:${profile?.id}:${plan?.semana??"x"}${sufijoModo}`;
-  const [listaSnap,setListaSnap]=React.useState(null);
-  React.useEffect(()=>{
-    if(!planJ){ setListaSnap(null); return; }
-    const s=lsGet(listaSnapKey,null);
-    if(Array.isArray(s)&&s.length){ setListaSnap(s); return; }
-    const items=agregarListaCompra(planJ, modoDos?parejaPlanJ:null);
-    if(items.length) lsSet(listaSnapKey,items);
-    setListaSnap(items);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[listaSnapKey, planJ?1:0, modoDos, parejaPlanJ?1:0]);
-  const listaItems = listaSnap||[];
-  // ── 💶 Gasto estimado de la compra (fijo con la instantánea) + gasto real ──
-  // El gasto real que apunta el paciente es el feedback que calibra la base de
-  // precios (tabla lista_compra_gasto; el nutricionista la cruza con el Excel).
-  _perfilActualId = profile?.id || null;   // para MiniListaCompra (gasto real)
-  const gastoEst = React.useMemo(()=>costeListaItems(listaItems),[listaItems]);
-  const gastoRealKey=`gbh:gastoreal:${profile?.id}:${plan?.semana??"x"}${sufijoModo}`;
-  const [gastoReal,setGastoReal]=React.useState("");
-  const [gastoOk,setGastoOk]=React.useState(false);
-  React.useEffect(()=>{ setGastoReal(lsGet(gastoRealKey,"")); setGastoOk(false); },[gastoRealKey]);
-  const guardarGastoReal=()=>{
-    const v=parseFloat(String(gastoReal).replace(",","."));
-    if(!(v>0)||!profile?.id) return;
-    lsSet(gastoRealKey,String(gastoReal));
-    sbReq('POST','lista_compra_gasto?on_conflict=profile_id,semana,modo',
-      {profile_id:profile.id, semana:parseInt(plan?.semana)||0, modo:modoDos?'pareja':'solo',
-       estimado_eur:gastoEst.total||null, real_eur:v, actualizado_en:new Date().toISOString()});
-    setGastoOk(true); sfx&&sfx("missionDone");
-    showT&&showT({icon:"💶",title:lang==='en'?'Saved!':'¡Guardado!',
-      sub:lang==='en'?'Thanks — it helps us fine-tune the estimate':'Gracias — nos ayuda a afinar la estimación'});
-  };
-  // (El gasto real por RECETA vive en MiniListaCompra —la pestaña 🛒 Comprar—
-  //  por orden de Alejandro: es donde el paciente tiene el ticket en la mano.)
-  // Formato del badge: cada fila puede combinar varias expresiones del mismo
-  // ingrediente entre recetas → "120 g + 1 tarrina". Despensa → compra realista.
-  const fmtParte=(p)=>{
-    if(p.tipo==="desp") return p.compra||"";
-    if(p.tipo==="veces") return p.veces>1?`×${p.veces}`:"";
-    if(p.tipo==="cont"){ const n=Math.max(1,Math.ceil(p.cant)); return `${n} ${p.uni}${n>1?"s":""}`; }
-    if(p.tipo==="ud"){ const n=Math.max(1,Math.ceil(p.cant)); return `×${n}`; }
-    if(p.tipo==="med"){ const n=Math.round(p.cant*10)/10; return `${String(n).replace(".",",")} ${p.uni}`; }
-    let c=p.cant, u=p.uni;
-    if(u==="g"&&c>=1000){ c=c/1000; u="kg"; }
-    if(u==="ml"&&c>=1000){ c=c/1000; u="l"; }
-    const num=(Math.round(c*100)/100).toString().replace(".",",");
-    return `${num} ${u}`;
-  };
-  const fmtCant=(it)=>it.entry?_fmtCompra(it.entry,it.c||{}):(it.partes||[]).map(fmtParte).filter(Boolean).join(" + ");
-  const listaLsKey=`gbh:listacompra3:${profile?.id}:${plan?.semana??"x"}${sufijoModo}`;
-  const [listaChecks,setListaChecks]=React.useState({});
-  const [listaConfirm,setListaConfirm]=React.useState(false);   // doble tap en Regenerar
-  const [miniCompra,setMiniCompra]=React.useState(null);        // popup 🛒 por receta (vista diaria)
-  React.useEffect(()=>{ setListaChecks(lsGet(listaLsKey,{})); setListaConfirm(false); },[listaLsKey]);
-  // Clave COMPARTIDA de la lista de dos: el lunes de esta semana lo calculan
-  // igual los dos dispositivos, así que los dos apuntan a la misma fila.
-  const claveDos = (pareja&&profile?.id)
-    ? [profile.id,pareja.id].sort().join("_")+":"+toKey(lunesSemana) : null;
-  // Los tachados de la lista combinada viven en Supabase: si no, uno compra lo
-  // que el otro ya ha comprado, que es justo la fricción que estamos quitando.
-  // Sin realtime: se refresca al abrir la lista y al volver a la app.
-  const traerChecksDos=React.useCallback(async()=>{
-    if(!claveDos) return;
-    const filas=await sbReq('GET',`couple_shopping?select=tachados&clave=eq.${encodeURIComponent(claveDos)}&limit=1`);
-    const t=Array.isArray(filas)&&filas[0]?.tachados;
-    if(t&&typeof t==='object'){ setListaChecks(t); lsSet(listaLsKey,t); }
-  },[claveDos,listaLsKey]);
-  React.useEffect(()=>{
-    if(!modoDos||view!=='lista') return;
-    traerChecksDos();
-    const alVolver=()=>{ if(document.visibilityState==='visible') traerChecksDos(); };
-    document.addEventListener('visibilitychange',alVolver);
-    return ()=>document.removeEventListener('visibilitychange',alVolver);
-  },[modoDos,view,traerChecksDos]);
-  const guardarChecks=(n)=>{
-    lsSet(listaLsKey,n);
-    if(modoDos&&claveDos)
-      sbReq('POST','couple_shopping?on_conflict=clave',
-        {clave:claveDos, tachados:n, actualizado_en:new Date().toISOString()});
-  };
-  const toggleListaCheck=(k)=>{
-    sfx&&sfx("tap");
-    setListaChecks(c=>{ const n={...c}; if(n[k])delete n[k]; else n[k]=true; guardarChecks(n); return n; });
-  };
-  const regenerarLista=()=>{
-    if(!listaConfirm){ setListaConfirm(true); return; }
-    sfx&&sfx("missionDone");
-    setListaChecks({}); guardarChecks({}); setListaConfirm(false);
-    showT&&showT({icon:"🛒",title:lang==='en'?'List reset!':'¡Lista regenerada!',sub:lang==='en'?'Ready for a new shopping trip':'Lista limpia para volver a hacer la compra'});
-  };
-  // ── Distribución de macros del día: desde la fase 1 de «Kcal reales» la calcula
-  //    src/kcalDia.js (misma definición Atwater 4/4/9) y la pinta <TuDia/> al final
-  //    de Platos diarios, junto a las kcal reales frente a las previstas. ─
-  // ── Semana vigente: idxActual está declarado más arriba (antes de
-  // puedeRegistrar, que depende de él). Aquí solo queda el posicionamiento. ──
-  // Al abrir el Plan (o tras (re)generar) posiciona en la semana vigente, no en
-  // la última que estuviera mirando el paciente. No interfiere con la navegación
-  // manual dentro de la sesión: idxActual solo cambia si cambian los planes o la
-  // semana_actual, no al pulsar las flechas.
-  React.useEffect(()=>{ setIdx(idxActual); },[idxActual]);
-  // ¿El paciente estándar ya configuró su plan?
-  const configCompleta = config?.config_completa === true;
-  // Caché de todas las recetas (se carga una vez) para buscar por nombre sin
-  // depender de acentos/codificación en la URL de PostgREST.
-  const recetasCacheRef = React.useRef(null);
-  const normNombre = (s)=>(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
-
-  const RECIPES_CACHE_KEY = 'gbh:recipes_cache_v2';
-  const RECIPES_CACHE_TTL = 24*60*60*1000; // 24 h
-  async function cargarRecetasCache(){
-    if(recetasCacheRef.current) return recetasCacheRef.current;
-    try{
-      const cached = JSON.parse(localStorage.getItem(RECIPES_CACHE_KEY)||'null');
-      if(cached?.ts && Date.now()-cached.ts < RECIPES_CACHE_TTL && cached.mapa && Object.keys(cached.mapa).length){
-        recetasCacheRef.current = cached.mapa;
-        return cached.mapa;
-      }
-    }catch{}
-    const todas = await sbLeerTodo('recipes?select=*&order=id_receta.asc');   // en bloques: con limit=1000, desde la receta 1.001 el cambio no la vería
-    const mapa = {};
-    (todas||[]).forEach(r=>{
-      const nom = r.nombre||r.nombre_receta||r.Nombre_Receta||'';
-      if(nom) mapa[normNombre(nom)] = r;
-    });
-    if(Object.keys(mapa).length){
-      recetasCacheRef.current = mapa;
-      try{ localStorage.setItem(RECIPES_CACHE_KEY, JSON.stringify({ts:Date.now(), mapa})); }catch{}
-    }
-    return mapa;
-  }
-
-  // Normaliza un plato del menú desglosado al formato de tomaReceta.
-  // Los platos vienen del plan YA escalados a la ración del paciente (kcal,
-  // macros e ingredientes), igual que las celdas normales de planes nuevos.
-  const platoMenuAReceta = (pl)=>({
-    nombre:       pl.Nombre_Receta||'',
-    tipo:         pl.Tipo||'',
-    calorias:     Math.round(parseFloat(pl.Calorias_Totales)||0),
-    proteinas_g:  Math.round(parseFloat(pl.Proteinas_g)||0),
-    hidratos_g:   Math.round(parseFloat(pl.Hidratos_g)||0),
-    grasas_g:     Math.round(parseFloat(pl.Grasas_g)||0),
-    ingredientes: pl.Ingredientes||'',
-    instrucciones:pl.Instrucciones||(lang==='en'?'No preparation steps available.':'Sin pasos de preparación disponibles.'),
-    racion_texto: pl.racion_texto||'',
-    racion_factor:parseFloat(pl.racion_factor)||1,
-    raciones:     parseInt(pl.raciones||1)||1,
-    // Las kcal que le puso la programación: un plato ya cambiado las guarda en
-    // kcal_objetivo, para que varios cambios seguidos no se vayan desviando.
-    kcal_objetivo:Math.round(parseFloat(pl.kcal_objetivo)||parseFloat(pl.Calorias_Totales)||0),
-    slug:null, publica:false,   // los platos del menú no tienen escaparate propio
-  });
-
-  async function abrirToma(toma){
-    onTutoEvent&&onTutoEvent('receta_abierta');   // tour: receta del día abierta
-    const meal=planJ?.[toma]?.[String(selDay)];
-    if(!meal?.Nombre_Receta) return;
-    setOpenToma(toma);setTomaReceta(null);setLoadingToma(true);
-    setCocinarDos(false);setCocinarDeMas(1);   // cada plato se decide aparte
-
-    // ── MENÚ DESGLOSADO: la celda trae los TOTALES (un único registro para
-    // toda la toma) y `platos` con cada plato completo. Se muestran como
-    // pestañas — cada plato con SUS ingredientes y SU preparación — y el
-    // cumplimiento sigue siendo UNO para todo el menú (nada que cambiar en
-    // el registro: meals[toma]=estado ya engloba la toma entera).
-    if(meal.compuesta && Array.isArray(meal.platos) && meal.platos.length>=2){
-      setTomaMenu({
-        etiquetas:(Array.isArray(meal.etiquetas)&&meal.etiquetas.length>=2)?meal.etiquetas:['1º','2º'],
-        platos:   meal.platos,
-        kcalTotal:Math.round(parseFloat(meal.Calorias_Totales)||0),
-      });
-      setPlatoSel(0);
-      setTomaReceta(platoMenuAReceta(meal.platos[0]));
-      setLoadingToma(false);
-      return;
-    }
-    setTomaMenu(null);
-
-    // El plan generado YA trae la receta escalada a la ración del paciente:
-    // kcal, macros e ingredientes con las cantidades que le corresponden.
-    // El recetario de Supabase solo se usa como apoyo (instrucciones) o como
-    // fallback para planes antiguos sin datos embebidos.
-    const fRac = parseFloat(meal.racion_factor)||1;
-    const racTxt = meal.racion_texto || (Math.abs(fRac-1)>=0.05 ? racionTextoJS(fRac, lang) : '');
-
-    let r = null;
-    const necesitaRecetario = !meal.Ingredientes || !meal.Instrucciones;
-    if(necesitaRecetario){
-      const mapa = await cargarRecetasCache();
-      const clave = normNombre(meal.Nombre_Receta);
-      r = mapa[clave];
-      if(!r){
-        const frag = normNombre(meal.Nombre_Receta).split(' ').slice(0,3).join(' ');
-        const k = Object.keys(mapa).find(key=>key.includes(frag) || frag.includes(key));
-        if(k) r = mapa[k];
-      }
-    }
-
-    if(meal.Ingredientes){
-      // ── Plan nuevo: todo embebido y ya escalado ──
-      setTomaReceta({
-        nombre:       meal.Nombre_Receta,
-        tipo:         meal.Tipo||'',
-        calorias:     Math.round(parseFloat(meal.Calorias_Totales)||0),
-        proteinas_g:  Math.round(parseFloat(meal.Proteinas_g)||0),
-        hidratos_g:   Math.round(parseFloat(meal.Hidratos_g)||0),
-        grasas_g:     Math.round(parseFloat(meal.Grasas_g)||0),
-        ingredientes: meal.Ingredientes,
-        instrucciones:meal.Instrucciones||r?.instrucciones||(lang==='en'?'No preparation steps available.':'Sin pasos de preparación disponibles.'),
-        racion_texto: racTxt,
-        racion_factor: fRac,
-        raciones:     parseInt(meal.raciones||1)||1,
-        kcal_objetivo:Math.round(parseFloat(meal.Calorias_Totales)||0),
-        slug:         r?.slug||null,  publica: !!(r?.publica),   // escaparate público
-      });
-    } else if(r){
-      // ── Plan antiguo: receta base del recetario, escalada en cliente ──
-      setTomaReceta({
-        nombre:       r.nombre||r.nombre_receta||meal.Nombre_Receta,
-        tipo:         r.tipo||meal.Tipo||'',
-        calorias:     Math.round((parseFloat(r.calorias||r.calorias_totales||meal.Calorias_Totales)||0)*fRac),
-        proteinas_g:  Math.round((parseFloat(r.proteinas_g||meal.Proteinas_g)||0)*fRac),
-        hidratos_g:   Math.round((parseFloat(r.hidratos_g||meal.Hidratos_g)||0)*fRac),
-        grasas_g:     Math.round((parseFloat(r.grasas_g||meal.Grasas_g)||0)*fRac),
-        ingredientes: escalarIngredientesJS(r.ingredientes||'', fRac),
-        instrucciones:r.instrucciones||(lang==='en'?'No preparation steps available.':'Sin pasos de preparación disponibles.'),
-        racion_texto: racTxt,
-        racion_factor: fRac,
-        raciones:     parseInt(r.raciones||1)||1,
-        kcal_objetivo:Math.round((parseFloat(r.calorias||r.calorias_totales||meal.Calorias_Totales)||0)*fRac),
-        slug:         r.slug||null,   publica: !!r.publica,      // escaparate público
-      });
-    } else {
-      // No se encontró en el recetario: mostrar al menos los macros del plan
-      setTomaReceta({
-        nombre:meal.Nombre_Receta,tipo:meal.Tipo||'',
-        calorias:Math.round(parseFloat(meal.Calorias_Totales)||0),
-        proteinas_g:Math.round(parseFloat(meal.Proteinas_g)||0),
-        hidratos_g:Math.round(parseFloat(meal.Hidratos_g)||0),
-        grasas_g:Math.round(parseFloat(meal.Grasas_g)||0),
-        ingredientes:'',
-        instrucciones:lang==='en'?'No recipe details found.':'Detalle de receta no disponible.',
-        racion_texto: racTxt,
-        kcal_objetivo:Math.round(parseFloat(meal.Calorias_Totales)||0),
-      });
-    }
-    setLoadingToma(false);
-  }
-
-  // ── Cambiar la receta por otra de composición similar (10 💎) ──────────────
-  // `opc.sinIngrediente` (desde «Pregúntale a Bo», «Me falta un ingrediente»): veta además las recetas
-  // que lo lleven. Desde el botón 🔄 llega el evento del clic, que no lo trae. Devuelve
-  // {ok, nombre} o {ok:false, motivo} para que Bo diga qué pasó; el botón lo ignora.
-  async function cambiarRecetaToma(opc){
-    const sinIng = (opc && typeof opc==='object' && typeof opc.sinIngrediente==='string' && opc.sinIngrediente.trim()) ? opc.sinIngrediente.trim() : null;
-    const tipoR  = (opc && typeof opc==='object' && typeof opc.tipo==='string' && opc.tipo.trim()) ? opc.tipo.trim() : null;   // «algo de pescado» (Bo con IA)
-    if(!tomaReceta||!profile) return {ok:false};
-    const costeCambio = enTrial ? 0 : 10;   // gratis mientras dura la prueba
-    if(costeCambio>0 && gems < costeCambio){
-      sfx&&sfx("error");
-      showT&&showT({icon:"💎",title:lang==='en'?'Not enough gems':'Sin gemas suficientes',sub:lang==='en'?'You need 10 💎 to change the recipe':'Necesitas 10 💎 para cambiar la receta'});
-      return {ok:false, motivo:'gemas'};
-    }
-    // Menú de dos platos: se cambia SOLO el plato que se ve (12-oct-2026).
-    if(tomaMenu) return await cambiarPlatoMenu({sinIng, tipoR, costeCambio});
-    const mapa = await cargarRecetasCache();
-    const recetas = Object.values(mapa);
-    // ── Qué receta sale: src/cambioReceta.js (28-sep-2026) ────────────────────
-    // DURO: la franja, la lista del servidor (plan_json.cambio_receta: dieta,
-    // sin gluten, sin carne, desayuno realista, rechazados y alergias de su
-    // pauta y «solo sencillas»), los rechazados de patient_config.notas (lo
-    // que el paciente apunta en «Alimentos que no quieres»), las descartadas 🗑️
-    // y que la ración quepa en 0,70-1,40. El tipo y los macros solo ordenan.
-    // Antes las notas se leían de profile.notas, una columna que no existe: el
-    // filtro de alergias no vetaba nada. Cada hueco recuerda lo ya enseñado.
-    const tipoActual = tomaReceta.tipo;
-    const kcalObjetivo = tomaReceta.kcal_objetivo || tomaReceta.calorias || 0;
-    let almacen = null;
-    try{ almacen = window.localStorage; }catch(e){ almacen = null; }
-    const memClave = claveMemoriaCambio(profile.id, plan?.semana ?? '', openToma, selDay);
-    const mem = leerMemoriaCambio(almacen, memClave, tomaReceta);
-    const enPlan = new Set();   // lo que ya sale en la semana (fuera de este hueco): se deja para después
-    for(const tm of PLAN_TOMAS){
-      for(const [d,c] of Object.entries(planJ?.[tm]||{})){
-        if(tm===openToma && String(d)===String(selDay)) continue;
-        if(c?.Nombre_Receta) enPlan.add(normNombreCambio(c.Nombre_Receta));
-        (Array.isArray(c?.platos)?c.platos:[]).forEach(pl=>{ if(pl?.Nombre_Receta) enPlan.add(normNombreCambio(pl.Nombre_Receta)); });
-      }
-    }
-    const rechPref = interpretarRechazados(config?.notas);
-    const res = elegirRecetaCambio({
-      recetas, actual:tomaReceta, ancla:mem.ancla, toma:openToma,
-      permitidas: permitidasDePlanes(planes, openToma),
-      rechazada:  (r)=>recetaRechazadaJS(r, rechPref) || (!!sinIng && contieneIngrediente(r?.ingredientes||'', sinIng))
-                       || (!!tipoR && String(r?.tipo||'')!==tipoR),
-      descartadas:new Set((descartadas||[]).map(r=>normNombreCambio(r.nombre||''))),
-      favoritas:  new Set((savedRecipes||[]).map(r=>normNombreCambio(r.nombre||r.nombre_receta||''))),
-      vistas:mem.vistas, enPlan,
-    });
-    // Si no hay nada que ofrecer se avisa «Sin alternativa» y NO se cobran
-    // gemas: mejor no cambiar que servir un despropósito o un alimento vetado.
-    if(!res.receta){
-      showT&&showT({icon:"🚫",title:lang==='en'?'No alternative':'Sin alternativa',sub:lang==='en'?'No similar recipe available':'No hay receta similar disponible'});
-      return {ok:false, motivo:'sin_alternativa'};
-    }
-    const elegida = res.receta;
-    guardarMemoriaCambio(almacen, memClave, {...mem, actual:tomaReceta, elegida, reinicio:res.reinicio});
-    // Descontar gemas (0 durante la prueba: invita la casa)
-    if(costeCambio>0){
-      const newGems = gems - costeCambio;
-      const updP = {...profile, gems:newGems};
-      setProfile(updP); lsSet(`gbh:p:${profile.id}`, updP);
-      sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:newGems});
-    }
-    sfx&&sfx("recipe");
-    // ── La ración: el factor de elegirRecetaCambio (0,70-1,40 en pasos de
-    //    0,05, el rango RACION_MIN/MAX del generador). ──
-    const kcalObj = kcalObjetivo;
-    const kcalBase = parseFloat(elegida.calorias||elegida.calorias_totales)||0;
-    const f = res.factor;
-    setTomaReceta({
-      nombre:       elegida.nombre||elegida.nombre_receta||'',
-      tipo:         elegida.tipo||tipoActual,
-      calorias:     Math.round(kcalBase*f),
-      proteinas_g:  Math.round((parseFloat(elegida.proteinas_g)||0)*f),
-      hidratos_g:   Math.round((parseFloat(elegida.hidratos_g)||0)*f),
-      grasas_g:     Math.round((parseFloat(elegida.grasas_g)||0)*f),
-      ingredientes: escalarIngredientesJS(elegida.ingredientes||'', f),
-      instrucciones:elegida.instrucciones||(lang==='en'?'No preparation steps available.':'Sin pasos de preparación disponibles.'),
-      racion_texto: f!==1 ? racionTextoJS(f, lang) : '',
-      raciones:     parseInt(elegida.raciones||1)||1,
-      kcal_objetivo:kcalObj,
-    });
-    showT&&showT({icon:"🍽️",title:lang==='en'?'New recipe!':'¡Nueva receta!',sub:'-10 💎'});
-
-    // ── Persistir el cambio en weekly_plans: sin esto, el cambio de 10 💎
-    //    se pierde al cerrar la app (solo vivía en el estado de React). Se
-    //    escribe SOLO esta celda (escribirCelda, 15-oct-2026) ──
-    if(plan && openToma && selDay){
-      try{
-        const nuevoJson = JSON.parse(JSON.stringify(planJ||{}));
-        if(!nuevoJson[openToma]) nuevoJson[openToma]={};
-        nuevoJson[openToma][String(selDay)] = {
-          Nombre_Receta: elegida.nombre||elegida.nombre_receta||'',
-          Tipo:          elegida.tipo||tipoActual,
-          Calorias_Totales: Math.round(kcalBase*f),
-          Proteinas_g:   Math.round((parseFloat(elegida.proteinas_g)||0)*f),
-          Hidratos_g:    Math.round((parseFloat(elegida.hidratos_g)||0)*f),
-          Grasas_g:      Math.round((parseFloat(elegida.grasas_g)||0)*f),
-          Ingredientes:  escalarIngredientesJS(elegida.ingredientes||'', f),
-          Instrucciones: elegida.instrucciones||'',
-          raciones:      parseInt(elegida.raciones||1)||1,
-          ...(f!==1?{racion_factor:f, racion_texto:racionTextoJS(f,lang)}:{}),
-        };
-        setPlanes(ps=>ps.map((p,i)=>i===idx?{...p,plan_json:nuevoJson}:p));
-        escribirCelda(plan.semana, openToma, selDay, nuevoJson[openToma][String(selDay)], nuevoJson);
-      }catch(e){ console.warn("[cambiar-receta] no se pudo persistir:", e); }
-    }
-    return {ok:true, nombre: elegida.nombre||elegida.nombre_receta||''};
-  }
-
-  // ── Menú de 1º y 2º (o plato y postre): cambiar UN plato, el que se ve ─────
-  // Hasta el 12-oct el botón no salía en los menús, porque cambiar un plato
-  // descuadraba los totales guardados de la celda (Aritz, su primera semana con
-  // dos platos). Ahora cada plato se cambia por separado, con el rol con que lo
-  // eligió la programación (elegirPlatoMenu: el 1º, entre lo que vale de entrante;
-  // el 2º, nunca un entrante y mejor proteico), con su memoria de lo ya enseñado,
-  // y la celda se recompone (recomponerMenu) para que kcal y macros de la toma,
-  // «Tu día» y el registro sigan cuadrando. Mismo cobro y misma escritura que
-  // el cambio de una receta.
-  async function cambiarPlatoMenu({sinIng, tipoR, costeCambio}){
-    const i = platoSel;
-    const celda = planJ?.[openToma]?.[String(selDay)];
-    const platos = Array.isArray(celda?.platos) ? celda.platos : [];
-    if(!plan || !celda?.compuesta || platos.length<2 || !platos[i]) return {ok:false};
-    const mapa = await cargarRecetasCache();
-    const recetas = Object.values(mapa);
-    const etiqueta = (Array.isArray(celda.etiquetas)&&celda.etiquetas[i]) || (i===0?'1º':'2º');
-    const rol = rolPlatoMenu(celda.etiquetas, i);
-    const actual = platoMenuAReceta(platos[i]);     // kcal_objetivo: las del plato en la programación
-    let almacen = null;
-    try{ almacen = window.localStorage; }catch(e){ almacen = null; }
-    const memClave = claveMemoriaCambio(profile.id, plan?.semana ?? '', `${openToma}:${i+1}`, selDay);
-    const mem = leerMemoriaCambio(almacen, memClave, actual);
-    const enPlan = new Set();   // lo que ya sale en la semana (fuera de este menú): se deja para después
-    for(const tm of PLAN_TOMAS){
-      for(const [d,c] of Object.entries(planJ?.[tm]||{})){
-        if(tm===openToma && String(d)===String(selDay)) continue;
-        if(c?.Nombre_Receta) enPlan.add(normNombreCambio(c.Nombre_Receta));
-        (Array.isArray(c?.platos)?c.platos:[]).forEach(pl=>{ if(pl?.Nombre_Receta) enPlan.add(normNombreCambio(pl.Nombre_Receta)); });
-      }
-    }
-    const rechPref = interpretarRechazados(config?.notas);
-    const listas = listasPlatoMenu(planes, rol);
-    const res = elegirPlatoMenu({
-      rol, recetas, actual, ancla:mem.ancla,
-      permitidas: listas.permitidas, entrantes: listas.entrantes,
-      otro:       platos[1-i]?.Nombre_Receta || '',
-      rechazada:  (r)=>recetaRechazadaJS(r, rechPref) || (!!sinIng && contieneIngrediente(r?.ingredientes||'', sinIng))
-                       || (!!tipoR && String(r?.tipo||'')!==tipoR),
-      descartadas:new Set((descartadas||[]).map(r=>normNombreCambio(r.nombre||''))),
-      favoritas:  new Set((savedRecipes||[]).map(r=>normNombreCambio(r.nombre||r.nombre_receta||''))),
-      vistas:mem.vistas, enPlan,
-    });
-    // Sin nada que ofrecer: se avisa y NO se cobran gemas (como en una receta).
-    if(!res.receta){
-      showT&&showT({icon:"🚫",title:lang==='en'?'No alternative':'Sin alternativa',sub:lang==='en'?'No similar dish available':'No hay plato similar disponible'});
-      return {ok:false, motivo:'sin_alternativa'};
-    }
-    const elegida = res.receta;
-    guardarMemoriaCambio(almacen, memClave, {...mem, actual, elegida, reinicio:res.reinicio});
-    if(costeCambio>0){
-      const newGems = gems - costeCambio;
-      const updP = {...profile, gems:newGems};
-      setProfile(updP); lsSet(`gbh:p:${profile.id}`, updP);
-      sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:newGems});
-    }
-    sfx&&sfx("recipe");
-    // El plato nuevo, con la forma de los platos del servidor (_celda_json) y su
-    // ración (0,70-1,40 en pasos de 0,05) contra las kcal del plato de la programación.
-    const f = res.factor;
-    const kcalBase = parseFloat(elegida.calorias||elegida.calorias_totales)||0;
-    const decima = (x)=>Math.round(x*10)/10;
-    const nuevo = {
-      Nombre_Receta:    elegida.nombre||elegida.nombre_receta||'',
-      Tipo:             elegida.tipo||platos[i].Tipo||'',
-      Ingredientes:     escalarIngredientesJS(elegida.ingredientes||'', f),
-      Instrucciones:    elegida.instrucciones||'',
-      Calorias_Totales: Math.round(kcalBase*f),
-      Proteinas_g:      decima((parseFloat(elegida.proteinas_g)||0)*f),
-      Hidratos_g:       decima((parseFloat(elegida.hidratos_g)||0)*f),
-      Grasas_g:         decima((parseFloat(elegida.grasas_g)||0)*f),
-      raciones:         parseInt(elegida.raciones||1)||1,
-      ...(f!==1?{racion_factor:f, racion_texto:racionTextoJS(f,lang), calorias_base:Math.round(kcalBase)}:{}),
-      kcal_objetivo:    actual.kcal_objetivo,
-    };
-    const celdaNueva = recomponerMenu(celda, i, nuevo);
-    setTomaMenu(m=>m?{...m, platos:celdaNueva.platos, kcalTotal:Math.round(parseFloat(celdaNueva.Calorias_Totales)||0)}:m);
-    setTomaReceta(platoMenuAReceta(nuevo));
-    setCocinarDos(false); setCocinarDeMas(1);
-    showT&&showT({icon:"🍽️",title:lang==='en'?'New dish!':'¡Nuevo plato!',
-      sub:`${menuEtiqueta(etiqueta,lang)} · ${costeCambio>0?'-10 💎':(lang==='en'?'free':'gratis')}`});
-    // Persistir en weekly_plans, como el cambio de una receta: sin esto se
-    // pierde al cerrar la app. Solo esta celda (escribirCelda).
-    try{
-      const nuevoJson = JSON.parse(JSON.stringify(planJ||{}));
-      if(!nuevoJson[openToma]) nuevoJson[openToma]={};
-      nuevoJson[openToma][String(selDay)] = celdaNueva;
-      setPlanes(ps=>ps.map((p,k)=>k===idx?{...p,plan_json:nuevoJson}:p));
-      escribirCelda(plan.semana, openToma, selDay, celdaNueva, nuevoJson);
-    }catch(e){ console.warn("[cambiar-plato] no se pudo persistir:", e); }
-    return {ok:true, nombre: nuevo.Nombre_Receta};
-  }
-
-  // ── Guardar la receta en el recetario personal (20 💎) ─────────────────────
-  const recetaYaGuardada = tomaReceta && (savedRecipes||[]).some(r=>normNombre(r.nombre)===normNombre(tomaReceta?.nombre));
-  // ── Descartar la receta (🗑️, GRATIS): repositorio oculto ──────────────────
-  // Marca "no me gusta". Toggle: si ya está descartada, volver a pulsar la
-  // restaura (por si fue un toque accidental — el repositorio es invisible y
-  // no hay otra forma de deshacerlo). Regla de conflicto con favoritas: una
-  // receta GUARDADA (pagada con 20 💎) no se puede descartar directamente;
-  // primero hay que quitarla de guardadas — así nunca se borra en silencio
-  // algo que costó gemas.
-  const recetaDescartada = tomaReceta && (descartadas||[]).some(r=>normNombre(r.nombre)===normNombre(tomaReceta?.nombre));
-  async function descartarRecetaToma(){
-    if(!tomaReceta||!profile) return;
-    const nom = tomaReceta.nombre||'';
-    if(recetaDescartada){
-      // Restaurar: quitar del repositorio oculto
-      const resto = (descartadas||[]).filter(r=>normNombre(r.nombre)!==normNombre(nom));
-      setDescartadas(resto); lsSet(`gbh:discarded:${profile.id}`,resto);
-      const quitados = (descartadas||[]).filter(r=>normNombre(r.nombre)===normNombre(nom));
-      quitados.forEach(q=>sbReq("DELETE",`discarded_recipes?profile_id=eq.${profile.id}&recipe_id=eq.${encodeURIComponent(q.recipe_id)}`));
-      sfx&&sfx("step");
-      showT&&showT({icon:"↩️",title:lang==='en'?'Restored':'Restaurada',sub:lang==='en'?'It can appear in your plans again':'Podrá volver a aparecer en tus planes'});
-      return;
-    }
-    if(recetaYaGuardada){
-      sfx&&sfx("error");
-      showT&&showT({icon:"📖",title:lang==='en'?'Saved recipe':'Está en tus guardadas',sub:lang==='en'?'Remove it from your recipe book first':'Quítala antes de tu recetario guardado'});
-      return;
-    }
-    const entry = {
-      profile_id: profile.id,
-      recipe_id:  tomaReceta.id_receta || ('plan_'+normNombre(nom).replace(/\s+/g,'_')),
-      nombre:     nom,
-      discarded_at: new Date().toISOString(),
-    };
-    const nuevos = [entry, ...(descartadas||[])];
-    setDescartadas(nuevos); lsSet(`gbh:discarded:${profile.id}`,nuevos);
-    sbReq("POST","discarded_recipes",entry);
-    sfx&&sfx("step");
-    showT&&showT({icon:"🗑️",title:lang==='en'?'Noted!':'¡Anotada!',sub:lang==='en'?'It won\'t appear in your future plans':'No volverá a aparecer en tus próximos planes'});
-  }
-  async function guardarRecetaToma(){
-    if(!tomaReceta||!profile) return;
-    if(recetaYaGuardada) return;
-    if(gems < 20){
-      sfx&&sfx("error");
-      showT&&showT({icon:"💎",title:lang==='en'?'Not enough gems':'Sin gemas suficientes',sub:lang==='en'?'You need 20 💎 to save a recipe':'Necesitas 20 💎 para guardar una receta'});
-      return;
-    }
-    const newGems = gems - 20;
-    const updP = {...profile, gems:newGems};
-    setProfile(updP); lsSet(`gbh:p:${profile.id}`, updP);
-    sbReq("PATCH",`profiles?id=eq.${profile.id}`,{gems:newGems});
-    const entry = {
-      profile_id: profile.id,
-      recipe_id:  'plan_'+normNombre(tomaReceta.nombre).replace(/\s+/g,'_'),
-      nombre:        tomaReceta.nombre,
-      tipo:          tomaReceta.tipo,
-      calorias:      tomaReceta.calorias,
-      proteinas_g:   tomaReceta.proteinas_g,
-      hidratos_g:    tomaReceta.hidratos_g,
-      grasas_g:      tomaReceta.grasas_g,
-      ingredientes:  tomaReceta.ingredientes,
-      instrucciones: tomaReceta.instrucciones,
-      raciones:      tomaReceta.raciones||1,
-      saved_at: new Date().toISOString(),
-    };
-    const newSaved = [entry, ...(savedRecipes||[])];
-    setSavedRecipes&&setSavedRecipes(newSaved);
-    lsSet(`gbh:saved_recipes:${profile.id}`, newSaved);
-    sbReq("POST","saved_recipes",entry);
-    sfx&&sfx("recipe");
-    showT&&showT({icon:"📖",title:lang==='en'?'Saved to your book!':'¡Guardada en tu recetario!',sub:tomaReceta.nombre});
-  }
-
-  if(!tieneAcceso){
-    const waMsgPlan = encodeURIComponent(lang==='en'
-      ? `Hi! I'm ${profile?.name||''} and I'd like to upgrade my GBH plan to get my weekly meal plan 🥗`
-      : `¡Hola! Soy ${profile?.name||''} y me gustaría mejorar mi plan GBH para tener mi programación semanal 🥗`);
-    return(
-    <div style={{padding:'36px 20px 32px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:14}}>
-      <div style={{fontSize:52}}>🥗</div>
-      <div style={{fontSize:19,fontWeight:900,color:T.t1,lineHeight:1.3,fontFamily:"'Nunito',sans-serif"}}>
-        {lang==='en'?'Your weekly meal plan':'Tu programación semanal'}
-      </div>
-      <div style={{fontSize:13.5,color:T.t2,lineHeight:1.65,maxWidth:300,fontFamily:"'DM Sans',sans-serif"}}>
-        {ES_IOS_NATIVO
-          ? (lang==='en'
-            ?'Your weekly meal plan is prepared by your nutritionist as part of GBH Nutrición’s one-to-one nutrition service.'
-            :'Tu programación semanal la prepara tu nutricionista dentro del servicio de nutrición 1:1 de GBH Nutrición.')
-          : (lang==='en'
-          ?'The weekly plan is exclusive to Standard and Premium accounts. Upgrade and get your personalized meal plan, recipes and shopping list.'
-          :'La planificación es exclusiva de las cuentas Estándar y Premium. Mejora tu plan y tendrás tu programación personalizada con recetas y lista de la compra.')}
-      </div>
-
-      {/* Tarifas: Estándar → pago directo Stripe · Premium → WhatsApp.
-          En las apps nativas se ocultan ambas (App Store 3.1.1; Pagos de Google Play,
-          PEND-2026-316) y se muestra un texto neutro de estado de cuenta; en Android,
-          además, dónde se contrata, sin enlace. */}
-      {!ES_NATIVO?<>
-      <div style={{display:'flex',flexDirection:'column',gap:10,width:'100%',maxWidth:330,marginTop:4}}>
-        <button onClick={()=>{sfx&&sfx("tap");abrirCheckoutStripe(profile?.id);}}
-          style={{background:alpha(T.g1,0.08),border:'2px solid '+T.bG,borderRadius:18,padding:'14px 16px',textAlign:'left',display:'flex',alignItems:'center',gap:12,cursor:'pointer',width:'100%',boxShadow:'0 3px 0 rgba(0,0,0,0.25)'}}>
-          <div style={{fontSize:28,flexShrink:0}}>📅</div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:14,fontWeight:900,color:T.g1,fontFamily:"'Nunito',sans-serif"}}>
-              {lang==='en'?'Standard · 7€/month':'Estándar · 7€/mes'}
-            </div>
-            <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.45,marginTop:2}}>
-              {lang==='en'
-                ?'Weekly plan you configure yourself, full recipe book and app'
-                :'Programación semanal a tu medida, recetario completo y app'}
-            </div>
-            <div style={{fontSize:10.5,fontWeight:800,color:T.g1,fontFamily:"'DM Sans',sans-serif",marginTop:4}}>
-              {lang==='en'?'Subscribe now · instant access →':'Suscríbete ahora · acceso al momento →'}
-            </div>
-          </div>
-          <div style={{color:T.g1,fontSize:20,flexShrink:0}}>›</div>
-        </button>
-        <a href={`https://wa.me/${GBH_WHATSAPP}?text=${waMsgPlan}`} target="_blank" rel="noopener noreferrer" onClick={()=>sfx&&sfx("tap")}
-          style={{background:alpha(T.au1,0.07),border:`2px solid ${alpha(T.au1,0.35)}`,borderRadius:18,padding:'14px 16px',textAlign:'left',display:'flex',alignItems:'center',gap:12,cursor:'pointer',textDecoration:'none',boxShadow:'0 3px 0 rgba(0,0,0,0.25)'}}>
-          <div style={{fontSize:28,flexShrink:0}}>👑</div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:14,fontWeight:900,color:T.au1,fontFamily:"'Nunito',sans-serif"}}>
-              Premium
-            </div>
-            <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.45,marginTop:2}}>
-              {lang==='en'
-                ?'Personal follow-up with your nutritionist, plan made for you and direct contact'
-                :'Seguimiento personal con tu nutricionista, plan hecho para ti y contacto directo'}
-            </div>
-            <div style={{fontSize:10.5,fontWeight:800,color:T.au1,fontFamily:"'DM Sans',sans-serif",marginTop:4}}>
-              {lang==='en'?'Chat with me on WhatsApp 💬':'Habla conmigo por WhatsApp 💬'}
-            </div>
-          </div>
-          <div style={{color:T.au1,fontSize:20,flexShrink:0}}>›</div>
-        </a>
-      </div>
-
-      <div style={{fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginTop:2}}>
-        {lang==='en'?'We reply the same day · @gbhnutricion':'Te respondemos en el día · @gbhnutricion'}
-      </div>
-      </>:(
-      ES_ANDROID_NATIVO ? (
-      <div style={{fontSize:12.5,color:T.t2,lineHeight:1.6,maxWidth:300,fontFamily:"'DM Sans',sans-serif",marginTop:6}}>
-        {lang==='en'
-          ?'The weekly plan is not available on your current account.'
-          :'La programación semanal no está disponible en tu cuenta actual.'}
-        <br/>{txtWebAndroid(lang,"estandar")}
-      </div>
-      ) : null)}
-    </div>
-  );}
-  if(loading) return <div style={{padding:32,textAlign:'center',fontSize:13,color:T.t2}}>{lang==='en'?'Loading…':'Cargando…'}</div>;
-
-  // ── GATE: sin objetivo nutricional no se puede diseñar el plan ──────────────
-  // El plan se ajusta al objetivo calórico (peso inicial, peso meta, actividad,
-  // altura, edad → kcal/día). Si el paciente estándar aún no lo ha calculado en
-  // la pestaña Objetivo, le pedimos hacerlo primero, con un botón que le lleva.
-  if(isStandard && !tieneObjetivo && !tienePlan) {
-    return (
-      <div style={{padding:'52px 24px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center'}}>
-        <div style={{fontSize:60,marginBottom:18}}>🎯</div>
-        <div style={{fontSize:20,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif",marginBottom:10,lineHeight:1.3}}>
-          {lang==='en'?'Hey, hold on! 🐏':'¡Eh, espera! 🐏'}
-        </div>
-        <div style={{fontSize:14.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6,maxWidth:300,marginBottom:28}}>
-          {lang==='en'
-            ? 'Set your goal first and I\'ll cook up your plan 👨‍🍳'
-            : 'Primero ponte un objetivo y te preparo el plan 👨‍🍳'}
-        </div>
-        <button onClick={()=>setTab&&setTab('objetivo')}
-          style={{background:'linear-gradient(135deg,'+T.g1+','+T.g2+')',color:T.t1,fontWeight:900,fontSize:16,
-            borderRadius:18,padding:'16px 34px',border:'none',cursor:'pointer',boxShadow:'0 5px 0 '+T.g3,
-            fontFamily:"'Nunito',sans-serif",display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
-          <span style={{fontSize:20}}>🎯</span>
-          {lang==='en'?'Set my goal':'Ir a mi objetivo'}
-        </button>
-      </div>
-    );
-  }
-
-  // ── Pantalla de configuración del plan (paciente estándar) ──────────────────
-  if(configView || (isStandard && !configCompleta)) {
-    return (<>
-      {generando&&<OverlayGenerando lang={lang}/>}
-      <PlanConfig profile={profile} lang={lang} config={config} setConfig={setConfig}
-             sfx={sfx} showT={showT}
-             onClose={()=>setConfigView(false)}
-             onGenerar={()=>generarProgramacion()}
-             primeraVez={isStandard && !configCompleta}/>
-    </>);
-  }
-
-  if(!planes.length) return(
-    <div style={{paddingBottom:16}}>
-      {generando&&<OverlayGenerando lang={lang}/>}
-      <div style={{padding:'24px 16px 8px',textAlign:'center'}}>
-        <div style={{fontSize:40,marginBottom:10}}>📆</div>
-        <div style={{fontSize:16,fontWeight:900,color:T.t1,marginBottom:8}}>
-          {lang==='en'?'Your plan isn\'t ready yet':'Tu programación todavía no está lista'}
-        </div>
-        <div style={{fontSize:13,color:T.t2,lineHeight:1.7,fontFamily:"'DM Sans',sans-serif",marginBottom:24}}>
-          {lang==='en'?'Check back soon for updates!':'¡Espera para nuevas actualizaciones!'}
-        </div>
-      </div>
-      {/* Botones visibles pero bloqueados */}
-      <div style={{padding:'0 16px',display:'flex',flexDirection:'column',gap:12}}>
-        {[
-          {icon:'📅',label:lang==='en'?'Plan & Recipes':'Plan y recetas',sub:lang==='en'?'Your week at a glance, recipes and progress (PDF)':'Tu semana de un vistazo, recetas y tu progreso (PDF)'},
-          {icon:'🍽️',label:lang==='en'?'Daily Meals':'Platos diarios',sub:lang==='en'?'Today\'s meals with recipe details':'Tus platos de hoy con receta e ingredientes'},
-          {icon:'🛒',label:lang==='en'?'Shopping List':'Lista de la compra',sub:lang==='en'?'Tick off ingredients as you shop':'Marca los ingredientes mientras compras'},
-        ].map(({icon,label,sub})=>(
-          <div key={label} style={{background:'rgba(255,255,255,0.04)',border:'2px solid rgba(255,255,255,0.08)',
-                  borderRadius:20,padding:'20px 20px',display:'flex',alignItems:'center',gap:16,opacity:0.45}}>
-            <div style={{fontSize:40,flexShrink:0}}>{icon}</div>
-            <div style={{flex:1}}>
-              <div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{label}</div>
-              <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{sub}</div>
-            </div>
-            <div style={{color:'rgba(255,255,255,0.2)',fontSize:20,flexShrink:0}}>🔒</div>
-          </div>
-        ))}
-        {/* 💊 Suplementación (6-oct-2026, PEND-2026-353): la puerta pasa de pestaña propia a tarjeta de Plan; la pantalla es la misma */}
-        <button onClick={()=>{ sfx&&sfx("tap"); onSupl&&onSupl(); }} style={{background:'rgba(255,75,110,0.10)',border:'2px solid rgba(255,75,110,0.30)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)',fontFamily:'inherit'}}>
-          <div style={{fontSize:40,flexShrink:0}}>💊</div>
-          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{t("suplTitulo")}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{t("suplIntro")}</div></div>
-          <div style={{color:'#FF4B6E',fontSize:20,flexShrink:0}}>›</div>
-        </button>
-        {/* Botón GENERAR (solo estándar que ya configuró su plan).
-            ABRE «Configura tu plan», no genera directamente: el selector de
-            modalidades (Simple, Vegetariana, Vegana, Sin gluten, Cetogénica,
-            Descarga) tiene que verse ANTES de cada generación, porque el
-            momento de hacerse la semana es justo cuando se decide si se cambia
-            de programación (Alejandro, 7-sep-2026). El plan se lanza desde el
-            «Guardar y generar plan» de esa pantalla.
-            Es la MISMA regla que ya seguía el banner semanal desde el 6-sep
-            (BannerSemanaNueva, `onGenerar={()=>setConfigView(true)}`): este
-            botón era el único camino que se la saltaba, y se notaba justo
-            cuando el paciente se queda sin plan —cuenta nueva o programación
-            reseteada—, que es cuando más falta hace poder elegir. */}
-        {isStandard&&configCompleta&&(
-          <button onClick={()=>setConfigView(true)} disabled={generando}
-            style={{background:generando?'rgba(255,255,255,0.08)':'linear-gradient(135deg,'+T.g1+','+T.g2+')',
-                    color:generando?T.t3:T.t1,fontWeight:900,fontSize:16,borderRadius:20,
-                    padding:'18px 24px',border:'none',cursor:generando?'default':'pointer',
-                    boxShadow:generando?'none':'0 5px 0 '+T.g3,fontFamily:"'Nunito',sans-serif",
-                    display:'flex',alignItems:'center',justifyContent:'center',gap:10,marginTop:4}}>
-            <span style={{fontSize:22}}>{generando?'⏳':'✨'}</span>
-            {generando?(lang==='en'?'Generating…':'Generando…'):(lang==='en'?'Generate my plan':'Generar mi programación')}
-          </button>
-        )}
-        {isStandard&&(
-          <button onClick={()=>setConfigView(true)} style={{background:'rgba(255,255,255,0.04)',border:'1.5px solid rgba(255,255,255,0.1)',borderRadius:16,padding:'14px 16px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:14,marginTop:4}}>
-            <div style={{fontSize:26,flexShrink:0}}>⚙️</div>
-            <div style={{flex:1}}><div style={{fontWeight:800,fontSize:14,color:T.t2,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Edit my plan':'Editar mi plan'}</div><div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif"}}>{lang==='en'?'Diet type and calorie distribution':'Tipo de alimentación y distribución calórica'}</div></div>
-            <div style={{color:T.t3,fontSize:16,flexShrink:0}}>›</div>
-          </button>
-        )}
-      </div>
-    </div>
-  );
-  const fechaStr=plan.fecha_gen?new Date(plan.fecha_gen).toLocaleDateString(lang==='en'?'en-GB':'es-ES',{day:'numeric',month:'short'}):'';
-  const WeekNav=()=>(<>{generando&&<OverlayGenerando lang={lang}/>}<div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 16px 10px',gap:8}}>
-    <button onClick={()=>setIdx(i=>Math.min(i+1,planes.length-1))} disabled={idx>=planes.length-1} style={{background:'none',border:idx>=planes.length-1?'1.5px solid rgba(255,255,255,0.1)':'1.5px solid '+T.bG,borderRadius:10,color:idx>=planes.length-1?T.t3:T.g1,fontSize:18,width:36,height:36,cursor:idx>=planes.length-1?'default':'pointer',flexShrink:0}}>‹</button>
-    <div style={{textAlign:'center',flex:1}}>
-      <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:7,flexWrap:'wrap'}}>
-        <span style={{fontWeight:900,fontSize:15,color:T.t1}}>{lang==='en'?'Week':'Semana'} {plan.semana}</span>
-        {idx===idxActual
-          ? <span style={{fontSize:9.5,fontWeight:900,color:T.g1,background:alpha(T.g1,0.15),border:'1px solid '+T.bG,borderRadius:20,padding:'2px 9px',textTransform:'uppercase',letterSpacing:'0.03em',whiteSpace:'nowrap'}}>● {lang==='en'?'Current week':'Semana actual'}</span>
-          : <button onClick={()=>setIdx(idxActual)} style={{fontSize:9.5,fontWeight:800,color:T.au1,background:alpha(T.au1,0.12),border:`1px solid ${alpha(T.au1,0.3)}`,borderRadius:20,padding:'2px 9px',cursor:'pointer',whiteSpace:'nowrap',fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Go to current →':'Ir a la actual →'}</button>}
-      </div>
-      {mediaKcalSem!==null&&(
-        <div style={{display:'inline-flex',alignItems:'center',gap:6,marginTop:6,background:alpha(T.g1,0.12),border:'1px solid '+T.bG,borderRadius:20,padding:'3px 11px'}}>
-          <span style={{fontSize:12,lineHeight:1}}>🔥</span>
-          <span style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>{lang==='en'?'Daily average':'Media diaria'}: <b style={{color:T.g1}}>{mediaKcalSem}</b> kcal</span>
-        </div>
-      )}
-      {fechaStr&&<div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:3}}>{lang==='en'?'Generated':'Generado'} {fechaStr}</div>}
-    </div>
-    <button onClick={()=>setIdx(i=>Math.max(i-1,0))} disabled={idx<=0} style={{background:'none',border:idx<=0?'1.5px solid rgba(255,255,255,0.1)':'1.5px solid '+T.bG,borderRadius:10,color:idx<=0?T.t3:T.g1,fontSize:18,width:36,height:36,cursor:idx<=0?'default':'pointer',flexShrink:0}}>›</button>
-  </div></>);
-  const BtnVolver=({onClick})=>(<button onClick={onClick} style={{background:'none',border:'none',color:T.g1,fontSize:13,fontWeight:700,cursor:'pointer',padding:'0 16px 10px',fontFamily:"'Nunito',sans-serif",display:'flex',alignItems:'center',gap:4}}>← {lang==='en'?'Back':'Volver'}</button>);
-  const DotsNav=()=>planes.length>1?(<div style={{display:'flex',justifyContent:'center',gap:6,padding:'8px 0 4px'}}>{planes.map((_,i)=>(<div key={i} onClick={()=>setIdx(i)} style={{width:i===idx?20:7,height:7,borderRadius:4,background:i===idx?T.g1:'rgba(255,255,255,0.15)',cursor:'pointer',transition:'all 0.3s'}}/>))}</div>):null;
-  // Chip de semana de prueba (solo cuentas estándar con trial activo)
-  const trialMs = profile?.trial_ends_at ? Date.parse(profile.trial_ends_at) - Date.now() : null;
-  const trialDias = (isStandard && trialMs!==null && trialMs>0) ? Math.max(1, Math.ceil(trialMs/(24*60*60*1000))) : null;
-  const TrialChip=()=>trialDias?(
-    <div style={{margin:'10px 16px 0',display:'flex',alignItems:'center',gap:10,
-      background:alpha(T.au1,0.10),border:`1.5px solid ${alpha(T.au1,0.45)}`,
-      borderRadius:14,padding:'10px 14px'}}>
-      <span style={{fontSize:20,lineHeight:1}}>🎁</span>
-      <div style={{flex:1}}>
-        <div style={{fontSize:12.5,fontWeight:900,color:T.au1}}>
-          {lang==='en'
-            ? `Free trial week · ${trialDias} day${trialDias!==1?'s':''} left`
-            : `Semana de prueba gratis · ${trialDias===1?'queda 1 día':`quedan ${trialDias} días`}`}
-        </div>
-        <div style={{fontSize:10.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>
-          {lang==='en'?'Enjoy your full weekly plan. Then 7€/month.':'Disfruta tu programación completa. Después, 7€/mes.'}
-        </div>
-      </div>
-    </div>
-  ):null;
-
-  if(view===null) return(
-    <div style={{paddingBottom:16}}>
-      <TrialChip/>
-      {/* Aviso arriba del todo (PlanArcade.jsx): estándar con el candado semanal abierto.
-          Antes el botón de generar estaba al final de la pestaña y había que bajar
-          hasta él para saber que ya tocaba semana nueva (Alejandro, 6-sep-2026). */}
-      {isStandard&&!planBloqueado&&(
-        <BannerSemanaNueva lang={lang} T={T} tienePlan={tienePlan} sfx={sfx} onGenerar={()=>setConfigView(true)} />
-      )}
-      <WeekNav/>
-      {/* ── Etiqueta de optimización por favoritas (plan_json.fav_resumen) ──
-          Va ENTRE la tabla de calorías generales (media diaria del WeekNav) y
-          el plan de recetas. Muestra cuántas favoritas entraron y el % de la
-          "semana perfecta" (respecto al techo físico alcanzable), con CTA de
-          gemas. Solo si hay favoritas en el plan. */}
-      {planJ?.fav_resumen && (planJ.fav_resumen.mostradas||0)>0 && (()=>{
-        const fr=planJ.fav_resumen;
-        const pct=Math.max(0,Math.min(100,Math.round(fr.pct||0)));
-        const alto=pct>=80;
-        return(
-          <div style={{margin:'4px 16px 0',background:alpha(T.au1,0.10),border:`2px solid ${alpha(T.au1,0.30)}`,borderRadius:18,padding:'14px 16px',boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
-            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
-              <span style={{fontSize:22,lineHeight:1,flexShrink:0}}>⭐</span>
-              <div style={{flex:1,fontWeight:900,fontSize:13,color:T.au1,fontFamily:"'Nunito',sans-serif",lineHeight:1.3}}>
-                {lang==='en'
-                  ? `${fr.mostradas} of your favourite recipes are in this week's plan`
-                  : `${fr.mostradas} de tus recetas favoritas están en tu plan de esta semana`}
-              </div>
-              <span style={{fontWeight:900,fontSize:16,color:T.au1,fontFamily:"'Nunito',sans-serif",flexShrink:0}}>{pct}%</span>
-            </div>
-            <div style={{height:9,borderRadius:6,background:'rgba(255,255,255,0.10)',overflow:'hidden'}}>
-              <div style={{height:'100%',width:pct+'%',borderRadius:6,background:'linear-gradient(90deg,'+T.au2+','+T.au1+')',transition:'width 0.5s'}}/>
-            </div>
-            <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,marginTop:8}}>
-              {lang==='en'
-                ? (alto
-                    ? "You're almost at your perfect week! Unlock new recipes with your gems and save them to keep growing it."
-                    : "Every recipe you save as a favourite fine-tunes your plan. Unlock new ones with your gems and save them to make it even more yours.")
-                : (alto
-                    ? '¡Ya casi tienes tu semana perfecta! Desbloquea recetas nuevas con tus 💎 y guárdalas para seguir ampliándola.'
-                    : 'Cada receta que guardas como favorita afina más tu plan. Desbloquea nuevas con tus 💎 y guárdalas para hacerlo aún más tuyo.')}
-            </div>
-          </div>
-        );
-      })()}
-      <div style={{padding:'12px 16px',display:'flex',flexDirection:'column',gap:12}}>
-        {/* Tarjeta unificada (jul-2026): sustituye a 'Planificación semanal' +
-            'Recetas semanales'. El PDF ya incluye la tabla semanal completa,
-            así que la vista duplicada sobra. Entrada DIRECTA al PDF (sin
-            pantalla intermedia con botón de descarga); si el PDF aún no
-            existe, cae a la vista 'pdf' que muestra el aviso de no disponible. */}
-        <button onClick={()=>{if(plan.pdf_url){window.open(plan.pdf_url,'_blank','noopener');}else{setView('pdf');}}} style={{background:alpha(T.au1,0.10),border:`2px solid ${alpha(T.au1,0.3)}`,borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
-          <div style={{fontSize:40,flexShrink:0}}>📅</div>
-          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Plan & Recipes':'Plan y recetas'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Your week at a glance, recipes and progress (PDF)':'Tu semana de un vistazo, recetas y tu progreso (PDF)'}</div></div>
-          <div style={{color:T.au1,fontSize:20,flexShrink:0}}>›</div>
-        </button>
-        <button onClick={()=>setView('daily')} style={{background:'rgba(100,181,246,0.12)',border:'2px solid rgba(100,181,246,0.3)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
-          <div style={{fontSize:40,flexShrink:0}}>🍽️</div>
-          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Daily Meals':'Platos diarios'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Your meals for today with full recipe details':'Tus platos de hoy con receta e ingredientes'}</div></div>
-          <div style={{color:T.platos,fontSize:20,flexShrink:0}}>›</div>
-        </button>
-        <button onClick={()=>setView('lista')} style={{background:'rgba(255,140,60,0.10)',border:'2px solid rgba(255,140,60,0.32)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
-          <div style={{fontSize:40,flexShrink:0}}>🛒</div>
-          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Shopping List':'Lista de la compra'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Tick off ingredients as you shop':'Marca los ingredientes mientras compras'}</div></div>
-          <div style={{color:T.compra,fontSize:20,flexShrink:0}}>›</div>
-        </button>
-        <button onClick={()=>setView('seguimiento')} style={{background:alpha(T.pur,0.12),border:`2px solid ${alpha(T.pur,0.3)}`,borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)'}}>
-          <div style={{fontSize:40,flexShrink:0}}>📊</div>
-          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Tracking':'Seguimiento'}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{lang==='en'?'Calendar and charts of your meal compliance':'Calendario y gráficas de tu cumplimiento'}</div></div>
-          <div style={{color:T.pur,fontSize:20,flexShrink:0}}>›</div>
-        </button>
-        {/* 💊 Suplementación (6-oct-2026, PEND-2026-353): la puerta pasa de pestaña propia a tarjeta de Plan; la pantalla es la misma */}
-        <button onClick={()=>{ sfx&&sfx("tap"); onSupl&&onSupl(); }} style={{background:'rgba(255,75,110,0.10)',border:'2px solid rgba(255,75,110,0.30)',borderRadius:20,padding:'20px 20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)',fontFamily:'inherit'}}>
-          <div style={{fontSize:40,flexShrink:0}}>💊</div>
-          <div style={{flex:1}}><div style={{fontWeight:900,fontSize:16,color:T.t1,marginBottom:4,fontFamily:"'Nunito',sans-serif"}}>{t("suplTitulo")}</div><div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>{t("suplIntro")}</div></div>
-          <div style={{color:'#FF4B6E',fontSize:20,flexShrink:0}}>›</div>
-        </button>
-        {/* Plan estándar: candado semanal (sin gemas, se desbloquea el lunes) */}
-        {isStandard&&planBloqueado&&(
-          <div style={{background:'rgba(255,255,255,0.04)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:16,padding:'14px 16px',marginTop:4}}>
-            <div style={{display:'flex',alignItems:'center',gap:12}}>
-              <div style={{fontSize:24,flexShrink:0}}>🔒</div>
-              <div style={{flex:1}}>
-                <div style={{fontWeight:800,fontSize:13.5,color:T.t1,fontFamily:"'Nunito',sans-serif"}}>
-                  {lang==='en'?'One plan per week':'Un plan por semana'}
-                </div>
-                <div style={{fontSize:11,color:T.t3,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4,marginTop:2}}>
-                  {lang==='en'
-                    ?`Your new plan unlocks Monday (${diasDesbloqueo} day${diasDesbloqueo!==1?'s':''}). To vary a meal, swap that recipe with gems.`
-                    :`Tu nueva programación se desbloquea el lunes ${diasDesbloqueo===1?'(en 1 día)':`(en ${diasDesbloqueo} días)`}. Para variar una comida, cambia esa receta con 💎.`}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-        {/* El botón «Generar nueva semana» de aquí subió a la cabecera de la pestaña (BannerSemanaNueva). */}
-      </div>
-      <DotsNav/>
-    </div>
-  );
-  if(view==='seguimiento') return(
-    <div style={{paddingBottom:20}}>
-      <BtnVolver onClick={()=>setView(null)}/>
-      <SeguimientoView profile={profile} lang={lang}/>
-    </div>
-  );
-  // (jul-2026) Vista 'plan' retirada: la tarjeta unificada abre el PDF, que ya
-  // incluye la tabla 'Tu Semana de un Vistazo' generada por la automatización.
-  if(view==='pdf') return(
-    <div style={{padding:'0 0 16px'}}>
-      <WeekNav/><BtnVolver onClick={()=>setView(null)}/>
-      <div style={{padding:'8px 16px'}}>
-        {plan.pdf_url
-          ?<a href={plan.pdf_url} target='_blank' rel='noreferrer' download={`GBH_Recetas_S${plan.semana}.pdf`} style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,background:'linear-gradient(135deg,'+T.au1+','+T.au2+')',color:'#000',fontWeight:900,fontSize:15,borderRadius:18,padding:'16px 24px',textDecoration:'none',boxShadow:'0 5px 0 '+T.au3,marginTop:16}}>
-            <span style={{fontSize:20}}>📥</span>{lang==='en'?'Download PDF':'Descargar PDF'}
-          </a>
-          :<div style={{textAlign:'center',padding:'24px 0'}}>
-            <div style={{fontSize:44,marginBottom:12}}>📭</div>
-            <div style={{fontWeight:900,fontSize:15,color:T.t1,marginBottom:8}}>{lang==='en'?'PDF not available yet':'PDF no disponible aún'}</div>
-            <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.7}}>{lang==='en'?'Your nutritionist will share it soon.':'Tu nutricionista te lo enviará pronto.'}</div>
-          </div>
-        }
-      </div>
-    </div>
-  );
-  if(view==='lista'){
-    const marcados=listaItems.filter(it=>listaChecks[it.key]).length;
-    return(
-    <div style={{padding:'0 0 24px'}}>
-      <WeekNav/><BtnVolver onClick={()=>{setView(null);setListaConfirm(false);}}/>
-      <div style={{padding:'4px 16px'}}>
-        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
-          <span style={{fontSize:26}}>🛒</span>
-          <div style={{fontWeight:900,fontSize:17,color:T.t1,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Shopping list':'Lista de la compra'}</div>
-        </div>
-        {listaItems.length===0 ? (
-          <div style={{textAlign:'center',padding:'30px 10px'}}>
-            <div style={{fontSize:44,marginBottom:12}}>📭</div>
-            <div style={{fontSize:13,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.7}}>
-              {lang==='en'
-                ?'This plan doesn\'t include ingredient details. Use the recipes PDF for now.'
-                :'Este plan no incluye el detalle de ingredientes. De momento, usa el PDF de recetas y lista del súper.'}
-            </div>
-          </div>
-        ) : (<>
-          {/* Progreso de la compra */}
-          {/* §6 · Lista para los dos. Solo si hay pareja vinculada Y su plan. */}
-          {puedeListaDeDos&&(
-            <div style={{display:'flex',gap:6,marginBottom:10,background:'rgba(255,255,255,0.05)',
-              border:'1.5px solid rgba(255,255,255,0.12)',borderRadius:13,padding:4}}>
-              {[false,true].map(m=>(
-                <button key={String(m)} onClick={()=>{sfx&&sfx('tap');setListaDeDos(m);setListaConfirm(false);}}
-                  style={{flex:1,padding:'8px 6px',borderRadius:10,cursor:'pointer',
-                    background:listaDeDos===m?alpha(T.g1,0.18):'transparent',
-                    border:`1.5px solid ${listaDeDos===m?'${alpha(T.g1,0.5)}':'transparent'}`,
-                    color:listaDeDos===m?T.g2:T.t2,fontSize:12.5,fontWeight:900,
-                    fontFamily:"'Nunito',sans-serif"}}>
-                  {m?t("listaDeDos",{n:pareja?.nombre||''}):t("listaSoloMia")}
-                </button>
-              ))}
-            </div>
-          )}
-          <div style={{fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:10}}>
-            <b style={{color:marcados===listaItems.length?T.g2:T.t1}}>{marcados}/{listaItems.length}</b> {lang==='en'?'items in the cart':'ingredientes en el carro'} · {lang==='en'?'week':'semana'} {plan?.semana}
-          </div>
-          {modoDos&&(
-            <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,
-              marginBottom:12,background:alpha(T.g1,0.08),border:`1px solid ${alpha(T.g1,0.25)}`,
-              borderRadius:11,padding:'8px 11px'}}>
-              🛒 {t("listaDeDosNota",{n:pareja?.nombre||''})}
-            </div>
-          )}
-          <div style={{height:8,background:'rgba(255,255,255,0.08)',borderRadius:6,marginBottom:14,overflow:'hidden'}}>
-            <div style={{height:'100%',width:`${listaItems.length?Math.round(marcados/listaItems.length*100):0}%`,background:`linear-gradient(90deg,${T.g3},${T.g1})`,borderRadius:6,transition:'width 0.25s'}}/>
-          </div>
-          {/* Listado con casillas */}
-          <div style={{display:'flex',flexDirection:'column',gap:6}}>
-            {listaItems.map(it=>{
-              const on=!!listaChecks[it.key];
-              return(
-                <button key={it.key} onClick={()=>toggleListaCheck(it.key)} style={{
-                  display:'flex',alignItems:'center',gap:12,textAlign:'left',cursor:'pointer',
-                  background:on?alpha(T.g1,0.08):'rgba(255,255,255,0.05)',
-                  border:`1.5px solid ${on?'${alpha(T.g1,0.35)}':'rgba(255,255,255,0.12)'}`,
-                  borderRadius:14,padding:'11px 14px',transition:'all 0.15s'}}>
-                  <span style={{width:22,height:22,flexShrink:0,borderRadius:7,display:'flex',alignItems:'center',justifyContent:'center',
-                    background:on?T.g1:'transparent',border:`2px solid ${on?T.g1:'rgba(255,255,255,0.3)'}`,
-                    color:'#0d2b12',fontSize:14,fontWeight:900,transition:'all 0.15s'}}>{on?'✓':''}</span>
-                  <span style={{flex:1,fontSize:13.5,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4,
-                    color:on?T.t3:T.t1,textDecoration:on?'line-through':'none',textDecorationThickness:'2px',
-                    opacity:on?0.65:1,transition:'all 0.15s'}}>{it.nombre}</span>
-                  {fmtCant(it)&&<span style={{fontSize:12,fontWeight:900,color:on?T.t3:T.au1,fontFamily:"'Nunito',sans-serif",flexShrink:0,opacity:on?0.6:1}}>{fmtCant(it)}</span>}
-                </button>
-              );
-            })}
-          </div>
-          {/* 💶 Gasto estimado + gasto real: el feedback del paciente calibra la estimación */}
-          {gastoEst.total>0&&(
-            <div style={{marginTop:14,background:alpha(T.g1,0.08),border:`1.5px solid ${alpha(T.g1,0.3)}`,borderRadius:16,padding:'12px 14px'}}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
-                <div style={{fontSize:13,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif"}}>
-                  💶 {lang==='en'?'Estimated cost of this list':'Gasto estimado de esta compra'}
-                </div>
-                <div style={{fontSize:17,fontWeight:900,color:T.g2,fontFamily:"'Nunito',sans-serif",flexShrink:0}}>{eurES(gastoEst.total)} €</div>
-              </div>
-              <div style={{display:'flex',alignItems:'center',gap:8,marginTop:10}}>
-                <div style={{flex:1,fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>
-                  ✏️ {lang==='en'?'What did you actually spend?':'¿Cuánto has gastado de verdad?'}
-                </div>
-                <input value={gastoReal} onChange={e=>{setGastoReal(e.target.value);setGastoOk(false);}}
-                  inputMode="decimal" placeholder="0,00"
-                  style={{width:70,padding:'8px 10px',borderRadius:10,border:'1.5px solid rgba(255,255,255,0.2)',
-                    background:'rgba(255,255,255,0.06)',color:T.t1,fontSize:14,fontWeight:900,textAlign:'right',
-                    fontFamily:"'Nunito',sans-serif",outline:'none'}}/>
-                <span style={{fontSize:13,color:T.t2}}>€</span>
-                <button onClick={guardarGastoReal} disabled={gastoOk} style={{padding:'8px 12px',borderRadius:10,cursor:'pointer',
-                  background:gastoOk?alpha(T.g1,0.15):T.g1,border:'none',color:gastoOk?T.g2:'#0d2b12',
-                  fontWeight:900,fontSize:12.5,fontFamily:"'Nunito',sans-serif"}}>
-                  {gastoOk?'✓':(lang==='en'?'Save':'Guardar')}
-                </button>
-              </div>
-              <div style={{fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginTop:8,lineHeight:1.5}}>
-                {lang==='en'
-                  ?'Average Spanish supermarket prices, plus a small margin for whole-package formats. Logging your real spend helps us fine-tune it each week.'
-                  :'Precios medios de supermercado en España, con un pequeño margen por los formatos de compra (paquetes enteros). Apuntar tu gasto real nos ayuda a afinar la estimación cada semana.'}
-              </div>
-            </div>
-          )}
-          {/* Regenerar: desmarca todo para repetir la semana (doble toque de confirmación) */}
-          <button onClick={regenerarLista} style={{
-            width:'100%',marginTop:16,padding:'14px 20px',borderRadius:16,cursor:'pointer',
-            background:listaConfirm?'rgba(255,140,60,0.18)':'rgba(255,255,255,0.06)',
-            border:`2px solid ${listaConfirm?'${T.compra}':'rgba(255,255,255,0.15)'}`,
-            color:listaConfirm?T.compra:T.t2,fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif",
-            boxShadow:'0 4px 0 rgba(0,0,0,0.3)',transition:'all 0.15s'}}>
-            {listaConfirm
-              ?(lang==='en'?'Tap again to confirm ↺':'Toca otra vez para confirmar ↺')
-              :(lang==='en'?'🔄 Reset list':'🔄 Regenerar lista')}
-          </button>
-          <div style={{textAlign:'center',marginTop:8,fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>
-            {lang==='en'
-              ?'Unchecks everything — handy if you repeat this week\'s plan. This list is fixed to your original plan; to buy a swapped recipe, use its 🛒 Buy button.'
-              :'Desmarca todo — útil si repites la semana. Esta lista es fija a tu programación original; para comprar una receta cambiada, usa su botón 🛒 Comprar.'}
-          </div>
-        </>)}
-      </div>
-    </div>
-    );
-  }
-  if(view==='daily'){
-    // ── Cocinar para los dos (§5.2) ──────────────────────────────────────────
-    // El interruptor SOLO aparece si la pareja tiene LA MISMA receta en LA MISMA
-    // toma del MISMO día. Si no, no se enseña: no se inventa una suma.
-    const parejaMeal = (pareja&&parejaPlanJ&&openToma)
-      ? parejaPlanJ[openToma]?.[String(selDay)] : null;
-    const mismaReceta = !!(parejaMeal?.Nombre_Receta && tomaReceta?.nombre &&
-      normNombre(parejaMeal.Nombre_Receta)===normNombre(tomaReceta.nombre) &&
-      parejaMeal.Ingredientes);
-    const fTuyo   = parseFloat(tomaReceta?.racion_factor)||1;
-    const fPareja = parseFloat(parejaMeal?.racion_factor)||1;
-    const repartoTuyo = Math.round(fTuyo/(fTuyo+fPareja)*100);
-    // Sin useMemo a propósito: estamos dentro de `if(view==='daily')`, así que un
-    // hook aquí sería condicional y React rompería al cambiar de vista. Fusionar
-    // una receta es una operación de microsegundos.
-    const fusion = (mismaReceta&&cocinarDos)
-      ? fusionarIngredientesJS(tomaReceta?.ingredientes||'', parejaMeal?.Ingredientes||'')
-      : null;
-    // Texto que se PINTA: la olla (dos raciones), la ración x2/x3, o la tuya.
-    const ingTexto = fusion ? fusion.texto
-      : (cocinarDeMas>1 ? escalarIngredientesJS(tomaReceta?.ingredientes||'', cocinarDeMas)
-                        : (tomaReceta?.ingredientes||''));
-    const ingList=ingTexto?.split(/[,;](?![^(]*\))/).map(s=>s.trim()).filter(Boolean)||[];
-    // Para cuántas raciones es la lista que se PINTA y qué hacer con ella: una sola
-    // cuenta para el rótulo, la chapa «Rinde», los botones y la hoja de Comprar.
-    const racReceta   = Math.max(1, parseInt(tomaReceta?.raciones)||1);
-    const racLista    = racionesDeLaLista(racReceta, cocinarDeMas);
-    const etiquetaLista = fusion
-      ? (racReceta>1 ? t("cocinarDosCantidadesRinde",{k:racReceta,n:pareja?.nombre||''})
-                     : t("cocinarDosCantidades",{n:pareja?.nombre||''}))
-      : racionEtiqueta(t,{raciones:racReceta,x:cocinarDeMas});
-    return(<div style={{paddingBottom:16}}>
-      {miniCompra&&<MiniListaCompra nombre={miniCompra.nombre} ingredientes={miniCompra.ingredientes}
-        idReceta={miniCompra.id} t={t} lang={lang} onClose={()=>setMiniCompra(null)}
-        etiquetaRacion={miniCompra.etiquetaRacion}/>}
-      <WeekNav/>
-      <BtnVolver onClick={()=>{if(openToma){setOpenToma(null);setTomaReceta(null);setTomaMenu(null);}else setView(null);}}/>
-      {!openToma&&(<>
-        <div style={{overflowX:'auto',WebkitOverflowScrolling:'touch',padding:'0 16px 16px'}}>
-          <div style={{display:'flex',gap:8,minWidth:'min-content'}}>
-            {PLAN_DIAS.map((d,i)=>{
-              const dayNum=i+1;const isToday=dayNum===todayPlan;const isSel=dayNum===selDay;
-              return(<button key={d} onClick={()=>setSelDay(dayNum)} style={{flexShrink:0,padding:'10px 14px',borderRadius:14,border:'none',cursor:'pointer',background:isSel?'linear-gradient(135deg,'+T.g1+','+T.g2+')':isToday?alpha(T.g1,0.15):'rgba(255,255,255,0.06)',color:isSel?T.t1:isToday?T.g1:T.t2,fontWeight:isSel||isToday?900:600,fontSize:12,fontFamily:"'Nunito',sans-serif",boxShadow:isSel?'0 3px 0 '+T.g3:isToday?'0 0 0 1.5px '+T.bG:'none',transition:'all 0.2s',display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
-                <span>{d}</span>
-                {isToday&&!isSel&&<div style={{width:5,height:5,borderRadius:'50%',background:T.g1}}/>}
-              </button>);
-            })}
-          </div>
-        </div>
-        <div style={{padding:'0 16px 12px'}}>
-          <div style={{fontSize:13,fontWeight:900,color:T.t2,fontFamily:"'Nunito',sans-serif"}}>{PLAN_DIAS_F[selDay-1]}{selDay===todayPlan?` · ${lang==='en'?'Today':'Hoy'}`:''} · {lang==='en'?'Week':'Semana'} {plan.semana}</div>
-        </div>
-        <div style={{padding:'0 16px',display:'flex',flexDirection:'column',gap:10}}>
-          {(()=>{
-            // Botón de suplemento/medicación: horizontal largo, dorado, con hora.
-            // Solo HOY (semana en curso) y desaparece al completarse ese día.
-            const mostrarSupl = suplHoy && selDay===todayPlan && puedeRegistrar;
-            const SuplBtn = ({it})=>(
-              <button key={`supl-${it.nombre}`} onClick={()=>marcarSupl(it)} style={{
-                width:'100%',boxSizing:'border-box',display:'flex',alignItems:'center',gap:12,
-                background:'linear-gradient(135deg,rgba(201,168,76,0.16),rgba(201,168,76,0.06))',
-                border:`1.5px dashed ${T.au1}`,borderRadius:16,padding:'12px 16px',
-                textAlign:'left',cursor:'pointer',transition:'all 0.2s'}}>
-                <div style={{fontSize:22,width:38,height:38,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:12,background:'rgba(201,168,76,0.15)',flexShrink:0}}>{SUPL_IC[it.tipo]||'💊'}</div>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:10,color:T.au1,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:2,fontFamily:"'DM Sans',sans-serif"}}>
-                    ⏰ {it.hora} · {lang==='en'?(it.tipo==='Medicación'?'Medication':'Supplement'):it.tipo}
-                  </div>
-                  <div style={{fontSize:13.5,fontWeight:800,color:T.t1,fontFamily:"'Nunito',sans-serif",whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
-                    {it.nombre}{it.dosis?` · ${it.dosis}`:''}
-                  </div>
-                </div>
-                <div style={{fontSize:12,fontWeight:900,color:T.au1,flexShrink:0,fontFamily:"'Nunito',sans-serif"}}>+5 💎</div>
-              </button>
-            );
-            const suplEn=(tras)=>!mostrarSupl?null:
-              suplHoy.filter(it=>suplTrasToma(it.hora)===tras && !suplHechos[it.nombre])
-                     .map(it=><SuplBtn key={it.nombre} it={it}/>);
-            return(<>
-          {suplEn('')}
-          {PLAN_TOMAS.map(toma=>{
-            const meal=planJ?.[toma]?.[String(selDay)];
-            const hasMeal=!!meal?.Nombre_Receta;
-            const mostrarChips=hasMeal&&puedeRegistrar;
-            const estado=regDia[selDateKey]?.meals?.[toma];
-            return(<React.Fragment key={toma}><div key={toma}>
-              <button onClick={()=>hasMeal&&abrirToma(toma)} disabled={!hasMeal} style={{width:'100%',boxSizing:'border-box',background:hasMeal?(PLAN_TIPO_BG[meal?.Tipo]||'rgba(255,255,255,0.06)'):'rgba(255,255,255,0.04)',border:hasMeal?'1.5px solid rgba(255,255,255,0.12)':'1.5px solid rgba(255,255,255,0.05)',borderRadius:mostrarChips?'16px 16px 0 0':16,padding:'14px 16px',textAlign:'left',cursor:hasMeal?'pointer':'default',display:'flex',alignItems:'center',gap:12,transition:'all 0.2s'}}>
-                <div style={{fontSize:26,width:44,height:44,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:14,background:'rgba(255,255,255,0.06)',flexShrink:0}}>{PLAN_TOMA_IC[toma]||'🍴'}</div>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:10,color:T.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:3,fontFamily:"'DM Sans',sans-serif"}}>{toma}</div>
-                  {(hasMeal&&meal?.compuesta&&Array.isArray(meal?.platos)&&meal.platos.length>=2)?(
-                    <div style={{display:'flex',flexDirection:'column',gap:2}}>
-                      {meal.platos.map((pl,i)=>(
-                        <div key={i} style={{fontSize:12.5,fontWeight:800,color:T.t1,fontFamily:"'Nunito',sans-serif",whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
-                          <span style={{color:T.au1,fontWeight:900,marginRight:4}}>{menuEtiqueta((Array.isArray(meal.etiquetas)&&meal.etiquetas[i])||(i===0?'1º':'2º'),lang)}</span>
-                          <span style={{marginRight:4}}>{emojiPlato(pl.Nombre_Receta,pl.Tipo)}</span>{pl.Nombre_Receta}
-                        </div>
-                      ))}
-                    </div>
-                  ):(
-                  <div style={{fontSize:14,fontWeight:hasMeal?800:400,color:hasMeal?T.t1:T.t3,fontFamily:"'Nunito',sans-serif",whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
-                    {hasMeal&&<span style={{marginRight:4}}>{emojiPlato(meal.Nombre_Receta, meal.Tipo)}</span>}{hasMeal?meal.Nombre_Receta:'—'}
-                  </div>
-                  )}
-                </div>
-                {hasMeal&&<div style={{color:T.t3,fontSize:18,flexShrink:0}}>›</div>}
-              </button>
-              {mostrarChips&&(
-                <div style={{background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderTop:'none',borderRadius:'0 0 16px 16px',padding:'8px 10px 10px'}}>
-                <div style={{display:'flex',gap:6}}>
-                  {PLAN_CUMPL.filter(c=>!c.oculto).map(c=>{const on=estado===c.k;return(
-                    <button key={c.k} onClick={()=>setEstadoComida(toma,c.k)} title={lang==='en'?c.en:c.es} aria-label={lang==='en'?c.en:c.es} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',padding:'11px 0',borderRadius:12,cursor:'pointer',background:on?c.c+'30':'rgba(255,255,255,0.05)',border:on?('2px solid '+c.c):'1.5px solid rgba(255,255,255,0.06)',fontSize:22,lineHeight:1,transition:'all 0.15s',
-                      // Micro-pop al quedar seleccionado (Tarea B). La animación solo se
-                      // relanza cuando `on` pasa de false→true (la propiedad cambia);
-                      // con reduced-motion, el borde y el fondo ya cuentan la selección.
-                      animation:(on&&!REDUCED_MOTION())?'popIn 0.22s cubic-bezier(0.34,1.56,0.64,1)':'none'}}>
-                      {c.ic}
-                    </button>);})}
-                </div>
-                {/* Kcal reales (fase 1): «menos» pregunta cuánto; sin elegir, la mitad. */}
-                {estado==='menos'&&(
-                  <div style={{display:'flex',alignItems:'center',gap:6,marginTop:8,fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}>
-                    <span style={{flex:1}}>{lang==='en'?'How much did you eat?':'¿Cuánto comiste?'}</span>
-                    {FRACCIONES_MENOS.map(([f,s])=>{const on=(fraccionValida(realDia[toma]?.frac)??FRAC_MENOS_DEFECTO)===f;return(
-                      <button key={f} onClick={()=>setFraccionMenos(toma,f)} aria-label={s} style={{fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:12,padding:'5px 11px',borderRadius:9,cursor:'pointer',background:on?alpha(T.au1,0.12):'transparent',border:on?'1.5px solid '+T.au1:'1.5px solid rgba(255,255,255,0.14)',color:on?T.au2:T.t2}}>{s}</button>);})}
-                  </div>
-                )}
-                {/* Kcal reales (fase 2): lo real de la toma, los extras y la hoja «¿Qué comiste?» */}
-                {estado&&(()=>{ const rT=realToma(estado, realDia[toma], previstoToma(planJ,toma,selDay)); const sust=(estado==='fuera'||estado==='cambiada'); const anad=(estado==='anadida');
-                  const lnk={background:'none',border:'none',padding:0,cursor:'pointer',color:T.au2,fontFamily:"'Nunito',sans-serif",fontWeight:800,fontSize:11};
-                  return(
-                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,marginTop:8,fontSize:11,fontFamily:"'DM Sans',sans-serif"}}>
-                    <span style={{color:T.t2}}>{rT&&rT.conocido?`${Math.round(rT.kcal)} kcal${rT.extras?(lang==='en'?` · ${rT.extras} extra`:` · ${rT.extras} extra`):''}`:(sust?(lang==='en'?'? kcal · not quantified':'? kcal · sin cuantificar'):'')}</span>
-                    <span style={{display:'flex',gap:12}}>
-                      {!anad&&<button onClick={()=>abrirHoja(toma,'extras')} style={lnk}>{lang==='en'?'＋ Add something':'＋ Añadir algo más'}</button>}
-                      {anad&&<button onClick={()=>abrirHoja(toma,'anadir')} style={lnk}>{(realDia[toma]?.items||[]).length?(lang==='en'?'Edit what you added':'Editar lo que añadiste'):(lang==='en'?'What did you add?':'¿Qué añadiste?')}</button>}
-                      {sust&&<button onClick={()=>abrirHoja(toma,'sustituir')} style={lnk}>{rT&&rT.conocido?(lang==='en'?'Edit what you ate':'Editar lo que comiste'):(lang==='en'?'Quantify':'Cuantificar')}</button>}
-                    </span>
-                  </div>);})()}
-                </div>
-              )}
-            </div>{suplEn(toma)}</React.Fragment>);
-          })}
-            </>);
-          })()}
-          {/* ── «Tu día»: kcal reales frente a previstas y macros real/previsto (src/TuDia.jsx) ── */}
-          <TuDia T={T} lang={lang} planJ={planJ} dia={selDay} meals={regDia[selDateKey]?.meals} real={realDia}
-                 tomas={PLAN_TOMAS} activo={puedeRegistrar} kcalVisible={profile?.kcal_visible!==false}
-                 diaNombre={PLAN_DIAS_F[selDay-1]} semana={plan?.semana} onCuantificar={(toma)=>abrirHoja(toma,'sustituir')}/>
-          {hoja&&<QueComiste T={T} lang={lang} toma={hoja.toma} modo={hoja.modo} estado={regDia[selDateKey]?.meals?.[hoja.toma]}
-                 cargarRecetas={cargarRecetasCache} nutri={_NUTRI_ING}
-                 inicial={hoja.modo==='extras'?(realDia[hoja.toma]?.extras||[]):(realDia[hoja.toma]?.items||[])}
-                 onGuardar={guardarHoja} onCerrar={()=>setHoja(null)}/>}
-          {boMomento&&!hoja&&<BoMomento T={T} Sheep={Sheep} lang={lang} texto={boMomento.texto} firma={boMomento.firma}
-                 bo={{color:profile?.bo_color||'blanca',equipados:Array.isArray(profile?.bo_equipados)?profile.bo_equipados:[]}}
-                 onCerrar={()=>setBoMomento(null)}/>}
-          {puedeRegistrar&&(<>
-            <div style={{background:'rgba(255,255,255,0.03)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:16,padding:'12px 14px'}}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
-                <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.08em',display:'flex',alignItems:'center',gap:6}}><span>💬</span>{lang==='en'?'Note for your nutritionist':'Nota para tu nutricionista'}</div>
-                {notaOK&&<span style={{fontSize:11,color:T.g1,fontWeight:800}}>✓ {lang==='en'?'Saved':'Guardada'}</span>}
-              </div>
-              <textarea value={notaTmp} onChange={e=>{setNotaTmp(e.target.value);setNotaOK(false);}} onBlur={guardarNotaDia} rows={2} placeholder={lang==='en'?'e.g. I ate out on Saturday, pizza with friends…':'p. ej. el sábado comí fuera, pizza con amigos…'} style={{width:'100%',boxSizing:'border-box',resize:'vertical',background:'rgba(0,0,0,0.20)',border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:12,padding:'10px 12px',color:T.t1,fontSize:13,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5,outline:'none'}}/>
-              <div style={{fontSize:10.5,color:T.t3,marginTop:6,fontFamily:"'DM Sans',sans-serif"}}>{lang==='en'?'Optional · only your nutritionist sees this':'Opcional · solo lo ve tu nutricionista'}</div>
-            </div>
-            <div style={{padding:'4px 4px 0'}}>
-              <div style={{fontSize:10,color:T.t3,fontWeight:800,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{lang==='en'?'What each button means':'Qué significa cada botón'}</div>
-              <div style={{display:'flex',flexWrap:'wrap',gap:'8px 16px'}}>
-                {PLAN_CUMPL.filter(c=>!c.oculto).map(c=>(
-                  <div key={c.k} style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}><span style={{fontSize:16,lineHeight:1}}>{c.ic}</span>{lang==='en'?c.en:c.es}</div>
-                ))}
-                <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}><span style={{fontSize:16,lineHeight:1}}>＋</span>{lang==='en'?'Add something: an extra on any meal':'Añadir algo más: un extra sobre cualquier comida'}</div>
-                <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}><span style={{fontSize:16,lineHeight:1}}>➕</span>{lang==='en'?'Added: the recipe and, on top, other dishes or foods (they add to your plan)':'Añadí: la receta y, además, otros platos o ingredientes (se suman a lo previsto)'}</div>
-                <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:T.t2,fontFamily:"'DM Sans',sans-serif"}}><span style={{fontSize:16,lineHeight:1}}>🔄</span>{lang==='en'?'Swapped: something else instead of the recipe, out or at home; say what you ate to see your kcal, or it stays as «?»':'La cambié: otra cosa en vez de la receta, fuera o en casa; di qué comiste para ver tus kcal, o queda en «?»'}</div>
-              </div>
-            </div>
-          </>)}
-        </div>
-      </>)}
-      {openToma&&(<div style={{padding:'0 16px 16px'}}>
-        {loadingToma&&<div style={{textAlign:'center',padding:40,fontSize:13,color:T.t2}}>{lang==='en'?'Loading recipe…':'Cargando receta…'}</div>}
-        {!loadingToma&&tomaReceta&&(<>
-          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
-            <span style={{fontSize:22}}>{PLAN_TOMA_IC[openToma]||'🍴'}</span>
-            <div style={{fontSize:11,color:T.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',fontFamily:"'DM Sans',sans-serif"}}>{openToma}</div>
-          </div>
-          {/* ── MENÚ DESGLOSADO: pestañas de platos ─────────────────────────
-              Cada pestaña carga su plato en tomaReceta y TODO lo de abajo
-              (macros, ración, ingredientes, preparación, cambiar, guardar y
-              descartar) se reutiliza tal cual; «Cambiar» cambia solo ese
-              plato. El check de cumplimiento es de la TOMA: un solo registro
-              engloba los dos platos. */}
-          {tomaMenu&&(<>
-            <div style={{display:'flex',gap:8,marginBottom:10}}>
-              {tomaMenu.platos.map((pl,i)=>{const on=i===platoSel;return(
-                <button key={i} onClick={()=>{if(i===platoSel)return;sfx&&sfx('tap');setPlatoSel(i);setTomaReceta(platoMenuAReceta(pl));setCocinarDos(false);setCocinarDeMas(1);}} style={{
-                  flex:1,minWidth:0,padding:'10px 10px',borderRadius:14,cursor:'pointer',textAlign:'left',
-                  background:on?'linear-gradient(135deg,'+T.g1+','+T.g2+')':'rgba(255,255,255,0.05)',
-                  border:on?'2px solid '+T.au2:'1.5px solid rgba(255,255,255,0.12)',
-                  boxShadow:on?'0 3px 0 '+T.g3:'none',transition:'all 0.15s'}}>
-                  <div style={{fontSize:10,fontWeight:900,color:on?T.wh:T.au1,textTransform:'uppercase',letterSpacing:'0.08em',fontFamily:"'DM Sans',sans-serif",marginBottom:2}}>
-                    {menuEtiqueta(tomaMenu.etiquetas[i],lang)} · {Math.round(parseFloat(pl.Calorias_Totales)||0)} kcal
-                  </div>
-                  <div style={{fontSize:12.5,fontWeight:900,color:on?T.wh:T.t1,fontFamily:"'Nunito',sans-serif",whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
-                    {emojiPlato(pl.Nombre_Receta,pl.Tipo)} {pl.Nombre_Receta}
-                  </div>
-                </button>);})}
-            </div>
-            <div style={{display:'flex',alignItems:'center',gap:8,background:'rgba(255,255,255,0.04)',
-              border:'1.5px solid rgba(255,255,255,0.10)',borderRadius:14,padding:'8px 12px',marginBottom:12}}>
-              <span style={{fontSize:15,lineHeight:1}}>🍽️</span>
-              <span style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>
-                {lang==='en'
-                  ?`Full menu: ${tomaMenu.kcalTotal} kcal · both courses are ONE meal — a single check logs them together`
-                  :`Menú completo: ${tomaMenu.kcalTotal} kcal · los dos platos son UNA toma — un solo check registra todo`}
-              </span>
-            </div>
-          </>)}
-          <div style={{background:T.bgCard,borderRadius:20,padding:'20px 18px',marginBottom:12,border:'1px solid rgba(255,255,255,0.07)'}}>
-            <div style={{display:'flex',alignItems:'flex-start',gap:14,marginBottom:16}}>
-              <div style={{fontSize:48,lineHeight:1,flexShrink:0}}>{emojiPlato(tomaReceta.nombre, tomaReceta.tipo)}</div>
-              <div style={{flex:1}}>
-                <div style={{display:'inline-block',background:(PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1)+'22',border:'1.5px solid '+(PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1)+'55',borderRadius:20,padding:'3px 12px',fontSize:10,fontWeight:900,color:PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1,textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:8}}>{tomaReceta.tipo||'—'}</div>
-                <div style={{fontSize:19,fontWeight:900,color:T.wh,lineHeight:1.25}}>{tomaReceta.nombre}</div>
-              </div>
-            </div>
-            {/* Caja dorada: qué cocinar y cuánto comer. Sale si la receta rinde
-                varias raciones (tú comes 1) o si el plan ajustó la ración. */}
-            {(()=>{
-              const caja=textosCajaRacion({raciones:tomaReceta.raciones,factor:tomaReceta.racion_factor,
-                racionTexto:tomaReceta.racion_texto,lang});
-              return caja&&(
-              <div style={{display:'flex',alignItems:'center',gap:8,background:alpha(T.au1,0.10),
-                border:`1.5px solid ${alpha(T.au1,0.45)}`,borderRadius:14,padding:'9px 12px',marginBottom:12}}>
-                <span style={{fontSize:18,lineHeight:1}}>{caja.icono}</span>
-                <div>
-                  <div style={{fontSize:12,fontWeight:900,color:T.au1}}>
-                    {caja.titulo}
-                  </div>
-                  <div style={{fontSize:10.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>
-                    {caja.detalle}
-                  </div>
-                </div>
-              </div>);
-            })()}
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:8}}>
-              {[{l:lang==='en'?'Calories':'Calorías',v:String(tomaReceta.calorias),u:'kcal',c:T.au1},{l:lang==='en'?'Protein':'Proteína',v:String(tomaReceta.proteinas_g),u:'g',c:T.platos},{l:lang==='en'?'Carbs':'Carbos',v:String(tomaReceta.hidratos_g),u:'g',c:T.g1},{l:lang==='en'?'Fat':'Grasas',v:String(tomaReceta.grasas_g),u:'g',c:'#FFB74D'}].map(({l,v,u,c})=>(
-                <div key={l} style={{background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'10px 6px',textAlign:'center',border:'1px solid rgba(255,255,255,0.08)'}}>
-                  <div style={{fontSize:16,fontWeight:900,color:c}}>{v}</div>
-                  <div style={{fontSize:9,color:c,fontWeight:700,opacity:0.8}}>{u}</div>
-                  <div style={{fontSize:9,color:T.t3,marginTop:2,fontFamily:"'DM Sans',sans-serif"}}>{l}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-          {ingList.length>0&&(<div style={{background:T.bgCard,borderRadius:20,padding:'18px 18px',marginBottom:12,border:'1px solid rgba(255,255,255,0.07)'}}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap',marginBottom:12}}>
-              <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em'}}>{lang==='en'?'Ingredients':'Ingredientes'}</div>
-              <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
-                {!fusion&&racLista>1&&(<div style={{fontSize:11,color:PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1,fontWeight:800,background:(PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1)+'22',borderRadius:20,padding:'3px 11px',whiteSpace:'nowrap'}}>🍽️ {lang==='en'?`Makes ${racLista} servings`:`Rinde ${racLista} raciones`}</div>)}
-                <button onClick={()=>setMiniCompra({nombre:tomaReceta.nombre,ingredientes:ingTexto,id:tomaReceta.id_receta,
-                  etiquetaRacion:etiquetaLista})} style={{
-                  background:'rgba(255,140,60,0.12)',border:'1.5px solid rgba(255,140,60,0.4)',borderRadius:20,
-                  padding:'4px 13px',fontSize:11.5,fontWeight:900,color:T.compra,cursor:'pointer',
-                  fontFamily:"'Nunito',sans-serif",whiteSpace:'nowrap'}}>{t("buyBtn")}</button>
-              </div>
-            </div>
-            {/* Fase 0 · para cuántos son estas cantidades (el plan ya viene
-                escalado a la ración del paciente, pero él no lo sabe) */}
-            <div style={{display:'flex',alignItems:'center',gap:6,marginTop:-4,marginBottom:11,
-              fontSize:11.5,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.35}}>
-              <span style={{fontSize:13,lineHeight:1,flexShrink:0}}>⚖️</span>
-              <span>{etiquetaLista}</span>
-            </div>
-            {/* ── §5.2 · Cocinar para los dos ─────────────────────────────────
-                Solo si la pareja tiene la MISMA receta en la MISMA toma del
-                MISMO día. Si no, ni aparece. */}
-            {mismaReceta&&(
-              <div style={{background:cocinarDos?alpha(T.g1,0.08):'rgba(255,255,255,0.04)',
-                border:`1.5px solid ${cocinarDos?alpha(T.au1,0.5):alpha(T.au1,0.28)}`,
-                borderRadius:14,padding:'12px 13px',marginBottom:12,transition:'all 0.15s'}}>
-                <div style={{fontSize:12.5,fontWeight:900,color:T.au1,fontFamily:"'Nunito',sans-serif",marginBottom:9}}>
-                  🍽️ {t("cocinarMasPregunta")}
-                </div>
-                <div style={{display:'flex',gap:8}}>
-                  {[{v:false,l:t("cocinarDosOpSolo")},{v:true,l:t("cocinarDosOpPareja")}].map(({v,l})=>(
-                    <button key={String(v)} onClick={()=>{sfx&&sfx('tap');setCocinarDos(v);setCocinarDeMas(1);}} style={{
-                      flex:1,padding:'9px 6px',borderRadius:12,cursor:'pointer',transition:'all 0.15s',
-                      background:cocinarDos===v?T.g3:'rgba(255,255,255,0.05)',
-                      border:cocinarDos===v?`2px solid ${T.au2}`:'1.5px solid rgba(255,255,255,0.14)',
-                      color:cocinarDos===v?T.wh:T.t2,fontSize:13,fontWeight:900,
-                      boxShadow:cocinarDos===v?'0 3px 0 rgba(0,0,0,0.35)':'none',
-                      fontFamily:"'Nunito',sans-serif"}}>
-                      {l}
-                    </button>
-                  ))}
-                </div>
-                {cocinarDos&&(<div style={{marginTop:10,paddingTop:9,borderTop:'1px solid rgba(255,255,255,0.10)'}}>
-                  <div style={{fontSize:12,fontWeight:800,color:T.au1,marginBottom:4,fontFamily:"'DM Sans',sans-serif"}}>
-                    🍽️ {t("cocinarDosReparto",{a:repartoTuyo,b:100-repartoTuyo,n:pareja?.nombre||''})}
-                  </div>
-                  <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.45}}>
-                    {racReceta>1 ? t("cocinarDosNotaRinde",{k:racReceta}) : t("cocinarDosNota")}
-                  </div>
-                  {!!fusion?.avisos?.length&&(
-                    <div style={{marginTop:7,fontSize:11,color:'#FFB74D',fontFamily:"'DM Sans',sans-serif",lineHeight:1.45}}>
-                      ⚠️ {t("cocinarDosAviso",{ing:fusion.avisos.join(', ')})}
-                    </div>
-                  )}
-                </div>)}
-              </div>
-            )}
-            {/* ── §5.3 · Raciones a cocinar: aquí SÍ es literalmente el doble
-                de la misma ración (batch cooking o pareja sin cuenta) ──────── */}
-            {!mismaReceta&&!!tomaReceta.ingredientes&&(
-              <div style={{background:'rgba(255,255,255,0.04)',border:`1.5px solid ${alpha(T.au1,0.28)}`,
-                borderRadius:14,padding:'12px 13px',marginBottom:12}}>
-                <div style={{fontSize:12.5,fontWeight:900,color:T.au1,fontFamily:"'Nunito',sans-serif",marginBottom:9}}>
-                  🍲 {t("cocinarMasPregunta")}
-                </div>
-                <div style={{display:'flex',gap:8}}>
-                  {[1,2,3].map(x=>(
-                    <button key={x} onClick={()=>{sfx&&sfx('tap');setCocinarDeMas(x);}} style={{
-                      flex:1,padding:'9px 0',borderRadius:12,cursor:'pointer',transition:'all 0.15s',
-                      background:cocinarDeMas===x?T.g3:'rgba(255,255,255,0.05)',
-                      border:cocinarDeMas===x?`2px solid ${T.au2}`:'1.5px solid rgba(255,255,255,0.14)',
-                      color:cocinarDeMas===x?T.wh:T.t2,fontSize:13,fontWeight:900,
-                      boxShadow:cocinarDeMas===x?'0 3px 0 rgba(0,0,0,0.35)':'none',
-                      fontFamily:"'Nunito',sans-serif"}}>
-                      {/* El botón dice cuántas raciones salen, no «x1»: en una receta
-                          de 3 raciones «x1» junto a «Rinde 3 raciones» parecía 1. */}
-                      {(()=>{const r=racionesDeLaLista(racReceta,x);
-                        return `${r} ${lang==='en'?(r===1?'serving':'servings'):(r===1?'ración':'raciones')}`;})()}
-                    </button>
-                  ))}
-                </div>
-                {cocinarDeMas>1&&(
-                  <div style={{marginTop:9,fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",lineHeight:1.45}}>
-                    {t("cocinarMasNota")}
-                  </div>
-                )}
-              </div>
-            )}
-            <div style={{display:'flex',flexDirection:'column',gap:7}}>
-              {ingList.map((ing,i)=>(<div key={i} className="stagger-in" style={{animationDelay:escalon(i),display:'flex',alignItems:'flex-start',gap:10}}><div style={{width:6,height:6,borderRadius:'50%',background:PLAN_TIPO_COLOR[tomaReceta.tipo]||T.g1,flexShrink:0,marginTop:6}}/><div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.4}}>{ing}</div></div>))}
-            </div>
-          </div>)}
-          {/* 💶 Coste estimado de TU ración (informativo; el gasto real se
-              apunta en la pestaña 🛒 Comprar). IIFE sin hooks: rama 'daily'.
-              En una receta de varias raciones la lista es la olla entera: tu
-              ración es la olla entre las raciones (como el recetario y el PDF). */}
-          {(()=>{
-            const _ce=costeRecetaJS(tomaReceta?.ingredientes||'');
-            if(!(_ce.total>0)) return null;
-            const _rac=Math.max(1,parseInt(tomaReceta?.raciones)||1);
-            return(
-            <div style={{background:T.bgCard,borderRadius:20,padding:'14px 18px',border:'1px solid rgba(255,255,255,0.07)',marginBottom:12}}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
-                <div style={{fontSize:12.5,fontWeight:900,color:T.t1,fontFamily:"'Nunito',sans-serif"}}>
-                  💶 {lang==='en'?'Estimated cost of your serving':'Coste estimado de tu ración'}
-                </div>
-                <div style={{fontSize:16,fontWeight:900,color:T.g1,fontFamily:"'Nunito',sans-serif",flexShrink:0}}>~{eurES(costePorRacion(_ce.total,_rac))} €</div>
-              </div>
-              {_rac>1&&(
-                <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginTop:4,lineHeight:1.4}}>
-                  {lang==='en'?`The whole list (${_rac} servings): ~${eurES(_ce.total)} €`:`La lista entera (${_rac} raciones): ~${eurES(_ce.total)} €`}
-                </div>
-              )}
-              <div style={{fontSize:10.5,color:T.t3,fontFamily:"'DM Sans',sans-serif",marginTop:6,lineHeight:1.4}}>
-                {lang==='en'?'Log what it really cost you from the 🛒 Buy button.':'Apunta lo que te cueste de verdad desde el botón 🛒 Comprar.'}
-              </div>
-            </div>);
-          })()}
-          <div style={{background:T.bgCard,borderRadius:20,padding:'18px 18px',border:'1px solid rgba(255,255,255,0.07)'}}>
-            <div style={{fontSize:11,color:T.au1,fontWeight:900,textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:12}}>{lang==='en'?'Preparation':'Preparación'}</div>
-            <div style={{fontSize:13,color:T.t1,fontFamily:"'DM Sans',sans-serif",lineHeight:1.7,whiteSpace:'pre-wrap'}}>{tomaReceta.instrucciones}</div>
-          </div>
-          <BotonCompartirReceta rec={tomaReceta} lang={lang} sfx={sfx}/>
-
-          {/* Botones: cambiar receta (10💎), guardar (20💎) y descartar (gratis) */}
-          <div style={{display:'flex',gap:10,marginTop:12}}>
-            {/* Cambiar receta. En un MENÚ DESGLOSADO cambia solo el plato que
-                se ve («Cambiar 1º», «Cambiar 2º») y la celda se recompone con
-                los totales nuevos (cambiarPlatoMenu, 12-oct-2026); hasta ese
-                día el botón no salía en los menús. Guardar/descartar operan
-                también sobre el plato visible (son recetas del recetario). */}
-            <button onClick={cambiarRecetaToma}
-              style={{flex:1,background:(!enTrial&&gems<10)?'rgba(255,255,255,0.05)':'rgba(100,181,246,0.15)',
-                      border:(!enTrial&&gems<10)?'1.5px solid rgba(255,255,255,0.08)':'1.5px solid rgba(100,181,246,0.4)',
-                      borderRadius:16,padding:'14px 10px',cursor:(!enTrial&&gems<10)?'default':'pointer',
-                      display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
-              <span style={{fontSize:20}}>🔄</span>
-              <span style={{fontSize:12,fontWeight:900,color:(!enTrial&&gems<10)?T.t3:T.platos,fontFamily:"'Nunito',sans-serif"}}>
-                {lang==='en'?'Change':'Cambiar'}{tomaMenu?' '+menuEtiquetaCorta(tomaMenu.etiquetas[platoSel],lang):''}
-              </span>
-              <span style={{fontSize:10,color:enTrial?T.g1:T.t3,fontWeight:enTrial?900:400}}>{enTrial?(lang==='en'?'Free · trial':'Gratis · prueba'):'10 💎'}</span>
-            </button>
-            <button onClick={recetaYaGuardada?undefined:guardarRecetaToma}
-              style={{flex:1,background:recetaYaGuardada?alpha(T.g1,0.15):(gems<20?'rgba(255,255,255,0.05)':alpha(T.au1,0.12)),
-                      border:recetaYaGuardada?'1.5px solid '+T.bG:(gems<20?'1.5px solid rgba(255,255,255,0.08)':`1.5px solid ${alpha(T.au1,0.35)}`),
-                      borderRadius:16,padding:'14px 10px',cursor:recetaYaGuardada?'default':(gems<20?'default':'pointer'),
-                      display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
-              <span style={{fontSize:20}}>{recetaYaGuardada?'✅':'📖'}</span>
-              <span style={{fontSize:12,fontWeight:900,color:recetaYaGuardada?T.g1:(gems<20?T.t3:T.au1),fontFamily:"'Nunito',sans-serif"}}>
-                {recetaYaGuardada?(lang==='en'?'Saved':'Guardada'):(lang==='en'?'Save':'Guardar')}
-              </span>
-              <span style={{fontSize:10,color:T.t3}}>{recetaYaGuardada?'✓':'20 💎'}</span>
-            </button>
-            <button onClick={descartarRecetaToma}
-              style={{flex:1,background:recetaDescartada?'rgba(255,90,90,0.18)':'rgba(255,90,90,0.08)',
-                      border:recetaDescartada?'1.5px solid rgba(255,90,90,0.55)':'1.5px solid rgba(255,90,90,0.25)',
-                      borderRadius:16,padding:'14px 10px',cursor:'pointer',
-                      display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
-              <span style={{fontSize:20}}>{recetaDescartada?'🚫':'🗑️'}</span>
-              <span style={{fontSize:12,fontWeight:900,color:'#FF6B6B',fontFamily:"'Nunito',sans-serif"}}>
-                {recetaDescartada?(lang==='en'?'Discarded':'Descartada'):(lang==='en'?'Dislike':'No me gusta')}
-              </span>
-              <span style={{fontSize:10,color:T.t3}}>{recetaDescartada?(lang==='en'?'Tap to undo':'Toca para deshacer'):(lang==='en'?'Free':'Gratis')}</span>
-            </button>
-          </div>
-          {/* «Pregúntale a Bo» sobre esta receta: las acciones son las tres de arriba, por sus
-              mismas funciones (cambiarRecetaToma admite {sinIngrediente}). */}
-          {boActivo(profile)&&(
-            <button data-bo-abrir-receta onClick={()=>{sfx&&sfx('tap');setBoHoja(true);}}
-              style={{width:'100%',marginTop:10,background:'rgba(255,255,255,0.05)',border:`1.5px solid ${alpha(T.au1,0.35)}`,borderRadius:16,
-                      padding:'12px 10px',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
-              <span style={{fontSize:18}}>💬</span>
-              <span style={{fontSize:12.5,fontWeight:900,color:T.au1,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Ask Bo about this recipe':'Pregúntale a Bo por esta receta'}</span>
-            </button>)}
-          {boHoja&&boActivo(profile)&&<PreguntaBo T={T} Sheep={Sheep} lang={lang} pid={profile?.id}
-            bo={{nombre:profile?.bo_nombre||'Bo',color:profile?.bo_color||'blanca',equipados:Array.isArray(profile?.bo_equipados)?profile.bo_equipados:[]}}
-            ctx={{contexto:'receta',plan:planBo(profile),enTrial:!!enTrial,raciones:tomaReceta.raciones,puedeCambiar:true,descartada:!!recetaDescartada,
-                  dia:selDay,toma:openToma,receta:tomaReceta.nombre,
-                  cajaRacion:(()=>{ const c=textosCajaRacion({raciones:tomaReceta.raciones,factor:tomaReceta.racion_factor,racionTexto:tomaReceta.racion_texto,lang}); return c?`${c.titulo}. ${c.detalle}`:''; })()}}
-            receta={{nombre:tomaReceta.nombre,ingList}}
-            onAccion={async(a,extra)=>{
-              if(a==='cambiar'||a==='cambiar_sin') return await cambiarRecetaToma(extra||{});
-              if(a==='descartar'){ if(recetaDescartada) return {ok:true}; await descartarRecetaToma(); return {ok:true}; }
-              return {ok:false}; }}
-            onAbrir={(d)=>{ if(d==='consulta'&&setTab) setTab('consulta'); if(d==='peso'&&setTab) setTab('peso');
-              if(d==='objetivo'&&setTab) setTab('objetivo'); if(d==='config'&&isStandard){ setOpenToma(null); setConfigView(true); } }}
-            ia={{...boIA, consentir:()=>boIAConsentir(profile?.id)}}
-            pendiente={boPendiente}
-            onIr={(d)=>{ setBoHoja(false); setBoPendiente(null); setBoNav(d); }}
-            onRegistrar={boRegistrar}
-            onCerrar={()=>{ setBoHoja(false); setBoPendiente(null); }}/>}
-        </>)}
-      </div>)}
-    </div>);
-  }
-  return null;
-}
+// La pestaña Plan vive en src/PlanTab.jsx desde el 10-nov (MAESTRO-2026-1238): se carga aparte.
 
 
 // ─── PlanConfig — el paciente estándar configura su plan (dieta + distribución) ──
-function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,primeraVez}){
+export function PlanConfig({profile,lang,config,setConfig,sfx,showT,onClose,onGenerar,primeraVez}){
   const TOMAS=[
     {k:'dist_desayuno',label:lang==='en'?'Breakfast':'Desayuno',ic:'☀️'},
     {k:'dist_almuerzo',label:lang==='en'?'Snack AM':'Almuerzo',ic:'🍎'},
@@ -18943,6 +14535,32 @@ function RewardsModal({onClose, currentLevel}){
 
 
 // ─── Error Boundary ──────────────────────────────────────────────────────────
+// Límite de errores de una pestaña (MAESTRO-2026-1234): si una pestaña falla, se ve este aviso en su
+// sitio y la barra de pestañas sigue funcionando. key={tab} en el contenedor lo reinicia al cambiar.
+class LimiteSeccion extends React.Component {
+  constructor(p){ super(p); this.state={err:null}; }
+  static getDerivedStateFromError(e){ return {err:e}; }
+  componentDidCatch(e){ console.error("GBH sección:", e?.message); }
+  render(){
+    if(!this.state.err) return this.props.children;
+    const en = this.props.lang==="en";
+    return (
+      <div role="alert" style={{margin:"24px 0",padding:"22px 18px",borderRadius:18,background:"rgba(255,0,0,0.08)",
+        border:"1px solid rgba(255,0,0,0.25)",textAlign:"center",color:T.t1}}>
+        <div style={{fontSize:32,marginBottom:8}}>🩹</div>
+        <div style={{fontSize:15,fontWeight:900,marginBottom:6}}>{en?"This section did not load properly":"Esta sección no ha cargado bien"}</div>
+        <div style={{fontSize:12,color:T.t2,marginBottom:14,fontFamily:"'DM Sans',sans-serif"}}>
+          {en?"The rest of the app still works. Try again or switch tab.":"El resto de la app sigue funcionando. Vuelve a intentarlo o cambia de pestaña."}
+        </div>
+        <button onClick={()=>this.setState({err:null})}
+          style={{padding:"10px 24px",background:T.g1,border:"none",borderRadius:14,color:T.t1,fontWeight:900,cursor:"pointer",fontSize:14}}>
+          {en?"Retry":"Reintentar"}
+        </button>
+      </div>
+    );
+  }
+}
+
 class ErrorBoundary extends React.Component {
   constructor(props){ super(props); this.state={err:null}; }
   static getDerivedStateFromError(e){ return {err:e}; }
@@ -18978,7 +14596,7 @@ class ErrorBoundary extends React.Component {
 // Aparece en la ficha del recetario y en el visor de la toma del plan cuando la
 // receta tiene slug público. Comparte la URL /recetas/<slug>: cada paciente que
 // comparte su cena es un anuncio del escaparate con la marca GBH.
-function BotonCompartirReceta({rec,lang,sfx,style}){
+export function BotonCompartirReceta({rec,lang,sfx,style}){
   const [copiado,setCopiado]=useState(false);
   if(!rec?.slug||!rec?.publica) return null;
   const compartir=async()=>{

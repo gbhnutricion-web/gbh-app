@@ -34,9 +34,11 @@ export default defineConfig({
     rollupOptions: {
       output: {
         // Separar chunks grandes en archivos independientes
-        manualChunks: {
-          react:    ['react', 'react-dom'],
-          recharts: ['recharts'],
+        // MAESTRO-2026-1234: con la forma de objeto, React acababa DENTRO del trozo de recharts y el
+        // bundle principal lo importaba (y lo precargaba) solo para tener React. Ahora React va en su
+        // trozo y recharts sale solo de las importaciones diferidas (GraficaPeso, CicloPeso).
+        manualChunks(id) {
+          if (/[\/]node_modules[\/](react|react-dom|scheduler)[\/]/.test(id)) return 'react';
         },
       },
     },
