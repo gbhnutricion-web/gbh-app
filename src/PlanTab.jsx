@@ -14,6 +14,7 @@ import { boActivo, contieneIngrediente, filaMomento, firmaTema, marcarMomentoVis
 import { claveMemoriaCambio, elegirPlatoMenu, elegirRecetaCambio, guardarMemoriaCambio, leerMemoriaCambio, listasPlatoMenu, normNombreCambio, permitidasDePlanes, recomponerMenu, rolPlatoMenu } from "./cambioReceta";
 import { costePorRacion, racionesDeLaLista, textosCajaRacion } from "./raciones";
 import { fusionarPlanes, persistirCelda } from "./celdaPlan";
+import { abrirCompraApple } from "./CompraApple"; // compra de Apple del Estándar en iOS (PEND-2026-319, 11-nov-2026)
 import { BotonCompartirReceta, ES_ANDROID_NATIVO, ES_IOS_NATIVO, ES_NATIVO, GBHApp, GBH_GEN_TOKEN, GBH_SERVER_URL, GBH_WHATSAPP, MiniListaCompra, OverlayGenerando, PLAN_CUMPL, PLAN_DIAS, PLAN_DIAS_F, PLAN_TIPO_BG, PLAN_TIPO_COLOR, PLAN_TOMAS, PLAN_TOMA_IC, PlanConfig, REDUCED_MOTION, SUPL_IC, SeguimientoView, Sheep, T, _fmtCompra, abrirCheckoutStripe, agregarListaCompra, alpha, boIA, boIAConsentir, boRegistrar, costeListaItems, costeRecetaJS, emojiPlato, enqueue, escalarIngredientesJS, escalon, eurES, fusionarIngredientesJS, getSesion, interpretarRechazados, leerRecetarioCompleto, lsGet, lsSet, menuEtiqueta, menuEtiquetaCorta, normSupl, racionEtiqueta, racionTextoJS, recetaRechazadaJS, sbDirect, sbReq, suplHechosKey, suplTrasToma, toKey, txtWebAndroid, setPerfilActualId } from "./App.jsx";
 
 export default function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,setSavedRecipes,descartadas,setDescartadas,showT,sfx,t,setTab,onMealRegistered,vistaInicial,onVistaConsumida,onTutoEvent,onSupl}){
@@ -1083,8 +1084,8 @@ export default function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,set
       <div style={{fontSize:13.5,color:T.t2,lineHeight:1.65,maxWidth:300,fontFamily:"'DM Sans',sans-serif"}}>
         {ES_IOS_NATIVO
           ? (lang==='en'
-            ?'Your weekly meal plan is prepared by your nutritionist as part of GBH Nutrición’s one-to-one nutrition service.'
-            :'Tu programación semanal la prepara tu nutricionista dentro del servicio de nutrición 1:1 de GBH Nutrición.')
+            ?'Your weekly meal plan comes with the Standard plan: tailored to you, with recipes and a shopping list.'
+            :'La programación semanal viene con el plan Estándar: a tu medida, con recetas y lista de la compra.')
           : (lang==='en'
           ?'The weekly plan is exclusive to Standard and Premium accounts. Upgrade and get your personalized meal plan, recipes and shopping list.'
           :'La planificación es exclusiva de las cuentas Estándar y Premium. Mejora tu plan y tendrás tu programación personalizada con recetas y lista de la compra.')}
@@ -1145,7 +1146,11 @@ export default function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,set
           :'La programación semanal no está disponible en tu cuenta actual.'}
         <br/>{txtWebAndroid(lang,"estandar")}
       </div>
-      ) : null)}
+      ) : (
+      <button onClick={()=>{sfx&&sfx("tap");abrirCompraApple();}}
+        style={{marginTop:4,width:'100%',maxWidth:300,background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:'none',color:T.t1,fontWeight:900,fontSize:15,borderRadius:18,padding:'16px 20px',cursor:'pointer',boxShadow:`0 4px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif",display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
+        <span style={{fontSize:20}}>⭐</span>{lang==='en'?'See the Standard plan':'Ver el plan Estándar'}
+      </button>))}
     </div>
   );}
   if(loading) return <div style={{padding:32,textAlign:'center',fontSize:13,color:T.t2}}>{lang==='en'?'Loading…':'Cargando…'}</div>;

@@ -48,6 +48,8 @@ if (typeof window !== "undefined") {
 import { Suplementacion } from "./Suplementacion";                       // pestaña 💊 Suplementación: ☕ Cafeína y 💪 Creatina (próximamente) (26-sep-2026)
 import { BarraPestanas } from "./BarraPestanas";                         // la barra de pestañas de abajo (26-sep-2026)
 import { FuentesCientificas, EnlaceFuentes, abrirFuentes } from "./FuentesCientificas"; // fuentes con enlace de cada recomendación (Apple 1.4.1, 7-nov-2026)
+import { HojaCompraApple, ControlSuscripcionIOS, abrirCompraApple } from "./CompraApple"; // compra de Apple del Estándar en iOS (PEND-2026-319, 11-nov-2026)
+import { escucharComprasApple, sincronizarComprasApple } from "./comprasApple";
 import { planificarAvisos, nombresDePlan, PREFS_POR_DEFECTO as AVISOS_PREFS, TOMAS_ORDEN as AVISOS_TOMAS } from "./motorAvisos"; // avisos fuera de la app, fase 1 (28-sep-2026)
 import { estadoPermiso, pedirPermiso, sincronizarAvisos, cancelarAvisos, alTocarAviso, plataforma as plataformaNativa } from "./avisosNativos";
 import { TarjetaPermisoAvisos, FilaRecordatorios, PanelRecordatorios } from "./PanelAvisos";
@@ -993,7 +995,10 @@ export const ES_ANDROID_NATIVO = ES_NATIVO && !ES_IOS_NATIVO;
 // por la semana de prueba, ve la app gratuita, y en iOS el alta no trae prueba. El Premium, el servicio 1:1
 // con la dietista que se acuerda fuera de la app (3.1.3(d)), sigue entero. Es solo VISTA: nada de esto se
 // escribe en la base, así que la web y Android no cambian, y quien paga por la web lo sigue teniendo allí.
-const vistaTienda = (p) => (ES_IOS_NATIVO && p && p.plan === "standard") ? { ...p, plan: "free" } : p;
+// 11-nov-2026 (Apple 3.1.1 del 11-nov; PEND-2026-319, por orden de Alejandro: «Compra de Apple del Estándar»): el Estándar
+// vuelve a iOS y se vende DENTRO con la compra de Apple (src/CompraApple.jsx). Con eso, quien lo pagó por la web también
+// lo usa en el iPhone (3.1.3(b)) y vistaTienda queda neutra. La semana de prueba y los referidos siguen fuera de iOS.
+const vistaTienda = (p) => p;
 export const txtWebAndroid = (lang, que) => que === "gestionar"
   ? (lang === "en" ? "Your subscription is managed on the web: app.gbhnutricion.es" : "Tu suscripción se gestiona en la web: app.gbhnutricion.es")
   : (lang === "en" ? "The Standard plan is available on the web: app.gbhnutricion.es" : "El plan Estándar se contrata en la web: app.gbhnutricion.es");
@@ -5869,7 +5874,7 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
               <div style={{minWidth:0}}>
                 <div style={{fontSize:10,color:T.t2,textTransform:"uppercase",letterSpacing:"0.08em",fontFamily:"'DM Sans',sans-serif",marginBottom:3}}>
-                  {ES_IOS_NATIVO?(lang==="en"?"Account":"Cuenta"):(lang==="en"?"Subscription":"Suscripción")}
+                  {lang==="en"?"Subscription":"Suscripción"}
                 </div>
                 <div style={{fontSize:14,fontWeight:800,color:T.wh,fontFamily:"'DM Sans',sans-serif"}}>
                   {profile?.plan==="premium" ? "💎 Premium"
@@ -5886,7 +5891,7 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
               {profile?.plan==="premium" ? null
                 : (profile?.plan==="standard" && !profile?.trial_ends_at && profile?.plan_until) ? (ES_NATIVO ? (ES_ANDROID_NATIVO ? (
                 <div style={{fontSize:10,color:T.t3,fontFamily:"'DM Sans',sans-serif",maxWidth:150,textAlign:"right",lineHeight:1.4}}>{txtWebAndroid(lang,"gestionar")}</div>
-                ) : null) : (
+                ) : <ControlSuscripcionIOS lang={lang} T={T} pagado/>) : (
                 <button disabled={portalLoading}
                   onClick={async()=>{
                     setPortalLoading(true);
@@ -5902,7 +5907,7 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
                 </button>
               )) : ES_NATIVO ? (ES_ANDROID_NATIVO ? (
                 <div style={{fontSize:10,color:T.t3,fontFamily:"'DM Sans',sans-serif",maxWidth:150,textAlign:"right",lineHeight:1.4}}>{txtWebAndroid(lang,"estandar")}</div>
-              ) : null) : (
+              ) : <ControlSuscripcionIOS lang={lang} T={T} pagado={false}/>) : (
                 <button onClick={()=>abrirCheckoutStripe(profile?.id)}
                   style={{background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:"none",
                     borderRadius:10,padding:"8px 12px",color:T.t1,fontWeight:900,fontSize:12,
@@ -5977,6 +5982,12 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
                     ?<>All your data will be deleted: diet, weight, achievements and gems.<br/><b style={{color:"#FF8080"}}>This action cannot be undone.</b></>
                     :<>Se borrarán todos tus datos: dieta, peso, logros y gemas.<br/><b style={{color:"#FF8080"}}>Esta acción no se puede deshacer.</b></>}
                 </div>
+                {ES_IOS_NATIVO&&profile?.plan==="standard"&&(
+                <div style={{fontSize:11,color:"rgba(255,220,160,0.9)",fontFamily:"'DM Sans',sans-serif",marginTop:-6,marginBottom:14,textAlign:"center",lineHeight:1.5}}>
+                  {lang==="en"
+                    ?"If you have Standard through Apple, deleting your account does not cancel it: cancel it in Settings ▸ your name ▸ Subscriptions."
+                    :"Si tienes el Estándar con Apple, borrar la cuenta no lo cancela: cancélalo en Ajustes ▸ tu nombre ▸ Suscripciones."}
+                </div>)}
                 <div style={{fontSize:11,color:T.t2,fontFamily:"'DM Sans',sans-serif",marginBottom:8}}>
                   {lang==="en"?<>Type <b style={{color:"#FF8080",letterSpacing:"0.05em"}}>DELETE DATA</b> to confirm:</>:<>Escribe <b style={{color:"#FF8080",letterSpacing:"0.05em"}}>BORRAR DATOS</b> para confirmar:</>}
                 </div>
@@ -7359,6 +7370,28 @@ export function GBHApp(){
   // Fuentes científicas (Apple 1.4.1, 7-nov-2026): cualquier pantalla lanza abrirFuentes("tema") y aquí se
   // pinta la lista encima. undefined = cerrada; null = abierta arriba; "tema" = abierta en ese tema.
   const [fuentesTema,setFuentesTema]=useState(undefined);
+  // Compra de Apple del Estándar (iOS, 11-nov-2026): cualquier pantalla llama a abrirCompraApple() y aquí se pinta.
+  // Al entrar, lo que StoreKit tenga sin cerrar y los derechos vigentes van al servidor (src/comprasApple.js).
+  const [compraApple,setCompraApple]=useState(false);
+  const refrescarPlanRef=useRef(null);
+  refrescarPlanRef.current=async()=>{
+    const id=profileReal?.id; if(!id) return;
+    try{
+      const rows=await sbReq("GET",`profiles?id=eq.${id}&select=plan,trial_ends_at,plan_until&limit=1`);
+      const srv=rows&&rows[0]; if(!srv) return;
+      setProfile(p=>{ if(!p) return p; const u={...p, plan:srv.plan, trial_ends_at:srv.trial_ends_at||null, plan_until:srv.plan_until||null}; try{lsSet(`gbh:p:${u.id}`,u);}catch{} return u; });
+    }catch{}
+  };
+  useEffect(()=>{
+    const h=()=>setCompraApple(true);
+    window.addEventListener("gbh:compra-apple",h);
+    return ()=>window.removeEventListener("gbh:compra-apple",h);
+  },[]);
+  useEffect(()=>{
+    if(!ES_IOS_NATIVO||!profileReal?.id) return;
+    escucharComprasApple({ getToken:()=>getSesion()?.token, onCambio:()=>refrescarPlanRef.current?.() });
+    sincronizarComprasApple(getSesion()?.token).then(r=>{ if(r&&r.enviadas) refrescarPlanRef.current?.(); }).catch(()=>{});
+  },[profileReal?.id]);
   useEffect(()=>{
     const h=(e)=>setFuentesTema(e?.detail?.tema ?? null);
     window.addEventListener("gbh:fuentes",h);
@@ -7369,7 +7402,8 @@ export function GBHApp(){
   const tutoTerminar=()=>{ try{ if(profile?.id) lsSet(`gbh:tuto:${profile.id}`,'done'); }catch{} setTutoPaso(null); };
   // En iOS, quien no es Premium no tiene programación (vistaTienda): el tour se salta los pasos del
   // plan (B3 y B4) en vez de llevarle a una pantalla que no puede usar (7-nov-2026).
-  const tutoSinPlan = ES_IOS_NATIVO && profile?.plan!=='premium';
+  // Desde el 11-nov el Estándar de Apple también la tiene.
+  const tutoSinPlan = ES_IOS_NATIVO && profile?.plan!=='premium' && profile?.plan!=='standard';
   const tutoPasoValido=(p)=> (tutoSinPlan && /^B[34]_/.test(p)) ? 'B5_peso' : p;
   const tutoAvanzar=()=>{
     const i=TUTO_ORDEN.indexOf(tutoPaso);
@@ -10910,6 +10944,10 @@ export function GBHApp(){
       {fuentesTema!==undefined&&(
         <FuentesCientificas tema={fuentesTema} lang={lang} T={T} onClose={()=>setFuentesTema(undefined)}/>
       )}
+      {compraApple&&ES_IOS_NATIVO&&profileReal?.plan!=="premium"&&(
+        <HojaCompraApple lang={lang} T={T} profile={profileReal} getToken={()=>getSesion()?.token}
+          onHecho={()=>refrescarPlanRef.current?.()} onClose={()=>setCompraApple(false)}/>
+      )}
       {tutoPaso==='B9_cierre'&&(
         <TutoCierre nombre={profile?.name} boNombre={boNombre} boColor={boColor} boEquipados={boEquipados} sinPlan={tutoSinPlan}
           lang={lang} onFin={()=>{ sfx("streakCelebration"); tutoTerminar(); }}/>
@@ -11966,9 +12004,9 @@ export function GBHApp(){
                     </div>
                     <div style={{color:T.platos,fontSize:20,flexShrink:0}}>›</div>
                   </button>
-                  {/* Recetario completo (bloqueado para free). En iOS, a quien no lo tiene ni se le
-                      enseña: nada bloqueado a la vista (Apple 3.1.1, 7-nov-2026). */}
-                  {!(ES_IOS_NATIVO&&!tieneAccesoCompleto)&&(
+                  {/* Recetario completo (bloqueado para free). En iOS se ocultó a quien no lo tenía del 7 al
+                      11-nov-2026; desde la compra de Apple del Estándar se enseña también allí. */}
+                  {(
                   <button onClick={()=>setRecipeView("completo")} style={{background:alpha(T.au1,0.10),border:`2px solid ${alpha(T.au1,0.3)}`,borderRadius:20,padding:'20px',textAlign:'left',cursor:'pointer',display:'flex',alignItems:'center',gap:16,boxShadow:'0 4px 0 rgba(0,0,0,0.3)',opacity:tieneAccesoCompleto?1:0.9}}>
                     <div style={{fontSize:40,flexShrink:0}}>{tieneAccesoCompleto?"📚":"🔒"}</div>
                     <div style={{flex:1,minWidth:0}}>
@@ -12179,6 +12217,11 @@ export function GBHApp(){
                     </div>
                     </>}
                     {ES_ANDROID_NATIVO&&(<div style={{fontSize:12.5,color:T.t2,lineHeight:1.6,maxWidth:300,fontFamily:"'DM Sans',sans-serif"}}>{txtWebAndroid(lang,"estandar")}</div>)}
+                    {ES_IOS_NATIVO&&(
+                    <button onClick={()=>{sfx&&sfx("tap");abrirCompraApple();}}
+                      style={{marginTop:4,width:'100%',maxWidth:300,background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:'none',color:T.t1,fontWeight:900,fontSize:15,borderRadius:18,padding:'16px 20px',cursor:'pointer',boxShadow:`0 4px 0 ${T.g3}`,fontFamily:"'Nunito',sans-serif",display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
+                      <span style={{fontSize:20}}>⭐</span>{lang==='en'?'See the Standard plan':'Ver el plan Estándar'}
+                    </button>)}
                     {!ES_NATIVO&&(
                     <a href={`https://wa.me/${GBH_WHATSAPP}?text=${encodeURIComponent(lang==='en'?`Hi! I'm ${profile?.name||''} and I have a question about the GBH subscription 📚`:`¡Hola! Soy ${profile?.name||''} y tengo una duda sobre la suscripción de GBH 📚`)}`}
                       target="_blank" rel="noopener noreferrer" onClick={()=>sfx&&sfx("tap")}
