@@ -178,6 +178,11 @@ workflows:
           for k in NSCameraUsageDescription NSPhotoLibraryUsageDescription ITSAppUsesNonExemptEncryption; do
             grep -q "$k" ios/App/App/Info.plist || { echo "Falta $k en Info.plist"; exit 1; }
           done
+      - name: Comprobar el idioma espanol (la 1.0 salio con «Idioma English», MAESTRO-2026-1382)
+        script: |
+          grep -A1 CFBundleDevelopmentRegion ios/App/App/Info.plist | grep -q '<string>es</string>' || { echo "CFBundleDevelopmentRegion no es es"; exit 1; }
+          grep -q CFBundleLocalizations ios/App/App/Info.plist || { echo "Falta CFBundleLocalizations en Info.plist"; exit 1; }
+          grep -q 'developmentRegion = es;' ios/App/App.xcodeproj/project.pbxproj || { echo "developmentRegion del pbxproj no es es"; exit 1; }
       - name: Comprobar los pasos del movil en iOS (podometro si; Health Connect y HealthKit no)
         script: |
           grep -q NSMotionUsageDescription ios/App/App/Info.plist || { echo "Falta NSMotionUsageDescription: iOS mataria la app al leer los pasos"; exit 1; }

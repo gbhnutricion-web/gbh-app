@@ -201,6 +201,16 @@ if (existsSync(PLIST)) {
     if (!out.includes("ITSAppUsesNonExemptEncryption")) {
       out = out.replace(/\n<\/dict>\n<\/plist>/, "\n\t<key>ITSAppUsesNonExemptEncryption</key>\n\t<false/>\n</dict>\n</plist>");
     }
+    // IDIOMA ESPAÑOL (15-nov-2026, MAESTRO-2026-1382). La 1.0 salió con «Idioma: English» en la
+    // ficha: Capacitor deja CFBundleDevelopmentRegion = $(DEVELOPMENT_LANGUAGE) (= en) y no
+    // declara localizaciones, y Apple saca el idioma de la compilación, no de la ficha.
+    out = out.replace(/(<key>CFBundleDevelopmentRegion<\/key>\s*<string>)[^<]*(<\/string>)/, "$1es$2");
+    if (!out.includes("CFBundleDevelopmentRegion")) {
+      out = out.replace(/\n<\/dict>\n<\/plist>/, "\n\t<key>CFBundleDevelopmentRegion</key>\n\t<string>es</string>\n</dict>\n</plist>");
+    }
+    if (!out.includes("CFBundleLocalizations")) {
+      out = out.replace(/\n<\/dict>\n<\/plist>/, "\n\t<key>CFBundleLocalizations</key>\n\t<array>\n\t\t<string>es</string>\n\t</array>\n</dict>\n</plist>");
+    }
     return out;
   });
 
@@ -224,6 +234,14 @@ if (existsSync(PLIST)) {
   }
   editar(PBXPROJ, (t) => t.replace(/TARGETED_DEVICE_FAMILY = [^;]+;/g, 'TARGETED_DEVICE_FAMILY = "1";'));
   log("iOS: TARGETED_DEVICE_FAMILY = \"1\" (solo iPhone)");
+
+  // Idioma del proyecto (mismo motivo que CFBundleDevelopmentRegion, arriba): región de
+  // desarrollo «es» y «es» entre las regiones conocidas. Idempotente.
+  editar(PBXPROJ, (t) => t
+    .replace(/developmentRegion = [^;]+;/g, "developmentRegion = es;")
+    .replace(/knownRegions = \(([^)]*)\);/g, (m, dentro) =>
+      /(^|[\s,])es,/.test(dentro) ? m : `knownRegions = (${dentro.replace(/\s*$/, "")}\n\t\t\t\tes,\n\t\t\t);`));
+  log("iOS: idioma de desarrollo = es");
 }
 
 if (!existsSync(ANDROID) && !existsSync(PLIST)) {
