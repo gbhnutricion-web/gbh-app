@@ -1478,6 +1478,16 @@ try{
   if(urlLang==="es"||urlLang==="en") lsSet("gbh:lang",urlLang);
 }catch{}
 
+// ?from=… (o utm_source) en la URL: de dónde llega quien abre la app. Gana el
+// PRIMER contacto: si ya hay uno guardado, no se pisa. El perfil lo recibe una
+// sola vez, al darse de alta (efecto «origen» junto al de la plataforma).
+// B de wiki/inversiones-2026-11.md, por orden de Alejandro (18-nov-2026).
+try{
+  const pq=new URLSearchParams(window.location.search);
+  const fo=String(pq.get("from")||pq.get("utm_source")||"").toLowerCase().replace(/[^a-z0-9_-]/g,"").slice(0,40);
+  if(fo && !lsGet("gbh:origen",null)) lsSet("gbh:origen",{o:fo,t:new Date().toISOString()});
+}catch{}
+
 // Cookie helpers — sobreviven al borrado de caché del navegador
 const cookieSet=(k,v,days=365)=>{try{const d=new Date();d.setTime(d.getTime()+days*864e5);document.cookie=`${k}=${encodeURIComponent(JSON.stringify(v))};expires=${d.toUTCString()};path=/;SameSite=Lax`;}catch{}};
 const cookieGet=(k,f=null)=>{try{const m=document.cookie.match(new RegExp('(?:^|; )'+k+'=([^;]*)'));return m?JSON.parse(decodeURIComponent(m[1])):f;}catch{return f;}};
@@ -9137,6 +9147,26 @@ export function GBHApp(){
     sbReq("PATCH",`profiles?id=eq.${profile.id}`,{plataforma:ES_NATIVO?plataformaNativa():'web', plataforma_at:new Date().toISOString()});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[profile?.id]);
+  // Origen del alta, una vez por cuenta y dispositivo: solo en cuentas de menos de
+  // 7 días y solo si la base no tiene ya uno (a una cuenta vieja no se le inventa).
+  // Sin respuesta de la base no se marca nada: se reintenta en la próxima apertura.
+  useEffect(()=>{
+    if(!profile?.id) return;
+    const k=`gbh:origenHecho:${profile.id}`;
+    if(lsGet(k,false)) return;
+    sbReq("GET",`profiles?id=eq.${profile.id}&select=origen,created_at&limit=1`).then(rows=>{
+      const r=Array.isArray(rows)?rows[0]:null;
+      if(!r) return;
+      lsSet(k,true);
+      if(r.origen) return;
+      const alta=new Date(r.created_at||0).getTime();
+      if(!(Date.now()-alta < 7*24*60*60*1000)) return;
+      const g=lsGet("gbh:origen",null);
+      const o=(g&&g.o) || (ES_NATIVO ? "app_"+plataformaNativa() : "directo");
+      sbReq("PATCH",`profiles?id=eq.${profile.id}`,{origen:o, origen_at:new Date().toISOString()});
+    }).catch(()=>{});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.id]);
 
   // Completar un suplemento/medicación desde el pop-up: marca el día, suma
   // +5 gemas y lo registra en daily_logs (clave 'supl|Nombre', solo seguimiento
@@ -12807,8 +12837,8 @@ function TarjetaInvitarAmigo({profile,lang,sfx}){
   const [msgEd,setMsgEd]=React.useState(null);
   if(!profile?.referral_code) return null;
   const msgBase = lang==='en'
-    ? `I'm following my nutrition plan with GBH Nutrición 🌱 Sign up with my code ${profile.referral_code} and your first month of Premium is half price (€17.50): https://app.gbhnutricion.es`
-    : `Estoy siguiendo mi plan de nutrición con GBH Nutrición 🌱 Regístrate con mi código ${profile.referral_code} y tu primer mes de Premium te sale a mitad de precio (17,50 €): https://app.gbhnutricion.es`;
+    ? `I'm following my nutrition plan with GBH Nutrición 🌱 Sign up with my code ${profile.referral_code} and your first month of Premium is half price (€17.50): https://app.gbhnutricion.es/?from=ref`
+    : `Estoy siguiendo mi plan de nutrición con GBH Nutrición 🌱 Regístrate con mi código ${profile.referral_code} y tu primer mes de Premium te sale a mitad de precio (17,50 €): https://app.gbhnutricion.es/?from=ref`;
   const compartir=async()=>{
     sfx&&sfx("tap");
     const msg = (msgEd??msgBase).trim()||msgBase;
