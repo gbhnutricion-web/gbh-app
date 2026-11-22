@@ -48,6 +48,8 @@ if (typeof window !== "undefined") {
 import { Suplementacion } from "./Suplementacion";                       // pestaña 💊 Suplementación: ☕ Cafeína y 💪 Creatina (próximamente) (26-sep-2026)
 import { BarraPestanas } from "./BarraPestanas";                         // la barra de pestañas de abajo (26-sep-2026)
 import { FuentesCientificas, EnlaceFuentes, abrirFuentes } from "./FuentesCientificas"; // fuentes con enlace de cada recomendación (Apple 1.4.1, 7-nov-2026)
+import { AnticonceptivoFila } from "./AnticonceptivoFila.jsx";   // casilla de la ficha de perfil (PEND-2026-279 pregunta 2, 22-nov-2026)
+import { antiValido, antiClave, antiDecidir } from "./anticonceptivoPerfil.js";
 import { HojaCompraApple, ControlSuscripcionIOS, abrirCompraApple } from "./CompraApple"; // compra de Apple del Estándar en iOS (PEND-2026-319, 11-nov-2026)
 import { escucharComprasApple, sincronizarComprasApple } from "./comprasApple";
 import { planificarAvisos, nombresDePlan, PREFS_POR_DEFECTO as AVISOS_PREFS, TOMAS_ORDEN as AVISOS_TOMAS } from "./motorAvisos"; // avisos fuera de la app, fase 1 (28-sep-2026)
@@ -425,6 +427,20 @@ const TRANS = {
     cafAntiSoloX:"{item} · no cambia cómo eliminas la cafeína",
     cafAntiNo:"Anticonceptivos hormonales",
     cafAntiNoX:"no constan en tu medicación",
+    cafAntiCombP:"con estrógeno · lo dijiste en tu perfil: la eliminas más despacio",
+    cafAntiSoloP:"lo dijiste en tu perfil · no cambia cómo eliminas la cafeína",
+    cafAntiNoP:"no tomas · lo dijiste en tu perfil",
+    cafAntiIr:"dilo una vez en tu perfil",
+    antiTit:"Anticonceptivo hormonal",
+    antiSub:"Se pregunta una sola vez. Con estrógeno, la cafeína te dura casi el doble.",
+    antiComb:"Sí, con estrógeno",
+    antiCombX:"píldora combinada, anillo o parche",
+    antiSolo:"Sí, sin estrógeno",
+    antiSoloX:"minipíldora, DIU hormonal, implante o inyección",
+    antiNo:"No",
+    antiNoX:"ninguno hormonal",
+    antiMed:"Ya consta en tu medicación: {item}",
+    antiMedSolo:"Ya consta en tu medicación: {item} (sin estrógeno)",
     cafTolAria:"Tu tolerancia a la cafeína",
     cafTolSensible:"🐣 Sensible",
     cafTolSensibleX:"Un café te activa mucho",
@@ -5634,7 +5650,7 @@ function UserAvatar({size=52, photoB64, initials, borderColor, onClick, frame=nu
 }
 
 // ─── ProfileCardModal — tarjeta de perfil del paciente ──────────────────────
-function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, onSaveProfile, weights, lv, xp, streak, badges, lang, setLang, onDeleteAccount, avisosOn, avisosPrefs, avisosPermiso, onAbrirAvisos}){
+function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, onSaveProfile, anticonceptivo, medicacion, onSaveAnticonceptivo, weights, lv, xp, streak, badges, lang, setLang, onDeleteAccount, avisosOn, avisosPrefs, avisosPermiso, onAbrirAvisos}){
   const t=useLang();
   const [photo,       setPhoto]      = useState(userPhoto||null);
   const [editField,   setEditField]  = useState(null);
@@ -5643,6 +5659,20 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
   const [delInput,    setDelInput]   = useState("");
   const [editingHeight, setEditingHeight] = useState(false);
   const [heightEdit,    setHeightEdit]    = useState(profile?.height_cm||170);
+  // Anticonceptivo hormonal (22-nov-2026, PEND-2026-279 pregunta 2): solo mujeres. Si la medicación
+  // registrada ya lo dice, no se pregunta. El motor se carga aparte, igual que la calculadora.
+  const [antiMed, setAntiMed] = useState(undefined);
+  useEffect(()=>{
+    if(profile?.sex!=="F") return;
+    let vivo=true;
+    import("./motorCafeina.js").then(m=>{
+      if(!vivo) return;
+      const a=m.anticonceptivosDe("F", Array.isArray(medicacion)?medicacion:[]);
+      setAntiMed(a.origen==="medicacion" ? a : null);
+    }).catch(()=>{ if(vivo) setAntiMed(null); });
+    return ()=>{vivo=false;};
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.sex, medicacion]);
   const [portalLoading, setPortalLoading] = useState(false);
   // Cambiar el PIN (30-sep-2026, MAESTRO-2026-715): gbh_set_pin con el PIN actual. El servidor
   // comparte el freno de la entrada (8 fallos en 15 min bloquean 15 min) y contesta 'pin' o 'bloqueado'.
@@ -5816,6 +5846,7 @@ function ProfileCardModal({onClose, onGoHome, profile, userPhoto, onSavePhoto, o
               </div>
             )}
           </div>
+          {profile?.sex==="F"&&<AnticonceptivoFila valor={anticonceptivo} med={antiMed} onElegir={onSaveAnticonceptivo} t={t} T={T}/>}
           <DataRow label={t("profileInitialWeight")} value={initW} field="weight"/>
           {/* Selector de idioma */}
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 0",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
@@ -7314,6 +7345,8 @@ export function GBHApp(){
   const [boPersonalidad,setBoPersonalidad]=useState("normal");
   const [zonaJuego,setZonaJuego]=useState(false);
   const [cafeinaAbierta,setCafeinaAbierta]=useState(false);   // calculadora de cafeína a pantalla completa
+  // Anticonceptivo hormonal declarado en el perfil (22-nov-2026, PEND-2026-279 pregunta 2): al arrancar, lo del teléfono.
+  const [anticonceptivo,setAnticonceptivo]=useState(()=>{ const l=profile?.id?lsGet(antiClave(profile.id),null):null; return l&&antiValido(l.v)?l.v:null; });
   const [creatinaAbierta,setCreatinaAbierta]=useState(false);   // calculadora de creatina a pantalla completa (fase 1, 5-oct-2026)
   const [creatinaDatos,setCreatinaDatos]=useState({tipoDieta:null,sumaPliegues:null});
   // Al abrirla se leen los dos datos que la pantalla no puede pedir (no tiene sbReq): la última toma COMPLETA de los 7
@@ -9168,6 +9201,34 @@ export function GBHApp(){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[profile?.id]);
 
+  // Anticonceptivo hormonal: la base y el teléfono se ponen de acuerdo al abrir (antiDecidir).
+  // Por sbDirect, sin cola: si la columna aún no existe, la lectura falla y manda el teléfono.
+  useEffect(()=>{
+    if(!profile?.id) return;
+    const k=antiClave(profile.id), l0=lsGet(k,null);
+    setAnticonceptivo(l0&&antiValido(l0.v)?l0.v:null);
+    if(profile?.sex!=="F") return;
+    let vivo=true;
+    sbDirect("GET",`profiles?id=eq.${profile.id}&select=anticonceptivo&limit=1`).then(r=>{
+      if(!vivo) return;
+      const fila=r.ok&&Array.isArray(r.data)?r.data[0]:null;
+      const d=antiDecidir(fila?(fila.anticonceptivo??null):undefined, lsGet(k,null));
+      setAnticonceptivo(d.valor);
+      if(d.local) lsSet(k,d.local);
+      if(d.escribir) sbDirect("PATCH",`profiles?id=eq.${profile.id}`,{anticonceptivo:d.escribir}).then(w=>{ if(w.ok) lsSet(k,{...d.local,pendiente:false}); });
+    });
+    return ()=>{vivo=false;};
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[profile?.id, profile?.sex]);
+  // Lo guarda la ficha de perfil. Primero el teléfono (pendiente), luego la base; sin cola.
+  const guardarAnticonceptivo=useCallback(async(v)=>{
+    if(!profile?.id || !antiValido(v)) return;
+    const k=antiClave(profile.id), at=new Date().toISOString();
+    setAnticonceptivo(v); lsSet(k,{v,at,pendiente:true});
+    const r=await sbDirect("PATCH",`profiles?id=eq.${profile.id}`,{anticonceptivo:v});
+    if(r.ok) lsSet(k,{v,at,pendiente:false});
+  },[profile?.id]);
+
   // Completar un suplemento/medicación desde el pop-up: marca el día, suma
   // +5 gemas y lo registra en daily_logs (clave 'supl|Nombre', solo seguimiento
   // — NUNCA afecta a la racha ni a las misiones diarias).
@@ -9870,6 +9931,7 @@ export function GBHApp(){
       k.startsWith(`gbh:weights:${id}`) ||
       k.startsWith(`gbh:badges:${id}`) ||
       k.startsWith(`gbh:p:${id}`) ||
+      k === `gbh:anticonceptivo:${id}` ||   // dato de salud declarado en el perfil (PEND-2026-279 pregunta 2)
       k === `gbh:em:${email}` ||
       k === SESION_KEY ||
       k === "gbh:lastEmail" ||
@@ -11016,7 +11078,7 @@ export function GBHApp(){
           <Suplementacion t={t} T={T} sfx={sfx} onAbrir={id=>{ if(id==="cafeina") setCafeinaAbierta(true); if(id==="creatina") abrirCreatina(); }}/>
         </div>
       )}
-      {cafeinaAbierta&&<React.Suspense fallback={null}><Cafeina profile={profile} weights={weights} medicacion={suplPlan} lang={lang} t={t} T={T} sfx={sfx} onClose={()=>setCafeinaAbierta(false)}/></React.Suspense>}
+      {cafeinaAbierta&&<React.Suspense fallback={null}><Cafeina profile={profile} weights={weights} medicacion={suplPlan} anticonceptivo={anticonceptivo} onIrPerfil={profile?.sex==="F"?()=>{setCafeinaAbierta(false);setShowPhotoPicker(true);}:null} lang={lang} t={t} T={T} sfx={sfx} onClose={()=>setCafeinaAbierta(false)}/></React.Suspense>}
       {creatinaAbierta&&<React.Suspense fallback={null}><Creatina profile={profile} weights={weights} medicacion={suplPlan} tipoDieta={creatinaDatos.tipoDieta} sumaPliegues={creatinaDatos.sumaPliegues} lang={lang} t={t} T={T} sfx={sfx} onClose={()=>setCreatinaAbierta(false)}/></React.Suspense>}
       {zonaJuego&&(
         <div style={{position:"fixed",inset:0,zIndex:9000,background:T.bg,display:"flex",flexDirection:"column"}}>
@@ -11140,6 +11202,9 @@ export function GBHApp(){
           userPhoto={userPhoto}
           onSavePhoto={saveUserPhoto}
           onSaveProfile={saveProfileField}
+          anticonceptivo={anticonceptivo}
+          medicacion={suplPlan}
+          onSaveAnticonceptivo={guardarAnticonceptivo}
           weights={weights}
           lv={lv}
           xp={xp}

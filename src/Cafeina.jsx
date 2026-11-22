@@ -15,8 +15,11 @@
 //
 // A propósito, este módulo NO recibe sbReq: no puede hacer ninguna llamada a Supabase (listón de la
 // fase 1: 0 llamadas con las respuestas de salud). Los textos viven en TRANS de App.jsx (claves caf*),
-// y llegan por la función t(). Pendiente de FASE 2 (PEND-2026-279, pregunta 2): la casilla
-// «anticonceptivo hormonal» en el alta o el perfil; hasta entonces se leen de la medicación.
+// y llegan por la función t().
+// FASE 2 (22-nov-2026, PEND-2026-279 pregunta 2, por orden de Alejandro): los anticonceptivos que NO constan
+// en la medicación los declara la paciente UNA vez en su ficha de perfil (profiles.anticonceptivo). Aquí no se
+// preguntan: llegan por la prop `anticonceptivo` y el motor decide (manda la medicación; si calla, lo declarado).
+// Si no consta, la fila ofrece ir al perfil (onIrPerfil). Este módulo sigue sin escribir nada en la base.
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { EnlaceFuentes } from "./FuentesCientificas";   // fuentes con enlace (Apple 1.4.1, 7-nov-2026)
 import { FORMAS, FUENTES, perfilDesdeApp, pesoParaCalculo, cribado, recomendar, comparaNormal, bandas,
@@ -52,7 +55,7 @@ const aInput = (h) => { const x = hm(h).split(":"); return (x[0].length < 2 ? "0
 // «**negrita**» en los textos de TRANS → <b>
 const rico = (s) => String(s).split("**").map((p, i) => (i % 2 ? <b key={i}>{p}</b> : <React.Fragment key={i}>{p}</React.Fragment>));
 
-export function Cafeina({ profile, weights, medicacion, lang = "es", t, T, sfx, onClose }) {
+export function Cafeina({ profile, weights, medicacion, anticonceptivo = null, onIrPerfil = null, lang = "es", t, T, sfx, onClose }) {
   const en = lang === "en";
   const nf = (v, d) => (en ? v.toFixed(d) : v.toFixed(d).replace(".", ","));
   const [habitos, setHabitos] = useState(() => leerHabitos(profile?.id));
@@ -83,7 +86,8 @@ export function Cafeina({ profile, weights, medicacion, lang = "es", t, T, sfx, 
     registrosPeso: (weights || []).map((w) => ({ log_date: w.date ?? w.log_date, weight_kg: w.weight ?? w.weight_kg })),
     pesoInicial: profile?.initial_weight ?? null,
     medicacion: med,
-  }, habitos), [profile?.sex, profile?.height_cm, profile?.initial_weight, weights, medicacion, habitos]);
+    anticonceptivo,
+  }, habitos), [profile?.sex, profile?.height_cm, profile?.initial_weight, weights, medicacion, anticonceptivo, habitos]);
 
   const calc = useMemo(() => {
     const cr = cribado(salud, app.datos);
@@ -192,6 +196,7 @@ export function Cafeina({ profile, weights, medicacion, lang = "es", t, T, sfx, 
   .caf-sn button.on.si{background:#8a2e2e}
   .caf-dato{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid rgba(255,255,255,.10)}
   .caf-dato.primero{border-top:none;padding-top:0}
+  .caf-enl{display:inline;background:none;border:none;padding:6px 0;margin:0;font:inherit;color:${T.au1};text-decoration:underline;cursor:pointer}
   .caf-ic{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:rgba(255,255,255,.06);font-size:17px;flex-shrink:0}
   .caf-tx{flex:1;min-width:0;font-size:12.5px;font-weight:800;overflow-wrap:anywhere}
   .caf-tx b{color:#FF8A8A}
@@ -294,11 +299,12 @@ export function Cafeina({ profile, weights, medicacion, lang = "es", t, T, sfx, 
           <span className="caf-val">{pp.peso == null ? "—" : nf(pp.peso, 1).replace(/[.,]0$/, "")} <small>kg</small></span>
         </div>
         {ac.estado !== "no_aplica" && (
-          <div className="caf-dato">
+          <div className="caf-dato" data-anti={ac.estado} data-anti-origen={ac.origen || ""}>
             <span className="caf-ic">💊</span>
-            <span className="caf-tx">{ac.estado === "combinado" ? <>{t("cafAntiComb")}<small>{t("cafAntiCombX", { item: ac.item })}</small></>
-              : ac.estado === "solo_gestageno" ? <>{t("cafAntiSolo")}<small>{t("cafAntiSoloX", { item: ac.item })}</small></>
-              : <>{t("cafAntiNo")}<small>{t("cafAntiNoX")}</small></>}</span>
+            <span className="caf-tx">{ac.estado === "combinado" ? <>{t("cafAntiComb")}<small>{ac.origen === "perfil" ? t("cafAntiCombP") : t("cafAntiCombX", { item: ac.item })}</small></>
+              : ac.estado === "solo_gestageno" ? <>{t("cafAntiSolo")}<small>{ac.origen === "perfil" ? t("cafAntiSoloP") : t("cafAntiSoloX", { item: ac.item })}</small></>
+              : ac.estado === "no" ? <>{t("cafAntiNo")}<small>{t("cafAntiNoP")}</small></>
+              : <>{t("cafAntiNo")}<small>{t("cafAntiNoX")}{onIrPerfil ? <> · <button type="button" className="caf-enl" data-anti-perfil="1" onClick={() => { tap(); onIrPerfil(); }}>{t("cafAntiIr")}</button></> : null}</small></>}</span>
           </div>
         )}
         <div className="caf-tol" role="radiogroup" aria-label={t("cafTolAria")}>

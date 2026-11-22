@@ -190,6 +190,26 @@ export const CASOS = [
       const r = perfilDesdeApp({ sexo: 'F', alturaCm: 165, registrosPeso: [{ log_date: '2026-09-22', weight_kg: 61.3 }], pesoInicial: 64, medicacion: [{ nombre: 'Anticonceptivo', tipo: 'Medicación', hora: '22:00' }] }, { tolerancia: 'sensible' });
       return { ok: r.perfil.peso === 61.3 && r.perfil.anticonceptivos === true && r.perfil.tolerancia === 'sensible' && r.datos.interacciones.length === 0, detalle: JSON.stringify(r.perfil) };
   } },
+  { que: 'anticonceptivos declarados en el perfil: manda la medicación; si calla, lo declarado; si nada, no consta', f: () => {
+      const a = anticonceptivosDe('F', [], 'combinado'), b = anticonceptivosDe('F', [], 'sin_estrogeno'), c = anticonceptivosDe('F', [], 'no');
+      const d = anticonceptivosDe('F', [{ nombre: 'Cerazet' }], 'combinado'), e = anticonceptivosDe('F', [{ nombre: 'Yasmin' }], 'no');
+      const g = anticonceptivosDe('M', [], 'combinado'), h = anticonceptivosDe('F', [], 'otra_cosa'), i = anticonceptivosDe('F', []);
+      return { ok: a.estado === 'combinado' && a.origen === 'perfil' && a.item === null && b.estado === 'solo_gestageno' && b.origen === 'perfil'
+                   && c.estado === 'no' && c.origen === 'perfil' && d.estado === 'solo_gestageno' && d.origen === 'medicacion'
+                   && e.estado === 'combinado' && e.origen === 'medicacion' && g.estado === 'no_aplica' && h.estado === 'no_consta'
+                   && i.estado === 'no_consta' && i.origen === null,
+               detalle: [a, b, c, d, e, g, h, i].map((x) => x.estado + '/' + x.origen).join(' · ') };
+  } },
+  { que: 'perfilDesdeApp: «combinado» declarado en el perfil alarga la semivida igual que en la medicación; «no» y «sin estrógeno», no', f: () => {
+      const base = { sexo: 'F', alturaCm: 165, registrosPeso: [{ log_date: '2026-09-22', weight_kg: 61.3 }], pesoInicial: 64 };
+      const med = perfilDesdeApp({ ...base, medicacion: [{ nombre: 'Yasmin', tipo: 'Medicación' }] }), dec = perfilDesdeApp({ ...base, anticonceptivo: 'combinado' });
+      const no = perfilDesdeApp({ ...base, anticonceptivo: 'no' }), sin = perfilDesdeApp({ ...base, anticonceptivo: 'sin_estrogeno' }), nada = perfilDesdeApp(base);
+      const t = (r) => pkIndividual(r.perfil).t12;
+      return { ok: dec.perfil.anticonceptivos === true && cerca(t(dec), t(med)) && cerca(t(dec), t(nada) / PK.cov.anticonceptivos)
+                   && no.perfil.anticonceptivos === false && sin.perfil.anticonceptivos === false && cerca(t(no), t(nada)) && cerca(t(sin), t(nada))
+                   && dec.datos.anticonceptivos.origen === 'perfil' && med.datos.anticonceptivos.origen === 'medicacion',
+               detalle: `t½ ${fmt(t(nada))} h → declarado ${fmt(t(dec))} h · medicación ${fmt(t(med))} h` };
+  } },
   { que: 'la franja entre personas ordena p10 ≤ p50 ≤ p90 y abraza la curva típica', f: () => {
       const perfil = { peso: 70 }, tomas = [{ t: 9, mg: 200 }], b = bandas(perfil, tomas, { desde: 9, hasta: 21, paso: 0.5, n: 400 }), p = pkIndividual(perfil);
       const orden = b.every((x) => x.p10 <= x.p50 + 1e-12 && x.p50 <= x.p90 + 1e-12);

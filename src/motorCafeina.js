@@ -94,13 +94,22 @@ const nombreMed = (it) => (typeof it === 'string' ? it : [it && (it.nombre ?? it
 const SOLO_GESTAGENO = /cerazet|slinda|minip[ií]ldora|solo\s*gest|desogestrel\s*75|mirena|kyleena|jaydess|implanon|nexplanon|diu\s*hormonal|depo-?provera|sayana/i;
 const COMBINADO = /anticonceptiv|p[ií]ldora|etinilestradiol|estetrol|drospirenona|gestodeno|dienogest|nomegestrol|clormadinona|ciproterona|norgestimato|anillo\s*vaginal|nuvaring|circlet|parche\s*anticonc|evra|yasmin|\byaz\b|diane|microgynon|loette|ovoplex|sibilla|zoely|qlaira|bellina|balianca|drosure|daylette|drospil|liofora|eloine|harmonet|minesse|melodene|tevalet|triciclor|drelle/i;
 
-// Anticonceptivos hormonales en la medicación registrada. Solo los combinados (con estrógeno)
-// frenan su eliminación (Abernethy y Todd 1985: «low-dose oestrogen-containing»).
-export function anticonceptivosDe(sexo, lista = []) {
-  if (sexo !== 'F') return { estado: 'no_aplica', item: null };
-  for (const it of lista || []) { const n = nombreMed(it); if (SOLO_GESTAGENO.test(n)) return { estado: 'solo_gestageno', item: n.trim() }; }
-  for (const it of lista || []) { const n = nombreMed(it); if (COMBINADO.test(n)) return { estado: 'combinado', item: n.trim() }; }
-  return { estado: 'no_consta', item: null };
+// Anticonceptivos hormonales. Solo los combinados (con estrógeno) frenan su eliminación
+// (Abernethy y Todd 1985: «low-dose oestrogen-containing»).
+// De dónde sale, por orden (22-nov-2026, PEND-2026-279 pregunta 2):
+//   1. la medicación registrada: si ya lo dice, manda y no se pregunta (origen 'medicacion');
+//   2. lo que la paciente declaró UNA vez en su perfil (profiles.anticonceptivo, origen 'perfil');
+//   3. si nada lo dice, no consta.
+// `declarado` es null (no consta) o uno de ANTICONCEPTIVO_DECLARADO.
+export const ANTICONCEPTIVO_DECLARADO = ['combinado', 'sin_estrogeno', 'no'];
+export function anticonceptivosDe(sexo, lista = [], declarado = null) {
+  if (sexo !== 'F') return { estado: 'no_aplica', item: null, origen: null };
+  for (const it of lista || []) { const n = nombreMed(it); if (SOLO_GESTAGENO.test(n)) return { estado: 'solo_gestageno', item: n.trim(), origen: 'medicacion' }; }
+  for (const it of lista || []) { const n = nombreMed(it); if (COMBINADO.test(n)) return { estado: 'combinado', item: n.trim(), origen: 'medicacion' }; }
+  if (declarado === 'combinado') return { estado: 'combinado', item: null, origen: 'perfil' };
+  if (declarado === 'sin_estrogeno') return { estado: 'solo_gestageno', item: null, origen: 'perfil' };
+  if (declarado === 'no') return { estado: 'no', item: null, origen: 'perfil' };
+  return { estado: 'no_consta', item: null, origen: null };
 }
 
 const INTERACCIONES = [
@@ -125,8 +134,9 @@ export function interaccionesDe(lista = []) {
 
 // Del registro de la app al perfil del motor. `habitos` es lo que la app NO sabe (tolerancia,
 // tabaco, forma, con comida): se pregunta una vez y se guarda en el teléfono.
-export function perfilDesdeApp({ sexo = null, alturaCm = null, registrosPeso = [], pesoInicial = null, medicacion = [] } = {}, habitos = {}) {
-  const pa = pesoActual(registrosPeso, pesoInicial), ac = anticonceptivosDe(sexo, medicacion);
+// `anticonceptivo` es lo declarado en el perfil (profiles.anticonceptivo) o null.
+export function perfilDesdeApp({ sexo = null, alturaCm = null, registrosPeso = [], pesoInicial = null, medicacion = [], anticonceptivo = null } = {}, habitos = {}) {
+  const pa = pesoActual(registrosPeso, pesoInicial), ac = anticonceptivosDe(sexo, medicacion, anticonceptivo);
   return {
     perfil: { peso: pa.peso, altura: alturaCm, sexo, anticonceptivos: ac.estado === 'combinado', fumador: !!habitos.fumador,
               tolerancia: tol(habitos.tolerancia), comida: !!habitos.comida, forma: FORMAS.includes(habitos.forma) ? habitos.forma : 'cafe' },
