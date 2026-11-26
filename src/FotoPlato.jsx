@@ -81,11 +81,11 @@ export function FotoPlato({ T, lang, servidor, sesion, estado, nutri, onAnadir, 
         {fase === 'permiso' && (<>
           <div style={{ fontSize: 13, color: T.t2, fontFamily: FD, lineHeight: 1.45 }}>
             {EN
-              ? <>To work out what is on the plate and how much it weighs, the photo is sent to <b>Anthropic (Claude)</b>, an AI. Neither Anthropic nor GBH keep the photo. We do keep what comes out of it (foods and grams), so the app learns and you get your <b>My dishes</b>. It is an <b>estimate</b>: check the grams before you save.</>
-              : <>Para saber qué hay en el plato y cuánto pesa, la foto se envía a <b>Anthropic (Claude)</b>, una IA. Ni Anthropic ni GBH guardan la foto. Sí guardamos lo que sale de ella (alimentos y gramos), para que la app aprenda y para tus <b>Mis platos</b>. Es una <b>estimación</b>: revisa los gramos antes de guardar.</>}
+              ? <><b style={{ display: 'block', fontSize: 15, color: T.t1, fontFamily: FT, marginBottom: 4 }}>Shall we decode your plate? 🍽️</b>Snap it and our AI (<b>Claude, by Anthropic</b>) tells you what is in it and how much it weighs, in a few seconds. It looks at the photo and forgets it: <b>the photo is not kept anywhere</b>. What we do jot down is what it sees (foods and grams), so it keeps learning and saves your <b>My dishes</b>. It is its best guess, so give the grams a quick look before saving. 😉</>
+              : <><b style={{ display: 'block', fontSize: 15, color: T.t1, fontFamily: FT, marginBottom: 4 }}>¿Te ayudamos a descifrar tu plato? 🍽️</b>Hazle una foto y nuestra IA (<b>Claude, de Anthropic</b>) te dice qué lleva y cuánto pesa en unos segundos. Mira la foto y se olvida de ella: <b>la foto no se guarda en ningún sitio</b>. Lo que sí apuntamos es lo que ve (alimentos y gramos), para que vaya aprendiendo y para guardarte tus <b>Mis platos</b>. Es su mejor cálculo, así que échale un vistazo a los gramos antes de guardar. 😉</>}
           </div>
           <a href="/legal/" target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: T.au1, fontFamily: FD }}>{EN ? 'Privacy policy' : 'Política de privacidad'}</a>
-          <button onClick={aceptar} style={prim}>{EN ? 'OK, use the photo' : 'De acuerdo, usar la foto'}</button>
+          <button onClick={aceptar} style={prim}>{EN ? "Let's go! 📸" : '¡Vamos allá! 📸'}</button>
           <button onClick={onCerrar} style={btn}>{EN ? 'Not now' : 'Ahora no'}</button>
         </>)}
         {fase === 'elegir' && (<>
