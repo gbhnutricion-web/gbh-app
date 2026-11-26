@@ -1706,7 +1706,7 @@ export default function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,set
           {hoja&&<QueComiste T={T} lang={lang} toma={hoja.toma} modo={hoja.modo} estado={regDia[selDateKey]?.meals?.[hoja.toma]}
                  cargarRecetas={cargarRecetasCache} nutri={_NUTRI_ING}
                  inicial={hoja.modo==='extras'?(realDia[hoja.toma]?.extras||[]):(realDia[hoja.toma]?.items||[])}
-                 onGuardar={guardarHoja} onCerrar={()=>setHoja(null)}/>}
+                 onGuardar={guardarHoja} onCerrar={()=>setHoja(null)} fotoIA={{url:GBH_SERVER_URL,sesion:getSesion}}/>}
           {boMomento&&!hoja&&<BoMomento T={T} Sheep={Sheep} lang={lang} texto={boMomento.texto} firma={boMomento.firma}
                  bo={{color:profile?.bo_color||'blanca',equipados:Array.isArray(profile?.bo_equipados)?profile.bo_equipados:[]}}
                  onCerrar={()=>setBoMomento(null)}/>}
