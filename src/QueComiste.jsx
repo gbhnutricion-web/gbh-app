@@ -1,6 +1,9 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { kcalItem, sumaItems, fmtKcal, num } from "./kcalDia";
+import { escanerDisponible } from "./codigoBarras";
+// El escáner (cámara + lector) se descarga solo al pulsar 📷 (MAESTRO-2026-1627).
+const Escaner = React.lazy(() => import("./Escaner").then((m) => ({ default: m.Escaner })));
 
 // ─── «¿Qué comiste?» (Kcal reales, fase 2) ──────────────────────────────────────
 // Hoja inferior que cuantifica una toma marcada «la cambié» / «comí fuera» (modo
@@ -55,6 +58,8 @@ export function QueComiste({ T, lang, toma, modo = 'sustituir', estado, cargarRe
   const [libre, setLibre] = React.useState(false);
   const [libreN, setLibreN] = React.useState(''); const [libreK, setLibreK] = React.useState('');
   const [cargando, setCargando] = React.useState(true);
+  const [escaner, setEscaner] = React.useState(false);
+  const conEscaner = React.useMemo(() => escanerDisponible(), []);
   React.useEffect(() => {
     let vivo = true;
     Promise.resolve(typeof cargarRecetas === 'function' ? cargarRecetas() : null)
@@ -106,8 +111,9 @@ export function QueComiste({ T, lang, toma, modo = 'sustituir', estado, cargarRe
           <b style={{ fontSize: 18, fontWeight: 900, fontFamily: FT }}>≈ {fmtKcal(total.kcal, lang)} kcal</b>
           <span style={{ fontSize: 11, color: T.t2, fontFamily: FD }}>{total.conMacros ? `P ${Math.round(total.p)} · H ${Math.round(total.h)} · G ${Math.round(total.g)}` : (EN ? 'no macros (kcal by hand)' : 'sin macros (kcal a mano)')}</span>
         </div>
-        <div style={{ marginTop: 8 }}>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={EN ? 'Search… (chicken, egg, pasta)' : 'Buscar… (pechuga, huevo, pasta)'} autoComplete="off" style={inputSty} />
+        <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={EN ? 'Search… (chicken, egg, pasta)' : 'Buscar… (pechuga, huevo, pasta)'} autoComplete="off" style={{ ...inputSty, flex: 1, width: 'auto', minWidth: 0 }} />
+          {conEscaner && <button onClick={() => setEscaner(true)} aria-label={EN ? 'Scan barcode' : 'Escanear código de barras'} title={EN ? 'Scan barcode' : 'Escanear código de barras'} style={{ ...btn, flex: '0 0 auto', padding: '8px 12px', fontSize: 18, color: T.t1 }}>📷</button>}
         </div>
         <div style={{ overflowY: 'auto', flex: 1, minHeight: 120, marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6, scrollbarWidth: 'none' }}>
           {items.length > 0 && (<>
@@ -169,6 +175,11 @@ export function QueComiste({ T, lang, toma, modo = 'sustituir', estado, cargarRe
           <button onClick={onCerrar} style={btn}>{EN ? 'Not now' : 'Ahora no'}</button>
           <button onClick={() => onGuardar(items, true)} style={{ ...btn, flex: '1 1 100%', border: `3px solid ${T.g3}`, background: `linear-gradient(135deg,${T.g1},${T.g2})`, color: T.wh, boxShadow: `0 4px 0 ${T.g3}` }}>{EN ? 'Save' : 'Guardar'}</button>
         </div>
+        {escaner && (
+          <React.Suspense fallback={null}>
+            <Escaner T={T} lang={lang} onAnadir={(it) => { setItems((xs) => [...xs, it]); setEscaner(false); }} onCerrar={() => setEscaner(false)} />
+          </React.Suspense>
+        )}
       </div>
     </div>,
     document.body);
