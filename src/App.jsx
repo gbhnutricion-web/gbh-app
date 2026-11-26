@@ -26,7 +26,8 @@ import { SelectorPrograma, BotonPrograma } from "./SelectorPrograma";
 import { SemaforoDensidad, BotonDensidad, leerDensidad, escribirDensidad } from "./SemaforoDensidad"; // densidad calórica con Bo de policía (1-nov-2026)
 import { TuDia } from "./TuDia";                                              // Kcal reales, fase 1
 import { FRACCIONES_MENOS, FRAC_MENOS_DEFECTO, fraccionValida, previstoToma, realToma, sumaItems } from "./kcalDia";
-import { QueComiste } from "./QueComiste";                                    // Kcal reales, fase 2: la hoja «¿Qué comiste?»
+import { QueComiste } from "./QueComiste";
+import { fotoDisponible, estadoFoto } from "./fotoIA";                          // 📸 en Inicio (MAESTRO-2026-1629)                                    // Kcal reales, fase 2: la hoja «¿Qué comiste?»
 import { _NUTRI_ING } from "./nutriIng";                                     // diccionario de alimentos (GENERADO, no editar)
 import { esDiaDeMedicion, ventanaKeys, proximoDiaMedicion } from "./ventanaMedicion"; // peso y medidas: miércoles + fin de semana (15-sep-2026)
 import { TOPE_PUNTOS, clasificarRespuesta, yaEstaEnElServidor, opDePartidaCaducada, esPendienteDeHoy } from "./partidaPendiente"; // la partida es del paciente hasta que el servidor la confirma (26-sep-2026)
@@ -8975,6 +8976,14 @@ export function GBHApp(){
   // ── Desglose de dieta por tomas ──────────────────────────────────────────────
   // Tomas que el paciente tiene HOY según su pauta (una toma al 0% no genera
   // recetas en el plan y por tanto no aparece). null → botón clásico de dieta.
+  // 📸 Foto del plato en Inicio (26-nov, Alejandro: «que salga en la pantalla principal»). Sale solo si el
+  // servidor dice que este paciente la tiene (hoy, administración); lleva al plan de hoy con la cámara abierta.
+  const [fotoInicio,setFotoInicio]=useState(false);
+  useEffect(()=>{ let vivo=true;
+    if(profile?.id && fotoDisponible(typeof window!=='undefined'?window:null))
+      estadoFoto(GBH_SERVER_URL, getSesion()).then(d=>{ if(vivo) setFotoInicio(!!(d&&d.ia)); });
+    return ()=>{ vivo=false; };
+  },[profile?.id]);
   const tomasHoy = React.useMemo(()=>{
     if(!planTomas) return null;
     const dowJS=new Date(hoyKey+"T12:00:00").getDay(); const d=String(dowJS===0?7:dowJS);
@@ -8989,6 +8998,12 @@ export function GBHApp(){
   // en el último cálculo y pasada la medianoche este memo seguía devolviendo
   // las comidas de AYER (los ✅ fantasma que reportó un paciente el 24-ago).
   const mealsHoy = React.useMemo(()=>logs.find(l=>l.date===hoyKey)?.meals||{},[logs,hoyKey]);
+  const abrirFotoInicio=()=>{
+    const ahora=new Date(); const dowJS=ahora.getDay(); const dia=dowJS===0?7:dowJS;
+    const ts=tomasHoy||PLAN_TOMAS; const h=ahora.getHours()+ahora.getMinutes()/60;
+    let toma=ts[0]; ts.forEach(tm=>{ if(h>=(PLAN_TOMA_HORA[tm]??0)) toma=tm; });
+    sfx("tap"); setTab("plan"); setPlanVista({vista:'daily', dia, toma, foto:true});
+  };
 
   // ── Recordatorio diario 20:00 — registro pendiente ─────────────────────────
   // Mismo mecanismo que el aviso de nueva programación: a partir de las 20:00,
@@ -11613,6 +11628,18 @@ export function GBHApp(){
               ? <MealBtns tomas={tomasHoy} meals={mealsHoy} done={tLog.diet} lang={lang} onTap={marcarTomaHome}/>
               : <BigBtn icon="🍽️" label={t("dietBtn")} done={tLog.diet} onClick={()=>toggleM("diet")}/>}
           </div>
+          {fotoInicio&&(
+            <button onClick={abrirFotoInicio} className="stagger-in" style={{animationDelay:escalon(0),width:"100%",boxSizing:"border-box",
+              display:"flex",alignItems:"center",gap:14,padding:"14px 16px",marginBottom:12,borderRadius:20,cursor:"pointer",textAlign:"left",
+              background:`linear-gradient(135deg,${T.g1},${T.g2})`,border:`3px solid ${T.g3}`,boxShadow:`0 6px 0 ${T.g3}`,color:T.wh}}>
+              <span style={{fontSize:34,lineHeight:1}}>📸</span>
+              <span style={{flex:1,minWidth:0}}>
+                <span style={{display:"block",fontSize:15.5,fontWeight:900,fontFamily:"'Nunito',sans-serif"}}>{lang==='en'?'Snap your plate':'Hazle una foto a tu plato'}</span>
+                <span style={{display:"block",fontSize:11.5,fontWeight:700,opacity:0.9,fontFamily:"'DM Sans',sans-serif"}}>{lang==='en'?'We estimate what it has and log it':'Calculamos lo que lleva y lo apuntamos'}</span>
+              </span>
+              <span style={{fontSize:22,fontWeight:900}}>›</span>
+            </button>
+          )}
 
           <div data-tuto="sueno" className="stagger-in" style={{animationDelay:escalon(1)}}><MRow num="2" icon="🌙" label={t("sleepLabel")} done={tLog.sleep} onToggle={()=>toggleM("sleep")} xpR={5}/></div>
           <div data-tuto="pasos" className="stagger-in" style={{animationDelay:escalon(2)}} onClickCapture={()=>tutoTapAvanza('B1_pasos')}><StepsWidget done={tLog.steps} stepCount={pasosVista} onToggle={()=>toggleM("steps")} onUpdateSteps={updSteps}

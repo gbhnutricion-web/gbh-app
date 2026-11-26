@@ -52,7 +52,7 @@ function buscar(q, recetas, nutri, estado) {
   return grupos;
 }
 
-export function QueComiste({ T, lang, toma, modo = 'sustituir', estado, cargarRecetas, nutri, inicial = [], onGuardar, onCerrar, fotoIA = null }) {
+export function QueComiste({ T, lang, toma, modo = 'sustituir', estado, cargarRecetas, nutri, inicial = [], onGuardar, onCerrar, fotoIA = null, abrirFoto = false }) {
   const EN = lang === 'en';
   const [q, setQ] = React.useState('');
   const [items, setItems] = React.useState(() => (Array.isArray(inicial) ? inicial.map((x) => ({ ...x })) : []));
@@ -70,7 +70,7 @@ export function QueComiste({ T, lang, toma, modo = 'sustituir', estado, cargarRe
     let vivo = true;
     if (fotoIA && fotoIA.url && fotoDisponible(typeof window !== 'undefined' ? window : null)) {
       estadoFoto(fotoIA.url, typeof fotoIA.sesion === 'function' ? fotoIA.sesion() : fotoIA.sesion)
-        .then((d) => { if (vivo && d && d.ia) setFotoEst(d); });
+        .then((d) => { if (vivo && d && d.ia) { setFotoEst(d); if (abrirFoto) setFoto(true); } });
     }
     return () => { vivo = false; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

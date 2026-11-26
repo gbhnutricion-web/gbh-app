@@ -37,7 +37,7 @@ export default function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,set
     // 'config' (desde «Pregúntale a Bo»): la pantalla «Configura tu plan», solo del estándar.
     // {vista:'daily', dia, toma, bo} (Bo con IA desde Inicio): esa comida, con el cambio ya preparado.
     if(vistaInicial){
-      if(typeof vistaInicial==='object'){ setView('daily'); setBoNav({dia:vistaInicial.dia, toma:vistaInicial.toma, bo:vistaInicial.bo||null}); }
+      if(typeof vistaInicial==='object'){ setView('daily'); setBoNav({dia:vistaInicial.dia, toma:vistaInicial.toma, bo:vistaInicial.bo||null, foto:!!vistaInicial.foto}); }
       else if(vistaInicial==='config'){ if(isStandard) setConfigView(true); }
       else setView(vistaInicial);
       onVistaConsumida&&onVistaConsumida(); }
@@ -273,6 +273,8 @@ export default function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,set
     if(hoja.modo==='extras'){ detalle = {...prev, extras: items}; }
     else { const s = sumaItems(items); const ok = conocido!==false && items.length>0;
       detalle = {...prev, items, conocido: ok, kcal: ok? Math.round(s.kcal) : null, p: ok? +s.p.toFixed(1) : 0, h: ok? +s.h.toFixed(1) : 0, g: ok? +s.g.toFixed(1) : 0, conMacros: ok ? s.conMacros : false}; }
+    // 📸 desde Inicio: la foto es lo que comió → la toma queda en «la cambié» (🔄) si no lo estaba
+    if(hoja.foto && items.length>0 && regDia[selDateKey]?.meals?.[hoja.toma]!=='fuera') persistDia(selDateKey,{toma:hoja.toma, estado:'fuera'});
     persistDia(selDateKey,{real:{toma:hoja.toma, detalle}});
     setHoja(null); sfx&&sfx('step');
   };
@@ -448,6 +450,7 @@ export default function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,set
     if(view!=='daily'){ setView('daily'); return; }
     if(selDay!==boNav.dia){ setSelDay(boNav.dia); return; }
     const nav = boNav; setBoNav(null);
+    if(nav.foto){ setHoja({toma:nav.toma, modo:'sustituir', foto:true}); return; }   // 📸 desde Inicio: la hoja con la cámara ya abierta
     (async()=>{ await abrirToma(nav.toma); setBoPendiente(nav.bo||null); setBoHoja(true); })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[boNav, planJ, view, selDay]);
@@ -1706,7 +1709,7 @@ export default function PlanTab({profile,lang,hoyKey,setProfile,savedRecipes,set
           {hoja&&<QueComiste T={T} lang={lang} toma={hoja.toma} modo={hoja.modo} estado={regDia[selDateKey]?.meals?.[hoja.toma]}
                  cargarRecetas={cargarRecetasCache} nutri={_NUTRI_ING}
                  inicial={hoja.modo==='extras'?(realDia[hoja.toma]?.extras||[]):(realDia[hoja.toma]?.items||[])}
-                 onGuardar={guardarHoja} onCerrar={()=>setHoja(null)} fotoIA={{url:GBH_SERVER_URL,sesion:getSesion}}/>}
+                 onGuardar={guardarHoja} onCerrar={()=>setHoja(null)} fotoIA={{url:GBH_SERVER_URL,sesion:getSesion}} abrirFoto={!!hoja.foto}/>}
           {boMomento&&!hoja&&<BoMomento T={T} Sheep={Sheep} lang={lang} texto={boMomento.texto} firma={boMomento.firma}
                  bo={{color:profile?.bo_color||'blanca',equipados:Array.isArray(profile?.bo_equipados)?profile.bo_equipados:[]}}
                  onCerrar={()=>setBoMomento(null)}/>}
