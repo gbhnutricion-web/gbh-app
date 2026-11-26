@@ -57,3 +57,24 @@ export function estadoFoto(url, sesion, fetcher = (typeof fetch === 'function' ?
   return prom;
 }
 export function olvidarEstadoFoto() { _memo = { token: null, prom: null }; }
+
+// Aprender de las fotos (anexo 5 de MAESTRO-2026-1629): al guardar, la app dice al servidor qué quedó
+// de la foto `id` (corregido o no). No bloquea nada: si falla, el registro del día ya está guardado.
+export function avisarGuardado(url, sesion, id, toma, items, fetcher = (typeof fetch === 'function' ? fetch : null)) {
+  const token = sesion && sesion.token;
+  const its = Array.isArray(items) ? items.filter((x) => x && x.n) : [];
+  if (!token || !url || !fetcher || !(Number(id) > 0) || !its.length) return Promise.resolve(false);
+  return fetcher(`${url}/foto/guardado`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-GBH-Sesion': token },
+    body: JSON.stringify({ id: Number(id), toma: toma || '', items: its }) })
+    .then((r) => !!(r && r.ok)).catch(() => false);
+}
+
+// «Mis platos»: lo que este paciente ya guardó desde una foto; se repite con un toque y sin otra foto.
+export function leerMisPlatos(url, sesion, fetcher = (typeof fetch === 'function' ? fetch : null)) {
+  const token = sesion && sesion.token;
+  if (!token || !url || !fetcher) return Promise.resolve([]);
+  return fetcher(`${url}/foto/mis_platos`, { method: 'POST', headers: { 'X-GBH-Sesion': token } })
+    .then((r) => (r && r.ok ? r.json() : null))
+    .then((d) => (d && Array.isArray(d.platos) ? d.platos.filter((x) => x && x.plato && Array.isArray(x.items) && x.items.length) : []))
+    .catch(() => []);
+}

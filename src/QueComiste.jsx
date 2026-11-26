@@ -2,7 +2,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { kcalItem, sumaItems, fmtKcal, num } from "./kcalDia";
 import { escanerDisponible } from "./codigoBarras";
-import { fotoDisponible, estadoFoto } from "./fotoIA";
+import { fotoDisponible, estadoFoto, avisarGuardado, leerMisPlatos } from "./fotoIA";
 // El escáner (cámara + lector) se descarga solo al pulsar 📷 (MAESTRO-2026-1627).
 const Escaner = React.lazy(() => import("./Escaner").then((m) => ({ default: m.Escaner })));
 const FotoPlato = React.lazy(() => import("./FotoPlato").then((m) => ({ default: m.FotoPlato })));
@@ -66,6 +66,18 @@ export function QueComiste({ T, lang, toma, modo = 'sustituir', estado, cargarRe
   // (mientras no se abra, solo las cuentas de administración). Una pregunta por sesión de la app.
   const [foto, setFoto] = React.useState(false);
   const [fotoEst, setFotoEst] = React.useState(null);
+  const [fotoRef, setFotoRef] = React.useState(null);          // {id, plato} de la última foto: al guardar se avisa al servidor
+  const [misPlatos, setMisPlatos] = React.useState([]);        // «Mis platos»: lo ya guardado desde una foto
+  const sesionFoto = () => (fotoIA ? (typeof fotoIA.sesion === 'function' ? fotoIA.sesion() : fotoIA.sesion) : null);
+  React.useEffect(() => {
+    let vivo = true;
+    if (fotoIA && fotoIA.url) leerMisPlatos(fotoIA.url, sesionFoto()).then((xs) => { if (vivo) setMisPlatos(xs); });
+    return () => { vivo = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const guardar = () => {
+    if (fotoRef && fotoRef.id && fotoIA) avisarGuardado(fotoIA.url, sesionFoto(), fotoRef.id, toma, items);
+    onGuardar(items, true);
+  };
   React.useEffect(() => {
     let vivo = true;
     if (fotoIA && fotoIA.url && fotoDisponible(typeof window !== 'undefined' ? window : null)) {
@@ -153,6 +165,17 @@ export function QueComiste({ T, lang, toma, modo = 'sustituir', estado, cargarRe
                 <button onClick={() => quitar(i)} aria-label={EN ? 'Remove' : 'Quitar'} style={{ font: `900 13px ${FT}`, width: 28, height: 28, borderRadius: 8, border: '1.5px solid rgba(255,255,255,0.18)', background: 'transparent', color: T.t2, cursor: 'pointer' }}>✕</button>
               </div>); })}
           </>)}
+          {!q.trim() && misPlatos.length > 0 && (<>
+            <div style={{ fontSize: 10, color: T.au1, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: 6, fontFamily: FT }}>📸 {EN ? 'My dishes' : 'Mis platos'}</div>
+            {misPlatos.map((mp, i) => { const s2 = sumaItems(mp.items); return (
+              <button key={'mp' + i} onClick={() => setItems((xs) => [...xs, ...mp.items.map((x) => ({ ...x }))])} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 11, background: 'rgba(255,255,255,0.04)', border: '1.5px solid transparent', cursor: 'pointer', textAlign: 'left', color: T.t1 }}>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 12.5, fontWeight: 800, fontFamily: FT, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{mp.plato}</span>
+                  <span style={{ display: 'block', fontSize: 10.5, color: T.t3, fontFamily: FD, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{mp.items.map((x) => x.n).join(' · ')}</span>
+                </span>
+                <span style={{ fontSize: 12, fontWeight: 900, color: T.g2, fontFamily: FT, whiteSpace: 'nowrap' }}>{fmtKcal(s2.kcal, lang)} kcal</span>
+              </button>); })}
+          </>)}
           {grupos.map((gr) => (
             <React.Fragment key={gr.k}>
               <div style={{ fontSize: 10, color: T.au1, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: 6, fontFamily: FT }}>{gr.ic} {EN ? gr.titEn : gr.tit}</div>
@@ -189,7 +212,7 @@ export function QueComiste({ T, lang, toma, modo = 'sustituir', estado, cargarRe
           <button onClick={() => setLibre((v) => !v)} style={btn}>{EN ? 'Other (kcal by hand)' : 'Otro (kcal a mano)'}</button>
           {modo === 'sustituir' && <button onClick={() => onGuardar([], false)} style={btn}>{EN ? "I don't know" : 'No lo sé'}</button>}
           <button onClick={onCerrar} style={btn}>{EN ? 'Not now' : 'Ahora no'}</button>
-          <button onClick={() => onGuardar(items, true)} style={{ ...btn, flex: '1 1 100%', border: `3px solid ${T.g3}`, background: `linear-gradient(135deg,${T.g1},${T.g2})`, color: T.wh, boxShadow: `0 4px 0 ${T.g3}` }}>{EN ? 'Save' : 'Guardar'}</button>
+          <button onClick={guardar} style={{ ...btn, flex: '1 1 100%', border: `3px solid ${T.g3}`, background: `linear-gradient(135deg,${T.g1},${T.g2})`, color: T.wh, boxShadow: `0 4px 0 ${T.g3}` }}>{EN ? 'Save' : 'Guardar'}</button>
         </div>
         {escaner && (
           <React.Suspense fallback={null}>
@@ -199,7 +222,7 @@ export function QueComiste({ T, lang, toma, modo = 'sustituir', estado, cargarRe
         {foto && fotoEst && (
           <React.Suspense fallback={null}>
             <FotoPlato T={T} lang={lang} servidor={fotoIA.url} sesion={typeof fotoIA.sesion === 'function' ? fotoIA.sesion() : fotoIA.sesion}
-              estado={fotoEst} nutri={nutri} onAnadir={(its) => { setItems((xs) => [...xs, ...its]); setFoto(false); }} onCerrar={() => setFoto(false)} />
+              estado={fotoEst} nutri={nutri} onAnadir={(its, ref) => { setItems((xs) => [...xs, ...its]); if (ref && ref.id) setFotoRef(ref); setFoto(false); }} onCerrar={() => setFoto(false)} />
           </React.Suspense>
         )}
       </div>

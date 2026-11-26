@@ -6,7 +6,7 @@ import { itemsDesdeFoto, mensajeFoto, olvidarEstadoFoto } from "./fotoIA";
 // El paciente hace (o elige) la foto del plato; la app la reduce a ≤ 1024 px y la manda a
 // /foto/estimar (Railway), que se la pasa a Claude y devuelve alimentos de NUESTRA tabla con
 // gramos. Los ítems vuelven a «¿Qué comiste?» marcados «estimado», donde se corrigen o se quitan
-// antes de guardar. La foto no se guarda en ningún sitio. La primera vez pide permiso: dice que
+// antes de guardar. La foto no se guarda en ningún sitio; el resultado en texto, sí (anexo 5: aprender y «Mis platos»). La primera vez pide permiso: dice que
 // la foto va a Anthropic (base legal: política de privacidad, encargado Anthropic desde la v4).
 const FT = "'Nunito',sans-serif", FD = "'DM Sans',sans-serif";
 const LADO = 1024;
@@ -65,7 +65,7 @@ export function FotoPlato({ T, lang, servidor, sesion, estado, nutri, onAnadir, 
       const its = itemsDesdeFoto(d, nutri);
       if (!its.length) { setFase('error'); setAviso(mensajeFoto('sin_comida', EN)); return; }
       olvidarEstadoFoto();                         // «quedan_hoy» ha cambiado
-      onAnadir(its);
+      onAnadir(its, { id: d.id || null, plato: d.plato || '' });
     } catch { if (vivo.current) { setFase('error'); setAviso(mensajeFoto('red', EN)); } }
     finally { clearTimeout(tope); }
   };
@@ -81,8 +81,8 @@ export function FotoPlato({ T, lang, servidor, sesion, estado, nutri, onAnadir, 
         {fase === 'permiso' && (<>
           <div style={{ fontSize: 13, color: T.t2, fontFamily: FD, lineHeight: 1.45 }}>
             {EN
-              ? <>To work out what is on the plate and how much it weighs, the photo is sent to <b>Anthropic (Claude)</b>, an AI. Neither Anthropic nor GBH keep it. What comes back is an <b>estimate</b>: check the grams before you save.</>
-              : <>Para saber qué hay en el plato y cuánto pesa, la foto se envía a <b>Anthropic (Claude)</b>, una IA. Ni Anthropic ni GBH la guardan. Lo que sale es una <b>estimación</b>: revisa los gramos antes de guardar.</>}
+              ? <>To work out what is on the plate and how much it weighs, the photo is sent to <b>Anthropic (Claude)</b>, an AI. Neither Anthropic nor GBH keep the photo. We do keep what comes out of it (foods and grams), so the app learns and you get your <b>My dishes</b>. It is an <b>estimate</b>: check the grams before you save.</>
+              : <>Para saber qué hay en el plato y cuánto pesa, la foto se envía a <b>Anthropic (Claude)</b>, una IA. Ni Anthropic ni GBH guardan la foto. Sí guardamos lo que sale de ella (alimentos y gramos), para que la app aprenda y para tus <b>Mis platos</b>. Es una <b>estimación</b>: revisa los gramos antes de guardar.</>}
           </div>
           <a href="/legal/" target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: T.au1, fontFamily: FD }}>{EN ? 'Privacy policy' : 'Política de privacidad'}</a>
           <button onClick={aceptar} style={prim}>{EN ? 'OK, use the photo' : 'De acuerdo, usar la foto'}</button>

@@ -2,7 +2,7 @@
 // La respuesta imita la de gbh_foto.validar() en el servidor.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fotoDisponible, itemsDesdeFoto, mensajeFoto, estadoFoto, olvidarEstadoFoto } from '../src/fotoIA.js';
+import { fotoDisponible, itemsDesdeFoto, mensajeFoto, estadoFoto, olvidarEstadoFoto, avisarGuardado, leerMisPlatos } from '../src/fotoIA.js';
 import { kcalItem, sumaItems } from '../src/kcalDia.js';
 
 const NUTRI = { 'Arroz blanco cocido': { k: 130, p: 2.7, h: 28, g: 0.3, u: [['plato', 200]], id: 77 }, 'Aceite de oliva': { k: 883.4, p: 0, h: 0, g: 99.9, u: [['cucharada', 10]], id: 2543 } };
@@ -65,4 +65,28 @@ test('estado: una sola petición por sesión; sin sesión no pregunta', async ()
   olvidarEstadoFoto();
   const c = await estadoFoto('https://srv', { token: 'tok' }, async () => { throw new Error('sin red'); });
   assert.deepEqual(c, { ia: false, motivo: 'red' });
+});
+
+test('avisarGuardado: manda id, toma e ítems con la sesión; sin id o sin ítems no llama', async () => {
+  const llamadas = [];
+  const f = (url, op) => { llamadas.push([url, op]); return Promise.resolve({ ok: true }); };
+  assert.equal(await avisarGuardado('https://s', { token: 'T' }, 7, 'Comida', [{ t: 'ing', n: 'Arroz', ug: 80, q: 1 }, { n: '' }], f), true);
+  assert.equal(llamadas.length, 1);
+  assert.equal(llamadas[0][0], 'https://s/foto/guardado');
+  assert.equal(llamadas[0][1].headers['X-GBH-Sesion'], 'T');
+  assert.deepEqual(JSON.parse(llamadas[0][1].body), { id: 7, toma: 'Comida', items: [{ t: 'ing', n: 'Arroz', ug: 80, q: 1 }] });
+  assert.equal(await avisarGuardado('https://s', { token: 'T' }, null, 'Comida', [{ n: 'A' }], f), false);
+  assert.equal(await avisarGuardado('https://s', { token: 'T' }, 7, 'Comida', [], f), false);
+  assert.equal(llamadas.length, 1);
+  assert.equal(await avisarGuardado('https://s', { token: 'T' }, 7, 'Comida', [{ n: 'A' }], () => Promise.reject(new Error('red'))), false);
+});
+
+test('leerMisPlatos: solo platos con nombre e ítems; si falla, lista vacía', async () => {
+  const f = () => Promise.resolve({ ok: true, json: () => Promise.resolve({ platos: [
+    { plato: 'Lentejas', items: [{ t: 'ing', n: 'Lentejas', ug: 80, q: 1, k: 300 }] }, { plato: '', items: [{ n: 'x' }] }, { plato: 'Vacío', items: [] }] }) });
+  const xs = await leerMisPlatos('https://s', { token: 'T' }, f);
+  assert.equal(xs.length, 1);
+  assert.equal(xs[0].plato, 'Lentejas');
+  assert.deepEqual(await leerMisPlatos('https://s', { token: 'T' }, () => Promise.reject(new Error('red'))), []);
+  assert.deepEqual(await leerMisPlatos('https://s', null, f), []);
 });
