@@ -20,7 +20,9 @@ export function itemsDesdeFoto(res, nutri) {
     if (!(gramos > 0)) continue;
     const e = p.alimento && p.alimento !== 'otro' && nutri ? nutri[p.alimento] : null;
     if (e) {
-      out.push({ t: 'ing', n: p.alimento, q: 1, u: 'ración', ug: gramos, k: n(e.k), p: n(e.p), h: n(e.h), g: n(e.g), id: e.id || null, e: 1, src: 'foto' });
+      // Arroz, pasta y legumbres: la tabla va en crudo y el servidor ya pasó «gramos» a crudo; la medida dice lo cocido.
+      const cocido = Math.round(n(p.cocido));
+      out.push({ t: 'ing', n: p.alimento, q: 1, u: cocido > 0 ? `cocido ${cocido} g` : 'ración', ug: gramos, k: n(e.k), p: n(e.p), h: n(e.h), g: n(e.g), id: e.id || null, e: 1, src: 'foto' });
     } else if (p.alimento === 'otro' && p.nombre && n(p.k) >= 0 && p.k !== undefined) {
       out.push({ t: 'ing', n: String(p.nombre).slice(0, 60), q: 1, u: 'ración', ug: gramos, k: n(p.k), p: n(p.p), h: n(p.h), g: n(p.g), id: null, e: 1, src: 'foto' });
     }

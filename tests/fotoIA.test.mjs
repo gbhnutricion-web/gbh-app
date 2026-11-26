@@ -15,6 +15,12 @@ test('alimentos de la tabla: kcal de NUESTRA tabla, marcados estimado y foto', (
   assert.equal(Math.round(sumaItems(it).kcal), 195 + 88);
 });
 
+test('arroz cocido: la medida dice lo cocido y los gramos van en crudo', () => {
+  const [it] = itemsDesdeFoto({ platos: [{ alimento: 'Arroz blanco cocido', nombre: 'arroz', gramos: 69, cocido: 180 }] }, NUTRI);
+  assert.equal(it.u, 'cocido 180 g');
+  assert.equal(it.ug, 69);
+});
+
 test('«otro» usa las cifras del servidor; sin nombre o sin cifras no entra', () => {
   const it = itemsDesdeFoto({ platos: [
     { alimento: 'otro', nombre: 'salsa de yogur', gramos: 40, k: 120, p: 4, h: 6, g: 9 },

@@ -111,7 +111,7 @@ export function QueComiste({ T, lang, toma, modo = 'sustituir', estado, cargarRe
   }));
   const quitar = (i) => setItems((xs) => xs.filter((_, j) => j !== i));
   const cantTxt = (x) => x.t === 'rec' ? `${x.q === 0.5 ? '½' : x.q} ${EN ? (x.q > 1 ? 'servings' : 'serving') : (x.q > 1 ? 'raciones' : 'ración')}`
-    : x.t === 'ing' ? (x.u === 'g' ? `${x.q} g` : `${x.q} × ${x.u} (${Math.round(num(x.ug) * num(x.q))} g)`) : (EN ? 'kcal by hand' : 'kcal a mano');
+    : x.t === 'ing' ? (x.u === 'g' ? `${x.q} g` : `${x.q} × ${x.u} (${Math.round(num(x.ug) * num(x.q))} g${/^cocido /.test(x.u) ? (EN ? ' raw' : ' en crudo') : ''})`) : (EN ? 'kcal by hand' : 'kcal a mano');
 
   const btn = { fontFamily: FT, fontWeight: 900, fontSize: 13, padding: '11px 12px', borderRadius: 13, cursor: 'pointer', border: '2px solid rgba(255,255,255,0.12)', background: 'transparent', color: T.t2, flex: 1 };
   const inputSty = { font: `700 14px ${FT}`, color: T.t1, background: 'rgba(255,255,255,0.06)', border: '2px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: '10px 12px', width: '100%', boxSizing: 'border-box', outline: 'none' };
@@ -140,6 +140,7 @@ export function QueComiste({ T, lang, toma, modo = 'sustituir', estado, cargarRe
                   <div style={{ fontSize: 10.5, color: T.t2, fontFamily: FD }}>{cantTxt(x)}</div>
                   {x.t === 'ing' && e && Array.isArray(e.u) && (e.u.length > 1 || x.u !== 'g') && (
                     <select value={x.u === 'g' ? '__g' : x.u} onChange={(ev) => unidad(i, ev.target.value)} style={{ marginTop: 3, font: `700 11px ${FD}`, color: T.t1, background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, padding: '3px 6px' }}>
+                      {x.u !== 'g' && !e.u.some((uu) => uu[0] === x.u) && <option value={x.u}>{x.u} ({Math.round(num(x.ug))} g)</option>}
                       {e.u.map((uu) => <option key={uu[0]} value={uu[0]}>{uu[0]} ({uu[1]} g)</option>)}
                       <option value="__g">{EN ? 'grams' : 'gramos'}</option>
                     </select>)}
